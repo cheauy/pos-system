@@ -27,6 +27,23 @@ export default async function DashboardPage() {
       head: true,
     });
 
+    const today = new Date();
+today.setHours(0, 0, 0, 0);
+
+const { data: todayOrders } = await supabase
+  .from("orders")
+  .select("total")
+  .eq("status", "completed")
+  .gte("created_at", today.toISOString());
+
+const todayOrderCount = todayOrders?.length ?? 0;
+
+const todaySales =
+  todayOrders?.reduce(
+    (sum, order) => sum + Number(order.total),
+    0,
+  ) ?? 0;
+
   return (
     <main className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-7xl">
@@ -55,15 +72,15 @@ export default async function DashboardPage() {
             value={categoryCount ?? 0}
           />
 
-          <DashboardCard
-            title="Today&apos;s Orders"
-            value={0}
-          />
+        <DashboardCard
+     title="Today's Orders"
+  value={todayOrderCount}
+/>
 
-          <DashboardCard
-            title="Today&apos;s Sales"
-            value="$0.00"
-          />
+<DashboardCard
+  title="Today's Sales"
+  value={`$${todaySales.toFixed(2)}`}
+/>
         </div>
       </div>
     </main>
