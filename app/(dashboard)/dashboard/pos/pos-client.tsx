@@ -34,7 +34,11 @@ type Product = {
 type CartItem = Product & {
   quantity: number;
 };
-
+type Customer = {
+  id: string;
+  name: string;
+  phone: string | null;
+};
 type PaymentMethod =
   | "cash"
   | "card"
@@ -44,10 +48,14 @@ type PaymentMethod =
 export default function PosClient({
   products,
   categories,
+  customers,
 }: {
   products: Product[];
   categories: Category[];
-}) {
+  customers: Customer[];
+})  {
+  const [customerId, setCustomerId] =
+  useState("");
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] =
     useState("all");
@@ -188,22 +196,25 @@ export default function PosClient({
 
     startTransition(async () => {
       const result = await checkoutOrder({
-        items: cart.map((item) => ({
-          productId: item.id,
-          quantity: item.quantity,
-        })),
-        paymentMethod,
-        amountPaid:
-          paymentMethod === "cash" ? paidNumber : total,
-      });
-
+  items: cart.map((item) => ({
+    productId: item.id,
+    quantity: item.quantity,
+  })),
+  paymentMethod,
+  amountPaid:
+    paymentMethod === "cash"
+      ? paidNumber
+      : total,
+  customerId: customerId || null,
+});
       if (!result.success) {
         setMessage(result.message);
         return;
       }
 
-     setCart([]);
+    setCart([]);
 setAmountPaid("");
+setCustomerId("");
 setMessage("Order completed successfully.");
 
 window.location.href =
@@ -420,7 +431,31 @@ window.location.href =
             <span>Total</span>
             <span>${total.toFixed(2)}</span>
           </div>
+          <label className="mt-5 block text-sm font-medium text-slate-700">
+  Customer
+</label>
 
+<select
+  value={customerId}
+  onChange={(event) =>
+    setCustomerId(event.target.value)
+  }
+  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+>
+  <option value="">Walk-in customer</option>
+
+  {customers.map((customer) => (
+    <option
+      key={customer.id}
+      value={customer.id}
+    >
+      {customer.name}
+      {customer.phone
+        ? ` · ${customer.phone}`
+        : ""}
+    </option>
+  ))}
+</select>
           <label className="mt-5 block text-sm font-medium text-slate-700">
             Payment method
           </label>

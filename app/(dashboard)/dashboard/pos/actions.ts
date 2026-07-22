@@ -12,6 +12,7 @@ type CheckoutInput = {
   items: CheckoutItem[];
   paymentMethod: "cash" | "card" | "bank_transfer" | "other";
   amountPaid: number;
+  customerId: string | null;
 };
 
 type CheckoutResult =
@@ -82,11 +83,15 @@ export async function checkoutOrder(
     };
   }
 
-  const { data, error } = await supabase.rpc("checkout_order", {
+  const { data, error } = await supabase.rpc(
+  "checkout_order",
+  {
     p_items: input.items,
     p_payment_method: input.paymentMethod,
     p_amount_paid: input.amountPaid,
-  });
+    p_customer_id: input.customerId,
+  },
+);
 
   if (error) {
     return {

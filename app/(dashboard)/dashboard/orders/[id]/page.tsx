@@ -14,9 +14,18 @@ type OrderItem = {
   subtotal: number;
 };
 
+type ReceiptCustomer = {
+  name: string;
+  phone: string | null;
+  address: string | null;
+};
 type Order = {
   id: string;
   order_number: string;
+  customers:
+  | ReceiptCustomer
+  | ReceiptCustomer[]
+  | null;
   subtotal: number;
   discount: number;
   total: number;
@@ -42,35 +51,45 @@ export default async function OrderDetailsPage({
   const supabase = await createClient();
 
   const { data, error } = await supabase
-    .from("orders")
-    .select(`
+  .from("orders")
+  .select(`
+    id,
+    order_number,
+    subtotal,
+    discount,
+    total,
+    payment_method,
+    amount_paid,
+    change_amount,
+    status,
+    created_at,
+    customers (
+      name,
+      phone,
+      address
+    ),
+    order_items (
       id,
-      order_number,
-      subtotal,
-      discount,
-      total,
-      payment_method,
-      amount_paid,
-      change_amount,
-      status,
-      created_at,
-      order_items (
-        id,
-        product_name,
-        sku,
-        quantity,
-        unit_price,
-        subtotal
-      )
-    `)
-    .eq("id", id)
-    .single();
+      product_name,
+      sku,
+      quantity,
+      unit_price,
+      subtotal
+    )
+  `)
+  .eq("id", id)
+  .single();
 
   if (error || !data) {
     notFound();
   }
 
   const order = data as unknown as Order;
+  const receiptCustomer = Array.isArray(
+  order.customers,
+)
+  ? order.customers[0] ?? null
+  : order.customers;
 
   return (
     <main>
@@ -119,6 +138,17 @@ export default async function OrderDetailsPage({
             label="Status"
             value={order.status}
           />
+          <ReceiptRow
+  label="Customer"
+  value={receiptCustomer?.name ?? "Walk-in customer"}
+/>
+
+{receiptCustomer?.phone && (
+  <ReceiptRow
+    label="Phone"
+    value={receiptCustomer.phone}
+  />
+)}
         </div>
 
         <div className="py-6">
