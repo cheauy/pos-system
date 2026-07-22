@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
+import { createClient } from "@/lib/supabase/server";
+import LogoutButton from "@/components/logout-button";
 import {
   LayoutDashboard,
   Package,
@@ -7,10 +10,8 @@ import {
   ShoppingCart,
   Users,
   BarChart3,
+  ReceiptText,
 } from "lucide-react";
-
-import { createClient } from "@/lib/supabase/server";
-import LogoutButton from "@/components/logout-button";
 
 const menuItems = [
   {
@@ -23,6 +24,11 @@ const menuItems = [
     href: "/dashboard/pos",
     icon: ShoppingCart,
   },
+  {
+  name: "Orders",
+  href: "/dashboard/orders",
+  icon: ReceiptText,
+},
   {
     name: "Products",
     href: "/dashboard/products",

@@ -24,3 +24,70 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 4mm;
+  }
+
+  html,
+  body {
+    width: 80mm;
+    min-width: 80mm;
+    margin: 0;
+    padding: 0;
+    background: white;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .receipt,
+  .receipt * {
+    visibility: visible;
+  }
+
+  .receipt {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 72mm;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    font-size: 11px;
+  }
+
+  .receipt h1 {
+    font-size: 20px;
+  }
+
+  .receipt .sm\:grid {
+    display: grid;
+  }
+
+  .receipt .sm\:hidden {
+    display: none;
+  }
+
+  .receipt .sm\:text-right {
+    text-align: right;
+  }
+
+  .receipt .sm\:text-center {
+    text-align: center;
+  }
+
+  .receipt .sm\:grid-cols-\[1fr_70px_100px_100px\] {
+    grid-template-columns: 1fr 28px 52px 52px;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

@@ -202,11 +202,12 @@ export default function PosClient({
         return;
       }
 
-      setCart([]);
-      setAmountPaid("");
-      setMessage("Order completed successfully.");
+     setCart([]);
+setAmountPaid("");
+setMessage("Order completed successfully.");
 
-      window.location.reload();
+window.location.href =
+  `/dashboard/orders/${result.orderId}`;
     });
   }
 
