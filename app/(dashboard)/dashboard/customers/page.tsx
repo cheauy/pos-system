@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   Eye,
   Trash2,
+  Pencil,
   UserRound,
 } from "lucide-react";
 
@@ -220,6 +221,13 @@ export default async function CustomersPage() {
                           >
                             <Eye size={19} />
                           </Link>
+                              <Link
+  href={`/dashboard/customers/${customer.id}/edit`}
+  className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50"
+>
+  <Pencil size={19} />
+ 
+</Link>
 
                           <form action={deleteCustomer}>
                             <input

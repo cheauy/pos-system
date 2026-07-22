@@ -94,3 +94,65 @@ export async function deleteCustomer(formData: FormData) {
   revalidatePath("/dashboard/customers");
   revalidatePath("/dashboard/pos");
 }
+export async function updateCustomer(
+  formData: FormData,
+) {
+  const customerId = formData.get("customerId");
+  const name = formData.get("name");
+
+  if (
+    typeof customerId !== "string" ||
+    customerId.length === 0
+  ) {
+    throw new Error("Invalid customer ID.");
+  }
+
+  if (
+    typeof name !== "string" ||
+    name.trim().length < 2
+  ) {
+    throw new Error(
+      "Customer name must contain at least 2 characters.",
+    );
+  }
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { error } = await supabase
+    .from("customers")
+    .update({
+      name: name.trim(),
+      phone: optionalText(formData, "phone"),
+      email: optionalText(formData, "email"),
+      address: optionalText(
+        formData,
+        "address",
+      ),
+      note: optionalText(formData, "note"),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", customerId)
+    .eq("owner_id", user.id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/dashboard/customers");
+  revalidatePath(
+    `/dashboard/customers/${customerId}`,
+  );
+  revalidatePath("/dashboard/pos");
+
+  redirect(
+    `/dashboard/customers/${customerId}`,
+  );
+}

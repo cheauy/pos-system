@@ -1,7 +1,13 @@
-import { Package, Trash2 } from "lucide-react";
+import Link from "next/link";
+import {
+  Package,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { createProduct, deleteProduct } from "./actions";
+
 
 type Category = {
   id: string;
@@ -363,24 +369,37 @@ export default async function ProductsPage() {
                               : "Inactive"}
                           </span>
                         </td>
+ <td className="px-6 py-4">
+                       <div className="flex justify-end gap-2">
+    <Link
+    href={`/dashboard/products/${product.id}/edit`}
+    aria-label={`Edit ${product.name}`}
+    className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50"
+  >
+    <Pencil size={19} />
+  </Link>
+                            
+  <form action={deleteProduct}>
+    <input
+      type="hidden"
+      name="productId"
+      value={product.id}
+    />
 
-                        <td className="px-6 py-4 text-right">
-                          <form action={deleteProduct}>
-                            <input
-                              type="hidden"
-                              name="productId"
-                              value={product.id}
-                            />
+    <button
+      type="submit"
+      aria-label={`Delete ${product.name}`}
+      className="rounded-lg p-2 text-red-600 transition hover:bg-red-50"
+    >
+      <Trash2 size={19} />
+    </button>
+  </form>
 
-                            <button
-                              type="submit"
-                              aria-label={`Delete ${product.name}`}
-                              className="rounded-lg p-2 text-red-600 transition hover:bg-red-50"
-                            >
-                              <Trash2 size={19} />
-                            </button>
-                          </form>
-                        </td>
+  
+
+    
+</div>
+</td>
                       </tr>
                     );
                   })}

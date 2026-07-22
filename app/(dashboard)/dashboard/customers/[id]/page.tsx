@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 
+
 type CustomerOrder = {
   id: string;
   order_number: string;
@@ -94,6 +95,7 @@ export default async function CustomerDetailsPage({
           <h1 className="text-2xl font-bold text-slate-900">
             {customer.name}
           </h1>
+      
 
           <div className="mt-6 space-y-5">
             <InformationRow

@@ -4,13 +4,15 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import LogoutButton from "@/components/logout-button";
 import {
+  BarChart3,
+  Boxes,
   LayoutDashboard,
   Package,
-  Tags,
-  ShoppingCart,
-  Users,
-  BarChart3,
+  Receipt,
   ReceiptText,
+  ShoppingCart,
+  Tags,
+  Users,
 } from "lucide-react";
 
 const menuItems = [
@@ -29,6 +31,11 @@ const menuItems = [
   href: "/dashboard/orders",
   icon: ReceiptText,
 },
+{
+  name: "Inventory",
+  href: "/dashboard/inventory",
+  icon: Boxes,
+},
   {
     name: "Products",
     href: "/dashboard/products",
@@ -44,6 +51,11 @@ const menuItems = [
     href: "/dashboard/customers",
     icon: Users,
   },
+  {
+  name: "Expenses",
+  href: "/dashboard/expenses",
+  icon: Receipt,
+},
   {
     name: "Reports",
     href: "/dashboard/reports",
