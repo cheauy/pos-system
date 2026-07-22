@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import LogoutButton from "@/components/logout-button";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -14,24 +15,34 @@ export default async function DashboardPage() {
 
   const { count: productCount } = await supabase
     .from("products")
-    .select("*", { count: "exact", head: true });
+    .select("*", {
+      count: "exact",
+      head: true,
+    });
 
   const { count: categoryCount } = await supabase
     .from("categories")
-    .select("*", { count: "exact", head: true });
+    .select("*", {
+      count: "exact",
+      head: true,
+    });
 
   return (
     <main className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900">
-            Dashboard
-          </h1>
+        <div className="mb-8 flex items-center justify-between">
+  <div>
+    <h1 className="text-3xl font-bold text-slate-900">
+      Dashboard
+    </h1>
 
-          <p className="mt-1 text-slate-500">
-            Welcome, {user.email}
-          </p>
-        </div>
+    <p className="mt-1 text-slate-500">
+      Welcome, {user.email}
+    </p>
+  </div>
+
+  <LogoutButton />
+</div>
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           <DashboardCard
@@ -44,9 +55,15 @@ export default async function DashboardPage() {
             value={categoryCount ?? 0}
           />
 
-          <DashboardCard title="Today's Orders" value={0} />
+          <DashboardCard
+            title="Today&apos;s Orders"
+            value={0}
+          />
 
-          <DashboardCard title="Today's Sales" value="$0.00" />
+          <DashboardCard
+            title="Today&apos;s Sales"
+            value="$0.00"
+          />
         </div>
       </div>
     </main>
@@ -61,7 +78,7 @@ function DashboardCard({
   value: string | number;
 }) {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <p className="text-sm font-medium text-slate-500">
         {title}
       </p>
