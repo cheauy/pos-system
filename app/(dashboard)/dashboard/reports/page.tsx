@@ -10,7 +10,7 @@ import {
   TrendingUp,
   WalletCards,
 } from "lucide-react";
-
+import ReportCharts from "./report-charts";
 import { createClient } from "@/lib/supabase/server";
 
 type ReportPageProps = {
@@ -173,16 +173,16 @@ export default async function ReportsPage({
 
   const topProducts = calculateTopProducts(orders);
 
+
   const dailySales = calculateDailySales(
     orders,
     dateRange.startDate,
     dateRange.endDate,
   );
+  const expenseCategories =
+  calculateExpenseCategories(expenses);
 
-  const maximumDailyRevenue = Math.max(
-    ...dailySales.map((day) => day.revenue),
-    1,
-  );
+ 
 
   return (
     <main>
@@ -288,65 +288,16 @@ export default async function ReportsPage({
           smallValue
         />
       </div>
+      <div className="mt-6">
+  <ReportCharts
+    dailySales={dailySales}
+    topProducts={topProducts}
+    expenseCategories={expenseCategories}
+  />
+</div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-slate-900">
-              Daily Sales
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Revenue during the selected period
-            </p>
-          </div>
-
-          {dailySales.every(
-            (day) => day.revenue === 0,
-          ) ? (
-            <EmptyState message="No sales found for this period." />
-          ) : (
-            <div className="overflow-x-auto">
-              <div
-                className="flex h-72 min-w-[620px] items-end gap-3 border-b border-slate-200 px-2 pb-8"
-                aria-label="Daily sales chart"
-              >
-                {dailySales.map((day) => {
-                  const height =
-                    (day.revenue /
-                      maximumDailyRevenue) *
-                    100;
-
-                  return (
-                    <div
-                      key={day.date}
-                      className="group flex min-w-8 flex-1 flex-col items-center justify-end"
-                    >
-                      <div className="mb-2 hidden whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-xs text-white group-hover:block">
-                        {formatCurrency(day.revenue)}
-                      </div>
-
-                      <div
-                        className="w-full max-w-12 rounded-t-lg bg-blue-500 transition hover:bg-blue-600"
-                        style={{
-                          height: `${Math.max(
-                            height,
-                            day.revenue > 0 ? 4 : 0,
-                          )}%`,
-                        }}
-                      />
-
-                      <p className="absolute mt-[292px] text-[11px] text-slate-500">
-                        {formatChartDate(day.date)}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </section>
-
+       
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-6 py-5">
             <h2 className="text-xl font-semibold text-slate-900">
@@ -481,9 +432,7 @@ export default async function ReportsPage({
             <EmptyState message="No expenses found." />
           ) : (
             <div className="divide-y divide-slate-200">
-              {calculateExpenseCategories(
-                expenses,
-              ).map((category) => {
+              {expenseCategories.map((category) => {
                 const percentage =
                   totalExpenses > 0
                     ? (category.amount /
@@ -818,21 +767,48 @@ function calculateDailySales(
   startDate: string,
   endDate: string,
 ) {
-  const revenueByDate = new Map<string, number>();
+  const salesByDate = new Map<
+    string,
+    {
+      revenue: number;
+      profit: number;
+    }
+  >();
 
   for (const order of orders) {
     const date = order.created_at.slice(0, 10);
 
-    revenueByDate.set(
-      date,
-      (revenueByDate.get(date) ?? 0) +
-        Number(order.total),
+    const orderCost = (
+      order.order_items ?? []
+    ).reduce(
+      (sum, item) =>
+        sum +
+        Number(item.cost_price) *
+          Number(item.quantity),
+      0,
     );
+
+    const orderRevenue = Number(order.total);
+    const orderProfit =
+      orderRevenue - orderCost;
+
+    const existing = salesByDate.get(date);
+
+    if (existing) {
+      existing.revenue += orderRevenue;
+      existing.profit += orderProfit;
+    } else {
+      salesByDate.set(date, {
+        revenue: orderRevenue,
+        profit: orderProfit,
+      });
+    }
   }
 
   const dates: {
     date: string;
     revenue: number;
+    profit: number;
   }[] = [];
 
   const currentDate = new Date(
@@ -846,9 +822,12 @@ function calculateDailySales(
   while (currentDate <= lastDate) {
     const date = getLocalDateString(currentDate);
 
+    const sale = salesByDate.get(date);
+
     dates.push({
       date,
-      revenue: revenueByDate.get(date) ?? 0,
+      revenue: sale?.revenue ?? 0,
+      profit: sale?.profit ?? 0,
     });
 
     currentDate.setDate(
@@ -856,18 +835,18 @@ function calculateDailySales(
     );
   }
 
-  // Prevent extremely wide reports for a full year.
   if (dates.length > 40) {
+    const interval = Math.ceil(
+      dates.length / 31,
+    );
+
     return dates.filter(
-      (_, index) =>
-        index % Math.ceil(dates.length / 31) ===
-        0,
+      (_, index) => index % interval === 0,
     );
   }
 
   return dates;
 }
-
 function getDateRange(
   range: string,
   customFrom?: string,
