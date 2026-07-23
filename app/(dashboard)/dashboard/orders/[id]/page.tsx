@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import PrintButton from "./print-button";
+import CancelOrderForm from "./cancel-order-form";
 
 type OrderItem = {
   id: string;
@@ -101,9 +102,33 @@ export default async function OrderDetailsPage({
           <ArrowLeft size={18} />
           Back to orders
         </Link>
+    <span
+  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+    order.status === "completed"
+      ? "bg-emerald-50 text-emerald-700"
+      : order.status === "cancelled"
+        ? "bg-red-50 text-red-700"
+        : "bg-amber-50 text-amber-700"
+  }`}
+>
+  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+</span>
 
         <PrintButton />
       </div>
+      <div className="flex flex-wrap items-center gap-3">
+  {/* Existing print or receipt buttons */}
+    {order.status === "completed" && (
+    <CancelOrderForm
+      orderId={order.id}
+      orderNumber={order.order_number}
+    />
+  )}
+  
+
+
+
+</div>
 
       <section className="receipt mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <div className="border-b border-dashed border-slate-300 pb-6 text-center">
@@ -256,6 +281,8 @@ function ReceiptRow({
     </div>
   );
 }
+
+
 
 function TotalRow({
   label,

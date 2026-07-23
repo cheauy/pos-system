@@ -222,7 +222,13 @@ export default async function OrdersPage({
                     </td>
 
                     <td className="px-6 py-4">
-                      <StatusBadge status={order.status} />
+                      <span
+  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass(
+    order.status,
+  )}`}
+>
+  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+</span>
                     </td>
 
                     <td className="px-6 py-4 text-right">
@@ -234,6 +240,7 @@ export default async function OrdersPage({
                         View
                       </Link>
                     </td>
+                    
                   </tr>
                 ))}
               </tbody>
@@ -265,6 +272,22 @@ function SummaryCard({
   );
 }
 
+function getStatusClass(status: string) {
+  switch (status) {
+    case "completed":
+      return "bg-emerald-50 text-emerald-700";
+
+    case "cancelled":
+      return "bg-red-50 text-red-700";
+
+    case "pending":
+      return "bg-amber-50 text-amber-700";
+
+    default:
+      return "bg-slate-100 text-slate-700";
+  }
+}
+
 function StatusBadge({
   status,
 }: {
@@ -290,6 +313,7 @@ function StatusBadge({
     >
       {status}
     </span>
+    
   );
 }
 

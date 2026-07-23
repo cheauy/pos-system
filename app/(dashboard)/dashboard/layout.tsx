@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import LogoutButton from "@/components/logout-button";
+import { PackagePlus } from "lucide-react";
 import {
   BarChart3,
   Boxes,
@@ -11,6 +12,7 @@ import {
   Receipt,
   ReceiptText,
   ShoppingCart,
+  Truck,
   Tags,
   Users,
 } from "lucide-react";
@@ -41,6 +43,16 @@ const menuItems = [
     href: "/dashboard/products",
     icon: Package,
   },
+  {
+  name: "Suppliers",
+  href: "/dashboard/suppliers",
+  icon: Truck,
+},
+{
+  name: "Purchases",
+  href: "/dashboard/purchases",
+  icon: PackagePlus,
+},
   {
     name: "Categories",
     href: "/dashboard/categories",
