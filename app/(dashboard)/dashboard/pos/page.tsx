@@ -10,7 +10,7 @@ type Product = {
   id: string;
   name: string;
   sku: string | null;
-  barcode: string | null;
+  image_url: string | null;
   selling_price: number;
   stock_quantity: number;
   category_id: string | null;
@@ -41,7 +41,7 @@ export default async function PosPage() {
       id,
       name,
       sku,
-      barcode,
+      image_url,
       selling_price,
       stock_quantity,
       category_id

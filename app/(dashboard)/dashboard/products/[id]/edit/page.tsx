@@ -7,6 +7,7 @@ import {
   adjustStock,
   updateProduct,
 } from "@/app/(dashboard)/dashboard/products/actions";
+import ImageUpload from "@/components/image-upload";
 
 type EditProductPageProps = {
   params: Promise<{
@@ -24,7 +25,7 @@ type Product = {
   category_id: string | null;
   name: string;
   sku: string | null;
-  barcode: string | null;
+ image_url: string | null;
   description: string | null;
   cost_price: number;
   selling_price: number;
@@ -51,7 +52,7 @@ export default async function EditProductPage({
         category_id,
         name,
         sku,
-        barcode,
+        image_url,
         description,
         cost_price,
         selling_price,
@@ -112,6 +113,8 @@ export default async function EditProductPage({
               value={product.id}
             />
 
+             
+
             <FormField
               label="Product name"
               htmlFor="name"
@@ -160,18 +163,9 @@ export default async function EditProductPage({
                   className={inputClass}
                 />
               </FormField>
+              <ImageUpload currentImage={product.image_url} />
 
-              <FormField
-                label="Barcode"
-                htmlFor="barcode"
-              >
-                <input
-                  id="barcode"
-                  name="barcode"
-                  defaultValue={product.barcode ?? ""}
-                  className={inputClass}
-                />
-              </FormField>
+              
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -220,7 +214,7 @@ export default async function EditProductPage({
                 step="1"
                 required
                 defaultValue={
-                  product.low_stock_quantity
+                  product.low_stock_quantity ?? 5
                 }
                 className={inputClass}
               />

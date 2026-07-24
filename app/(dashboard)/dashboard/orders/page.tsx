@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
+import OrderStatusSelect from "@/components/order-status-select";
+
 
 type Order = {
   id: string;
@@ -22,6 +24,8 @@ type OrdersPageProps = {
   searchParams: Promise<{
     search?: string;
     status?: string;
+    page?: string;
+    limit?: string;
   }>;
 };
 
@@ -31,13 +35,50 @@ export default async function OrdersPage({
   const params = await searchParams;
 
   const search = params.search?.trim() ?? "";
-  const status = params.status?.trim() ?? "all";
+  const allowedStatuses = [
+  "all",
+  "new",
+  "pending",
+  "completed",
+  "cancelled",
+  "refunded",
+] as const;
 
-  const supabase = await createClient();
+const requestedStatus =
+  params.status?.trim().toLowerCase() ?? "all";
 
-  let query = supabase
-    .from("orders")
-    .select(`
+const status = allowedStatuses.includes(
+  requestedStatus as (typeof allowedStatuses)[number],
+)
+  ? requestedStatus
+  : "all";
+  const usePagination = status === "all";
+
+  const requestedPage = Number(params.page ?? "1");
+const page = Number.isFinite(requestedPage)
+  ? Math.max(1, requestedPage)
+  : 1;
+
+const allowedLimits = ["10", "20", "30", "40", "50", "all"];
+
+const limitParam = allowedLimits.includes(
+  params.limit ?? "",
+)
+  ? params.limit!
+  : "10";
+
+const isAll = limitParam === "all";
+
+const pageSize = isAll
+  ? null
+  : Number(limitParam);
+
+const supabase = await createClient();
+
+let query = supabase
+  .from("orders")
+  .select(
+    `
       id,
       order_number,
       total,
@@ -46,25 +87,90 @@ export default async function OrdersPage({
       change_amount,
       status,
       created_at
-    `)
-    .order("created_at", {
-      ascending: false,
-    });
+    `,
+    {
+      count: "exact",
+    },
+  );
 
-  if (search) {
-    query = query.ilike(
-      "order_number",
-      `%${search}%`,
-    );
-  }
+// Apply search first
+if (search) {
+  query = query.ilike(
+    "order_number",
+    `%${search}%`,
+  );
+}
 
-  if (status !== "all") {
-    query = query.eq("status", status);
-  }
+// Apply status filter
+if (status !== "all") {
+  query = query.eq("status", status);
+}
 
-  const { data, error } = await query;
+// Apply pagination only for All tab
+if (
+  status === "all" &&
+  !isAll &&
+  pageSize !== null
+) {
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
 
-  const orders = (data ?? []) as Order[];
+  query = query.range(from, to);
+}
+
+// Apply ordering last
+query = query.order("created_at", {
+  ascending: false,
+});
+
+// Execute only after all filters
+const {
+  data,
+  error,
+  count,
+} = await query;
+
+const orders = (data ?? []) as Order[];
+
+  const totalOrders = count ?? 0;
+
+const totalPages =
+  !usePagination ||
+  isAll ||
+  pageSize === null
+    ? 1
+    : Math.max(
+        1,
+        Math.ceil(totalOrders / pageSize),
+      );
+
+const currentPage = Math.min(
+  page,
+  totalPages,
+);
+
+const firstShown =
+  totalOrders === 0
+    ? 0
+    : !usePagination ||
+        isAll ||
+        pageSize === null
+      ? 1
+      : (currentPage - 1) *
+          pageSize +
+        1;
+
+const lastShown =
+  totalOrders === 0
+    ? 0
+    : !usePagination ||
+        isAll ||
+        pageSize === null
+      ? totalOrders
+      : Math.min(
+          currentPage * pageSize,
+          totalOrders,
+        );
 
   const totalSales = orders
     .filter((order) => order.status === "completed")
@@ -81,7 +187,7 @@ export default async function OrdersPage({
         </h1>
 
         <p className="mt-1 text-slate-500">
-          Review completed sales and print receipts
+          Review all orders detail and print receipts
         </p>
       </div>
 
@@ -99,41 +205,94 @@ export default async function OrdersPage({
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 p-5">
-          <form className="grid gap-4 md:grid-cols-[1fr_220px_auto]">
-            <div className="relative">
-              <Search
-                size={19}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-              />
+         <div className="space-y-4">
+  <form className="flex gap-3">
+    <div className="relative flex-1">
+      <Search
+        size={19}
+        className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+      />
 
-              <input
-                name="search"
-                type="search"
-                defaultValue={search}
-                placeholder="Search order number"
-                className="w-full rounded-xl border border-slate-300 py-3 pl-11 pr-4 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-              />
-            </div>
+      <input
+        name="search"
+        type="search"
+        defaultValue={search}
+        placeholder="Search order number"
+        className="w-full rounded-xl border border-slate-300 py-3 pl-11 pr-4 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+      />
 
-            <select
-              name="status"
-              defaultValue={status}
-              className="rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-            >
-              <option value="all">All statuses</option>
-              <option value="completed">Completed</option>
-              <option value="pending">Pending</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="refunded">Refunded</option>
-            </select>
+      {status !== "all" && (
+        <input
+          type="hidden"
+          name="status"
+          value={status}
+        />
+      )}
+      <input
+  type="hidden"
+  name="limit"
+  value={limitParam}
+/>
+    </div>
 
-            <button
-              type="submit"
-              className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700"
-            >
-              Search
-            </button>
-          </form>
+    <button
+      type="submit"
+      className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700"
+    >
+      Search
+    </button>
+  </form>
+
+  <div className="flex flex-wrap gap-2">
+    <StatusFilterButton
+  label="All"
+  value="all"
+  active={status === "all"}
+  search={search}
+  limit={limitParam}
+/>
+
+    <StatusFilterButton
+      label="New"
+      value="new"
+      active={status === "new"}
+      search={search}
+      limit={limitParam}
+    />
+
+       <StatusFilterButton
+      label="Pending"
+      value="pending"
+      active={status === "pending"}
+      search={search}
+      limit={limitParam}
+    />
+
+    <StatusFilterButton
+      label="Completed"
+      value="completed"
+      active={status === "completed"}
+      search={search}
+      limit={limitParam}
+    />
+
+    <StatusFilterButton
+      label="Cancelled"
+      value="cancelled"
+      active={status === "cancelled"}
+      search={search}
+      limit={limitParam}
+    />
+
+    <StatusFilterButton
+      label="Refunded"
+      value="refunded"
+      active={status === "refunded"}
+      search={search}
+      limit={limitParam}
+    />
+  </div>
+</div>
         </div>
 
         {error ? (
@@ -222,14 +381,18 @@ export default async function OrdersPage({
                     </td>
 
                     <td className="px-6 py-4">
-                      <span
-  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass(
-    order.status,
-  )}`}
->
-  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-</span>
-                    </td>
+                                <OrderStatusSelect
+                                  orderId={order.id}
+                                  status={
+                                    order.status as
+                                      | "new"
+                                      | "pending"
+                                      | "completed"
+                                      | "cancelled"
+                                      | "refunded"
+                                  }
+                                />
+                              </td>
 
                     <td className="px-6 py-4 text-right">
                       <Link
@@ -245,12 +408,78 @@ export default async function OrdersPage({
                 ))}
               </tbody>
             </table>
+{status === "all" && (
+  <div className="flex flex-col gap-4 border-t border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <p className="text-sm text-slate-500">
+      Showing{" "}
+      <span className="font-semibold text-slate-700">
+        {firstShown}
+      </span>{" "}
+      to{" "}
+      <span className="font-semibold text-slate-700">
+        {lastShown}
+      </span>{" "}
+      of{" "}
+      <span className="font-semibold text-slate-700">
+        {totalOrders}
+      </span>{" "}
+      orders
+    </p>
+
+    <div className="flex flex-wrap items-center gap-3">
+      <form>
+        {search && (
+          <input
+            type="hidden"
+            name="search"
+            value={search}
+          />
+        )}
+
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          View
+
+          <select
+            name="limit"
+            defaultValue={limitParam}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2"
+          >
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="30">30</option>
+            <option value="40">40</option>
+            <option value="50">50</option>
+            <option value="all">All</option>
+          </select>
+
+          <button
+            type="submit"
+            className="rounded-lg bg-slate-100 px-3 py-2 font-medium text-slate-700 hover:bg-slate-200"
+          >
+            Apply
+          </button>
+        </label>
+      </form>
+
+      {!isAll && totalPages > 1 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          search={search}
+          status={status}
+          limit={limitParam}
+        />
+      )}
+    </div>
+  </div>
+)}
           </div>
         )}
       </section>
     </main>
   );
 }
+
 
 function SummaryCard({
   title,
@@ -272,48 +501,192 @@ function SummaryCard({
   );
 }
 
-function getStatusClass(status: string) {
-  switch (status) {
-    case "completed":
-      return "bg-emerald-50 text-emerald-700";
+function StatusFilterButton({
+  label,
+  value,
+  active,
+  search,
+  limit,
 
-    case "cancelled":
-      return "bg-red-50 text-red-700";
-
-    case "pending":
-      return "bg-amber-50 text-amber-700";
-
-    default:
-      return "bg-slate-100 text-slate-700";
-  }
-}
-
-function StatusBadge({
-  status,
 }: {
-  status: string;
+  label: string;
+  value: string;
+  active: boolean;
+  search: string;
+  limit: string;
+
+  
+
 }) {
-  const classes: Record<string, string> = {
-    completed:
-      "bg-green-50 text-green-700",
-    pending:
-      "bg-amber-50 text-amber-700",
-    cancelled:
-      "bg-red-50 text-red-700",
-    refunded:
-      "bg-purple-50 text-purple-700",
-  };
+  
+  const params = new URLSearchParams();
+ 
+  if (search) {
+    params.set("search", search);
+  }
+
+  if (value !== "all") {
+    params.set("status", value);
+  }
+
+  if (value === "all") {
+    params.set("limit", limit);
+  }
+
+  const href = params.toString()
+    ? `/dashboard/orders?${params.toString()}`
+    : "/dashboard/orders";
 
   return (
-    <span
-      className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${
-        classes[status] ??
-        "bg-slate-100 text-slate-600"
+    <Link
+      href={href}
+      className={`rounded-xl px-5 py-2.5 text-sm font-medium transition ${
+        active
+          ? "bg-blue-600 text-white"
+          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
       }`}
     >
-      {status}
-    </span>
-    
+      {label}
+    </Link>
+  );
+}
+
+function getPageNumbers(
+  currentPage: number,
+  totalPages: number,
+): Array<number | "ellipsis"> {
+  if (totalPages <= 7) {
+    return Array.from(
+      { length: totalPages },
+      (_, index) => index + 1,
+    );
+  }
+
+  if (currentPage <= 4) {
+    return [
+      1,
+      2,
+      3,
+      4,
+      5,
+      "ellipsis",
+      totalPages,
+    ];
+  }
+
+  if (currentPage >= totalPages - 3) {
+    return [
+      1,
+      "ellipsis",
+      totalPages - 4,
+      totalPages - 3,
+      totalPages - 2,
+      totalPages - 1,
+      totalPages,
+    ];
+  }
+
+  return [
+    1,
+    "ellipsis",
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    "ellipsis",
+    totalPages,
+  ];
+}
+
+function Pagination({
+  currentPage,
+  totalPages,
+  search,
+  status,
+  limit,
+}: {
+  currentPage: number;
+  totalPages: number;
+  search: string;
+  status: string;
+  limit: string;
+}) {
+  const createHref = (page: number) => {
+    const params = new URLSearchParams();
+
+    if (search) {
+      params.set("search", search);
+    }
+
+    if (status !== "all") {
+      params.set("status", status);
+    }
+
+    params.set("limit", limit);
+    params.set("page", String(page));
+
+    return `/dashboard/orders?${params.toString()}`;
+  };
+
+  const pageNumbers = getPageNumbers(
+    currentPage,
+    totalPages,
+  );
+
+  return (
+    <nav className="flex items-center gap-1">
+      <Link
+        href={createHref(
+          Math.max(1, currentPage - 1),
+        )}
+        aria-disabled={currentPage === 1}
+        className={`rounded-lg px-3 py-2 text-sm font-medium ${
+          currentPage === 1
+            ? "pointer-events-none bg-slate-100 text-slate-400"
+            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+        }`}
+      >
+        Previous
+      </Link>
+
+      {pageNumbers.map((pageNumber, index) =>
+        pageNumber === "ellipsis" ? (
+          <span
+            key={`ellipsis-${index}`}
+            className="px-2 text-slate-400"
+          >
+            …
+          </span>
+        ) : (
+          <Link
+            key={pageNumber}
+            href={createHref(pageNumber)}
+            className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+              pageNumber === currentPage
+                ? "bg-blue-600 text-white"
+                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+            }`}
+          >
+            {pageNumber}
+          </Link>
+        ),
+      )}
+
+      <Link
+        href={createHref(
+          Math.min(totalPages, currentPage + 1),
+        )}
+        aria-disabled={
+          currentPage === totalPages
+        }
+        className={`rounded-lg px-3 py-2 text-sm font-medium ${
+          currentPage === totalPages
+            ? "pointer-events-none bg-slate-100 text-slate-400"
+            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+        }`}
+      >
+        Next
+      </Link>
+    </nav>
   );
 }
 

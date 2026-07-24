@@ -25,7 +25,17 @@ export default function CancelOrderForm({
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+        className="inline-flex h-12 min-w-[170px]
+    items-center justify-center gap-2
+    rounded-xl
+    border border-red-300
+    bg-red-50
+    px-6
+    font-semibold
+    text-amber-700
+    transition
+    hover:bg-amber-100
+    hover:border-amber-400"
       >
         <Ban size={18} />
         Cancel Order

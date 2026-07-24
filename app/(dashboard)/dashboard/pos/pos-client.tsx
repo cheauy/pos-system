@@ -25,7 +25,7 @@ type Product = {
   id: string;
   name: string;
   sku: string | null;
-  barcode: string | null;
+  image_url: string | null;
   selling_price: number;
   stock_quantity: number;
   category_id: string | null;
@@ -40,8 +40,8 @@ type Customer = {
   phone: string | null;
 };
 type PaymentMethod =
-  | "cash"
-  | "card"
+  | "cod"
+  | "deposit"
   | "bank_transfer"
   | "other";
 
@@ -61,10 +61,12 @@ export default function PosClient({
     useState("all");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] =
-    useState<PaymentMethod>("cash");
+  useState<PaymentMethod>("cod");
   const [amountPaid, setAmountPaid] = useState("");
   const [message, setMessage] = useState("");
   const [isPending, startTransition] = useTransition();
+  const [discount, setDiscount] = useState("");
+const [deliveryFee, setDeliveryFee] = useState("");
 
   const filteredProducts = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -77,25 +79,56 @@ export default function PosClient({
       const matchesSearch =
         !keyword ||
         product.name.toLowerCase().includes(keyword) ||
-        product.sku?.toLowerCase().includes(keyword) ||
-        product.barcode?.toLowerCase().includes(keyword);
+        product.sku?.toLowerCase().includes(keyword) 
+        false;
 
       return matchesCategory && matchesSearch;
     });
   }, [products, search, selectedCategory]);
 
-  const total = cart.reduce(
-    (sum, item) =>
-      sum + Number(item.selling_price) * item.quantity,
-    0,
-  );
+const subtotal = cart.reduce(
+  (sum, item) =>
+    sum +
+    Number(item.selling_price) *
+      item.quantity,
+  0,
+);
 
-  const paidNumber = Number(amountPaid || 0);
+const rawDiscount = Number(discount || 0);
+const rawDeliveryFee = Number(deliveryFee || 0);
 
-  const change =
-    paymentMethod === "cash"
-      ? Math.max(0, paidNumber - total)
-      : 0;
+const discountNumber = Number.isFinite(rawDiscount)
+  ? Math.max(0, rawDiscount)
+  : 0;
+
+const deliveryFeeNumber = Number.isFinite(
+  rawDeliveryFee,
+)
+  ? Math.max(0, rawDeliveryFee)
+  : 0;
+
+const total = Math.max(
+  0,
+  subtotal + deliveryFeeNumber - discountNumber,
+);
+
+const paidNumber = Number(amountPaid || 0);
+
+const finalAmountPaid =
+  paymentMethod === "bank_transfer"
+    ? total
+    : paidNumber;
+
+const remainingBalance =
+  paymentMethod === "cod" ||
+  paymentMethod === "deposit"
+    ? Math.max(0, total - finalAmountPaid)
+    : 0;
+
+const change =
+  paymentMethod === "other"
+    ? Math.max(0, finalAmountPaid - total)
+    : 0;
 
   function addToCart(product: Product) {
     setMessage("");
@@ -185,26 +218,79 @@ export default function PosClient({
       setMessage("Please add at least one product.");
       return;
     }
-
     if (
-      paymentMethod === "cash" &&
-      paidNumber < total
-    ) {
-      setMessage("The amount paid is less than the total.");
-      return;
-    }
+  rawDiscount < 0 ||
+  rawDeliveryFee < 0
+) {
+  setMessage(
+    "Discount and delivery fee cannot be negative.",
+  );
+  return;
+}
+
+if (
+  !Number.isFinite(rawDiscount) ||
+  !Number.isFinite(rawDeliveryFee)
+) {
+  setMessage(
+    "Enter a valid discount and delivery fee.",
+  );
+  return;
+}
+
+if (
+  discountNumber >
+  subtotal + deliveryFeeNumber
+) {
+  setMessage(
+    "Discount cannot be greater than the order amount.",
+  );
+  return;
+}
+if (
+  paymentMethod === "cod" &&
+  (paidNumber < 0 || paidNumber > total)
+) {
+  setMessage(
+    "COD amount paid must be between $0 and the total.",
+  );
+  return;
+}
+
+
+ if (
+  paymentMethod === "deposit" &&
+  (paidNumber <= 0 || paidNumber >= total)
+) {
+  setMessage(
+    "Deposit must be greater than $0 and less than the total.",
+  );
+  return;
+}
+
+if (
+  paymentMethod === "other" &&
+  paidNumber < total
+) {
+  setMessage(
+    "Amount paid must be equal to or greater than the total.",
+  );
+  return;
+}
 
     startTransition(async () => {
-      const result = await checkoutOrder({
+const result = await checkoutOrder({
   items: cart.map((item) => ({
     productId: item.id,
     quantity: item.quantity,
   })),
+
   paymentMethod,
-  amountPaid:
-    paymentMethod === "cash"
-      ? paidNumber
-      : total,
+  amountPaid: finalAmountPaid,
+
+  discount: discountNumber,
+  deliveryFee: deliveryFeeNumber,
+
   customerId: customerId || null,
 });
       if (!result.success) {
@@ -212,9 +298,12 @@ export default function PosClient({
         return;
       }
 
-    setCart([]);
+setCart([]);
 setAmountPaid("");
+setDiscount("");
+setDeliveryFee("");
 setCustomerId("");
+setPaymentMethod("cod");
 setMessage("Order completed successfully.");
 
 window.location.href =
@@ -291,11 +380,21 @@ window.location.href =
                 onClick={() => addToCart(product)}
                 className="rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <div className="flex min-h-24 items-center justify-center rounded-xl bg-slate-100">
-                  <span className="text-3xl font-bold text-slate-300">
-                    {product.name.charAt(0).toUpperCase()}
-                  </span>
-                </div>
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                              {product.image_url ? (
+                                <img
+                                  src={product.image_url}
+                                  alt={product.name}
+                                  className="h-36 w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-36 items-center justify-center">
+                                  <span className="text-3xl font-bold text-slate-300">
+                                    {product.name.charAt(0).toUpperCase()}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
 
                 <h2 className="mt-4 font-semibold text-slate-900">
                   {product.name}
@@ -460,53 +559,149 @@ window.location.href =
             Payment method
           </label>
 
-          <select
-            value={paymentMethod}
-            onChange={(event) =>
-              setPaymentMethod(
-                event.target.value as PaymentMethod,
-              )
-            }
-            className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
-          >
-            <option value="cash">Cash</option>
-            <option value="card">Card</option>
-            <option value="bank_transfer">
-              Bank transfer
-            </option>
-            <option value="other">Other</option>
-          </select>
+<select
+  value={paymentMethod}
+  onChange={(event) => {
+    const nextPaymentMethod =
+      event.target.value as PaymentMethod;
 
-          {paymentMethod === "cash" && (
-            <>
-              <label className="mt-4 block text-sm font-medium text-slate-700">
-                Amount paid
-              </label>
+    setPaymentMethod(nextPaymentMethod);
+    setMessage("");
 
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={amountPaid}
-                onChange={(event) =>
-                  setAmountPaid(event.target.value)
-                }
-                placeholder="0.00"
-                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
-              />
+    if (nextPaymentMethod === "bank_transfer") {
+      setAmountPaid(total.toFixed(2));
+    } else {
+      setAmountPaid("");
+    }
+  }}
+  className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+>
+  <option value="cod">COD</option>
+  <option value="deposit">Deposit</option>
 
-              <div className="mt-4 flex justify-between text-sm">
-                <span className="text-slate-500">
-                  Change
-                </span>
+  <option value="bank_transfer">
+    Bank transfer (Fully Paid)
+  </option>
 
-                <span className="font-semibold text-green-600">
-                  ${change.toFixed(2)}
-                </span>
-              </div>
-            </>
-          )}
+  <option value="other">Other</option>
+</select>
+<div className="mt-5 grid gap-4 sm:grid-cols-2">
+  <div>
+    <label className="block text-sm font-medium text-slate-700">
+      Discount
+    </label>
 
+    <input
+      type="number"
+      min="0"
+      step="0.01"
+      value={discount}
+      onChange={(event) =>
+        setDiscount(event.target.value)
+      }
+      placeholder="0.00"
+      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+    />
+  </div>
+
+  <div>
+    <label className="block text-sm font-medium text-slate-700">
+      Delivery fee
+    </label>
+
+    <input
+      type="number"
+      min="0"
+      step="0.01"
+      value={deliveryFee}
+      onChange={(event) =>
+        setDeliveryFee(event.target.value)
+      }
+      placeholder="0.00"
+      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+    />
+  </div>
+</div>
+
+{(paymentMethod === "deposit"
+  ) && (
+  <>
+    <label className="mt-4 block text-sm font-medium text-slate-700">
+      {paymentMethod === "deposit"
+        ? "Deposit amount"
+        : "Amount paid"}-
+    </label>
+
+    <input
+      type="number"
+      min="0"
+      max={total}
+      step="0.01"
+      value={amountPaid}
+      onChange={(event) =>
+        setAmountPaid(event.target.value)
+      }
+      placeholder="0.00"
+      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+    />
+  </>
+)}
+
+{paymentMethod === "other" && (
+  <>
+    <label className="mt-4 block text-sm font-medium text-slate-700">
+      Amount paid
+    </label>
+
+    <input
+      type="number"
+      min={total}
+      step="0.01"
+      value={amountPaid}
+      onChange={(event) =>
+        setAmountPaid(event.target.value)
+      }
+      placeholder={total.toFixed(2)}
+      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+    />
+
+    <div className="mt-4 flex justify-between text-sm">
+      <span className="text-slate-500">
+        Amount paid
+      </span>
+
+      <span className="font-semibold text-slate-900">
+        ${paidNumber.toFixed(2)}
+      </span>
+    </div>
+
+    <div className="mt-2 flex justify-between text-sm">
+      <span className="text-slate-500">
+        Change
+      </span>
+
+      <span className="font-semibold text-green-600">
+        ${change.toFixed(2)}
+      </span>
+    </div>
+  </>
+)}
+
+<div className="mt-2 flex justify-between text-sm">
+  <span className="text-slate-500">
+     Left to pay
+  </span>
+
+  <span
+    className={
+      remainingBalance > 0
+        ? "font-semibold text-amber-600"
+        : "font-semibold text-green-600"
+    }
+  >
+    ${remainingBalance.toFixed(2)}
+  </span>
+</div>
           {message && (
             <div
               className={`mt-4 rounded-xl p-3 text-sm ${

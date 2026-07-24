@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-
+import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { createClient } from "@/lib/supabase/server";
 
 function optionalText(
@@ -57,6 +57,14 @@ export async function createCustomer(formData: FormData) {
     throw new Error(error.message);
   }
 
+  await createAuditLog({
+    action: "create",
+    entityType: "customer",
+    entityId: user.id,
+    description: `Insert customer`,
+   
+  });
+
   revalidatePath("/dashboard/customers");
   revalidatePath("/dashboard/pos");
 }
@@ -90,6 +98,14 @@ export async function deleteCustomer(formData: FormData) {
   if (error) {
     throw new Error(error.message);
   }
+
+  await createAuditLog({
+    action: "delete",
+    entityType: "customer",
+    entityId: user.id,
+    description: `Delete customer`,
+   
+  });
 
   revalidatePath("/dashboard/customers");
   revalidatePath("/dashboard/pos");
@@ -145,6 +161,13 @@ export async function updateCustomer(
   if (error) {
     throw new Error(error.message);
   }
+ await createAuditLog({
+    action: "update",
+    entityType: "customer",
+    entityId: user.id,
+    description: `Update customer`,
+   
+  });
 
   revalidatePath("/dashboard/customers");
   revalidatePath(

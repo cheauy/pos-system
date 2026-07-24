@@ -155,4 +155,88 @@ export async function createPurchase(
   redirect(
     `/dashboard/purchases/${purchaseId}`,
   );
+
+}
+
+export type CancelPurchaseState = {
+  success: boolean;
+  message: string;
+};
+
+export async function cancelPurchase(
+  previousState: CancelPurchaseState,
+  formData: FormData,
+): Promise<CancelPurchaseState> {
+  const purchaseIdValue =
+    formData.get("purchaseId");
+
+  const reasonValue =
+    formData.get("reason");
+
+  if (
+    typeof purchaseIdValue !== "string" ||
+    !purchaseIdValue.trim()
+  ) {
+    return {
+      success: false,
+      message: "Purchase ID is required.",
+    };
+  }
+
+  if (
+    typeof reasonValue !== "string" ||
+    !reasonValue.trim()
+  ) {
+    return {
+      success: false,
+      message:
+        "Cancellation reason is required.",
+    };
+  }
+
+  const purchaseId =
+    purchaseIdValue.trim();
+
+  const reason =
+    reasonValue.trim();
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { error } = await supabase.rpc(
+    "cancel_purchase",
+    {
+      p_purchase_id: purchaseId,
+      p_reason: reason,
+    },
+  );
+
+  if (error) {
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/products");
+  revalidatePath("/dashboard/inventory");
+  revalidatePath("/dashboard/purchases");
+  revalidatePath(
+    `/dashboard/purchases/${purchaseId}`,
+  );
+  revalidatePath("/dashboard/reports");
+
+  return {
+    success: true,
+    message:
+      "Purchase cancelled successfully.",
+  };
 }

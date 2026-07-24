@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
+import CancelPurchaseForm from "./cancel-purchase-form";
 
 type PurchaseDetailsPageProps = {
   params: Promise<{
@@ -38,6 +39,8 @@ export default async function PurchaseDetailsPage({
         subtotal,
         total,
         notes,
+        cancellation_reason,
+        cancelled_at,
         created_at,
         purchase_items (
           id,
@@ -72,23 +75,70 @@ export default async function PurchaseDetailsPage({
       </Link>
 
       <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">
-            {purchase.purchase_number}
-          </h1>
+  <div>
+    <h1 className="text-3xl font-bold text-slate-900">
+      {purchase.purchase_number}
+    </h1>
 
-          <p className="mt-1 text-slate-500">
-            Received on{" "}
-            {formatDate(
-              purchase.purchase_date,
-            )}
-          </p>
-        </div>
+    <p className="mt-1 text-slate-500">
+      Received on{" "}
+      {formatDate(
+        purchase.purchase_date,
+      )}
+    </p>
+  </div>
 
-        <span className="w-fit rounded-full bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700">
-          {formatStatus(purchase.status)}
-        </span>
-      </div>
+  <div className="flex flex-col items-start gap-3 sm:items-end">
+    <span
+      className={`w-fit rounded-full px-4 py-2 text-sm font-semibold ${
+        purchase.status === "cancelled"
+          ? "bg-red-50 text-red-700"
+          : "bg-emerald-50 text-emerald-700"
+      }`}
+    >
+      {formatStatus(purchase.status)}
+    </span>
+
+    {purchase.status === "cancelled" && (
+  <section className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-6">
+    <h2 className="font-semibold text-red-900">
+      Purchase Cancelled
+    </h2>
+
+    {purchase.cancelled_at && (
+      <p className="mt-2 text-sm text-red-700">
+        Cancelled on{" "}
+        {new Intl.DateTimeFormat("en-US", {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(
+          new Date(
+            purchase.cancelled_at,
+          ),
+        )}
+      </p>
+    )}
+
+    <p className="mt-3 text-sm text-red-800">
+      <span className="font-semibold">
+        Reason:
+      </span>{" "}
+      {purchase.cancellation_reason ??
+        "No reason recorded"}
+    </p>
+  </section>
+)}
+
+    {purchase.status === "received" && (
+      <CancelPurchaseForm
+        purchaseId={purchase.id}
+        purchaseNumber={
+          purchase.purchase_number
+        }
+      />
+    )}
+  </div>
+</div>
 
       <div className="mb-6 grid gap-4 md:grid-cols-3">
         <InfoCard

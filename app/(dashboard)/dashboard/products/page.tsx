@@ -2,11 +2,17 @@ import Link from "next/link";
 import {
   Package,
   Pencil,
-  Trash2,
+  Power,
+  PowerOff,
+  
 } from "lucide-react";
-
+import ImageUpload from "@/components/image-upload";
 import { createClient } from "@/lib/supabase/server";
-import { createProduct, deleteProduct } from "./actions";
+import ProductList from "@/components/product-list";
+import {
+  createProduct,
+  toggleProductStatus,
+} from "./actions";
 
 
 type Category = {
@@ -22,7 +28,7 @@ type Product = {
   id: string;
   name: string;
   sku: string | null;
-  barcode: string | null;
+  image_url: string | null;
   cost_price: number;
   selling_price: number;
   stock_quantity: number;
@@ -46,37 +52,49 @@ function getCategoryName(
   return categories.name;
 }
 
-export default async function ProductsPage() {
+
+export default async function ProductsPage({
+    searchParams,
+}: {
+  searchParams: Promise<{
+    search?: string;
+  }>;
+}) {
+  const { search = "" } = await searchParams;
   const supabase = await createClient();
+  
+const { data: categoryData, error: categoryError } =
+  await supabase
+    .from("categories")
+    .select("id, name")
+    .order("name");
 
-  const [
-    { data: categoryData, error: categoryError },
-    { data: productData, error: productError },
-  ] = await Promise.all([
-    supabase
-      .from("categories")
-      .select("id, name")
-      .order("name", { ascending: true }),
+const productQuery = supabase
+  .from("products")
+  .select(`
+    id,
+    name,
+    sku,
+    image_url,
+    cost_price,
+    selling_price,
+    stock_quantity,
+    low_stock_quantity,
+    is_active,
+    created_at,
+    categories(name)
+  `);
 
-    supabase
-      .from("products")
-      .select(`
-        id,
-        name,
-        sku,
-        barcode,
-        cost_price,
-        selling_price,
-        stock_quantity,
-        low_stock_quantity,
-        is_active,
-        created_at,
-        categories (
-          name
-        )
-      `)
-      .order("created_at", { ascending: false }),
-  ]);
+if (search) {
+  productQuery.ilike("name", `%${search}%`);
+}
+
+const {
+  data: productData,
+  error: productError,
+} = await productQuery.order("created_at", {
+  ascending: false,
+});
 
   const categories = (categoryData ?? []) as Category[];
   const products = (productData ?? []) as Product[];
@@ -117,7 +135,10 @@ export default async function ProductsPage() {
             </p>
           )}
 
-          <form action={createProduct} className="mt-6 space-y-5">
+                          <form
+  action={createProduct}
+  className="mt-6 space-y-5"
+>
             <FormField label="Product name" htmlFor="name">
               <input
                 id="name"
@@ -148,26 +169,18 @@ export default async function ProductsPage() {
             </FormField>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <FormField label="SKU" htmlFor="sku">
-                <input
-                  id="sku"
-                  name="sku"
-                  type="text"
-                  placeholder="DRINK-001"
-                  className={inputClass}
-                />
-              </FormField>
+             <FormField label="SKU" htmlFor="sku">
+  <input
+    id="sku"
+    name="sku"
+    type="text"
+    placeholder="DRINK-001"
+    className={inputClass}
+  />
+</FormField>
+ <ImageUpload />
+  
 
-              <FormField label="Barcode" htmlFor="barcode">
-                <input
-                  id="barcode"
-                  name="barcode"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="885000000001"
-                  className={inputClass}
-                />
-              </FormField>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -226,7 +239,12 @@ export default async function ProductsPage() {
                   defaultValue="5"
                   className={inputClass}
                 />
+                <p className="mt-1 text-xs text-slate-500">
+                   Show a warning when stock reaches this
+                   quantity.
+                </p>
               </FormField>
+              
             </div>
 
             <FormField label="Description" htmlFor="description">
@@ -248,166 +266,13 @@ export default async function ProductsPage() {
           </form>
         </section>
 
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-5">
-            <h2 className="text-xl font-semibold text-slate-900">
-              Product List
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              {products.length} products
-            </p>
-          </div>
-
-          {productError ? (
-            <div className="p-6 text-red-600">
-              {productError.message}
-            </div>
-          ) : products.length === 0 ? (
-            <div className="p-12 text-center">
-              <Package
-                size={42}
-                className="mx-auto text-slate-300"
-              />
-
-              <p className="mt-4 font-medium text-slate-700">
-                No products yet
-              </p>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Add your first product using the form.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px]">
-                <thead className="bg-slate-50">
-                  <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="px-6 py-4 font-semibold">
-                      Product
-                    </th>
-                    <th className="px-6 py-4 font-semibold">
-                      Category
-                    </th>
-                    <th className="px-6 py-4 font-semibold">
-                      Cost
-                    </th>
-                    <th className="px-6 py-4 font-semibold">
-                      Price
-                    </th>
-                    <th className="px-6 py-4 font-semibold">
-                      Stock
-                    </th>
-                    <th className="px-6 py-4 font-semibold">
-                      Status
-                    </th>
-                    <th className="px-6 py-4 text-right font-semibold">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-200">
-                  {products.map((product) => {
-                    const isLowStock =
-                      product.stock_quantity <=
-                      product.low_stock_quantity;
-
-                    return (
-                      <tr key={product.id}>
-                        <td className="px-6 py-4">
-                          <p className="font-semibold text-slate-900">
-                            {product.name}
-                          </p>
-
-                          <p className="mt-1 text-xs text-slate-500">
-                            SKU: {product.sku || "—"} · Barcode:{" "}
-                            {product.barcode || "—"}
-                          </p>
-                        </td>
-
-                        <td className="px-6 py-4 text-sm text-slate-600">
-                          {getCategoryName(product.categories)}
-                        </td>
-
-                        <td className="px-6 py-4 text-sm text-slate-700">
-                          ${Number(product.cost_price).toFixed(2)}
-                        </td>
-
-                        <td className="px-6 py-4 font-semibold text-slate-900">
-                          ${Number(product.selling_price).toFixed(2)}
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <span
-                            className={
-                              isLowStock
-                                ? "font-semibold text-amber-600"
-                                : "text-slate-700"
-                            }
-                          >
-                            {product.stock_quantity}
-                          </span>
-
-                          {isLowStock && (
-                            <p className="mt-1 text-xs text-amber-600">
-                              Low stock
-                            </p>
-                          )}
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <span
-                            className={
-                              product.is_active
-                                ? "rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700"
-                                : "rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600"
-                            }
-                          >
-                            {product.is_active
-                              ? "Active"
-                              : "Inactive"}
-                          </span>
-                        </td>
- <td className="px-6 py-4">
-                       <div className="flex justify-end gap-2">
-    <Link
-    href={`/dashboard/products/${product.id}/edit`}
-    aria-label={`Edit ${product.name}`}
-    className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50"
-  >
-    <Pencil size={19} />
-  </Link>
-                            
-  <form action={deleteProduct}>
-    <input
-      type="hidden"
-      name="productId"
-      value={product.id}
-    />
-
-    <button
-      type="submit"
-      aria-label={`Delete ${product.name}`}
-      className="rounded-lg p-2 text-red-600 transition hover:bg-red-50"
-    >
-      <Trash2 size={19} />
-    </button>
-  </form>
-
-  
-
-    
-</div>
-</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+           {productError ? (
+  <section className="rounded-2xl border border-slate-200 bg-white p-6 text-red-600 shadow-sm">
+    {productError.message}
+  </section>
+) : (
+  <ProductList products={products} />
+)}
       </div>
     </main>
   );

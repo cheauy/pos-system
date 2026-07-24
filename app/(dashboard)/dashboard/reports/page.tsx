@@ -56,6 +56,8 @@ type TopProduct = {
   profit: number;
 };
 
+
+
 export default async function ReportsPage({
   searchParams,
 }: ReportPageProps) {
@@ -68,6 +70,8 @@ export default async function ReportsPage({
     params.from,
     params.to,
   );
+
+  
 
   const supabase = await createClient();
 

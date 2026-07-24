@@ -169,11 +169,17 @@ export default async function PurchasesPage() {
                     </td>
 
                     <td className="px-6 py-4">
-                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                        {formatStatus(
-                          purchase.status,
-                        )}
-                      </span>
+                     <span
+  className={`rounded-full px-3 py-1 text-xs font-semibold ${
+    purchase.status === "cancelled"
+      ? "bg-red-50 text-red-700"
+      : purchase.status === "draft"
+        ? "bg-amber-50 text-amber-700"
+        : "bg-emerald-50 text-emerald-700"
+  }`}
+>
+  {formatStatus(purchase.status)}
+</span>
                     </td>
 
                     <td className="px-6 py-4 text-right font-bold text-slate-900">
