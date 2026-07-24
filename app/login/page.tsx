@@ -10,7 +10,7 @@ export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
   
-
+const [rememberMe, setRememberMe] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,29 +18,37 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showSignupInfo, setShowSignupInfo] = useState(false);
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+ async function handleLogin(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
 
-    setLoading(true);
-    setErrorMessage("");
+  setLoading(true);
+  setErrorMessage("");
 
+  try {
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: email.trim(),
       password,
     });
-
-    setLoading(false);
 
     if (error) {
       setErrorMessage(error.message);
       return;
     }
 
-    
+    if (rememberMe) {
+      localStorage.setItem("rememberMe", "true");
+    } else {
+      localStorage.removeItem("rememberMe");
+    }
 
-    router.push("/dashboard");
+    router.replace("/dashboard");
     router.refresh();
+  } catch {
+    setErrorMessage("Something went wrong. Please try again.");
+  } finally {
+    setLoading(false);
   }
+}
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
@@ -109,6 +117,33 @@ export default function LoginPage() {
       )}
     </button>
   </div>
+</div>
+    
+<div className="flex items-center justify-between">
+  <div className="flex items-center gap-2">
+    <input
+      id="remember"
+      type="checkbox"
+      checked={rememberMe}
+      onChange={(e) => setRememberMe(e.target.checked)}
+      className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+    />
+
+    <label
+      htmlFor="remember"
+      className="cursor-pointer text-sm text-slate-600"
+    >
+      Remember me
+    </label>
+  </div>
+
+  <button
+    type="button"
+    onClick={() => router.push("/forgot-password")}
+    className="text-sm font-medium text-blue-600 hover:underline"
+  >
+    Forgot Password?
+  </button>
 </div>
 
 <p className="text-center text-sm text-slate-500">
