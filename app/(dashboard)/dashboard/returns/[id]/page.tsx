@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ArrowLeft } from "lucide-react";
-import { createAuditLog } from "@/lib/audit/create-audit-log";
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 
 type PageProps = {
@@ -16,6 +18,9 @@ export default async function ReturnDetailsPage({
 }: PageProps) {
   const { id } = await params;
 
+  const business = await requirePermission(
+    "orders.view",
+  );
   const supabase = await createClient();
 
   const { data: returnRecord, error } =
@@ -40,19 +45,13 @@ export default async function ReturnDetailsPage({
         )
       `)
       .eq("id", id)
+      .eq("business_id", business.id)
       .single();
 
   if (error || !returnRecord) {
     notFound();
   }
 
-  await createAuditLog({
-      action: "return",
-      entityType: "order",
-      entityId: returnRecord.id,
-      description: `Returned products for order`,
-     
-    });
   const order = Array.isArray(
     returnRecord.orders,
   )

@@ -4,13 +4,16 @@ import {
   Pencil,
   Power,
   PowerOff,
-  
+
 } from "lucide-react";
-import ImageUpload from "@/components/image-upload";
+import ProductForm from "./product-form";
 import { createClient } from "@/lib/supabase/server";
 import ProductList from "@/components/product-list";
 import {
-  createProduct,
+  requirePermission,
+} from "@/lib/auth/require-permission";
+import {
+
   toggleProductStatus,
 } from "./actions";
 
@@ -58,16 +61,25 @@ export default async function ProductsPage({
 }: {
   searchParams: Promise<{
     search?: string;
+    error?: string;
+    success?: string;
   }>;
 }) {
-  const { search = "" } = await searchParams;
+  const {
+  search = "",
+  error,
+  success,
+} = await searchParams;
   const supabase = await createClient();
+  const business = await requirePermission(
+  "products.view",
+);
   
 const { data: categoryData, error: categoryError } =
   await supabase
     .from("categories")
     .select("id, name")
-    .order("name");
+    .order("name").eq("business_id", business.id);
 
 const productQuery = supabase
   .from("products")
@@ -75,6 +87,8 @@ const productQuery = supabase
     id,
     name,
     sku,
+    size,
+  color,
     image_url,
     cost_price,
     selling_price,
@@ -83,7 +97,8 @@ const productQuery = supabase
     is_active,
     created_at,
     categories(name)
-  `);
+  `)
+  .eq("business_id", business.id);
 
 if (search) {
   productQuery.ilike("name", `%${search}%`);
@@ -111,169 +126,45 @@ const {
         </p>
       </div>
 
-      <div className="grid gap-6 2xl:grid-cols-[430px_1fr]">
-        <section className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-blue-50 p-3 text-blue-600">
-              <Package size={22} />
-            </div>
-
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900">
-                Add Product
-              </h2>
-
-              <p className="text-sm text-slate-500">
-                Enter the product information
-              </p>
-            </div>
-          </div>
-
-          {categoryError && (
-            <p className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-600">
-              {categoryError.message}
-            </p>
-          )}
-
-                          <form
-  action={createProduct}
-  className="mt-6 space-y-5"
->
-            <FormField label="Product name" htmlFor="name">
-              <input
-                id="name"
-                name="name"
-                type="text"
-                required
-                minLength={2}
-                placeholder="Example: Coca-Cola 330ml"
-                className={inputClass}
-              />
-            </FormField>
-
-            <FormField label="Category" htmlFor="categoryId">
-              <select
-                id="categoryId"
-                name="categoryId"
-                className={inputClass}
-                defaultValue=""
-              >
-                <option value="">No category</option>
-
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-             <FormField label="SKU" htmlFor="sku">
-  <input
-    id="sku"
-    name="sku"
-    type="text"
-    placeholder="DRINK-001"
-    className={inputClass}
-  />
-</FormField>
- <ImageUpload />
-  
-
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField label="Cost price" htmlFor="costPrice">
-                <input
-                  id="costPrice"
-                  name="costPrice"
-                  type="number"
-                  required
-                  min="0"
-                  step="0.01"
-                  defaultValue="0"
-                  className={inputClass}
-                />
-              </FormField>
-
-              <FormField label="Selling price" htmlFor="sellingPrice">
-                <input
-                  id="sellingPrice"
-                  name="sellingPrice"
-                  type="number"
-                  required
-                  min="0"
-                  step="0.01"
-                  defaultValue="0"
-                  className={inputClass}
-                />
-              </FormField>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField label="Stock quantity" htmlFor="stockQuantity">
-                <input
-                  id="stockQuantity"
-                  name="stockQuantity"
-                  type="number"
-                  required
-                  min="0"
-                  step="1"
-                  defaultValue="0"
-                  className={inputClass}
-                />
-              </FormField>
-
-              <FormField
-                label="Low-stock alert"
-                htmlFor="lowStockQuantity"
-              >
-                <input
-                  id="lowStockQuantity"
-                  name="lowStockQuantity"
-                  type="number"
-                  required
-                  min="0"
-                  step="1"
-                  defaultValue="5"
-                  className={inputClass}
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                   Show a warning when stock reaches this
-                   quantity.
-                </p>
-              </FormField>
-              
-            </div>
-
-            <FormField label="Description" htmlFor="description">
-              <textarea
-                id="description"
-                name="description"
-                rows={3}
-                placeholder="Optional product description"
-                className={`${inputClass} resize-none`}
-              />
-            </FormField>
-
-            <button
-              type="submit"
-              className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700"
-            >
-              Add Product
-            </button>
-          </form>
-        </section>
-
-           {productError ? (
-  <section className="rounded-2xl border border-slate-200 bg-white p-6 text-red-600 shadow-sm">
-    {productError.message}
-  </section>
-) : (
-  <ProductList products={products} />
-)}
+     <div className="grid gap-6 2xl:grid-cols-[430px_minmax(0,1fr)]">
+  {/* Left side: product form */}
+  <section className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="flex items-center gap-3">
+      <div className="rounded-xl bg-blue-50 p-3 text-blue-600">
+        <Package size={22} />
       </div>
+
+      <div>
+        <h2 className="text-xl font-semibold text-slate-900">
+          Add Product
+        </h2>
+
+        <p className="text-sm text-slate-500">
+          Enter the product information
+        </p>
+      </div>
+    </div>
+
+    {categoryError && (
+      <p className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-600">
+        {categoryError.message}
+      </p>
+    )}
+
+    <ProductForm categories={categories} />
+  </section>
+
+  {/* Right side: product list */}
+  <div className="min-w-0">
+    {productError ? (
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 text-red-600 shadow-sm">
+        {productError.message}
+      </section>
+    ) : (
+      <ProductList products={products} />
+    )}
+  </div>
+</div>
     </main>
   );
 }

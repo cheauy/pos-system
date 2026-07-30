@@ -1,13 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import {
-  CirclePlus,
-  PackagePlus,
+  useMemo,
+  useState,
+} from "react";
+
+import {
+  Minus,
+  Plus,
   Trash2,
 } from "lucide-react";
 
-import { createPurchase } from "@/app/(dashboard)/dashboard/purchases/actions";
+import {
+  createPurchase,
+} from "@/app/(dashboard)/dashboard/purchases/actions";
 
 type Supplier = {
   id: string;
@@ -17,114 +23,178 @@ type Supplier = {
 type Product = {
   id: string;
   name: string;
+  sku: string | null;
   cost_price: number;
   stock_quantity: number;
 };
 
-type PurchaseItem = {
-  rowId: string;
+type PurchaseFormItem = {
   productId: string;
+  productName: string;
   quantity: number;
   unitCost: number;
 };
 
-type PurchaseFormProps = {
+type CreatePurchaseFormProps = {
   suppliers: Supplier[];
   products: Product[];
-  today: string;
 };
 
-export default function PurchaseForm({
+export default function CreatePurchaseForm({
   suppliers,
   products,
-  today,
-}: PurchaseFormProps) {
-  const [items, setItems] = useState<
-    PurchaseItem[]
-  >([
-    {
-      rowId: crypto.randomUUID(),
-      productId: "",
-      quantity: 1,
-      unitCost: 0,
-    },
-  ]);
+}: CreatePurchaseFormProps) {
+  const [
+    selectedProductId,
+    setSelectedProductId,
+  ] = useState("");
+
+  const [
+    items,
+    setItems,
+  ] = useState<
+    PurchaseFormItem[]
+  >([]);
 
   const total = useMemo(
     () =>
       items.reduce(
         (sum, item) =>
           sum +
-          Number(item.quantity || 0) *
-            Number(item.unitCost || 0),
+          item.quantity *
+            item.unitCost,
         0,
       ),
     [items],
   );
 
-  function addItem() {
-    setItems((currentItems) => [
-      ...currentItems,
-      {
-        rowId: crypto.randomUUID(),
-        productId: "",
-        quantity: 1,
-        unitCost: 0,
-      },
-    ]);
-  }
+  function addProduct() {
+    if (!selectedProductId) {
+      return;
+    }
 
-  function removeItem(rowId: string) {
-    setItems((currentItems) => {
-      if (currentItems.length === 1) {
-        return currentItems;
-      }
-
-      return currentItems.filter(
-        (item) => item.rowId !== rowId,
+    const product =
+      products.find(
+        (item) =>
+          item.id ===
+          selectedProductId,
       );
-    });
+
+    if (!product) {
+      return;
+    }
+
+    setItems(
+      (currentItems) => {
+        const existingItem =
+          currentItems.find(
+            (item) =>
+              item.productId ===
+              product.id,
+          );
+
+        if (existingItem) {
+          return currentItems.map(
+            (item) =>
+              item.productId ===
+              product.id
+                ? {
+                    ...item,
+                    quantity:
+                      item.quantity +
+                      1,
+                  }
+                : item,
+          );
+        }
+
+        return [
+          ...currentItems,
+          {
+            productId:
+              product.id,
+
+            productName:
+              product.name,
+
+            quantity: 1,
+
+            unitCost:
+              Number(
+                product.cost_price,
+              ),
+          },
+        ];
+      },
+    );
+
+    setSelectedProductId("");
   }
 
-  function updateItem(
-    rowId: string,
-    changes: Partial<PurchaseItem>,
+  function updateQuantity(
+    productId: string,
+    quantity: number,
   ) {
-    setItems((currentItems) =>
-      currentItems.map((item) =>
-        item.rowId === rowId
-          ? {
-              ...item,
-              ...changes,
-            }
-          : item,
-      ),
+    if (
+      !Number.isInteger(quantity) ||
+      quantity < 1
+    ) {
+      return;
+    }
+
+    setItems(
+      (currentItems) =>
+        currentItems.map(
+          (item) =>
+            item.productId ===
+            productId
+              ? {
+                  ...item,
+                  quantity,
+                }
+              : item,
+        ),
     );
   }
 
-  function selectProduct(
-    rowId: string,
+  function updateUnitCost(
+    productId: string,
+    unitCost: number,
+  ) {
+    if (
+      !Number.isFinite(unitCost) ||
+      unitCost < 0
+    ) {
+      return;
+    }
+
+    setItems(
+      (currentItems) =>
+        currentItems.map(
+          (item) =>
+            item.productId ===
+            productId
+              ? {
+                  ...item,
+                  unitCost,
+                }
+              : item,
+        ),
+    );
+  }
+
+  function removeItem(
     productId: string,
   ) {
-    const product = products.find(
-      (item) => item.id === productId,
+    setItems(
+      (currentItems) =>
+        currentItems.filter(
+          (item) =>
+            item.productId !==
+            productId,
+        ),
     );
-
-    updateItem(rowId, {
-      productId,
-      unitCost: Number(
-        product?.cost_price ?? 0,
-      ),
-    });
   }
-
-  const serializedItems = JSON.stringify(
-    items.map((item) => ({
-      product_id: item.productId,
-      quantity: Number(item.quantity),
-      unit_cost: Number(item.unitCost),
-    })),
-  );
 
   return (
     <form
@@ -134,25 +204,27 @@ export default function PurchaseForm({
       <input
         type="hidden"
         name="items"
-        value={serializedItems}
+        value={JSON.stringify(
+          items.map((item) => ({
+            productId:
+              item.productId,
+
+            productName:
+              item.productName,
+
+            quantity:
+              item.quantity,
+
+            unitCost:
+              item.unitCost,
+          })),
+        )}
       />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-blue-50 p-3 text-blue-600">
-            <PackagePlus size={22} />
-          </div>
-
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900">
-              Purchase Information
-            </h2>
-
-            <p className="text-sm text-slate-500">
-              Select supplier and purchase date
-            </p>
-          </div>
-        </div>
+        <h2 className="text-xl font-semibold text-slate-900">
+          Purchase Information
+        </h2>
 
         <div className="mt-6 grid gap-5 md:grid-cols-2">
           <FormField
@@ -169,14 +241,20 @@ export default function PurchaseForm({
                 No supplier
               </option>
 
-              {suppliers.map((supplier) => (
-                <option
-                  key={supplier.id}
-                  value={supplier.id}
-                >
-                  {supplier.name}
-                </option>
-              ))}
+              {suppliers.map(
+                (supplier) => (
+                  <option
+                    key={
+                      supplier.id
+                    }
+                    value={
+                      supplier.id
+                    }
+                  >
+                    {supplier.name}
+                  </option>
+                ),
+              )}
             </select>
           </FormField>
 
@@ -189,7 +267,11 @@ export default function PurchaseForm({
               name="purchaseDate"
               type="date"
               required
-              defaultValue={today}
+              defaultValue={
+                getLocalDateString(
+                  new Date(),
+                )
+              }
               className={inputClass}
             />
           </FormField>
@@ -201,228 +283,278 @@ export default function PurchaseForm({
             <input
               id="referenceNumber"
               name="referenceNumber"
+              type="text"
               placeholder="Supplier invoice number"
               className={inputClass}
             />
           </FormField>
+        </div>
 
+        <div className="mt-5">
           <FormField
             label="Notes"
             htmlFor="notes"
           >
-            <input
+            <textarea
               id="notes"
               name="notes"
-              placeholder="Optional purchase note"
-              className={inputClass}
+              rows={3}
+              placeholder="Optional purchase notes"
+              className={`${inputClass} resize-none`}
             />
           </FormField>
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col justify-between gap-4 border-b border-slate-200 px-6 py-5 sm:flex-row sm:items-center">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900">
-              Purchase Items
-            </h2>
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-xl font-semibold text-slate-900">
+          Purchased Products
+        </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Add products received from the supplier
-            </p>
-          </div>
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <select
+            value={
+              selectedProductId
+            }
+            onChange={(event) =>
+              setSelectedProductId(
+                event.target.value,
+              )
+            }
+            className={`${inputClass} flex-1`}
+          >
+            <option value="">
+              Select a product
+            </option>
+
+            {products.map(
+              (product) => (
+                <option
+                  key={product.id}
+                  value={product.id}
+                >
+                  {product.name}
+                  {product.sku
+                    ? ` — ${product.sku}`
+                    : ""}
+                </option>
+              ),
+            )}
+          </select>
 
           <button
             type="button"
-            onClick={addItem}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700"
+            onClick={addProduct}
+            disabled={
+              !selectedProductId
+            }
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <CirclePlus size={18} />
+            <Plus size={18} />
             Add Product
           </button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[850px]">
-            <thead className="bg-slate-50">
-              <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-6 py-4">
-                  Product
-                </th>
+        {items.length === 0 ? (
+          <div className="mt-6 rounded-xl border border-dashed border-slate-300 px-6 py-10 text-center">
+            <p className="font-medium text-slate-700">
+              No products added
+            </p>
 
-                <th className="px-6 py-4 text-right">
-                  Current Stock
-                </th>
+            <p className="mt-1 text-sm text-slate-500">
+              Select a product and
+              click Add Product.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-6 overflow-x-auto">
+            <table className="w-full min-w-[760px]">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="px-3 py-3">
+                    Product
+                  </th>
 
-                <th className="px-6 py-4 text-right">
-                  Quantity
-                </th>
+                  <th className="px-3 py-3 text-center">
+                    Quantity
+                  </th>
 
-                <th className="px-6 py-4 text-right">
-                  Unit Cost
-                </th>
+                  <th className="px-3 py-3 text-right">
+                    Unit Cost
+                  </th>
 
-                <th className="px-6 py-4 text-right">
-                  Subtotal
-                </th>
+                  <th className="px-3 py-3 text-right">
+                    Subtotal
+                  </th>
 
-                <th className="px-6 py-4 text-right">
-                  Action
-                </th>
-              </tr>
-            </thead>
+                  <th className="px-3 py-3 text-right">
+                    Action
+                  </th>
+                </tr>
+              </thead>
 
-            <tbody className="divide-y divide-slate-200">
-              {items.map((item) => {
-                const product = products.find(
-                  (productItem) =>
-                    productItem.id ===
-                    item.productId,
-                );
-
-                const subtotal =
-                  Number(item.quantity || 0) *
-                  Number(item.unitCost || 0);
-
-                return (
-                  <tr key={item.rowId}>
-                    <td className="px-6 py-4">
-                      <select
-                        required
-                        value={item.productId}
-                        onChange={(event) =>
-                          selectProduct(
-                            item.rowId,
-                            event.target.value,
-                          )
+              <tbody className="divide-y divide-slate-200">
+                {items.map(
+                  (item) => (
+                    <tr
+                      key={
+                        item.productId
+                      }
+                    >
+                      <td className="px-3 py-4 font-semibold text-slate-900">
+                        {
+                          item.productName
                         }
-                        className={inputClass}
-                      >
-                        <option value="">
-                          Select product
-                        </option>
+                      </td>
 
-                        {products.map(
-                          (productOption) => (
-                            <option
-                              key={
-                                productOption.id
-                              }
-                              value={
-                                productOption.id
-                              }
-                            >
-                              {
-                                productOption.name
-                              }
-                            </option>
-                          ),
+                      <td className="px-3 py-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateQuantity(
+                                item.productId,
+                                Math.max(
+                                  1,
+                                  item.quantity -
+                                    1,
+                                ),
+                              )
+                            }
+                            className="rounded-lg border border-slate-300 p-2 hover:bg-slate-50"
+                          >
+                            <Minus
+                              size={15}
+                            />
+                          </button>
+
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={
+                              item.quantity
+                            }
+                            onChange={(
+                              event,
+                            ) =>
+                              updateQuantity(
+                                item.productId,
+                                Number(
+                                  event
+                                    .target
+                                    .value,
+                                ),
+                              )
+                            }
+                            className="w-20 rounded-lg border border-slate-300 px-3 py-2 text-center outline-none focus:border-blue-500"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateQuantity(
+                                item.productId,
+                                item.quantity +
+                                  1,
+                              )
+                            }
+                            className="rounded-lg border border-slate-300 p-2 hover:bg-slate-50"
+                          >
+                            <Plus
+                              size={15}
+                            />
+                          </button>
+                        </div>
+                      </td>
+
+                      <td className="px-3 py-4 text-right">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={
+                            item.unitCost
+                          }
+                          onChange={(
+                            event,
+                          ) =>
+                            updateUnitCost(
+                              item.productId,
+                              Number(
+                                event
+                                  .target
+                                  .value,
+                              ),
+                            )
+                          }
+                          className="w-32 rounded-lg border border-slate-300 px-3 py-2 text-right outline-none focus:border-blue-500"
+                        />
+                      </td>
+
+                      <td className="px-3 py-4 text-right font-bold text-slate-900">
+                        {formatCurrency(
+                          item.quantity *
+                            item.unitCost,
                         )}
-                      </select>
-                    </td>
+                      </td>
 
-                    <td className="px-6 py-4 text-right text-sm font-semibold text-slate-600">
-                      {product?.stock_quantity ?? 0}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        required
-                        value={item.quantity}
-                        onChange={(event) =>
-                          updateItem(item.rowId, {
-                            quantity: Number(
-                              event.target.value,
-                            ),
-                          })
-                        }
-                        className={`${inputClass} text-right`}
-                      />
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        required
-                        value={item.unitCost}
-                        onChange={(event) =>
-                          updateItem(item.rowId, {
-                            unitCost: Number(
-                              event.target.value,
-                            ),
-                          })
-                        }
-                        className={`${inputClass} text-right`}
-                      />
-                    </td>
-
-                    <td className="whitespace-nowrap px-6 py-4 text-right font-bold text-slate-900">
-                      {formatCurrency(subtotal)}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <div className="flex justify-end">
+                      <td className="px-3 py-4 text-right">
                         <button
                           type="button"
                           onClick={() =>
-                            removeItem(item.rowId)
+                            removeItem(
+                              item.productId,
+                            )
                           }
-                          disabled={
-                            items.length === 1
-                          }
-                          className="rounded-lg p-2 text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex items-center justify-center rounded-lg p-2 text-red-600 hover:bg-red-50"
+                          aria-label={`Remove ${item.productName}`}
                         >
-                          <Trash2 size={18} />
+                          <Trash2
+                            size={18}
+                          />
                         </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      </td>
+                    </tr>
+                  ),
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-        <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-6 py-5">
-          <div className="w-full max-w-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-600">
-                Purchase Total
-              </span>
+        <div className="mt-6 flex justify-end border-t border-slate-200 pt-5">
+          <div className="text-right">
+            <p className="text-sm text-slate-500">
+              Purchase total
+            </p>
 
-              <span className="text-2xl font-bold text-slate-900">
-                {formatCurrency(total)}
-              </span>
-            </div>
-
-            <button
-              type="submit"
-              disabled={
-                items.some(
-                  (item) =>
-                    !item.productId ||
-                    item.quantity <= 0 ||
-                    item.unitCost < 0,
-                )
-              }
-              className="w-full rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Receive Purchase
-            </button>
+            <p className="mt-1 text-2xl font-bold text-slate-900">
+              {formatCurrency(
+                total,
+              )}
+            </p>
           </div>
         </div>
       </section>
+
+      <div className="flex justify-end">
+        <button
+          type="submit"
+          disabled={
+            items.length === 0
+          }
+          className="rounded-xl bg-emerald-600 px-7 py-3 font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Receive Purchase
+        </button>
+      </div>
     </form>
   );
 }
 
 const inputClass =
-  "w-full rounded-xl border border-slate-300 px-3 py-2.5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100";
+  "w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100";
 
 function FormField({
   label,
@@ -447,9 +579,28 @@ function FormField({
   );
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(value);
+function formatCurrency(
+  value: number,
+) {
+  return new Intl.NumberFormat(
+    "en-GB",
+    {
+      style: "currency",
+      currency: "USD",
+    },
+  ).format(value);
+}
+
+function getLocalDateString(
+  date: Date,
+) {
+  const year = date.getFullYear();
+  const month = String(
+    date.getMonth() + 1,
+  ).padStart(2, "0");
+  const day = String(
+    date.getDate(),
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }

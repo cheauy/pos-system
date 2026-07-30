@@ -1,6 +1,9 @@
 "use server";
 
 import { createAuditLog } from "@/lib/audit/create-audit-log";
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
@@ -44,6 +47,8 @@ const allowedPaymentMethods: PaymentMethod[] = [
 export async function checkoutOrder(
   input: CheckoutInput,
 ): Promise<CheckoutResult> {
+  await requirePermission("pos.access");
+
   // Validate cart
   if (
     !Array.isArray(input.items) ||

@@ -4,7 +4,9 @@ import {
   PackagePlus,
   Plus,
 } from "lucide-react";
-
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 
 type Purchase = {
@@ -20,11 +22,14 @@ type Purchase = {
 
 export default async function PurchasesPage() {
   const supabase = await createClient();
-
+  const business = await requirePermission(
+    "purchases.view",
+  );
   const { data, error } = await supabase
     .from("purchases")
     .select(`
       id,
+      business_id,
       purchase_number,
       supplier_name,
       reference_number,
@@ -33,6 +38,7 @@ export default async function PurchasesPage() {
       total,
       created_at
     `)
+    .eq("business_id", business.id)
     .order("purchase_date", {
       ascending: false,
     })

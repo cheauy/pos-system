@@ -1,0 +1,58 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { LogOut, ShieldCheck } from "lucide-react";
+
+import { createClient } from "@/lib/supabase/client";
+
+type SuperAdminHeaderProps = {
+  fullName: string;
+  email: string;
+};
+
+export default function SuperAdminHeader({
+  fullName,
+  email,
+}: SuperAdminHeaderProps) {
+  const router = useRouter();
+  const supabase = createClient();
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+
+    router.replace("/login");
+    router.refresh();
+  }
+
+  return (
+    <header className="mb-8 flex items-center justify-between rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
+      <div className="flex items-center gap-4">
+        <div className="rounded-xl bg-blue-100 p-3 text-blue-700">
+          <ShieldCheck size={26} />
+        </div>
+
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">
+            Super Admin
+          </h1>
+
+          <p className="text-sm text-slate-500">
+            {fullName}
+          </p>
+
+          <p className="text-xs text-slate-400">
+            {email}
+          </p>
+        </div>
+      </div>
+
+      <button
+        onClick={handleSignOut}
+        className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-3 font-semibold text-white transition hover:bg-red-700"
+      >
+        <LogOut size={18} />
+        Sign Out
+      </button>
+    </header>
+  );
+}

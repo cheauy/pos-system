@@ -6,6 +6,9 @@ import {
   Pencil,
 } from "lucide-react";
 
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 
 type Product = {
@@ -17,6 +20,9 @@ type Product = {
 
 
 export default async function LowStockPage() {
+  const business = await requirePermission(
+    "inventory.view",
+  );
   const supabase = await createClient();
 
  const { data, error } = await supabase
@@ -24,6 +30,7 @@ export default async function LowStockPage() {
   .select(
     "id, name, stock_quantity, low_stock_quantity",
   )
+  .eq("business_id", business.id)
   .order("stock_quantity", {
     ascending: true,
   });

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ElementType } from "react";
 
 import {
@@ -10,6 +10,7 @@ import {
   Boxes,
   ChevronDown,
   LayoutDashboard,
+  Menu,
   Package,
   PackagePlus,
   ReceiptText,
@@ -19,10 +20,10 @@ import {
   Tags,
   TriangleAlert,
   Truck,
-  User,
   ScrollText,
   Users,
   WalletCards,
+  X,
 } from "lucide-react";
 
 type MenuItem = {
@@ -146,9 +147,73 @@ const menuGroups: MenuGroup[] = [
 
 export default function SidebarClient() {
   const pathname = usePathname();
+  const [isMobileOpen, setIsMobileOpen] =
+    useState(false);
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-slate-200 bg-white lg:block">
+    <>
+      {!isMobileOpen && (
+        <button
+          type="button"
+          onClick={() => setIsMobileOpen(true)}
+          aria-label="Open dashboard navigation"
+          className="fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200 lg:hidden"
+        >
+          <Menu size={19} />
+          Menu
+        </button>
+      )}
+
+      {isMobileOpen && (
+        <div className="fixed inset-0 z-[60] lg:hidden">
+          <button
+            type="button"
+            aria-label="Close dashboard navigation"
+            onClick={() => setIsMobileOpen(false)}
+            className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
+          />
+
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Dashboard navigation"
+            className="absolute inset-y-0 left-0 w-[min(20rem,88vw)] border-r border-slate-200 bg-white shadow-2xl"
+          >
+            <button
+              type="button"
+              onClick={() => setIsMobileOpen(false)}
+              aria-label="Close dashboard navigation"
+              className="absolute right-3 top-3 z-10 rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            >
+              <X size={20} />
+            </button>
+
+            <SidebarPanel
+              pathname={pathname}
+              onNavigate={() =>
+                setIsMobileOpen(false)
+              }
+            />
+          </aside>
+        </div>
+      )}
+
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-slate-200 bg-white lg:block">
+        <SidebarPanel pathname={pathname} />
+      </aside>
+    </>
+  );
+}
+
+function SidebarPanel({
+  pathname,
+  onNavigate,
+}: {
+  pathname: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <>
       <div className="flex h-20 items-center border-b border-slate-200 px-5">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 font-bold text-white">
           P
@@ -174,20 +239,22 @@ export default function SidebarClient() {
                   key={item.name}
                   item={item}
                   pathname={pathname}
+                  onNavigate={onNavigate}
                 />
               ))}
             </div>
           ) : (
             <SidebarGroup
-              key={group.title}
+              key={`${group.title}:${pathname}`}
               title={group.title}
               items={group.items}
               pathname={pathname}
+              onNavigate={onNavigate}
             />
           ),
         )}
       </nav>
-    </aside>
+    </>
   );
 }
 
@@ -195,10 +262,12 @@ function SidebarGroup({
   title,
   items,
   pathname,
+  onNavigate,
 }: {
   title: string;
   items: MenuItem[];
   pathname: string;
+  onNavigate?: () => void;
 }) {
   const containsActiveItem = items.some((item) =>
     isItemActive(pathname, item.href),
@@ -207,12 +276,6 @@ function SidebarGroup({
   const [isOpen, setIsOpen] = useState(
     containsActiveItem,
   );
-
-  useEffect(() => {
-    if (containsActiveItem) {
-      setIsOpen(true);
-    }
-  }, [containsActiveItem]);
 
   return (
     <div>
@@ -252,6 +315,7 @@ function SidebarGroup({
                 key={item.name}
                 item={item}
                 pathname={pathname}
+                onNavigate={onNavigate}
               />
             ))}
           </div>
@@ -264,9 +328,11 @@ function SidebarGroup({
 function SidebarLink({
   item,
   pathname,
+  onNavigate,
 }: {
   item: MenuItem;
   pathname: string;
+  onNavigate?: () => void;
 }) {
   const Icon = item.icon;
   const active = isItemActive(
@@ -277,6 +343,7 @@ function SidebarLink({
   return (
     <Link
       href={item.href}
+      onClick={onNavigate}
       className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
         active
           ? "bg-blue-50 text-blue-700"

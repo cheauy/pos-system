@@ -2,16 +2,25 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 
+import ImageUpload from "@/components/image-upload";
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
+
 import {
   adjustStock,
   updateProduct,
 } from "@/app/(dashboard)/dashboard/products/actions";
-import ImageUpload from "@/components/image-upload";
 
 type EditProductPageProps = {
   params: Promise<{
     id: string;
+  }>;
+
+  searchParams: Promise<{
+    error?: string;
+    success?: string;
   }>;
 };
 
@@ -25,7 +34,7 @@ type Product = {
   category_id: string | null;
   name: string;
   sku: string | null;
- image_url: string | null;
+  image_url: string | null;
   description: string | null;
   cost_price: number;
   selling_price: number;
@@ -36,14 +45,30 @@ type Product = {
 
 export default async function EditProductPage({
   params,
+  searchParams,
 }: EditProductPageProps) {
   const { id } = await params;
+
+  const {
+    error,
+    success,
+  } = await searchParams;
+
+  const business = await requirePermission(
+    "products.update",
+  );
 
   const supabase = await createClient();
 
   const [
-    { data: productData, error: productError },
-    { data: categoryData },
+    {
+      data: productData,
+      error: productError,
+    },
+    {
+      data: categoryData,
+      error: categoryError,
+    },
   ] = await Promise.all([
     supabase
       .from("products")
@@ -61,19 +86,36 @@ export default async function EditProductPage({
         is_active
       `)
       .eq("id", id)
-      .single(),
+      .eq("business_id", business.id)
+      .maybeSingle(),
 
     supabase
       .from("categories")
       .select("id, name")
-      .order("name"),
+      .eq("business_id", business.id)
+      .order("name", {
+        ascending: true,
+      }),
   ]);
 
-  if (productError || !productData) {
+  if (productError) {
+    throw new Error(
+      `Unable to load product: ${productError.message}`,
+    );
+  }
+
+  if (!productData) {
     notFound();
   }
 
+  if (categoryError) {
+    throw new Error(
+      `Unable to load categories: ${categoryError.message}`,
+    );
+  }
+
   const product = productData as Product;
+
   const categories =
     (categoryData ?? []) as Category[];
 
@@ -98,10 +140,53 @@ export default async function EditProductPage({
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
+        {/* Product information */}
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold text-slate-900">
             Product Information
           </h2>
+
+          {error === "sku-already-used" && (
+            <Alert
+              type="error"
+              message="This SKU is already used by another product in this business."
+            />
+          )}
+
+          {error === "name-invalid" && (
+            <Alert
+              type="error"
+              message="Product name must contain at least 2 characters."
+            />
+          )}
+
+          {error === "invalid-price" && (
+            <Alert
+              type="error"
+              message="Prices must be valid and cannot be negative."
+            />
+          )}
+
+          {error === "invalid-low-stock" && (
+            <Alert
+              type="error"
+              message="Low-stock quantity must be zero or greater."
+            />
+          )}
+
+          {error === "image-upload-failed" && (
+            <Alert
+              type="error"
+              message="Unable to upload the product image."
+            />
+          )}
+
+          {success === "updated" && (
+            <Alert
+              type="success"
+              message="Product updated successfully."
+            />
+          )}
 
           <form
             action={updateProduct}
@@ -113,8 +198,6 @@ export default async function EditProductPage({
               value={product.id}
             />
 
-             
-
             <FormField
               label="Product name"
               htmlFor="name"
@@ -122,6 +205,7 @@ export default async function EditProductPage({
               <input
                 id="name"
                 name="name"
+                type="text"
                 required
                 minLength={2}
                 defaultValue={product.name}
@@ -136,7 +220,9 @@ export default async function EditProductPage({
               <select
                 id="categoryId"
                 name="categoryId"
-                defaultValue={product.category_id ?? ""}
+                defaultValue={
+                  product.category_id ?? ""
+                }
                 className={inputClass}
               >
                 <option value="">
@@ -155,17 +241,22 @@ export default async function EditProductPage({
             </FormField>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <FormField label="SKU" htmlFor="sku">
+              <FormField
+                label="SKU"
+                htmlFor="sku"
+              >
                 <input
                   id="sku"
                   name="sku"
+                  type="text"
                   defaultValue={product.sku ?? ""}
                   className={inputClass}
                 />
               </FormField>
-              <ImageUpload currentImage={product.image_url} />
 
-              
+              <ImageUpload
+                currentImage={product.image_url}
+              />
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -196,7 +287,9 @@ export default async function EditProductPage({
                   min="0"
                   step="0.01"
                   required
-                  defaultValue={product.selling_price}
+                  defaultValue={
+                    product.selling_price
+                  }
                   className={inputClass}
                 />
               </FormField>
@@ -218,6 +311,11 @@ export default async function EditProductPage({
                 }
                 className={inputClass}
               />
+
+              <p className="mt-1 text-xs text-slate-500">
+                Show a warning when stock reaches
+                this quantity.
+              </p>
             </FormField>
 
             <FormField
@@ -249,24 +347,33 @@ export default async function EditProductPage({
                 </span>
 
                 <span className="text-sm text-slate-500">
-                  Active products appear on the POS page.
+                  Active products appear on the POS
+                  page.
                 </span>
               </span>
             </label>
 
             <button
               type="submit"
-              className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700"
+              className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700"
             >
               Save Changes
             </button>
           </form>
         </section>
 
+        {/* Stock adjustment */}
         <section className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold text-slate-900">
             Adjust Stock
           </h2>
+
+          {success === "stock-updated" && (
+            <Alert
+              type="success"
+              message="Stock updated successfully."
+            />
+          )}
 
           <div className="mt-5 rounded-xl bg-slate-50 p-5">
             <p className="text-sm text-slate-500">
@@ -323,7 +430,10 @@ export default async function EditProductPage({
               />
             </FormField>
 
-            <FormField label="Note" htmlFor="note">
+            <FormField
+              label="Note"
+              htmlFor="note"
+            >
               <textarea
                 id="note"
                 name="note"
@@ -335,7 +445,7 @@ export default async function EditProductPage({
 
             <button
               type="submit"
-              className="w-full rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-700"
+              className="w-full rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white transition hover:bg-emerald-700"
             >
               Update Stock
             </button>
@@ -368,6 +478,32 @@ function FormField({
       </label>
 
       {children}
+    </div>
+  );
+}
+
+function Alert({
+  type,
+  message,
+}: {
+  type: "success" | "error";
+  message: string;
+}) {
+  const className =
+    type === "success"
+      ? "mt-5 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700"
+      : "mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700";
+
+  return (
+    <div
+      role={
+        type === "success"
+          ? "status"
+          : "alert"
+      }
+      className={className}
+    >
+      {message}
     </div>
   );
 }

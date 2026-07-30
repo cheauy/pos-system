@@ -7,7 +7,7 @@ import { Eye, EyeOff } from "lucide-react";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -21,37 +21,30 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     let mounted = true;
-
-    async function checkRecoverySession() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!mounted) return;
-
-      if (session) {
-        setCanResetPassword(true);
+    const initializationTimeout = window.setTimeout(() => {
+      if (!mounted) {
+        return;
       }
 
+      setCanResetPassword(false);
       setCheckingSession(false);
-    }
-
-    checkRecoverySession();
+    }, 10_000);
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if (
-        event === "PASSWORD_RECOVERY" ||
-        event === "SIGNED_IN"
-      ) {
-        setCanResetPassword(Boolean(session));
-        setCheckingSession(false);
+      if (!mounted || event !== "PASSWORD_RECOVERY") {
+        return;
       }
+
+      window.clearTimeout(initializationTimeout);
+      setCanResetPassword(Boolean(session));
+      setCheckingSession(false);
     });
 
     return () => {
       mounted = false;
+      window.clearTimeout(initializationTimeout);
       subscription.unsubscribe();
     };
   }, [supabase]);
@@ -63,6 +56,13 @@ export default function ResetPasswordPage() {
 
     setErrorMessage("");
     setSuccessMessage("");
+
+    if (!canResetPassword) {
+      setErrorMessage(
+        "This password-reset link is invalid or has expired."
+      );
+      return;
+    }
 
     if (password.length < 8) {
       setErrorMessage(

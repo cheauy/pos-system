@@ -5,7 +5,9 @@ import {
   Trash2,
   WalletCards,
 } from "lucide-react";
-
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 
 import {
@@ -24,17 +26,21 @@ type Expense = {
 
 export default async function ExpensesPage() {
   const supabase = await createClient();
-
+  const business = await requirePermission(
+    "expenses.manage",
+  );
   const { data, error } = await supabase
     .from("expenses")
     .select(`
       id,
       category,
       description,
+      business_id,
       amount,
       expense_date,
       created_at
     `)
+    .eq("business_id", business.id)
     .order("expense_date", {
       ascending: false,
     })

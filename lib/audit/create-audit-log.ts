@@ -43,7 +43,27 @@ export async function createAuditLog({
 
   if (!user) return;
 
-  await supabase.from("audit_logs").insert({
+  const {
+    data: membership,
+    error: membershipError,
+  } = await supabase
+    .from("business_members")
+    .select("business_id")
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    console.error(
+      "Unable to determine the business for an audit log:",
+      membershipError?.message ?? "Active membership not found.",
+    );
+    return;
+  }
+
+  const { error } = await supabase.from("audit_logs").insert({
+    business_id: membership.business_id,
     user_id: user.id,
     action,
     entity_type: entityType,
@@ -51,4 +71,11 @@ export async function createAuditLog({
     description,
     metadata,
   });
+
+  if (error) {
+    console.error(
+      "Unable to create audit log:",
+      error.message,
+    );
+  }
 }

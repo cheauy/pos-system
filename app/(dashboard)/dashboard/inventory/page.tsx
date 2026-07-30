@@ -5,7 +5,9 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
-
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 type ProductRelation = {
   name: string;
   sku: string | null;
@@ -27,7 +29,9 @@ type Movement = {
 
 export default async function InventoryPage() {
   const supabase = await createClient();
-
+ const business = await requirePermission(
+  "inventory.view",
+);
   const { data, error } = await supabase
     .from("inventory_movements")
     .select(`
@@ -38,11 +42,12 @@ export default async function InventoryPage() {
       stock_after,
       note,
       created_at,
+      business_id,
       products (
         name,
         sku
       )
-    `)
+    `).eq("business_id", business.id)
     .order("created_at", {
       ascending: false,
     })

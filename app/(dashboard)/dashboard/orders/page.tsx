@@ -7,6 +7,9 @@ import {
 
 import { createClient } from "@/lib/supabase/server";
 import OrderStatusSelect from "@/components/order-status-select";
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 
 
 type Order = {
@@ -74,7 +77,9 @@ const pageSize = isAll
   : Number(limitParam);
 
 const supabase = await createClient();
-
+  const business = await requirePermission(
+  "orders.view",
+);
 let query = supabase
   .from("orders")
   .select(
@@ -91,7 +96,7 @@ let query = supabase
     {
       count: "exact",
     },
-  );
+  ).eq("business_id", business.id);
 
 // Apply search first
 if (search) {

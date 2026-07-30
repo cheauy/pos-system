@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import AuditLogsTable from "./audit-log-table";
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 
 export type AuditLog = {
   id: string;
@@ -18,7 +21,9 @@ export type AuditLog = {
 
 export default async function AuditLogsPage() {
   const supabase = await createClient();
-
+  const business = await requirePermission(
+  "audit_logs.view",
+);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -31,6 +36,7 @@ export default async function AuditLogsPage() {
     .from("profiles")
     .select("role")
     .eq("id", user.id)
+    .eq("business_id", business.id)
     .single();
 
   if (
@@ -47,13 +53,14 @@ export default async function AuditLogsPage() {
       action,
       entity_type,
       entity_id,
+      business_id,
       description,
       metadata,
       created_at,
       profiles:profiles!audit_logs_user_id_fkey (
         full_name
       )
-    `)
+    `).eq("business_id", business.id)
     .order("created_at", {
       ascending: false,
     })

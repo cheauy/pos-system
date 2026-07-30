@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { createClient } from "@/lib/supabase/server";
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 
 function getOptionalText(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -84,16 +87,44 @@ function getStoragePathFromUrl(imageUrl: string) {
   return path ? decodeURIComponent(path) : null;
 }
 
-export async function createProduct(formData: FormData) {
-  const name = formData.get("name");
+export type CreateProductState = {
+  success: boolean;
+  message: string;
+};
 
-  if (
-    typeof name !== "string" ||
-    name.trim().length < 2
-  ) {
-    throw new Error(
-      "Product name must contain at least 2 characters.",
-    );
+const emptyState: CreateProductState = {
+  success: false,
+  message: "",
+};
+
+export async function createProduct(
+  previousState: CreateProductState,
+  formData: FormData,
+): Promise<CreateProductState> {
+  const business = await requirePermission(
+    "products.create",
+  );
+
+  const nameValue = formData.get("name");
+
+  const name =
+    typeof nameValue === "string"
+      ? nameValue.trim()
+      : "";
+
+  if (!name) {
+    return {
+      success: false,
+      message: "Please enter the product name.",
+    };
+  }
+
+  if (name.length < 2) {
+    return {
+      success: false,
+      message:
+        "Product name must contain at least 2 characters.",
+    };
   }
 
   const categoryId = getOptionalText(
@@ -101,7 +132,19 @@ export async function createProduct(formData: FormData) {
     "categoryId",
   );
 
-  const sku = getOptionalText(formData, "sku");
+  const skuValue = getOptionalText(
+    formData,
+    "sku",
+  );
+
+  const sku = skuValue?.trim() || null;
+
+  if (!sku) {
+    return {
+      success: false,
+      message: "Please enter the product SKU.",
+    };
+  }
 
   const description = getOptionalText(
     formData,
@@ -128,30 +171,51 @@ export async function createProduct(formData: FormData) {
   );
 
   const lowStockQuantity =
-    typeof lowStockValue === "string"
+    typeof lowStockValue === "string" &&
+    lowStockValue.trim() !== ""
       ? Number(lowStockValue)
       : 5;
 
-  if (costPrice < 0 || sellingPrice < 0) {
-    throw new Error("Prices cannot be negative.");
+  if (
+    !Number.isFinite(costPrice) ||
+    !Number.isFinite(sellingPrice)
+  ) {
+    return {
+      success: false,
+      message: "Please enter valid prices.",
+    };
+  }
+
+  if (
+    costPrice < 0 ||
+    sellingPrice < 0
+  ) {
+    return {
+      success: false,
+      message: "Prices cannot be negative.",
+    };
   }
 
   if (
     !Number.isInteger(stockQuantity) ||
     stockQuantity < 0
   ) {
-    throw new Error(
-      "Stock quantity must be a positive whole number.",
-    );
+    return {
+      success: false,
+      message:
+        "Stock quantity must be zero or a positive whole number.",
+    };
   }
 
   if (
     !Number.isInteger(lowStockQuantity) ||
     lowStockQuantity < 0
   ) {
-    throw new Error(
-      "Low-stock quantity must be zero or greater.",
-    );
+    return {
+      success: false,
+      message:
+        "Low-stock quantity must be zero or greater.",
+    };
   }
 
   const imageFile = getImageFile(formData);
@@ -166,54 +230,86 @@ export async function createProduct(formData: FormData) {
     redirect("/login");
   }
 
+  const {
+    data: existingProduct,
+    error: skuCheckError,
+  } = await supabase
+    .from("products")
+    .select("id")
+    .eq("business_id", business.id)
+    .eq("sku", sku)
+    .maybeSingle();
+
+  if (skuCheckError) {
+    return {
+      success: false,
+      message: skuCheckError.message,
+    };
+  }
+
   let imageUrl: string | null = null;
-  let uploadedImagePath: string | null = null;
+  let uploadedImagePath: string | null =
+    null;
 
   if (imageFile) {
-    const extension = getImageExtension(imageFile);
+    const extension =
+      getImageExtension(imageFile);
 
     uploadedImagePath =
-      `${user.id}/${crypto.randomUUID()}.${extension}`;
+      `${business.id}/${user.id}/${crypto.randomUUID()}.${extension}`;
 
- const { error: uploadError } = await supabase.storage
-  .from(PRODUCT_IMAGE_BUCKET)
-  .upload(uploadedImagePath, imageFile, {
-    contentType: imageFile.type,
-    cacheControl: "3600",
-    upsert: false,
-  });
+    const { error: uploadError } =
+      await supabase.storage
+        .from(PRODUCT_IMAGE_BUCKET)
+        .upload(
+          uploadedImagePath,
+          imageFile,
+          {
+            contentType: imageFile.type,
+            cacheControl: "3600",
+            upsert: false,
+          },
+        );
 
-if (uploadError) {
-  throw new Error(
-    `Unable to upload product image: ${uploadError.message}`,
-  );
-}
+    if (uploadError) {
+      return {
+        success: false,
+        message:
+          `Unable to upload product image: ${uploadError.message}`,
+      };
+    }
 
     const { data: publicUrlData } =
       supabase.storage
         .from(PRODUCT_IMAGE_BUCKET)
-        .getPublicUrl(uploadedImagePath);
+        .getPublicUrl(
+          uploadedImagePath,
+        );
 
-    imageUrl = publicUrlData.publicUrl;
+    imageUrl =
+      publicUrlData.publicUrl;
   }
 
-  const { data: product, error } = await supabase
-    .from("products")
-    .insert({
-      owner_id: user.id,
-      category_id: categoryId,
-      name: name.trim(),
-      sku,
-      image_url: imageUrl,
-      description,
-      cost_price: costPrice,
-      selling_price: sellingPrice,
-      stock_quantity: stockQuantity,
-      low_stock_quantity: lowStockQuantity,
-      is_active: true,
-    })
-    .select("id, name")
-    .single();
+  const { data: product, error } =
+    await supabase
+      .from("products")
+      .insert({
+        owner_id: user.id,
+        business_id: business.id,
+        category_id: categoryId,
+        name,
+        sku,
+        image_url: imageUrl,
+        description,
+        cost_price: costPrice,
+        selling_price: sellingPrice,
+        stock_quantity: stockQuantity,
+        low_stock_quantity:
+          lowStockQuantity,
+        is_active: true,
+      })
+      .select("id, name")
+      .single();
 
   if (error) {
     if (uploadedImagePath) {
@@ -223,19 +319,25 @@ if (uploadError) {
     }
 
     if (error.code === "23505") {
-      throw new Error(
-        "The SKU already belongs to another product.",
-      );
+      return {
+        success: false,
+        message:
+          "This SKU is already used by another product in this business.",
+      };
     }
 
-    throw new Error(error.message);
+    return {
+      success: false,
+      message: error.message,
+    };
   }
 
   await createAuditLog({
     action: "create",
     entityType: "product",
     entityId: product.id,
-    description: `Created product ${product.name}`,
+    description:
+      `Created product ${product.name}`,
     metadata: {
       sku,
       image_url: imageUrl,
@@ -248,12 +350,20 @@ if (uploadError) {
   revalidatePath("/dashboard/products");
   revalidatePath("/dashboard/pos");
   revalidatePath("/dashboard/audit-logs");
+
+  return {
+    success: true,
+    message: `${product.name} created successfully.`,
+  };
 }
 
 export async function toggleProductStatus(
   formData: FormData,
 ) {
   const productId = formData.get("productId");
+  const business = await requirePermission(
+  "products.disable",
+);
 
   if (typeof productId !== "string" || !productId) {
     throw new Error("Invalid product ID.");
@@ -274,6 +384,7 @@ export async function toggleProductStatus(
       .from("products")
       .select("id, name, is_active")
       .eq("id", productId)
+      .eq("business_id", business.id)
       .eq("owner_id", user.id)
       .single();
 
@@ -301,23 +412,36 @@ export async function toggleProductStatus(
   revalidatePath("/dashboard/pos");
   revalidatePath("/dashboard/audit-logs");
 }
-export async function updateProduct(formData: FormData) {
-  const productId = formData.get("productId");
-  const name = formData.get("name");
+export async function updateProduct(
+  formData: FormData,
+): Promise<void> {
+  const productIdValue =
+    formData.get("productId");
 
-  if (
-    typeof productId !== "string" ||
-    productId.length === 0
-  ) {
+  const nameValue =
+    formData.get("name");
+
+  const business = await requirePermission(
+    "products.update",
+  );
+
+  const productId =
+    typeof productIdValue === "string"
+      ? productIdValue.trim()
+      : "";
+
+  const name =
+    typeof nameValue === "string"
+      ? nameValue.trim()
+      : "";
+
+  if (!productId) {
     throw new Error("Invalid product ID.");
   }
 
-  if (
-    typeof name !== "string" ||
-    name.trim().length < 2
-  ) {
-    throw new Error(
-      "Product name must contain at least 2 characters.",
+  if (name.length < 2) {
+    redirect(
+      `/dashboard/products/${productId}/edit?error=name-invalid`,
     );
   }
 
@@ -326,7 +450,12 @@ export async function updateProduct(formData: FormData) {
     "categoryId",
   );
 
-  const sku = getOptionalText(formData, "sku");
+  const skuValue = getOptionalText(
+    formData,
+    "sku",
+  );
+
+  const sku = skuValue?.trim() || null;
 
   const description = getOptionalText(
     formData,
@@ -343,25 +472,32 @@ export async function updateProduct(formData: FormData) {
     "sellingPrice",
   );
 
-  const lowStockValue = formData.get(
-    "lowStockQuantity",
-  );
+  const lowStockValue =
+    formData.get("lowStockQuantity");
 
   const lowStockQuantity =
-    typeof lowStockValue === "string"
+    typeof lowStockValue === "string" &&
+    lowStockValue.trim() !== ""
       ? Number(lowStockValue)
       : 5;
 
-  if (costPrice < 0 || sellingPrice < 0) {
-    throw new Error("Prices cannot be negative.");
+  if (
+    !Number.isFinite(costPrice) ||
+    !Number.isFinite(sellingPrice) ||
+    costPrice < 0 ||
+    sellingPrice < 0
+  ) {
+    redirect(
+      `/dashboard/products/${productId}/edit?error=invalid-price`,
+    );
   }
 
   if (
     !Number.isInteger(lowStockQuantity) ||
     lowStockQuantity < 0
   ) {
-    throw new Error(
-      "Low-stock quantity must be zero or greater.",
+    redirect(
+      `/dashboard/products/${productId}/edit?error=invalid-low-stock`,
     );
   }
 
@@ -384,37 +520,79 @@ export async function updateProduct(formData: FormData) {
     .from("products")
     .select("id, name, image_url")
     .eq("id", productId)
-    .eq("owner_id", user.id)
-    .single();
+    .eq("business_id", business.id)
+    .maybeSingle();
 
-  if (existingProductError || !existingProduct) {
+  if (existingProductError) {
     throw new Error(
-      existingProductError?.message ??
-        "Product was not found.",
+      existingProductError.message,
     );
   }
 
-  let newImageUrl = existingProduct.image_url;
-  let newImagePath: string | null = null;
+  if (!existingProduct) {
+    throw new Error(
+      "Product was not found in this business.",
+    );
+  }
+
+  /*
+   * Check whether another product in this
+   * business already uses the same SKU.
+   */
+  if (sku) {
+    const {
+      data: duplicateSkuProduct,
+      error: duplicateSkuError,
+    } = await supabase
+      .from("products")
+      .select("id")
+      .eq("business_id", business.id)
+      .eq("sku", sku)
+      .neq("id", productId)
+      .maybeSingle();
+
+    if (duplicateSkuError) {
+      throw new Error(
+        duplicateSkuError.message,
+      );
+    }
+
+    if (duplicateSkuProduct) {
+      redirect(
+        `/dashboard/products/${productId}/edit?error=sku-already-used`,
+      );
+    }
+  }
+
+  let newImageUrl =
+    existingProduct.image_url;
+
+  let newImagePath: string | null =
+    null;
 
   if (imageFile) {
-    const extension = getImageExtension(imageFile);
+    const extension =
+      getImageExtension(imageFile);
 
     newImagePath =
-      `${user.id}/${crypto.randomUUID()}.${extension}`;
+      `${business.id}/${user.id}/${crypto.randomUUID()}.${extension}`;
 
     const { error: uploadError } =
       await supabase.storage
         .from(PRODUCT_IMAGE_BUCKET)
-        .upload(newImagePath, imageFile, {
-          contentType: imageFile.type,
-          cacheControl: "3600",
-          upsert: false,
-        });
+        .upload(
+          newImagePath,
+          imageFile,
+          {
+            contentType: imageFile.type,
+            cacheControl: "3600",
+            upsert: false,
+          },
+        );
 
     if (uploadError) {
-      throw new Error(
-        `Unable to upload product image: ${uploadError.message}`,
+      redirect(
+        `/dashboard/products/${productId}/edit?error=image-upload-failed`,
       );
     }
 
@@ -423,29 +601,34 @@ export async function updateProduct(formData: FormData) {
         .from(PRODUCT_IMAGE_BUCKET)
         .getPublicUrl(newImagePath);
 
-    newImageUrl = publicUrlData.publicUrl;
+    newImageUrl =
+      publicUrlData.publicUrl;
   }
 
-  const { data: updatedProduct, error } =
-    await supabase
-      .from("products")
-      .update({
-        category_id: categoryId,
-        name: name.trim(),
-        sku,
-        image_url: newImageUrl,
-        description,
-        cost_price: costPrice,
-        selling_price: sellingPrice,
-        low_stock_quantity: lowStockQuantity,
-        is_active:
-          formData.get("isActive") === "on",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", productId)
-      .eq("owner_id", user.id)
-      .select("id, name")
-      .single();
+  const {
+    data: updatedProduct,
+    error,
+  } = await supabase
+    .from("products")
+    .update({
+      category_id: categoryId,
+      name,
+      sku,
+      image_url: newImageUrl,
+      description,
+      cost_price: costPrice,
+      selling_price: sellingPrice,
+      low_stock_quantity:
+        lowStockQuantity,
+      is_active:
+        formData.get("isActive") === "on",
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq("id", productId)
+    .eq("business_id", business.id)
+    .select("id, name")
+    .single();
 
   if (error) {
     if (newImagePath) {
@@ -455,8 +638,8 @@ export async function updateProduct(formData: FormData) {
     }
 
     if (error.code === "23505") {
-      throw new Error(
-        "The SKU is already in use.",
+      redirect(
+        `/dashboard/products/${productId}/edit?error=sku-already-used`,
       );
     }
 
@@ -466,11 +649,13 @@ export async function updateProduct(formData: FormData) {
   if (
     imageFile &&
     existingProduct.image_url &&
-    existingProduct.image_url !== newImageUrl
+    existingProduct.image_url !==
+      newImageUrl
   ) {
-    const oldImagePath = getStoragePathFromUrl(
-      existingProduct.image_url,
-    );
+    const oldImagePath =
+      getStoragePathFromUrl(
+        existingProduct.image_url,
+      );
 
     if (oldImagePath) {
       const { error: removeError } =
@@ -491,10 +676,13 @@ export async function updateProduct(formData: FormData) {
     action: "update",
     entityType: "product",
     entityId: updatedProduct.id,
-    description: `Updated product ${updatedProduct.name}`,
+    description:
+      `Updated product ${updatedProduct.name}`,
     metadata: {
+      business_id: business.id,
       sku,
-      image_changed: Boolean(imageFile),
+      image_changed:
+        Boolean(imageFile),
       selling_price: sellingPrice,
     },
   });
@@ -505,34 +693,72 @@ export async function updateProduct(formData: FormData) {
   revalidatePath(
     `/dashboard/products/${productId}/edit`,
   );
-  revalidatePath("/dashboard/audit-logs");
+  revalidatePath(
+    "/dashboard/audit-logs",
+  );
 
-  redirect("/dashboard/products");
+  redirect(
+    `/dashboard/products/${productId}/edit?success=updated`,
+  );
 }
+export async function adjustStock(
+  formData: FormData,
+): Promise<void> {
+  const business = await requirePermission(
+    "products.stock_adjust",
+  );
 
-export async function adjustStock(formData: FormData) {
-  const productId = formData.get("productId");
-  const adjustmentType = formData.get("adjustmentType");
-  const quantityValue = formData.get("quantity");
-  const noteValue = formData.get("note");
+  const productIdValue =
+    formData.get("productId");
 
-  if (
-    typeof productId !== "string" ||
-    productId.length === 0
-  ) {
-    throw new Error("Invalid product ID.");
+  const adjustmentTypeValue =
+    formData.get("adjustmentType");
+
+  const quantityValue =
+    formData.get("quantity");
+
+  const noteValue =
+    formData.get("note");
+
+  const productId =
+    typeof productIdValue === "string"
+      ? productIdValue.trim()
+      : "";
+
+  const adjustmentType =
+    typeof adjustmentTypeValue === "string"
+      ? adjustmentTypeValue
+      : "";
+
+  const quantity =
+    typeof quantityValue === "string"
+      ? Number(quantityValue)
+      : Number.NaN;
+
+  const note =
+    typeof noteValue === "string"
+      ? noteValue.trim()
+      : "";
+
+  if (!productId) {
+    throw new Error(
+      "Invalid product ID.",
+    );
   }
 
   if (
     adjustmentType !== "increase" &&
     adjustmentType !== "decrease"
   ) {
-    throw new Error("Invalid adjustment type.");
+    throw new Error(
+      "Invalid adjustment type.",
+    );
   }
 
-  const quantity = Number(quantityValue);
-
-  if (!Number.isInteger(quantity) || quantity <= 0) {
+  if (
+    !Number.isInteger(quantity) ||
+    quantity <= 0
+  ) {
     throw new Error(
       "Quantity must be a positive whole number.",
     );
@@ -543,24 +769,51 @@ export async function adjustStock(formData: FormData) {
       ? quantity
       : -quantity;
 
-  const note =
-    typeof noteValue === "string"
-      ? noteValue.trim()
-      : "";
-
   const supabase = await createClient();
 
-  const { error } = await supabase.rpc(
+  /*
+   * Verify that the product belongs to the
+   * current business before calling the RPC.
+   */
+  const {
+    data: existingProduct,
+    error: productError,
+  } = await supabase
+    .from("products")
+    .select("id, name, stock_quantity")
+    .eq("id", productId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+
+  if (productError) {
+    throw new Error(
+      `Unable to load product: ${productError.message}`,
+    );
+  }
+
+  if (!existingProduct) {
+    throw new Error(
+      "Product was not found in this business.",
+    );
+  }
+
+  const {
+    data: newStock,
+    error: adjustmentError,
+  } = await supabase.rpc(
     "adjust_product_stock",
     {
+      p_business_id: business.id,
       p_product_id: productId,
       p_quantity: signedQuantity,
       p_note: note || null,
     },
   );
 
-  if (error) {
-    throw new Error(error.message);
+  if (adjustmentError) {
+    throw new Error(
+      adjustmentError.message,
+    );
   }
 
   await createAuditLog({
@@ -569,18 +822,30 @@ export async function adjustStock(formData: FormData) {
     entityId: productId,
     description:
       adjustmentType === "increase"
-        ? `Increased product stock by ${quantity}`
-        : `Decreased product stock by ${quantity}`,
+        ? `Increased ${existingProduct.name} stock by ${quantity}`
+        : `Decreased ${existingProduct.name} stock by ${quantity}`,
     metadata: {
+      business_id: business.id,
       adjustment_type: adjustmentType,
       quantity,
+      signed_quantity: signedQuantity,
+      previous_stock:
+        existingProduct.stock_quantity,
+      new_stock: newStock,
       note: note || null,
     },
   });
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/products");
-  revalidatePath(`/dashboard/products/${productId}/edit`);
+  revalidatePath(
+    `/dashboard/products/${productId}/edit`,
+  );
   revalidatePath("/dashboard/inventory");
+  revalidatePath("/dashboard/pos");
   revalidatePath("/dashboard/audit-logs");
+
+  redirect(
+  `/dashboard/products/${productId}/edit?success=stock-updated`,
+);
 }

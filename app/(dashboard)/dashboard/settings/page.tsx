@@ -2,7 +2,6 @@ import Link from "next/link";
 import {
   ChevronRight,
   Lock,
-  Settings,
   User,
   Users,
 } from "lucide-react";
@@ -26,12 +25,6 @@ const settingsItems = [
     href: "/dashboard/settings/users",
     icon: Users,
   },
-  {
-    title: "System",
-    description: "Manage application preferences",
-    href: "/dashboard/settings/system",
-    icon: Settings,
-  },
 ];
 
 export default function SettingsPage() {
@@ -43,7 +36,7 @@ export default function SettingsPage() {
         </h1>
 
         <p className="text-sm text-gray-500">
-          Manage your account and system settings.
+          Manage your account settings.
         </p>
       </div>
 

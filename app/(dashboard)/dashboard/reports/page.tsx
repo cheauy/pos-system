@@ -1,5 +1,8 @@
 import Link from "next/link";
 import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
+import {
   Banknote,
   CalendarDays,
   CircleDollarSign,
@@ -64,7 +67,9 @@ export default async function ReportsPage({
   const params = await searchParams;
 
   const selectedRange = params.range ?? "month";
-
+  const business = await requirePermission(
+    "reports.view",
+  );
   const dateRange = getDateRange(
     selectedRange,
     params.from,
@@ -75,7 +80,7 @@ export default async function ReportsPage({
 
   const supabase = await createClient();
 
-  let ordersQuery = supabase
+  const ordersQuery = supabase
     .from("orders")
     .select(`
       id,
@@ -92,6 +97,7 @@ export default async function ReportsPage({
         subtotal
       )
     `)
+    .eq("business_id", business.id)
     .eq("status", "completed")
     .gte("created_at", dateRange.startIso)
     .lte("created_at", dateRange.endIso)
@@ -99,7 +105,7 @@ export default async function ReportsPage({
       ascending: false,
     });
 
-  let expensesQuery = supabase
+  const expensesQuery = supabase
     .from("expenses")
     .select(`
       id,
@@ -108,6 +114,7 @@ export default async function ReportsPage({
       amount,
       expense_date
     `)
+    .eq("business_id", business.id)
     .gte("expense_date", dateRange.startDate)
     .lte("expense_date", dateRange.endDate)
     .order("expense_date", {

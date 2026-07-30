@@ -1,8 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 
+import { createAuditLog } from "@/lib/audit/create-audit-log";
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 
 export type CreateReturnState = {
@@ -16,10 +19,40 @@ type ReturnItemInput = {
   quantity: number;
 };
 
+function getReturnId(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value.trim() || null;
+  }
+
+  const row = Array.isArray(value)
+    ? value[0]
+    : value;
+
+  if (
+    !row ||
+    typeof row !== "object"
+  ) {
+    return null;
+  }
+
+  const record = row as Record<string, unknown>;
+  const id =
+    record.return_id ?? record.id;
+
+  return typeof id === "string" &&
+    id.trim()
+    ? id.trim()
+    : null;
+}
+
 export async function createOrderReturn(
   previousState: CreateReturnState,
   formData: FormData,
 ): Promise<CreateReturnState> {
+  const business = await requirePermission(
+    "orders.return",
+  );
+
   const orderIdValue = formData.get("orderId");
   const reasonValue = formData.get("reason");
   const itemsValue = formData.get("items");
@@ -55,10 +88,10 @@ export async function createOrderReturn(
     };
   }
 
-  let items: ReturnItemInput[];
+  let parsedItems: unknown;
 
   try {
-    items = JSON.parse(itemsValue) as ReturnItemInput[];
+    parsedItems = JSON.parse(itemsValue);
   } catch {
     return {
       success: false,
@@ -66,19 +99,60 @@ export async function createOrderReturn(
     };
   }
 
-  const cleanedItems = items
-    .map((item) => ({
-      order_item_id: String(
-        item.order_item_id,
-      ),
-      quantity: Number(item.quantity),
-    }))
-    .filter(
-      (item) =>
-        item.order_item_id &&
-        Number.isInteger(item.quantity) &&
-        item.quantity > 0,
-    );
+  if (!Array.isArray(parsedItems)) {
+    return {
+      success: false,
+      message: "Invalid return item data.",
+    };
+  }
+
+  const cleanedItems: ReturnItemInput[] = [];
+  const orderItemIds = new Set<string>();
+
+  for (const value of parsedItems) {
+    if (
+      !value ||
+      typeof value !== "object" ||
+      Array.isArray(value)
+    ) {
+      return {
+        success: false,
+        message: "Invalid return item data.",
+      };
+    }
+
+    const item = value as Record<string, unknown>;
+    const orderItemId =
+      typeof item.order_item_id === "string"
+        ? item.order_item_id.trim()
+        : "";
+    const quantity = Number(item.quantity);
+
+    if (
+      !orderItemId ||
+      !Number.isInteger(quantity) ||
+      quantity <= 0
+    ) {
+      return {
+        success: false,
+        message: "Invalid return item data.",
+      };
+    }
+
+    if (orderItemIds.has(orderItemId)) {
+      return {
+        success: false,
+        message:
+          "Each order item can only appear once in a return.",
+      };
+    }
+
+    orderItemIds.add(orderItemId);
+    cleanedItems.push({
+      order_item_id: orderItemId,
+      quantity,
+    });
+  }
 
   if (cleanedItems.length === 0) {
     return {
@@ -89,17 +163,28 @@ export async function createOrderReturn(
 
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
   const orderId = orderIdValue.trim();
 
-  const { data: returnId, error } =
+  const {
+    data: order,
+    error: orderError,
+  } = await supabase
+    .from("orders")
+    .select("id, order_number")
+    .eq("id", orderId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+
+  if (orderError || !order) {
+    return {
+      success: false,
+      message:
+        orderError?.message ??
+        "Order not found.",
+    };
+  }
+
+  const { data: returnResult, error } =
     await supabase.rpc(
       "create_order_return",
       {
@@ -115,6 +200,30 @@ export async function createOrderReturn(
       message: error.message,
     };
   }
+
+  const returnId =
+    getReturnId(returnResult);
+
+  if (!returnId) {
+    return {
+      success: false,
+      message:
+        "The return was created, but no return ID was returned.",
+    };
+  }
+
+  await createAuditLog({
+    action: "return",
+    entityType: "order",
+    entityId: order.id,
+    description:
+      `Returned products for order ${order.order_number}`,
+    metadata: {
+      return_id: returnId,
+      reason: reasonValue.trim(),
+      items: cleanedItems,
+    },
+  });
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/orders");

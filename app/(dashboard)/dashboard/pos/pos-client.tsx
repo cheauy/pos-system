@@ -79,8 +79,7 @@ const [deliveryFee, setDeliveryFee] = useState("");
       const matchesSearch =
         !keyword ||
         product.name.toLowerCase().includes(keyword) ||
-        product.sku?.toLowerCase().includes(keyword) 
-        false;
+        (product.sku?.toLowerCase().includes(keyword) ?? false);
 
       return matchesCategory && matchesSearch;
     });

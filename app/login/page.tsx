@@ -4,7 +4,9 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Eye, EyeOff } from "lucide-react";
-import Link from "next/link";
+
+const signInErrorMessage =
+  "Unable to sign in. Check your credentials or account status.";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,33 +20,71 @@ const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showSignupInfo, setShowSignupInfo] = useState(false);
 
- async function handleLogin(event: FormEvent<HTMLFormElement>) {
+async function handleLogin(
+  event: FormEvent<HTMLFormElement>,
+) {
   event.preventDefault();
 
   setLoading(true);
   setErrorMessage("");
 
   try {
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    const { data, error } =
+      await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    if (error) {
-      setErrorMessage(error.message);
+    if (error || !data.user) {
+      setErrorMessage(signInErrorMessage);
+      return;
+    }
+
+    const {
+      data: profile,
+      error: profileError,
+    } = await supabase
+      .from("profiles")
+      .select("role, is_active")
+      .eq("id", data.user.id)
+      .maybeSingle();
+
+    if (
+      profileError ||
+      !profile ||
+      profile.is_active !== true
+    ) {
+      await supabase.auth.signOut();
+
+      setErrorMessage(signInErrorMessage);
+
       return;
     }
 
     if (rememberMe) {
-      localStorage.setItem("rememberMe", "true");
+      localStorage.setItem(
+        "rememberMe",
+        "true",
+      );
     } else {
-      localStorage.removeItem("rememberMe");
+      localStorage.removeItem(
+        "rememberMe",
+      );
     }
 
-    router.replace("/dashboard");
+    if (profile.role === "super_admin") {
+      router.replace(
+        "/super-admin/businesses",
+      );
+    } else {
+      router.replace("/dashboard");
+    }
+
     router.refresh();
   } catch {
-    setErrorMessage("Something went wrong. Please try again.");
+    setErrorMessage(
+      "Something went wrong. Please try again.",
+    );
   } finally {
     setLoading(false);
   }

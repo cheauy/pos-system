@@ -1,9 +1,7 @@
 "use client";
 
 import {
-  useEffect,
-  useRef,
-  useState,
+  useOptimistic,
   useTransition,
 } from "react";
 
@@ -29,18 +27,11 @@ export default function OrderStatusSelect({
   orderId: string;
   status: OrderStatus;
 }) {
-  const formRef =
-    useRef<HTMLFormElement>(null);
-
   const [selectedStatus, setSelectedStatus] =
-    useState(status);
+    useOptimistic(status);
 
   const [isPending, startTransition] =
     useTransition();
-
-  useEffect(() => {
-    setSelectedStatus(status);
-  }, [status]);
 
   const isLocked =
     status === "cancelled" ||
@@ -52,18 +43,16 @@ export default function OrderStatusSelect({
     const nextStatus =
       event.target.value as OrderStatus;
 
-    setSelectedStatus(nextStatus);
-
     const formData = new FormData();
     formData.set("orderId", orderId);
     formData.set("status", nextStatus);
 
     startTransition(async () => {
+      setSelectedStatus(nextStatus);
+
       try {
         await updateOrderStatus(formData);
       } catch (error) {
-        setSelectedStatus(status);
-
         alert(
           error instanceof Error
             ? error.message
@@ -74,7 +63,7 @@ export default function OrderStatusSelect({
   }
 
   return (
-    <form ref={formRef}>
+    <form>
       <input
         type="hidden"
         name="orderId"

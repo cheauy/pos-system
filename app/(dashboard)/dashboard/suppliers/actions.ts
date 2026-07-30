@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 
 function getRequiredText(
@@ -60,6 +62,9 @@ export async function createSupplier(
     formData,
     "name",
   );
+  const business = await requirePermission(
+    "suppliers.manage",
+  );
 
   const contactPerson = getOptionalText(
     formData,
@@ -94,6 +99,7 @@ export async function createSupplier(
     .insert({
       owner_id: user.id,
       name,
+       business_id: business.id,
       contact_person: contactPerson,
       phone,
       email,
@@ -111,6 +117,9 @@ export async function createSupplier(
 export async function updateSupplier(
   formData: FormData,
 ) {
+  const business = await requirePermission(
+    "suppliers.manage",
+  );
   const supplierId = getRequiredText(
     formData,
     "supplierId",
@@ -153,6 +162,7 @@ export async function updateSupplier(
     .from("suppliers")
     .update({
       name,
+       business_id: business.id,
       contact_person: contactPerson,
       phone,
       email,
@@ -161,6 +171,7 @@ export async function updateSupplier(
       updated_at: new Date().toISOString(),
     })
     .eq("id", supplierId)
+    .eq("business_id", business.id)
     .eq("owner_id", user.id);
 
   if (error) {
@@ -178,6 +189,9 @@ export async function updateSupplier(
 export async function toggleSupplierStatus(
   formData: FormData,
 ) {
+  const business = await requirePermission(
+    "suppliers.manage",
+  );
   const supplierId = getRequiredText(
     formData,
     "supplierId",
@@ -192,10 +206,12 @@ export async function toggleSupplierStatus(
   const { error } = await supabase
     .from("suppliers")
     .update({
+       business_id: business.id,
       is_active: !currentStatus,
       updated_at: new Date().toISOString(),
     })
     .eq("id", supplierId)
+    .eq("business_id", business.id)
     .eq("owner_id", user.id);
 
   if (error) {
@@ -208,6 +224,9 @@ export async function toggleSupplierStatus(
 export async function deleteSupplier(
   formData: FormData,
 ) {
+  const business = await requirePermission(
+    "suppliers.manage",
+  );
   const supplierId = getRequiredText(
     formData,
     "supplierId",
@@ -220,6 +239,7 @@ export async function deleteSupplier(
     .from("suppliers")
     .delete()
     .eq("id", supplierId)
+    .eq("business_id", business.id)
     .eq("owner_id", user.id);
 
   if (error) {

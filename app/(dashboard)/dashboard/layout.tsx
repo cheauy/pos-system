@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import LogoutButton from "@/components/logout-button";
 import { createClient } from "@/lib/supabase/server";
-
+import { getCurrentBusiness } from "@/lib/business/get-current-business";
 import SidebarClient from "./sidebar-client";
 
 export default async function DashboardLayout({
@@ -20,29 +20,40 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-return (
-  <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-    <SidebarClient />
+  /*
+   * This checks:
+   * - User has an active business membership
+   * - Business exists
+   * - Business is active
+   *
+   * If the business is disabled, getCurrentBusiness()
+   * redirects to /business-disabled.
+   */
+  const business = await getCurrentBusiness();
 
-    <div className="lg:pl-64">
-      <header className="flex h-20 items-center justify-between border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">
-        <div>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Signed in as
-          </p>
+  return (
+    <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <SidebarClient />
 
-          <p className="font-medium text-slate-900 dark:text-slate-100">
-            {user.email}
-          </p>
-        </div>
+      <div className="lg:pl-64">
+        <header className="flex h-20 items-center justify-between border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">
+          <div>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {business.name}
+            </p>
 
-        <LogoutButton />
-      </header>
+            <p className="font-medium text-slate-900 dark:text-slate-100">
+              {user.email}
+            </p>
+          </div>
 
-      <main className="p-6">
-        {children}
-      </main>
+          <LogoutButton />
+        </header>
+
+        <main className="p-6">
+          {children}
+        </main>
+      </div>
     </div>
-  </div>
-);
+  );
 }

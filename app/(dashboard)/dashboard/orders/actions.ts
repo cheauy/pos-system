@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 
 function getRequiredString(
@@ -24,6 +27,10 @@ function getRequiredString(
 export async function cancelOrder(
   formData: FormData,
 ) {
+  const business = await requirePermission(
+    "orders.cancel",
+  );
+
   const orderId = getRequiredString(
     formData,
     "orderId",
@@ -40,11 +47,20 @@ export async function cancelOrder(
   const supabase = await createClient();
 
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: order,
+    error: orderError,
+  } = await supabase
+    .from("orders")
+    .select("id, order_number")
+    .eq("id", orderId)
+    .eq("business_id", business.id)
+    .maybeSingle();
 
-  if (!user) {
-    redirect("/login");
+  if (orderError || !order) {
+    throw new Error(
+      orderError?.message ??
+        "Order not found.",
+    );
   }
 
   const { error } = await supabase.rpc(
@@ -59,15 +75,14 @@ export async function cancelOrder(
     throw new Error(error.message);
   }
 
-   await createAuditLog({
+  await createAuditLog({
     action: "cancel",
-    entityType: "product",
-    entityId: user.id,
-    description: `Cancelled order ${orderId}`,
+    entityType: "order",
+    entityId: order.id,
+    description: `Cancelled order ${order.order_number}`,
     metadata: {
-    reason: reason || null,
-  }
-  
+      reason: reason || null,
+    },
   });
 
 
@@ -97,6 +112,10 @@ type OrderStatus =
 export async function updateOrderStatus(
   formData: FormData,
 ) {
+  const business = await requirePermission(
+    "orders.update",
+  );
+
   const orderId = getRequiredString(
     formData,
     "orderId",
@@ -118,22 +137,14 @@ export async function updateOrderStatus(
   const supabase = await createClient();
 
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  const {
     data: existingOrder,
     error: existingOrderError,
   } = await supabase
     .from("orders")
     .select("id, order_number, status")
     .eq("id", orderId)
-    .eq("owner_id", user.id)
-    .single();
+    .eq("business_id", business.id)
+    .maybeSingle();
 
   if (existingOrderError || !existingOrder) {
     throw new Error(
@@ -161,14 +172,20 @@ export async function updateOrderStatus(
       updated_at: new Date().toISOString(),
     })
     .eq("id", orderId)
-    .eq("owner_id", user.id)
+    .eq("business_id", business.id)
+    .eq("status", existingOrder.status)
     .select("id, order_number, status")
-    .single();
+    .maybeSingle();
 
-  if (updateError || !updatedOrder) {
+  if (updateError) {
     throw new Error(
-      updateError?.message ??
-        "Unable to update order status.",
+      updateError.message,
+    );
+  }
+
+  if (!updatedOrder) {
+    throw new Error(
+      "The order changed while you were updating it. Refresh and try again.",
     );
   }
 

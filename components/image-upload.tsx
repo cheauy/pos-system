@@ -9,14 +9,30 @@ type ImageUploadProps = {
 export default function ImageUpload({
   currentImage,
 }: ImageUploadProps) {
-  const [fileName, setFileName] = useState("No file selected");
-  const [preview, setPreview] = useState<string | null>(
-    currentImage ?? null,
-  );
+  const [selectedImage, setSelectedImage] =
+    useState<{
+      fileName: string;
+      preview: string;
+    } | null>(null);
+
+  const fileName =
+    selectedImage?.fileName ??
+    "No file selected";
+
+  const preview =
+    selectedImage?.preview ??
+    currentImage ??
+    null;
 
   useEffect(() => {
-    setPreview(currentImage ?? null);
-  }, [currentImage]);
+    return () => {
+      if (selectedImage?.preview) {
+        URL.revokeObjectURL(
+          selectedImage.preview,
+        );
+      }
+    };
+  }, [selectedImage]);
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement>,
@@ -24,8 +40,7 @@ export default function ImageUpload({
     const file = e.target.files?.[0];
 
     if (!file) {
-      setFileName("No file selected");
-      setPreview(currentImage ?? null);
+      setSelectedImage(null);
       return;
     }
 
@@ -38,21 +53,21 @@ export default function ImageUpload({
     if (!allowedTypes.includes(file.type)) {
       alert("Only JPG, PNG or WebP images are allowed.");
       e.target.value = "";
-      setFileName("No file selected");
-      setPreview(currentImage ?? null);
+      setSelectedImage(null);
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
       alert("Image size must not exceed 5 MB.");
       e.target.value = "";
-      setFileName("No file selected");
-      setPreview(currentImage ?? null);
+      setSelectedImage(null);
       return;
     }
 
-    setFileName(file.name);
-    setPreview(URL.createObjectURL(file));
+    setSelectedImage({
+      fileName: file.name,
+      preview: URL.createObjectURL(file),
+    });
   }
 
   return (

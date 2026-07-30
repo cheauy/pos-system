@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import PosClient from "./pos-client";
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 
 type Category = {
   id: string;
@@ -24,7 +27,9 @@ type Customer = {
 
 export default async function PosPage() {
   const supabase = await createClient();
-
+  const business = await requirePermission(
+  "pos.access",
+);
   const [
   { data: categoryData, error: categoryError },
   { data: productData, error: productError },
@@ -33,6 +38,7 @@ export default async function PosPage() {
   supabase
     .from("categories")
     .select("id, name")
+    .eq("business_id", business.id)
     .order("name"),
 
   supabase
@@ -46,12 +52,13 @@ export default async function PosPage() {
       stock_quantity,
       category_id
     `)
+    .eq("business_id", business.id)
     .eq("is_active", true)
     .order("name"),
-
   supabase
     .from("customers")
     .select("id, name, phone")
+    .eq("business_id", business.id)
     .order("name"),
 ]);
 

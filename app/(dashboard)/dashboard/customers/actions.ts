@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
-
 function optionalText(
   formData: FormData,
   field: string,
@@ -22,7 +24,9 @@ function optionalText(
 
 export async function createCustomer(formData: FormData) {
   const name = formData.get("name");
-
+  const business = await requirePermission(
+    "customers.create",
+  );
   if (
     typeof name !== "string" ||
     name.trim().length < 2
@@ -46,12 +50,13 @@ export async function createCustomer(formData: FormData) {
     .from("customers")
     .insert({
       owner_id: user.id,
+      business_id: business.id,
       name: name.trim(),
       phone: optionalText(formData, "phone"),
       email: optionalText(formData, "email"),
       address: optionalText(formData, "address"),
       note: optionalText(formData, "note"),
-    });
+    }).eq("business_id", business.id);
 
   if (error) {
     throw new Error(error.message);
@@ -71,7 +76,9 @@ export async function createCustomer(formData: FormData) {
 
 export async function deleteCustomer(formData: FormData) {
   const customerId = formData.get("customerId");
-
+  const business = await requirePermission(
+    "customers.update",
+  );
   if (
     typeof customerId !== "string" ||
     !customerId
@@ -93,6 +100,7 @@ export async function deleteCustomer(formData: FormData) {
     .from("customers")
     .delete()
     .eq("id", customerId)
+    .eq("business_id", business.id)
     .eq("owner_id", user.id);
 
   if (error) {
@@ -115,6 +123,9 @@ export async function updateCustomer(
 ) {
   const customerId = formData.get("customerId");
   const name = formData.get("name");
+  const business = await requirePermission(
+    "customers.update",
+  );
 
   if (
     typeof customerId !== "string" ||
@@ -156,6 +167,7 @@ export async function updateCustomer(
       updated_at: new Date().toISOString(),
     })
     .eq("id", customerId)
+    .eq("business_id", business.id)
     .eq("owner_id", user.id);
 
   if (error) {

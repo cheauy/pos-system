@@ -4,7 +4,9 @@ import {
   Eye,
   RotateCcw,
 } from "lucide-react";
-
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 
 type CustomerRelation =
@@ -41,13 +43,16 @@ orders: OrderRelation;
 
 export default async function ReturnsPage() {
   const supabase = await createClient();
-
+  const business = await requirePermission(
+    "orders.view",
+  );
   const { data, error } = await supabase
     .from("returns")
     .select(`
       id,
       return_number,
       order_id,
+      business_id,
       reason,
       refund_amount,
       created_at,
@@ -59,6 +64,7 @@ export default async function ReturnsPage() {
       )
       )
     `)
+    .eq("business_id", business.id)
     .order("created_at", {
       ascending: false,
     });

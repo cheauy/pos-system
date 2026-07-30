@@ -50,14 +50,19 @@ export default function SecurityForm() {
   ] = useState(false);
 
   useEffect(() => {
-    if (state.success) {
-      formRef.current?.reset();
+    if (!state.success) {
+      return;
+    }
 
+    const timeout = window.setTimeout(() => {
+      formRef.current?.reset();
       setShowCurrentPassword(false);
       setShowNewPassword(false);
       setShowConfirmPassword(false);
-    }
-  }, [state.success]);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [state]);
 
   return (
     <form

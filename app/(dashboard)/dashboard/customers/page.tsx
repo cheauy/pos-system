@@ -5,7 +5,9 @@ import {
   Pencil,
   UserRound,
 } from "lucide-react";
-
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 import {
   createCustomer,
@@ -23,6 +25,9 @@ type Customer = {
 
 export default async function CustomersPage() {
   const supabase = await createClient();
+   const business = await requirePermission(
+  "customers.view",
+);
 
   const { data, error } = await supabase
     .from("customers")
@@ -34,6 +39,7 @@ export default async function CustomersPage() {
       address,
       created_at
     `)
+    .eq("business_id", business.id)
     .order("created_at", {
       ascending: false,
     });

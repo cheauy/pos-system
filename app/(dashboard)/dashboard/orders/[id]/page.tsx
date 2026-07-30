@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import CancelOrderForm from "@/components/cancel-order-form";
 import ReturnItemsForm from "./return-items-form";
+
 import {
   ArrowLeft,
   CalendarDays,
@@ -14,6 +15,10 @@ import {
 } from "lucide-react";
 
 import PrintReceiptButton from "@/components/print-button";
+import { hasPermission } from "@/lib/auth/permissions";
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 
 type ProductRelation = {
@@ -80,15 +85,10 @@ export default async function OrderDetailsPage({
 }: OrderDetailsPageProps) {
   const { id } = await params;
 
+  const business = await requirePermission(
+    "orders.view",
+  );
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
 
   
 
@@ -128,7 +128,7 @@ const { data, error } = await supabase
     )
   `)
   .eq("id", id)
-  .eq("owner_id", user.id)
+  .eq("business_id", business.id)
   .single();
 
   if (error || !data) {
@@ -167,6 +167,12 @@ const canManageOrder = [
   "pending",
   "completed",
 ].includes(order.status);
+const canReturnOrder =
+  canManageOrder &&
+  hasPermission(business.role, "orders.return");
+const canCancelOrder =
+  canManageOrder &&
+  hasPermission(business.role, "orders.cancel");
 
 if (returnedItemsError) {
   console.error(
@@ -325,22 +331,24 @@ const remainingItemCount = returnableOrderItems.reduce(
     </div>
 
     <div className="flex flex-wrap items-center gap-3">
-  { 
-    canManageOrder &&(
+  {(canReturnOrder || canCancelOrder) && (
       <>
-        {returnableOrderItems.length > 0 && remainingItemCount  > 1 &&(
+        {canReturnOrder &&
+          returnableOrderItems.length > 0 &&
+          remainingItemCount > 0 && (
           <ReturnItemsForm
             orderId={order.id}
             orderNumber={order.order_number}
             items={returnableOrderItems}
-            
           />
         )}
 
-        <CancelOrderForm
-          orderId={order.id}
-          orderNumber={order.order_number}
-        />
+        {canCancelOrder && (
+          <CancelOrderForm
+            orderId={order.id}
+            orderNumber={order.order_number}
+          />
+        )}
       </>
     )}
 
@@ -486,7 +494,7 @@ const remainingItemCount = returnableOrderItems.reduce(
 
         </div>
 
-        {orderItems.length === 0 ? (
+        {returnableOrderItems.length === 0 ? (
           <div className="p-12 text-center">
             <Package
               size={42}
@@ -521,23 +529,19 @@ const remainingItemCount = returnableOrderItems.reduce(
               </thead>
 
               <tbody className="divide-y divide-slate-200">
-                {orderItems.map((item) => {
-                  const product = getProduct(
-                    item.products,
-                  );
-                      const returnedQuantity =
-                        returnedQuantityMap.get(item.id) ?? 0;
+                {returnableOrderItems.map((item) => {
+              const originalItem = orderItems.find(
+  (o) => o.id === item.id,
+)!;
 
-                      const remainingQuantity = Math.max(
-                        0,
-                        Number(item.quantity) - returnedQuantity,
-                      );
+const product = getProduct(
+  originalItem.products,
+);
 
-                
-                  const itemName =
-                    item.product_name ||
-                    product?.name ||
-                    "Deleted product";
+const itemName =
+  item.product_name ||
+  product?.name ||
+  "Deleted product";
 
                   return (
                     <tr key={item.id}>
@@ -570,11 +574,7 @@ const remainingItemCount = returnableOrderItems.reduce(
                       </td>
 
                       <td className="px-6 py-4 text-center font-semibold text-slate-700">
-                                {Math.max(
-                                  0,
-                                  Number(item.quantity) -
-                                    (returnedQuantityMap.get(item.id) ?? 0)
-                                )}
+                              {item.available_quantity}
                               </td>
 
                       <td className="px-6 py-4 text-right text-slate-700">
@@ -585,7 +585,11 @@ const remainingItemCount = returnableOrderItems.reduce(
                       </td>
 
                       <td className="px-6 py-4 text-right font-bold text-slate-900">
-                       ${remainingTotal.toFixed(2)}
+                       $
+{(
+  item.available_quantity *
+  item.unit_price
+).toFixed(2)}
                       </td>
                     </tr>
                   );
@@ -759,7 +763,7 @@ function Receipt({
   return (
     <article
       id="sale-receipt"
-      className="mx-auto max-w-[380px] bg-white text-black"
+      className="receipt mx-auto max-w-[380px] bg-white text-black"
     >
       <div className="border-b border-dashed border-black pb-4 text-center">
         <h2 className="text-2xl font-bold">

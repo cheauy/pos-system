@@ -1,9 +1,13 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import {
+  ArrowLeft,
+} from "lucide-react";
 
+import CreatePurchaseForm from "./purchase-form";
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
-
-import PurchaseForm from "@/app/(dashboard)/dashboard/purchases/new/purchase-form";
 
 type Supplier = {
   id: string;
@@ -13,39 +17,79 @@ type Supplier = {
 type Product = {
   id: string;
   name: string;
+  sku: string | null;
   cost_price: number;
   stock_quantity: number;
 };
 
 export default async function NewPurchasePage() {
-  const supabase = await createClient();
+  const business =
+    await requirePermission(
+      "purchases.create",
+    );
+
+  const supabase =
+    await createClient();
 
   const [
-    { data: supplierData },
-    { data: productData },
+    {
+      data: supplierData,
+      error: supplierError,
+    },
+    {
+      data: productData,
+      error: productError,
+    },
   ] = await Promise.all([
     supabase
       .from("suppliers")
       .select("id, name")
-      .eq("is_active", true)
-      .order("name"),
+      .eq(
+        "business_id",
+        business.id,
+      )
+      .order("name", {
+        ascending: true,
+      }),
 
     supabase
       .from("products")
       .select(`
         id,
         name,
+        sku,
         cost_price,
         stock_quantity
       `)
-      .order("name"),
+      .eq(
+        "business_id",
+        business.id,
+      )
+      .eq("is_active", true)
+      .order("name", {
+        ascending: true,
+      }),
   ]);
 
+  if (supplierError) {
+    throw new Error(
+      `Unable to load suppliers: ${supplierError.message}`,
+    );
+  }
+
+  if (productError) {
+    throw new Error(
+      `Unable to load products: ${productError.message}`,
+    );
+  }
+
   const suppliers =
-    (supplierData ?? []) as Supplier[];
+    (supplierData ??
+      []) as Supplier[];
 
   const products =
-    (productData ?? []) as Product[];
+    (productData ??
+      []) as Product[];
 
   return (
     <main>
@@ -63,38 +107,15 @@ export default async function NewPurchasePage() {
         </h1>
 
         <p className="mt-1 text-slate-500">
-          Receive products and increase inventory
+          Receive products from a
+          supplier and increase inventory.
         </p>
       </div>
 
-      {products.length === 0 ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-800">
-          Create at least one product before
-          recording a purchase.
-        </div>
-      ) : (
-        <PurchaseForm
-          suppliers={suppliers}
-          products={products}
-          today={getLocalDateString(
-            new Date(),
-          )}
-        />
-      )}
+      <CreatePurchaseForm
+        suppliers={suppliers}
+        products={products}
+      />
     </main>
   );
-}
-
-function getLocalDateString(date: Date) {
-  const year = date.getFullYear();
-
-  const month = String(
-    date.getMonth() + 1,
-  ).padStart(2, "0");
-
-  const day = String(
-    date.getDate(),
-  ).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
 }

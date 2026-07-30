@@ -10,7 +10,9 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 
 import {
@@ -33,7 +35,9 @@ type Supplier = {
 
 export default async function SuppliersPage() {
   const supabase = await createClient();
-
+  const business = await requirePermission(
+    "suppliers.manage",
+  );
   const { data, error } = await supabase
     .from("suppliers")
     .select(`
@@ -47,6 +51,7 @@ export default async function SuppliersPage() {
       is_active,
       created_at
     `)
+    .eq("business_id", business.id)
     .order("created_at", {
       ascending: false,
     });

@@ -1,5 +1,7 @@
 import { Trash2 } from "lucide-react";
-
+import {
+  requirePermission,
+} from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 import {
   createCategory,
@@ -15,13 +17,21 @@ type Category = {
 
 export default async function CategoriesPage() {
   const supabase = await createClient();
+  const business = await requirePermission(
+    "categories.manage",
+  );
+
+const { data: products } = await supabase
+  .from("products")
+  .select("*")
+  .eq("business_id", business.id);
 
   const { data, error } = await supabase
     .from("categories")
     .select("id, name, description, created_at")
     .order("created_at", {
       ascending: false,
-    });
+    }).eq("business_id", business.id);
 
   const categories = (data ?? []) as Category[];
 
