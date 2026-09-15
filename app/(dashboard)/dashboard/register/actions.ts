@@ -39,6 +39,9 @@ export async function addCashMovement(formData: FormData) {
   const business = await requirePermission("register.manage");
   const shiftId = text(formData, "shiftId");
   const type = text(formData, "type");
+  if (type !== "cash_in" && type !== "cash_out") {
+    throw new Error("Invalid cash movement type.");
+  }
   const amount = Number(text(formData, "amount"));
   const reason = text(formData, "reason");
   if (!shiftId || !reason || !Number.isFinite(amount) || amount <= 0) throw new Error("Complete the cash movement form.");

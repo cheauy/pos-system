@@ -7,6 +7,8 @@ import type { ElementType } from "react";
 
 import {
   BadgePercent,
+  Bell,
+  Search,
   ArrowRightLeft,
   Building2,
   Download,
@@ -55,6 +57,16 @@ const menuGroups: MenuGroup[] = [
         name: "Dashboard",
         href: "/dashboard",
         icon: LayoutDashboard,
+      },
+      {
+        name: "Global Search",
+        href: "/dashboard/search",
+        icon: Search,
+      },
+      {
+        name: "Notifications",
+        href: "/dashboard/notifications",
+        icon: Bell,
       },
     ],
   },

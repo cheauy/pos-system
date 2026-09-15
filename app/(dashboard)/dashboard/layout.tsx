@@ -10,6 +10,8 @@ import {
 import { getRequestTenantSlug } from "@/lib/tenancy/request-tenant";
 import SidebarClient from "./sidebar-client";
 import OnlineOrderListener from "@/components/online-order-listener";
+import NotificationBell from "@/components/notification-bell";
+import GlobalSearchBox from "@/components/global-search-box";
 
 export default async function DashboardLayout({
   children,
@@ -53,18 +55,16 @@ export default async function DashboardLayout({
       <OnlineOrderListener businessId={business.id} />
 
       <div className="lg:pl-64">
-        <header className="flex h-20 items-center justify-between border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">
-          <div>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {business.name}
-            </p>
-
-            <p className="font-medium text-slate-900 dark:text-slate-100">
-              {user.email}
-            </p>
+        <header className="flex h-20 items-center gap-4 border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">
+          <div className="min-w-0 shrink-0">
+            <p className="truncate text-sm text-slate-500 dark:text-slate-400">{business.name}</p>
+            <p className="max-w-48 truncate font-medium text-slate-900 dark:text-slate-100">{user.email}</p>
           </div>
-
-          <LogoutButton />
+          <div className="flex min-w-0 flex-1 justify-center"><GlobalSearchBox /></div>
+          <div className="ml-auto flex items-center gap-2">
+            <NotificationBell businessId={business.id} />
+            <LogoutButton />
+          </div>
         </header>
 
         <main className="p-6">
