@@ -482,7 +482,7 @@ export default async function StorefrontPage({
       </div>
 
       <footer className="border-t border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
-        Powered by TENH POS
+        Powered by Tenh POS
       </footer>
     </main>
   );
@@ -589,7 +589,7 @@ function UnavailableStore({
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">
-                TENH POS Store
+                Tenh POS Store
               </p>
               <h1 className="font-bold text-slate-950">{businessName}</h1>
             </div>

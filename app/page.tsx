@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -13,11 +14,16 @@ export default function Home() {
       <div className="mx-auto max-w-7xl px-6 py-8 lg:px-8">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600">
-              <Building2 size={22} />
-            </div>
+            <Image
+              src="/tenh-pos-logo.png"
+              alt="Tenh POS logo"
+              width={44}
+              height={44}
+              priority
+              className="h-11 w-11 rounded-2xl object-contain"
+            />
             <div>
-              <p className="font-bold">TENH POS</p>
+              <p className="font-bold">Tenh POS</p>
               <p className="text-xs text-slate-400">
                 Business & online ordering
               </p>
@@ -47,7 +53,7 @@ export default function Home() {
             </span>
 
             <h1 className="mt-6 max-w-3xl text-5xl font-bold tracking-tight sm:text-6xl">
-              Run your shop and sell online with TENH POS.
+              Run your shop and sell online with Tenh POS.
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
@@ -73,7 +79,7 @@ export default function Home() {
             <FeatureCard
               icon={<Store size={22} />}
               title="Your own storefront"
-              text="Every business can use its own TENH POS subdomain."
+              text="Every business can use its own Tenh POS subdomain."
             />
             <FeatureCard
               icon={<QrCode size={22} />}

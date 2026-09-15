@@ -72,7 +72,7 @@ export default function OrderStatusClient({
           </div>
 
           <p className="mt-6 text-center text-sm font-semibold uppercase tracking-[0.18em] text-blue-600">
-            TENH POS Order
+            Tenh POS Order
           </p>
           <h1 className="mt-2 text-center text-3xl font-bold text-slate-950">
             {order.order_number}

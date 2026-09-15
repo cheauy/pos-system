@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   ChevronRight,
+  Languages,
   Lock,
   ReceiptText,
   User,
@@ -8,6 +9,12 @@ import {
 } from "lucide-react";
 
 const settingsItems = [
+  {
+    title: "Appearance & Language",
+    description: "Choose English or Khmer and set your preferred theme",
+    href: "/dashboard/settings/system",
+    icon: Languages,
+  },
   {
     title: "Profile",
     description: "Manage your profile information",

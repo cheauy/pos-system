@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -286,13 +287,18 @@ function SidebarPanel({
   return (
     <>
       <div className="flex h-20 items-center border-b border-slate-200 px-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 font-bold text-white">
-          P
-        </div>
+        <Image
+          src="/tenh-pos-logo.png"
+          alt="Tenh POS logo"
+          width={40}
+          height={40}
+          priority
+          className="h-10 w-10 rounded-xl object-contain"
+        />
 
         <div className="ml-3">
           <h1 className="font-bold text-slate-900">
-            TENH POS
+            Tenh POS
           </h1>
 
           <p className="text-xs text-slate-500">

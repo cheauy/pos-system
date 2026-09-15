@@ -170,7 +170,7 @@ export default function OnlineOrdersClient({
     toast.success("New online order received");
 
     if (Notification.permission === "granted") {
-      new Notification("TENH POS - New online order", {
+      new Notification("Tenh POS - New online order", {
         body: "Open Online Orders to review the new customer order.",
       });
     }

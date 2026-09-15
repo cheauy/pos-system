@@ -148,7 +148,7 @@ export async function updateStoreAddress(
 
   if (existingBusiness) {
     throw new Error(
-      "This TENH POS store address is already in use.",
+      "This Tenh POS store address is already in use.",
     );
   }
 

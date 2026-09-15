@@ -55,7 +55,7 @@ export default async function BusinessSettingsPage() {
 
             <div>
               <h2 className="text-xl font-semibold text-slate-900">
-                TENH POS Store Address
+                Tenh POS Store Address
               </h2>
               <p className="text-sm text-slate-500">
                 Your public store and tenant dashboard use this address.

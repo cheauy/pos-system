@@ -35,7 +35,7 @@ function cleanupMessage(error: unknown) {
     return error.message;
   }
 
-  return "Unable to create your TENH POS store.";
+  return "Unable to create your Tenh POS store.";
 }
 
 export async function registerOwnerBusiness(
@@ -160,7 +160,7 @@ export async function registerOwnerBusiness(
     if (existingSlug) {
       return {
         success: false,
-        message: "This TENH POS store address is already in use.",
+        message: "This Tenh POS store address is already in use.",
       };
     }
 
@@ -349,7 +349,7 @@ export async function registerOwnerBusiness(
     return {
       success: true,
       message: authData.session
-        ? "Your TENH POS store is ready."
+        ? "Your Tenh POS store is ready."
         : "Your store has been created. Check your email to confirm your account, then sign in.",
       requiresEmailConfirmation: !authData.session,
       destination: authData.session

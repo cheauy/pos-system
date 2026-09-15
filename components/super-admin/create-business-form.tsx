@@ -157,7 +157,7 @@ const [isCustomStaff, setIsCustomStaff] =
           </FormField>
 
           <FormField
-            label="TENH POS store address"
+            label="Tenh POS store address"
             htmlFor="subdomain"
           >
             <div className="flex overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">

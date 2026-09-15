@@ -1,86 +1,62 @@
 "use client";
 
 import {
-  useActionState,
-  useState,
-  type ComponentType,
-} from "react";
-import {
   Languages,
   Monitor,
   Moon,
   Save,
   Sun,
+  type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
-import {
-  updateAppearanceSettings,
-  type AppearanceActionState,
-} from "./actions";
+import { useLanguage } from "@/components/providers/language-provider";
+import type { AppLanguage } from "@/lib/i18n/translations";
 
-export type AppearanceSettings = {
-  id: string;
-  default_theme: "system" | "light" | "dark";
-  default_language: "en" | "km";
-};
+type ThemeValue = "system" | "light" | "dark";
 
-type AppearanceFormProps = {
-  settings: AppearanceSettings;
-};
-
-type ThemeValue = AppearanceSettings["default_theme"];
-type LanguageValue = AppearanceSettings["default_language"];
-
-const initialState: AppearanceActionState = {
-  success: false,
-  message: "",
-};
-
-export default function AppearanceForm({
-  settings,
-}: AppearanceFormProps) {
-  const [state, formAction, pending] = useActionState(
-    updateAppearanceSettings,
-    initialState,
-  );
-
-  const { setTheme } = useTheme();
-
+export default function AppearanceForm() {
+  const { language, setLanguage } = useLanguage();
+  const { theme, setTheme } = useTheme();
   const [selectedTheme, setSelectedTheme] =
-    useState<ThemeValue>(settings.default_theme);
+    useState<ThemeValue>("system");
 
-  const [selectedLanguage, setSelectedLanguage] =
-    useState<LanguageValue>(settings.default_language);
+  useEffect(() => {
+    if (
+      theme === "light" ||
+      theme === "dark" ||
+      theme === "system"
+    ) {
+      setSelectedTheme(theme);
+    }
+  }, [theme]);
 
-  function handleThemeChange(theme: ThemeValue) {
-    setSelectedTheme(theme);
-    setTheme(theme);
+  function handleThemeChange(next: ThemeValue) {
+    setSelectedTheme(next);
+    setTheme(next);
   }
 
-  function handleLanguageChange(
-    event: React.ChangeEvent<HTMLSelectElement>,
-  ) {
-    const language = event.target.value as LanguageValue;
+  function handleLanguageChange(next: AppLanguage) {
+    setLanguage(next);
+  }
 
-    setSelectedLanguage(language);
-    document.documentElement.lang = language;
+  function handleSave() {
+    toast.success(
+      language === "km"
+        ? "បានរក្សាទុកការកំណត់រូបរាង និងភាសា។"
+        : "Appearance and language saved.",
+    );
   }
 
   return (
-    <form action={formAction} className="space-y-6">
-      <input
-        type="hidden"
-        name="settings_id"
-        value={settings.id}
-      />
-
+    <div className="space-y-6">
       <div className="rounded-xl border bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-950">
         <div className="border-b pb-5 dark:border-gray-800">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
             Appearance
           </h2>
-
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Configure the default theme and language for the POS.
           </p>
@@ -92,7 +68,6 @@ export default function AppearanceForm({
               <h3 className="font-medium text-gray-900 dark:text-gray-100">
                 Theme
               </h3>
-
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Choose the default application theme.
               </p>
@@ -100,41 +75,24 @@ export default function AppearanceForm({
 
             <div className="grid gap-3 md:grid-cols-3">
               <ThemeOption
-                id="theme-system"
-                name="default_theme"
-                value="system"
                 label="System"
                 description="Follow device settings"
                 checked={selectedTheme === "system"}
-                onChange={() =>
-                  handleThemeChange("system")
-                }
+                onClick={() => handleThemeChange("system")}
                 icon={Monitor}
               />
-
               <ThemeOption
-                id="theme-light"
-                name="default_theme"
-                value="light"
                 label="Light"
                 description="Always use light mode"
                 checked={selectedTheme === "light"}
-                onChange={() =>
-                  handleThemeChange("light")
-                }
+                onClick={() => handleThemeChange("light")}
                 icon={Sun}
               />
-
               <ThemeOption
-                id="theme-dark"
-                name="default_theme"
-                value="dark"
                 label="Dark"
                 description="Always use dark mode"
                 checked={selectedTheme === "dark"}
-                onChange={() =>
-                  handleThemeChange("dark")
-                }
+                onClick={() => handleThemeChange("dark")}
                 icon={Moon}
               />
             </div>
@@ -145,109 +103,133 @@ export default function AppearanceForm({
               <h3 className="font-medium text-gray-900 dark:text-gray-100">
                 Language
               </h3>
-
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Choose the default application language.
               </p>
             </div>
 
-            <div className="relative max-w-md">
-              <Languages className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <div className="grid max-w-xl gap-3 sm:grid-cols-2">
+              <LanguageOption
+                language="en"
+                title="English"
+                subtitle="Inter"
+                active={language === "en"}
+                onClick={() => handleLanguageChange("en")}
+              />
+              <LanguageOption
+                language="km"
+                title="ខ្មែរ"
+                subtitle="Hanuman"
+                active={language === "km"}
+                onClick={() => handleLanguageChange("km")}
+              />
+            </div>
 
-              <select
-                name="default_language"
-                value={selectedLanguage}
-                onChange={handleLanguageChange}
-                className="w-full rounded-lg border bg-white py-2.5 pl-10 pr-3 text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:ring-blue-950"
-              >
-                <option value="en">English</option>
-                <option value="km">ខ្មែរ</option>
-              </select>
+            <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+              <Languages className="mt-0.5 h-5 w-5 shrink-0" />
+              <p data-i18n-ignore="true">
+                English text uses <strong>Inter</strong>. អក្សរខ្មែរប្រើពុម្ពអក្សរ <strong>Hanuman</strong>។
+              </p>
             </div>
           </section>
         </div>
       </div>
 
-      {state.message && (
-        <div
-          className={
-            state.success
-              ? "rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300"
-              : "rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
-          }
-        >
-          {state.message}
-        </div>
-      )}
-
       <div className="flex justify-end">
         <button
-          type="submit"
-          disabled={pending}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          type="button"
+          onClick={handleSave}
+          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
         >
           <Save className="h-4 w-4" />
-
-          {pending
-            ? "Saving..."
-            : "Save Appearance"}
+          Save Appearance
         </button>
       </div>
-    </form>
+    </div>
   );
 }
 
-type ThemeOptionProps = {
-  id: string;
-  name: string;
-  value: ThemeValue;
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: () => void;
-  icon: ComponentType<{
-    className?: string;
-  }>;
-};
-
 function ThemeOption({
-  id,
-  name,
-  value,
   label,
   description,
   checked,
-  onChange,
+  onClick,
   icon: Icon,
-}: ThemeOptionProps) {
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onClick: () => void;
+  icon: LucideIcon;
+}) {
   return (
-    <label
-      htmlFor={id}
-      className="cursor-pointer rounded-xl border p-4 transition hover:border-blue-400 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-blue-500 dark:has-[:checked]:border-blue-500 dark:has-[:checked]:bg-blue-950/30"
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border p-4 text-left transition hover:border-blue-400 ${
+        checked
+          ? "border-blue-600 bg-blue-50 dark:border-blue-500 dark:bg-blue-950/30"
+          : "dark:border-gray-700 dark:bg-gray-900"
+      }`}
     >
       <div className="flex items-start gap-3">
-        <input
-          id={id}
-          type="radio"
-          name={name}
-          value={value}
-          checked={checked}
-          onChange={onChange}
-          className="mt-1"
-        />
-
         <Icon className="h-5 w-5 text-gray-500 dark:text-gray-400" />
-
         <div>
           <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
             {label}
           </p>
-
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             {description}
           </p>
         </div>
       </div>
-    </label>
+    </button>
+  );
+}
+
+function LanguageOption({
+  language,
+  title,
+  subtitle,
+  active,
+  onClick,
+}: {
+  language: AppLanguage;
+  title: string;
+  subtitle: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-xl border p-4 text-left transition hover:border-blue-400 ${
+        active
+          ? "border-blue-600 bg-blue-50 ring-2 ring-blue-100 dark:border-blue-500 dark:bg-blue-950/30 dark:ring-blue-950"
+          : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p
+            data-i18n-ignore="true"
+            className="font-semibold text-slate-900 dark:text-slate-100"
+          >
+            {title}
+          </p>
+          <p
+            data-i18n-ignore="true"
+            className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+          >
+            {subtitle}
+          </p>
+        </div>
+        <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          {language}
+        </span>
+      </div>
+    </button>
   );
 }

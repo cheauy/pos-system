@@ -127,7 +127,7 @@ export async function createCustomerBusiness(
       return {
         success: false,
         message:
-          "This TENH POS store address is already in use. Choose another address.",
+          "This Tenh POS store address is already in use. Choose another address.",
       };
     }
 

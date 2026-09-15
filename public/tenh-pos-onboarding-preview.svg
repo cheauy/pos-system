@@ -1,0 +1,87 @@
+<svg width="900" height="520" viewBox="0 0 900 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#F8FBFF"/>
+      <stop offset="1" stop-color="#EEF4FF"/>
+    </linearGradient>
+    <linearGradient id="desk" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#123B7A"/>
+      <stop offset="1" stop-color="#0A2456"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#00132F" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <ellipse cx="445" cy="472" rx="330" ry="30" fill="#031937" fill-opacity="0.4"/>
+  <path d="M126 441C220 423 685 420 792 442L770 490H146L126 441Z" fill="url(#desk)"/>
+
+  <g filter="url(#shadow)">
+    <path d="M145 80C145 62 159 48 177 48H722C740 48 754 62 754 80V393C754 411 740 425 722 425H177C159 425 145 411 145 393V80Z" fill="#071C3B"/>
+    <rect x="164" y="66" width="571" height="340" rx="18" fill="url(#screen)"/>
+    <circle cx="450" cy="57" r="4" fill="#6E88AD"/>
+  </g>
+
+  <rect x="186" y="86" width="112" height="300" rx="14" fill="#F5F8FD"/>
+  <rect x="204" y="104" width="34" height="34" rx="10" fill="#156BFF"/>
+  <path d="M212 120h18v10h-18zM215 113h12l3 7h-18l3-7Z" fill="white"/>
+  <text x="248" y="126" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#0C1830">Tenh POS</text>
+
+  <rect x="202" y="158" width="78" height="30" rx="9" fill="#E7F0FF"/>
+  <circle cx="218" cy="173" r="5" fill="#156BFF"/>
+  <text x="231" y="177" font-family="Arial, sans-serif" font-size="10" font-weight="700" fill="#156BFF">Products</text>
+  <g font-family="Arial, sans-serif" font-size="10" fill="#65748C">
+    <text x="205" y="213">Dashboard</text>
+    <text x="205" y="242">Sales</text>
+    <text x="205" y="271">Inventory</text>
+    <text x="205" y="300">Customers</text>
+    <text x="205" y="329">Reports</text>
+    <text x="205" y="358">Settings</text>
+  </g>
+
+  <rect x="319" y="88" width="285" height="34" rx="10" fill="white" stroke="#DCE6F3"/>
+  <circle cx="339" cy="105" r="6" stroke="#91A0B5" stroke-width="2"/>
+  <path d="M343 109l7 7" stroke="#91A0B5" stroke-width="2" stroke-linecap="round"/>
+  <text x="356" y="109" font-family="Arial, sans-serif" font-size="10" fill="#9AA8BA">Search products...</text>
+  <rect x="620" y="88" width="95" height="34" rx="10" fill="#156BFF"/>
+  <text x="646" y="109" font-family="Arial, sans-serif" font-size="10" font-weight="700" fill="white">+ Add product</text>
+
+  <g>
+    <rect x="319" y="140" width="112" height="98" rx="12" fill="white" stroke="#E0E8F4"/>
+    <rect x="443" y="140" width="112" height="98" rx="12" fill="white" stroke="#E0E8F4"/>
+    <rect x="567" y="140" width="112" height="98" rx="12" fill="white" stroke="#E0E8F4"/>
+    <rect x="319" y="250" width="112" height="98" rx="12" fill="white" stroke="#E0E8F4"/>
+    <rect x="443" y="250" width="112" height="98" rx="12" fill="white" stroke="#E0E8F4"/>
+    <rect x="567" y="250" width="112" height="98" rx="12" fill="white" stroke="#E0E8F4"/>
+
+    <g transform="translate(338 153)"><path d="M3 39c13 0 17-8 26-17l12 10 23 4c10 2 15 7 15 15H9c-5 0-8-4-6-12Z" fill="#4C9AFF"/><path d="M11 48h66" stroke="#1A4F9A" stroke-width="3" stroke-linecap="round"/></g>
+    <g transform="translate(462 153)"><path d="M3 39c13 0 17-8 26-17l12 10 23 4c10 2 15 7 15 15H9c-5 0-8-4-6-12Z" fill="#1D2939"/><path d="M11 48h66" stroke="#101828" stroke-width="3" stroke-linecap="round"/></g>
+    <g transform="translate(586 153)"><path d="M3 39c13 0 17-8 26-17l12 10 23 4c10 2 15 7 15 15H9c-5 0-8-4-6-12Z" fill="#CBD5E1"/><path d="M11 48h66" stroke="#64748B" stroke-width="3" stroke-linecap="round"/></g>
+    <g transform="translate(338 263)"><path d="M3 39c13 0 17-8 26-17l12 10 23 4c10 2 15 7 15 15H9c-5 0-8-4-6-12Z" fill="#F59E0B"/><path d="M11 48h66" stroke="#A16207" stroke-width="3" stroke-linecap="round"/></g>
+    <g transform="translate(462 263)"><path d="M3 39c13 0 17-8 26-17l12 10 23 4c10 2 15 7 15 15H9c-5 0-8-4-6-12Z" fill="#10B981"/><path d="M11 48h66" stroke="#047857" stroke-width="3" stroke-linecap="round"/></g>
+    <g transform="translate(586 263)"><path d="M3 39c13 0 17-8 26-17l12 10 23 4c10 2 15 7 15 15H9c-5 0-8-4-6-12Z" fill="#F43F5E"/><path d="M11 48h66" stroke="#BE123C" stroke-width="3" stroke-linecap="round"/></g>
+
+    <g font-family="Arial, sans-serif" font-size="9" fill="#344054">
+      <text x="332" y="220" font-weight="700">Running Shoes</text><text x="332" y="232">$89.00</text>
+      <text x="456" y="220" font-weight="700">Sneakers</text><text x="456" y="232">$75.00</text>
+      <text x="580" y="220" font-weight="700">Casual Shoes</text><text x="580" y="232">$69.00</text>
+      <text x="332" y="330" font-weight="700">Sports Shoes</text><text x="332" y="342">$95.00</text>
+      <text x="456" y="330" font-weight="700">Boots</text><text x="456" y="342">$120.00</text>
+      <text x="580" y="330" font-weight="700">Kids Shoes</text><text x="580" y="342">$49.00</text>
+    </g>
+  </g>
+
+  <path d="M385 425H515L535 468H365L385 425Z" fill="#0A2D62"/>
+  <rect x="335" y="463" width="230" height="20" rx="10" fill="#0B376F"/>
+
+  <g filter="url(#shadow)">
+    <rect x="696" y="314" width="118" height="150" rx="16" fill="#F8FBFF" transform="rotate(4 696 314)"/>
+    <text x="721" y="344" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0C1830">Tenh POS</text>
+    <text x="713" y="366" font-family="Arial, sans-serif" font-size="9" fill="#70839C">Better business</text>
+    <text x="718" y="378" font-family="Arial, sans-serif" font-size="9" fill="#70839C">every step.</text>
+    <rect x="716" y="396" width="65" height="5" rx="2.5" fill="#DAE5F2"/>
+    <rect x="716" y="408" width="48" height="5" rx="2.5" fill="#DAE5F2"/>
+    <rect x="716" y="420" width="58" height="5" rx="2.5" fill="#DAE5F2"/>
+    <text x="729" y="445" font-family="Arial, sans-serif" font-size="9" fill="#156BFF">Thank you!</text>
+  </g>
+</svg>
