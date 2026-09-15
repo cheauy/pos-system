@@ -6,6 +6,8 @@ type ReceiptItem = {
   quantity: number;
   unit_price: number;
   subtotal: number;
+  variant_label?: string | null;
+  selected_options?: Array<{ name?: string; groupName?: string }> | null;
 };
 
 type ReceiptOrder = {
@@ -126,6 +128,18 @@ export default function OrderReceipt({
             <p className="font-medium">
               {item.product_name}
             </p>
+
+            {item.variant_label && (
+              <p className="text-[10px]">{item.variant_label}</p>
+            )}
+
+            {Array.isArray(item.selected_options) && item.selected_options.length > 0 && (
+              <p className="text-[10px] leading-4">
+                {item.selected_options
+                  .map((option) => `${option.groupName ? `${option.groupName}: ` : ""}${option.name ?? "Option"}`)
+                  .join(" · ")}
+              </p>
+            )}
 
             <div className="flex justify-between gap-3">
               <span>

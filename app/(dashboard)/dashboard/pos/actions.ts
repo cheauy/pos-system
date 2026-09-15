@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 export type CheckoutItem = {
   productId: string;
   quantity: number;
+  optionIds?: string[];
 };
 
 type PaymentMethod =
@@ -47,7 +48,7 @@ const allowedPaymentMethods: PaymentMethod[] = [
 export async function checkoutOrder(
   input: CheckoutInput,
 ): Promise<CheckoutResult> {
-  await requirePermission("pos.access");
+  const business = await requirePermission("pos.access");
 
   // Validate cart
   if (
@@ -65,7 +66,14 @@ export async function checkoutOrder(
       typeof item.productId === "string" &&
       item.productId.trim().length > 0 &&
       Number.isInteger(item.quantity) &&
-      item.quantity > 0,
+      item.quantity > 0 &&
+      (item.optionIds === undefined ||
+        (Array.isArray(item.optionIds) &&
+          item.optionIds.every(
+            (optionId) =>
+              typeof optionId === "string" &&
+              optionId.trim().length > 0,
+          ))),
   );
 
   if (!validItems) {
@@ -140,19 +148,24 @@ export async function checkoutOrder(
   }
 
   const { data, error } = await supabase.rpc(
-  "checkout_order",
-  {
-    p_items: input.items,
-    p_payment_method: input.paymentMethod,
-    p_amount_paid: amountPaid,
-    p_customer_id: input.customerId,
-    p_discount: discount,
-    p_delivery_fee: deliveryFee,
-  },
-);
+    "checkout_order_with_options",
+    {
+      p_business_id: business.id,
+      p_items: input.items.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        optionIds: item.optionIds ?? [],
+      })),
+      p_payment_method: input.paymentMethod,
+      p_amount_paid: amountPaid,
+      p_customer_id: input.customerId,
+      p_discount: discount,
+      p_delivery_fee: deliveryFee,
+    },
+  );
 
   if (error) {
-    console.error("checkout_order RPC error:", error);
+    console.error("checkout_order_with_options RPC error:", error);
 
     return {
       success: false,

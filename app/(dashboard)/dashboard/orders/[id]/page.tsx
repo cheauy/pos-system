@@ -36,7 +36,11 @@ type OrderItem = {
   unit_price: number;
   subtotal: number;
   variant_label: string | null;
-  selected_options: Array<{ name?: string }> | null;
+  selected_options: Array<{
+    name?: string;
+    groupName?: string;
+    priceAdjustment?: number;
+  }> | null;
   products:
     | ProductRelation
     | ProductRelation[]
@@ -280,10 +284,22 @@ const remainingLineTotal =
 
     return {
       id: item.id,
-      product_name:
-        item.product_name ||
-        getProduct(item.products)?.name ||
-        "Product",
+      product_name: (() => {
+        const baseName =
+          item.product_name ||
+          getProduct(item.products)?.name ||
+          "Product";
+        const optionLabel = Array.isArray(item.selected_options)
+          ? item.selected_options
+              .map((option) => option.name)
+              .filter(Boolean)
+              .join(", ")
+          : "";
+        const detail = [item.variant_label, optionLabel]
+          .filter(Boolean)
+          .join(" · ");
+        return detail ? `${baseName} · ${detail}` : baseName;
+      })(),
       quantity: purchasedQuantity,
       unit_price: Number(item.unit_price),
       returned_quantity: returnedQuantity,
@@ -676,6 +692,27 @@ const itemName =
                                 SKU: {product.sku}
                               </p>
                             )}
+
+                            {originalItem.variant_label && (
+                              <p className="mt-1 text-xs font-medium text-blue-600">
+                                {originalItem.variant_label}
+                              </p>
+                            )}
+
+                            {Array.isArray(originalItem.selected_options) &&
+                              originalItem.selected_options.length > 0 && (
+                                <div className="mt-2 flex max-w-md flex-wrap gap-1">
+                                  {originalItem.selected_options.map((option, index) => (
+                                    <span
+                                      key={`${option.name ?? "option"}-${index}`}
+                                      className="rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-800"
+                                    >
+                                      {option.groupName ? `${option.groupName}: ` : ""}
+                                      {option.name ?? "Option"}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                           </div>
                         </div>
                       </td>
@@ -944,6 +981,21 @@ function Receipt({
                 >
                   <div>
                     <p>{itemName}</p>
+
+                    {item.variant_label && (
+                      <p className="text-[11px]">{item.variant_label}</p>
+                    )}
+
+                    {Array.isArray(item.selected_options) &&
+                      item.selected_options.length > 0 && (
+                        <p className="text-[11px] leading-4">
+                          {item.selected_options
+                            .map((option) =>
+                              `${option.groupName ? `${option.groupName}: ` : ""}${option.name ?? "Option"}`,
+                            )
+                            .join(" · ")}
+                        </p>
+                      )}
 
                     <p className="text-xs">
                       $

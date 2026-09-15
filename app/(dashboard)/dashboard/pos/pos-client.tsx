@@ -36,8 +36,41 @@ type Product = {
   variant_group_id: string | null;
 };
 
+type ProductOption = {
+  id: string;
+  product_id: string;
+  group_id: string;
+  name: string;
+  price_adjustment: number;
+  is_default: boolean;
+  is_active: boolean;
+  sort_order: number;
+};
+
+type ProductOptionGroup = {
+  id: string;
+  product_id: string;
+  name: string;
+  selection_type: "single" | "multiple";
+  is_required: boolean;
+  min_selections: number;
+  max_selections: number;
+  sort_order: number;
+};
+
+type SelectedOptionSnapshot = {
+  id: string;
+  name: string;
+  groupName: string;
+  priceAdjustment: number;
+};
+
 type CartItem = Product & {
+  cartKey: string;
   quantity: number;
+  optionIds: string[];
+  selectedOptions: SelectedOptionSnapshot[];
+  configuredUnitPrice: number;
 };
 
 type ShoeProductGroup = {
@@ -68,11 +101,15 @@ export default function PosClient({
   categories,
   customers,
   businessType,
+  optionGroups,
+  options,
 }: {
   products: Product[];
   categories: Category[];
   customers: Customer[];
   businessType: string;
+  optionGroups: ProductOptionGroup[];
+  options: ProductOption[];
 })  {
   const [customerId, setCustomerId] =
   useState("");
@@ -82,7 +119,10 @@ export default function PosClient({
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedShoeGroup, setSelectedShoeGroup] =
     useState<ShoeProductGroup | null>(null);
+  const [selectedConfigurableProduct, setSelectedConfigurableProduct] =
+    useState<Product | null>(null);
   const isShoesMode = businessType === "shoes";
+  const isMilkTeaMode = businessType === "milk_tea";
   const [paymentMethod, setPaymentMethod] =
   useState<PaymentMethod>("cod");
   const [amountPaid, setAmountPaid] = useState("");
@@ -179,9 +219,7 @@ const [deliveryFee, setDeliveryFee] = useState("");
 
 const subtotal = cart.reduce(
   (sum, item) =>
-    sum +
-    Number(item.selling_price) *
-      item.quantity,
+    sum + item.configuredUnitPrice * item.quantity,
   0,
 );
 
@@ -222,6 +260,14 @@ const change =
     : 0;
 
   function addToCart(product: Product) {
+    addConfiguredToCart(product, [], []);
+  }
+
+  function addConfiguredToCart(
+    product: Product,
+    optionIds: string[],
+    selectedOptions: SelectedOptionSnapshot[],
+  ) {
     setMessage("");
 
     if (product.stock_quantity <= 0) {
@@ -229,26 +275,35 @@ const change =
       return;
     }
 
+    const normalizedOptionIds = [...optionIds].sort();
+    const cartKey = `${product.id}:${normalizedOptionIds.join(",")}`;
+    const optionTotal = selectedOptions.reduce(
+      (sum, option) => sum + Number(option.priceAdjustment || 0),
+      0,
+    );
+    const configuredUnitPrice =
+      Number(product.selling_price) + optionTotal;
+
     setCart((currentCart) => {
       const existing = currentCart.find(
-        (item) => item.id === product.id,
+        (item) => item.cartKey === cartKey,
       );
 
+      const currentProductQuantity = currentCart
+        .filter((item) => item.id === product.id)
+        .reduce((sum, item) => sum + item.quantity, 0);
+
+      if (currentProductQuantity >= product.stock_quantity) {
+        setMessage(
+          `Only ${product.stock_quantity} units are available.`,
+        );
+        return currentCart;
+      }
+
       if (existing) {
-        if (existing.quantity >= product.stock_quantity) {
-          setMessage(
-            `Only ${product.stock_quantity} units are available.`,
-          );
-
-          return currentCart;
-        }
-
         return currentCart.map((item) =>
-          item.id === product.id
-            ? {
-                ...item,
-                quantity: item.quantity + 1,
-              }
+          item.cartKey === cartKey
+            ? { ...item, quantity: item.quantity + 1 }
             : item,
         );
       }
@@ -257,14 +312,18 @@ const change =
         ...currentCart,
         {
           ...product,
+          cartKey,
           quantity: 1,
+          optionIds: normalizedOptionIds,
+          selectedOptions,
+          configuredUnitPrice,
         },
       ];
     });
   }
 
   function updateQuantity(
-    productId: string,
+    cartKey: string,
     changeValue: number,
   ) {
     setMessage("");
@@ -272,17 +331,23 @@ const change =
     setCart((currentCart) =>
       currentCart
         .map((item) => {
-          if (item.id !== productId) {
+          if (item.cartKey !== cartKey) {
             return item;
           }
 
           const nextQuantity = item.quantity + changeValue;
 
-          if (nextQuantity > item.stock_quantity) {
+          const totalOtherConfigurations = currentCart
+            .filter(
+              (other) =>
+                other.id === item.id && other.cartKey !== item.cartKey,
+            )
+            .reduce((sum, other) => sum + other.quantity, 0);
+
+          if (nextQuantity + totalOtherConfigurations > item.stock_quantity) {
             setMessage(
               `Only ${item.stock_quantity} units of ${item.name} are available.`,
             );
-
             return item;
           }
 
@@ -295,9 +360,9 @@ const change =
     );
   }
 
-  function removeFromCart(productId: string) {
+  function removeFromCart(cartKey: string) {
     setCart((currentCart) =>
-      currentCart.filter((item) => item.id !== productId),
+      currentCart.filter((item) => item.cartKey !== cartKey),
     );
   }
 
@@ -374,6 +439,7 @@ const result = await checkoutOrder({
   items: cart.map((item) => ({
     productId: item.id,
     quantity: item.quantity,
+    optionIds: item.optionIds,
   })),
 
   paymentMethod,
@@ -526,7 +592,13 @@ window.location.href =
                 key={product.id}
                 type="button"
                 disabled={product.stock_quantity <= 0}
-                onClick={() => addToCart(product)}
+                onClick={() => {
+                  if (product.product_type === "configurable") {
+                    setSelectedConfigurableProduct(product);
+                  } else {
+                    addToCart(product);
+                  }
+                }}
                 className="rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
@@ -603,7 +675,7 @@ window.location.href =
           ) : (
             <div className="divide-y divide-slate-200">
               {cart.map((item) => (
-                <div key={item.id} className="p-5">
+                <div key={item.cartKey} className="p-5">
                   <div className="flex justify-between gap-3">
                     <div>
                       <h3 className="font-semibold text-slate-900">
@@ -618,19 +690,31 @@ window.location.href =
                         </p>
                       )}
 
+                      {item.selectedOptions.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {item.selectedOptions.map((option) => (
+                            <span
+                              key={option.id}
+                              className="rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-800"
+                            >
+                              {option.groupName}: {option.name}
+                              {option.priceAdjustment > 0
+                                ? ` +$${option.priceAdjustment.toFixed(2)}`
+                                : ""}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
                       <p className="mt-1 text-sm text-slate-500">
-                        $
-                        {Number(
-                          item.selling_price,
-                        ).toFixed(2)}{" "}
-                        each
+                        ${item.configuredUnitPrice.toFixed(2)} each
                       </p>
                     </div>
 
                     <button
                       type="button"
                       onClick={() =>
-                        removeFromCart(item.id)
+                        removeFromCart(item.cartKey)
                       }
                       className="h-fit rounded-lg p-2 text-red-600 hover:bg-red-50"
                     >
@@ -643,7 +727,7 @@ window.location.href =
                       <button
                         type="button"
                         onClick={() =>
-                          updateQuantity(item.id, -1)
+                          updateQuantity(item.cartKey, -1)
                         }
                         className="p-2 hover:bg-slate-100"
                       >
@@ -657,7 +741,7 @@ window.location.href =
                       <button
                         type="button"
                         onClick={() =>
-                          updateQuantity(item.id, 1)
+                          updateQuantity(item.cartKey, 1)
                         }
                         className="p-2 hover:bg-slate-100"
                       >
@@ -668,7 +752,7 @@ window.location.href =
                     <p className="font-bold text-slate-900">
                       $
                       {(
-                        Number(item.selling_price) *
+                        item.configuredUnitPrice *
                         item.quantity
                       ).toFixed(2)}
                     </p>
@@ -884,6 +968,28 @@ window.location.href =
       </section>
       </div>
 
+      {selectedConfigurableProduct && (
+        <ConfigurableProductModal
+          product={selectedConfigurableProduct}
+          groups={optionGroups.filter(
+            (group) => group.product_id === selectedConfigurableProduct.id,
+          )}
+          options={options.filter(
+            (option) => option.product_id === selectedConfigurableProduct.id,
+          )}
+          isMilkTea={isMilkTeaMode}
+          onClose={() => setSelectedConfigurableProduct(null)}
+          onAdd={(optionIds, selectedOptions) => {
+            addConfiguredToCart(
+              selectedConfigurableProduct,
+              optionIds,
+              selectedOptions,
+            );
+            setSelectedConfigurableProduct(null);
+          }}
+        />
+      )}
+
       {selectedShoeGroup && (
         <ShoeVariantModal
           group={selectedShoeGroup}
@@ -919,6 +1025,205 @@ function CategoryButton({
     >
       {children}
     </button>
+  );
+}
+
+function ConfigurableProductModal({
+  product,
+  groups,
+  options,
+  isMilkTea,
+  onClose,
+  onAdd,
+}: {
+  product: Product;
+  groups: ProductOptionGroup[];
+  options: ProductOption[];
+  isMilkTea: boolean;
+  onClose: () => void;
+  onAdd: (optionIds: string[], selectedOptions: SelectedOptionSnapshot[]) => void;
+}) {
+  const [selectedByGroup, setSelectedByGroup] = useState<Record<string, string[]>>(() => {
+    const initial: Record<string, string[]> = {};
+    for (const group of groups) {
+      const groupOptions = options.filter((option) => option.group_id === group.id);
+      const defaults = groupOptions.filter((option) => option.is_default).map((option) => option.id);
+      if (group.selection_type === "single") {
+        const first = defaults[0] ?? (group.is_required ? groupOptions[0]?.id : undefined);
+        initial[group.id] = first ? [first] : [];
+      } else {
+        initial[group.id] = defaults.slice(0, group.max_selections);
+      }
+    }
+    return initial;
+  });
+  const [error, setError] = useState("");
+
+  const selectedIds = Object.values(selectedByGroup).flat();
+  const selectedOptions = selectedIds
+    .map((id) => {
+      const option = options.find((row) => row.id === id);
+      if (!option) return null;
+      const group = groups.find((row) => row.id === option.group_id);
+      return {
+        id: option.id,
+        name: option.name,
+        groupName: group?.name ?? "Option",
+        priceAdjustment: Number(option.price_adjustment),
+      } satisfies SelectedOptionSnapshot;
+    })
+    .filter((value): value is SelectedOptionSnapshot => value !== null);
+
+  const optionTotal = selectedOptions.reduce(
+    (sum, option) => sum + option.priceAdjustment,
+    0,
+  );
+  const unitPrice = Number(product.selling_price) + optionTotal;
+
+  function toggleOption(group: ProductOptionGroup, optionId: string) {
+    setError("");
+    setSelectedByGroup((current) => {
+      const selected = current[group.id] ?? [];
+      if (group.selection_type === "single") {
+        return { ...current, [group.id]: [optionId] };
+      }
+      if (selected.includes(optionId)) {
+        return {
+          ...current,
+          [group.id]: selected.filter((id) => id !== optionId),
+        };
+      }
+      if (selected.length >= group.max_selections) {
+        setError(`Choose up to ${group.max_selections} options for ${group.name}.`);
+        return current;
+      }
+      return { ...current, [group.id]: [...selected, optionId] };
+    });
+  }
+
+  function handleAdd() {
+    for (const group of groups) {
+      const count = (selectedByGroup[group.id] ?? []).length;
+      if (group.is_required && count === 0) {
+        setError(`Choose ${group.name}.`);
+        return;
+      }
+      if (count < group.min_selections || count > group.max_selections) {
+        setError(
+          `${group.name} requires ${group.min_selections === group.max_selections
+            ? group.min_selections
+            : `${group.min_selections}-${group.max_selections}`} selection${group.max_selections === 1 ? "" : "s"}.`,
+        );
+        return;
+      }
+    }
+    onAdd(selectedIds, selectedOptions);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="max-h-[94vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-5">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-600">
+              {isMilkTea ? "Customize drink" : "Configure product"}
+            </p>
+            <h2 className="mt-1 text-xl font-bold text-slate-950">{product.name}</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {isMilkTea
+                ? "Choose cup size, sweetness, ice, milk and toppings."
+                : "Choose the options before adding this item to the sale."}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="space-y-5 p-5">
+          {groups.length === 0 ? (
+            <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
+              This configurable product has no option groups yet.
+            </div>
+          ) : (
+            groups.map((group) => {
+              const groupOptions = options.filter((option) => option.group_id === group.id);
+              const selected = selectedByGroup[group.id] ?? [];
+              return (
+                <section key={group.id} className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">{group.name}</h3>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {group.selection_type === "single"
+                          ? "Choose one"
+                          : `Choose ${group.min_selections}-${group.max_selections}`}
+                        {!group.is_required ? " · Optional" : ""}
+                      </p>
+                    </div>
+                    {selected.length > 0 && (
+                      <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                        {selected.length} selected
+                      </span>
+                    )}
+                  </div>
+
+                  <div className={`mt-3 grid gap-2 ${isMilkTea ? "grid-cols-2 sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+                    {groupOptions.map((option) => {
+                      const active = selected.includes(option.id);
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => toggleOption(group, option.id)}
+                          className={`rounded-xl border px-3 py-3 text-left transition ${
+                            active
+                              ? "border-amber-500 bg-amber-50 ring-2 ring-amber-100"
+                              : "border-slate-200 bg-white hover:border-slate-300"
+                          }`}
+                        >
+                          <span className="block text-sm font-semibold text-slate-900">{option.name}</span>
+                          <span className="mt-1 block text-xs text-slate-500">
+                            {Number(option.price_adjustment) > 0
+                              ? `+$${Number(option.price_adjustment).toFixed(2)}`
+                              : "Included"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })
+          )}
+
+          {error && (
+            <div className="rounded-xl bg-red-50 p-3 text-sm font-medium text-red-700">{error}</div>
+          )}
+
+          <div className="sticky bottom-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-lg">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs text-slate-500">Configured price</p>
+                <p className="text-sm text-slate-600">
+                  Base ${Number(product.selling_price).toFixed(2)}
+                  {optionTotal > 0 ? ` + options $${optionTotal.toFixed(2)}` : ""}
+                </p>
+              </div>
+              <p className="text-2xl font-bold text-amber-600">${unitPrice.toFixed(2)}</p>
+            </div>
+            <button
+              type="button"
+              disabled={groups.length === 0 || product.stock_quantity <= 0}
+              onClick={handleAdd}
+              className="w-full rounded-xl bg-amber-600 px-4 py-3 font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Add Customized {isMilkTea ? "Drink" : "Item"} · ${unitPrice.toFixed(2)}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
