@@ -1,0 +1,7 @@
+"use client";
+import { useState } from "react";
+import { Download } from "lucide-react";
+import { buildExport, type ExportEntity } from "./actions";
+const entities:[ExportEntity,string][]=[["products","Products"],["inventory","Branch Inventory"],["customers","Customers"],["orders","Orders"],["expenses","Expenses"],["suppliers","Suppliers"],["shifts","Register Shifts"],["credit","Customer Credit"]];
+export default function ExportClient(){const [busy,setBusy]=useState(""); async function run(entity:ExportEntity,format:"csv"|"json"){setBusy(`${entity}-${format}`); try{const out=await buildExport(entity,format); const blob=new Blob([out.content],{type:out.mime}); const url=URL.createObjectURL(blob); const a=document.createElement("a");a.href=url;a.download=out.filename;a.click();URL.revokeObjectURL(url)}finally{setBusy("")}} return <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{entities.map(([id,label])=><div key={id} className="rounded-2xl border bg-white p-5 shadow-sm"><h3 className="font-semibold">{label}</h3><p className="mt-1 text-sm text-slate-500">Tenant-scoped export. Secrets and service credentials are never included.</p><div className="mt-4 flex gap-2"><button onClick={()=>run(id,"csv")} disabled={!!busy} className={btn}><Download size={16}/> CSV</button><button onClick={()=>run(id,"json")} disabled={!!busy} className={btn}>JSON</button></div></div>)}</div>}
+const btn="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50";

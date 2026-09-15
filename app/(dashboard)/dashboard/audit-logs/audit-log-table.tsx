@@ -294,6 +294,14 @@ function AuditLogDialog({
             {log.description ?? "—"}
           </Detail>
 
+          <Detail label="IP address">
+            {log.ip_address ?? "—"}
+          </Detail>
+
+          <Detail label="User agent">
+            <span className="break-all text-xs">{log.user_agent ?? "—"}</span>
+          </Detail>
+
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
               Metadata

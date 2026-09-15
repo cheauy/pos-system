@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
+import { headers } from "next/headers";
 
 type AuditAction =
   | "create"
@@ -9,7 +10,11 @@ type AuditAction =
   | "return"
   | "login"
   | "logout"
-  | "stock_adjustment";
+  | "stock_adjustment"
+  | "open"
+  | "close"
+  | "cash_in"
+  | "cash_out";
 
 type AuditEntity =
   | "order"
@@ -22,7 +27,8 @@ type AuditEntity =
   | "business"
   | "coupon"
   | "storefront"
-  | "user";
+  | "user"
+  | "register_shift";
 
 type AuditLogParams = {
   action: AuditAction;
@@ -52,6 +58,13 @@ export async function createAuditLog({
   // isolated correctly when one user belongs to multiple businesses.
   const business = await getCurrentBusiness();
 
+  const requestHeaders = await headers();
+  const forwardedFor = requestHeaders.get("x-forwarded-for");
+  const ipAddress = forwardedFor?.split(",")[0]?.trim() ||
+    requestHeaders.get("x-real-ip") ||
+    null;
+  const userAgent = requestHeaders.get("user-agent");
+
   const { error } = await supabase
     .from("audit_logs")
     .insert({
@@ -62,6 +75,8 @@ export async function createAuditLog({
       entity_id: entityId,
       description,
       metadata,
+      ip_address: ipAddress,
+      user_agent: userAgent,
     });
 
   if (error) {

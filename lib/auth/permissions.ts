@@ -54,6 +54,11 @@ export const permissions = [
     "purchases.cancel",
   "inventory.view",
   "audit_logs.view",
+  "register.manage",
+  "locations.manage",
+  "transfers.manage",
+  "credit.manage",
+  "exports.manage",
 ] as const;
 
 export type Permission =
@@ -91,6 +96,10 @@ const adminPermissions: Permission[] = [
   "reports.view",
   "categories.manage",
   "inventory.view",
+  "register.manage",
+  "locations.manage",
+  "transfers.manage",
+  "credit.manage",
 ];
 
 const managerPermissions: Permission[] = [
@@ -112,6 +121,9 @@ const managerPermissions: Permission[] = [
   "reports.view",
   "categories.manage",
   "inventory.view",
+  "register.manage",
+  "transfers.manage",
+  "credit.manage",
 ];
 
 const cashierPermissions: Permission[] = [
@@ -128,6 +140,7 @@ const cashierPermissions: Permission[] = [
   "customers.view",
   "customers.create",
   "customers.update",
+  "register.manage",
 ];
 
 const editorPermissions: Permission[] = [

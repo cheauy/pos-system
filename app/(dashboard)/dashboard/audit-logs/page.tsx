@@ -13,6 +13,8 @@ export type AuditLog = {
   description: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
+  ip_address: string | null;
+  user_agent: string | null;
 
   profiles: {
     full_name: string | null;
@@ -56,6 +58,8 @@ export default async function AuditLogsPage() {
       business_id,
       description,
       metadata,
+      ip_address,
+      user_agent,
       created_at,
       profiles:profiles!audit_logs_user_id_fkey (
         full_name

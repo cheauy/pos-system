@@ -14,6 +14,7 @@ import {
 
 const CENTRAL_AUTH_PATHS = new Set([
   "/login",
+  "/register",
   "/forgot-password",
   "/reset-password",
   "/auth/continue",

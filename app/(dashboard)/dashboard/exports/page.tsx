@@ -1,0 +1,3 @@
+import { requirePermission } from "@/lib/auth/require-permission";
+import ExportClient from "./export-client";
+export default async function ExportsPage(){await requirePermission("exports.manage");return <main className="space-y-6"><div><h1 className="text-3xl font-bold">Backup & Export</h1><p className="mt-1 text-slate-500">Download portable CSV or JSON copies of your business data.</p></div><div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">These exports are business-data backups, not a full Supabase database backup. Authentication secrets, service-role keys and other credentials are intentionally excluded.</div><ExportClient/></main>}

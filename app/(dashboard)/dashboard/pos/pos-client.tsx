@@ -95,7 +95,8 @@ type PaymentMethod =
   | "cod"
   | "deposit"
   | "bank_transfer"
-  | "other";
+  | "other"
+  | "credit";
 
 export default function PosClient({
   products,
@@ -255,7 +256,8 @@ const finalAmountPaid =
 
 const remainingBalance =
   paymentMethod === "cod" ||
-  paymentMethod === "deposit"
+  paymentMethod === "deposit" ||
+  paymentMethod === "credit"
     ? Math.max(0, total - finalAmountPaid)
     : 0;
 
@@ -426,6 +428,11 @@ if (
   setMessage(
     "Deposit must be greater than $0 and less than the total.",
   );
+  return;
+}
+
+if (paymentMethod === "credit" && !customerId) {
+  setMessage("Choose a customer before using customer credit.");
   return;
 }
 
@@ -850,6 +857,7 @@ window.location.href =
   </option>
 
   <option value="other">Other</option>
+  <option value="credit">Customer Credit / Debt</option>
 </select>
 <div className="mt-5 grid gap-4 sm:grid-cols-2">
   <div>
@@ -888,6 +896,12 @@ window.location.href =
     />
   </div>
 </div>
+
+{paymentMethod === "credit" && (
+  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+    This sale will be charged to the selected customer's TENH credit account using the trusted server-calculated order total.
+  </div>
+)}
 
 {(paymentMethod === "deposit"
   ) && (

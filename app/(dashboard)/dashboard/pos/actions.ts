@@ -17,7 +17,8 @@ type PaymentMethod =
   | "cod"
   | "deposit"
   | "bank_transfer"
-  | "other";
+  | "other"
+  | "credit";
 
 type CheckoutInput = {
   items: CheckoutItem[];
@@ -43,6 +44,7 @@ const allowedPaymentMethods: PaymentMethod[] = [
   "deposit",
   "bank_transfer",
   "other",
+  "credit",
 ];
 
 export async function checkoutOrder(
@@ -96,8 +98,17 @@ export async function checkoutOrder(
     };
   }
 
+  if (input.paymentMethod === "credit" && !input.customerId) {
+    return {
+      success: false,
+      message: "Choose a customer before using customer credit.",
+    };
+  }
+
   // Validate amount paid
-  const amountPaid = Number(input.amountPaid);
+  const amountPaid = input.paymentMethod === "credit"
+    ? 0
+    : Number(input.amountPaid);
 
   if (
     !Number.isFinite(amountPaid) ||
@@ -156,7 +167,10 @@ export async function checkoutOrder(
         quantity: item.quantity,
         optionIds: item.optionIds ?? [],
       })),
-      p_payment_method: input.paymentMethod,
+      p_payment_method:
+        input.paymentMethod === "credit"
+          ? "cod"
+          : input.paymentMethod,
       p_amount_paid: amountPaid,
       p_customer_id: input.customerId,
       p_discount: discount,
@@ -187,6 +201,102 @@ export async function checkoutOrder(
       message:
         "The order was created, but no order ID was returned.",
     };
+  }
+
+  if (input.paymentMethod === "credit") {
+    const { data: createdOrder, error: createdOrderError } = await supabase
+      .from("orders")
+      .select("id, total, customer_id")
+      .eq("id", orderId)
+      .eq("business_id", business.id)
+      .maybeSingle();
+
+    if (createdOrderError || !createdOrder?.customer_id) {
+      await supabase.rpc("cancel_order", {
+        p_order_id: orderId,
+        p_reason: "Customer credit setup failed",
+      });
+      return {
+        success: false,
+        message: createdOrderError?.message ?? "Unable to create customer credit sale.",
+      };
+    }
+
+    const creditAmount = Number(createdOrder.total);
+    const { error: creditError } = await supabase.rpc(
+      "post_customer_credit",
+      {
+        p_business_id: business.id,
+        p_customer_id: createdOrder.customer_id,
+        p_type: "charge",
+        p_amount: creditAmount,
+        p_note: "POS credit sale",
+        p_reference: orderId,
+        p_order_id: orderId,
+      },
+    );
+
+    if (creditError) {
+      await supabase.rpc("cancel_order", {
+        p_order_id: orderId,
+        p_reason: `Customer credit failed: ${creditError.message}`,
+      });
+      return { success: false, message: creditError.message };
+    }
+
+    await supabase
+      .from("orders")
+      .update({
+        payment_method: "credit",
+        payment_status: "unpaid",
+        amount_paid: 0,
+        remaining_balance: creditAmount,
+        credit_amount: creditAmount,
+      })
+      .eq("id", orderId)
+      .eq("business_id", business.id);
+  }
+
+  // Attach the order to the cashier's open register branch (or the default
+  // branch) and mirror the global stock deduction into branch inventory.
+  const { data: openShift } = await supabase
+    .from("cash_register_shifts")
+    .select("id, location_id")
+    .eq("business_id", business.id)
+    .eq("opened_by", user.id)
+    .eq("status", "open")
+    .order("opened_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let locationId = openShift?.location_id ?? null;
+
+  if (!locationId) {
+    const { data: defaultLocation } = await supabase
+      .from("business_locations")
+      .select("id")
+      .eq("business_id", business.id)
+      .eq("is_default", true)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    locationId = defaultLocation?.id ?? null;
+  }
+
+  if (locationId) {
+    const { error: locationError } = await supabase.rpc(
+      "assign_pos_order_to_location",
+      {
+        p_business_id: business.id,
+        p_order_id: orderId,
+        p_location_id: locationId,
+        p_shift_id: openShift?.id ?? null,
+      },
+    );
+
+    if (locationError) {
+      console.error("Unable to attach POS order to branch:", locationError);
+    }
   }
 
   await createAuditLog({

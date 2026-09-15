@@ -38,6 +38,9 @@ type Order = {
   order_number: string;
   total: number;
   status: string;
+  payment_method: string | null;
+  amount_paid: number | null;
+  credit_amount: number | null;
   created_at: string;
   order_items: OrderItem[];
 };
@@ -87,6 +90,9 @@ export default async function ReportsPage({
       order_number,
       total,
       status,
+      payment_method,
+      amount_paid,
+      credit_amount,
       created_at,
       order_items (
         product_id,
@@ -184,6 +190,19 @@ export default async function ReportsPage({
 
   const topProducts = calculateTopProducts(orders);
 
+  const paymentBreakdown = orders.reduce<Record<string, number>>(
+    (result, order) => {
+      const key = order.payment_method || "unknown";
+      result[key] = (result[key] ?? 0) + Number(order.total);
+      return result;
+    },
+    {},
+  );
+
+  const totalCustomerCredit = orders.reduce(
+    (sum, order) => sum + Number(order.credit_amount ?? 0),
+    0,
+  );
 
   const dailySales = calculateDailySales(
     orders,
@@ -306,6 +325,23 @@ export default async function ReportsPage({
     expenseCategories={expenseCategories}
   />
 </div>
+
+      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">Payment Breakdown</h2>
+            <p className="mt-1 text-sm text-slate-500">Completed sales by payment method. Customer credit created in this period: {formatCurrency(totalCustomerCredit)}.</p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Object.entries(paymentBreakdown).map(([method, amount]) => (
+            <div key={method} className="rounded-xl bg-slate-50 p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{method.replaceAll("_", " ")}</div>
+              <div className="mt-1 text-xl font-bold text-slate-900">{formatCurrency(amount)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_1fr]">
        

@@ -7,6 +7,11 @@ import type { ElementType } from "react";
 
 import {
   BadgePercent,
+  ArrowRightLeft,
+  Building2,
+  Download,
+  HandCoins,
+  Landmark,
   BarChart3,
   Barcode,
   Boxes,
@@ -102,6 +107,11 @@ const menuGroups: MenuGroup[] = [
         icon: Boxes,
       },
       {
+        name: "Stock Transfers",
+        href: "/dashboard/stock-transfers",
+        icon: ArrowRightLeft,
+      },
+      {
         name: "Barcode & Labels",
         href: "/dashboard/barcodes",
         icon: Barcode,
@@ -147,6 +157,16 @@ const menuGroups: MenuGroup[] = [
         icon: WalletCards,
       },
       {
+        name: "Cash Register",
+        href: "/dashboard/register",
+        icon: Landmark,
+      },
+      {
+        name: "Customer Credit",
+        href: "/dashboard/customer-credit",
+        icon: HandCoins,
+      },
+      {
         name: "Reports",
         href: "/dashboard/reports",
         icon: BarChart3,
@@ -157,6 +177,16 @@ const menuGroups: MenuGroup[] = [
  {
     title: "Settings",
     items: [
+      {
+        name: "Branches",
+        href: "/dashboard/locations",
+        icon: Building2,
+      },
+      {
+        name: "Backup & Export",
+        href: "/dashboard/exports",
+        icon: Download,
+      },
       {
         name: "Settings",
         href: "/dashboard/settings",

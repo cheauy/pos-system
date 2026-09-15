@@ -7,6 +7,7 @@ import {
   requirePermission,
 } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
+import { createAuditLog } from "@/lib/audit/create-audit-log";
 
 function getRequiredText(
   formData: FormData,
@@ -88,6 +89,22 @@ export async function createExpense(
       description,
       amount,
       expense_date: expenseDate,
+      location_id: (() => {
+        const value = formData.get("locationId");
+        return typeof value === "string" && value.trim() ? value.trim() : null;
+      })(),
+      payee: (() => {
+        const value = formData.get("payee");
+        return typeof value === "string" && value.trim() ? value.trim() : null;
+      })(),
+      payment_method: (() => {
+        const value = formData.get("paymentMethod");
+        return typeof value === "string" && value.trim() ? value.trim() : null;
+      })(),
+      reference: (() => {
+        const value = formData.get("reference");
+        return typeof value === "string" && value.trim() ? value.trim() : null;
+      })(),
     });
 
   if (error) {
@@ -95,6 +112,13 @@ export async function createExpense(
       `Unable to save expense: ${error.message}`,
     );
   }
+
+  await createAuditLog({
+    action: "create",
+    entityType: "expense",
+    description: `Recorded expense: ${description}`,
+    metadata: { category, amount, expense_date: expenseDate },
+  });
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/expenses");
@@ -147,6 +171,13 @@ export async function deleteExpense(
       `Unable to delete expense: ${error.message}`,
     );
   }
+
+  await createAuditLog({
+    action: "delete",
+    entityType: "expense",
+    entityId: expenseId,
+    description: "Deleted expense",
+  });
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/expenses");

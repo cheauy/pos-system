@@ -22,6 +22,10 @@ type Expense = {
   amount: number;
   expense_date: string;
   created_at: string;
+  payee: string | null;
+  payment_method: string | null;
+  reference: string | null;
+  location_id: string | null;
 };
 
 export default async function ExpensesPage() {
@@ -38,6 +42,10 @@ export default async function ExpensesPage() {
       business_id,
       amount,
       expense_date,
+      payee,
+      payment_method,
+      reference,
+      location_id,
       created_at
     `)
     .eq("business_id", business.id)
@@ -49,6 +57,13 @@ export default async function ExpensesPage() {
     });
 
   const expenses = (data ?? []) as Expense[];
+
+  const { data: locations } = await supabase
+    .from("business_locations")
+    .select("id, name")
+    .eq("business_id", business.id)
+    .eq("is_active", true)
+    .order("is_default", { ascending: false });
 
   const today = getLocalDateString(new Date());
 
@@ -234,6 +249,33 @@ export default async function ExpensesPage() {
               />
             </FormField>
 
+
+            <FormField label="Branch" htmlFor="locationId">
+              <select id="locationId" name="locationId" className={inputClass}>
+                <option value="">Default branch</option>
+                {(locations ?? []).map((location) => (
+                  <option key={location.id} value={location.id}>{location.name}</option>
+                ))}
+              </select>
+            </FormField>
+
+            <FormField label="Payee / Vendor" htmlFor="payee">
+              <input id="payee" name="payee" className={inputClass} placeholder="Who was paid?" />
+            </FormField>
+
+            <FormField label="Payment method" htmlFor="paymentMethod">
+              <select id="paymentMethod" name="paymentMethod" className={inputClass} defaultValue="cash">
+                <option value="cash">Cash</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="card">Card</option>
+                <option value="other">Other</option>
+              </select>
+            </FormField>
+
+            <FormField label="Reference" htmlFor="reference">
+              <input id="reference" name="reference" className={inputClass} placeholder="Invoice / receipt reference" />
+            </FormField>
+
             <button
               type="submit"
               className="w-full rounded-xl bg-orange-600 px-5 py-3 font-semibold text-white transition hover:bg-orange-700"
@@ -317,6 +359,11 @@ export default async function ExpensesPage() {
 
                       <td className="max-w-md px-6 py-4 text-sm text-slate-700">
                         {expense.description}
+                        {(expense.payee || expense.payment_method || expense.reference) && (
+                          <div className="mt-1 text-xs text-slate-400">
+                            {[expense.payee, expense.payment_method?.replaceAll("_", " "), expense.reference].filter(Boolean).join(" · ")}
+                          </div>
+                        )}
                       </td>
 
                       <td className="whitespace-nowrap px-6 py-4 text-right font-semibold text-red-600">

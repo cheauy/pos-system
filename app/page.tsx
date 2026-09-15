@@ -24,12 +24,20 @@ export default function Home() {
             </div>
           </div>
 
-          <Link
-            href="/login"
-            className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
-          >
-            Sign in
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/login"
+              className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-900 hover:text-white"
+            >
+              Sign in
+            </Link>
+            <Link
+              href="/register"
+              className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
+            >
+              Create store
+            </Link>
+          </div>
         </header>
 
         <section className="grid min-h-[calc(100vh-8rem)] items-center gap-12 py-16 lg:grid-cols-2">
@@ -48,10 +56,10 @@ export default function Home() {
 
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href="/login"
+                href="/register"
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-500"
               >
-                Open TENH POS
+                Create your store
                 <ArrowRight size={17} />
               </Link>
 
