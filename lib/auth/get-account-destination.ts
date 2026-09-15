@@ -53,7 +53,7 @@ export async function getAccountDestination(
   }
 
   if (!membership) {
-    return getRootUrl("/no-business");
+    return getRootUrl("/get-started");
   }
 
   const {

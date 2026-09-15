@@ -16,8 +16,10 @@ const signInErrorMessage =
 const oauthErrorMessages: Record<string, string> = {
   oauth_failed:
     "Social sign-in could not be completed. Please try again.",
-  oauth_account_not_found:
-    "No active Tenh POS account is linked to that social account. Sign in with your existing email first or create your store.",
+  oauth_email_required:
+    "Your social account did not provide an email address. Use another account or sign up with email.",
+  account_inactive:
+    "This Tenh POS account is inactive. Contact your business owner or TENH support.",
 };
 
 type OAuthProvider = "google" | "facebook";
@@ -35,6 +37,9 @@ export default function LoginPage() {
     useState<OAuthProvider | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+
+  const accountCreated = searchParams.get("registered") === "1";
 
   useEffect(() => {
     const error = searchParams.get("error");
@@ -152,6 +157,12 @@ export default function LoginPage() {
             Sign in to manage your business
           </p>
         </div>
+
+        {accountCreated && (
+          <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+            Account created. Sign in to set up your business.
+          </div>
+        )}
 
         <div className="grid gap-3">
           <button
@@ -305,7 +316,7 @@ export default function LoginPage() {
             href="/register"
             className="font-semibold text-blue-600 hover:text-blue-700 hover:underline"
           >
-            Create your store
+            Create account
           </Link>
         </p>
       </div>

@@ -1,26 +1,12 @@
 "use server";
 
-import {
-  getBusinessModeDefaults,
-  getBusinessModePreset,
-} from "@/lib/business/business-mode-presets";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import {
-  getRootUrl,
-  getTenantDashboardUrl,
-  isValidTenantSlug,
-  normalizeTenantSlug,
-} from "@/lib/tenancy/domain";
+import { getRootUrl } from "@/lib/tenancy/domain";
 
-import type { RegisterBusinessState } from "./state";
+import type { RegisterAccountState } from "./state";
 
-const SELF_REGISTRATION_MONTHS = 1;
-
-function requiredText(
-  formData: FormData,
-  key: string,
-) {
+function requiredText(formData: FormData, key: string) {
   const value = formData.get(key);
 
   if (typeof value !== "string" || !value.trim()) {
@@ -35,15 +21,14 @@ function cleanupMessage(error: unknown) {
     return error.message;
   }
 
-  return "Unable to create your Tenh POS store.";
+  return "Unable to create your Tenh POS account.";
 }
 
-export async function registerOwnerBusiness(
-  _previousState: RegisterBusinessState,
+export async function registerAccount(
+  _previousState: RegisterAccountState,
   formData: FormData,
-): Promise<RegisterBusinessState> {
+): Promise<RegisterAccountState> {
   let createdAuthUserId: string | null = null;
-  let createdBusinessId: string | null = null;
 
   try {
     // Simple bot trap. Real users never see or fill this field.
@@ -55,57 +40,15 @@ export async function registerOwnerBusiness(
       };
     }
 
-    const selectedMode = requiredText(
-      formData,
-      "businessMode",
-    );
-    const preset = getBusinessModePreset(selectedMode);
+    const fullName = requiredText(formData, "fullName");
+    const email = requiredText(formData, "email").toLowerCase();
+    const password = requiredText(formData, "password");
+    const confirmPassword = requiredText(formData, "confirmPassword");
 
-    if (!preset) {
+    if (fullName.length < 2 || fullName.length > 100) {
       return {
         success: false,
-        message: "Choose a valid business type.",
-      };
-    }
-
-    const businessName = requiredText(
-      formData,
-      "businessName",
-    );
-    const ownerName = requiredText(
-      formData,
-      "ownerName",
-    );
-    const email = requiredText(
-      formData,
-      "email",
-    ).toLowerCase();
-    const password = requiredText(
-      formData,
-      "password",
-    );
-    const confirmPassword = requiredText(
-      formData,
-      "confirmPassword",
-    );
-
-    const requestedSlug = requiredText(
-      formData,
-      "subdomain",
-    );
-    const slug = normalizeTenantSlug(requestedSlug);
-
-    if (businessName.length < 2 || businessName.length > 100) {
-      return {
-        success: false,
-        message: "Business name must be between 2 and 100 characters.",
-      };
-    }
-
-    if (ownerName.length < 2 || ownerName.length > 100) {
-      return {
-        success: false,
-        message: "Owner name must be between 2 and 100 characters.",
+        message: "Your name must be between 2 and 100 characters.",
       };
     }
 
@@ -127,40 +70,6 @@ export async function registerOwnerBusiness(
       return {
         success: false,
         message: "Passwords do not match.",
-      };
-    }
-
-    if (
-      !isValidTenantSlug(slug) ||
-      slug.length > 40 ||
-      slug !== requestedSlug.toLowerCase()
-    ) {
-      return {
-        success: false,
-        message:
-          "Choose a store address using 2–40 lowercase letters, numbers or hyphens.",
-      };
-    }
-
-    const {
-      data: existingSlug,
-      error: slugError,
-    } = await supabaseAdmin
-      .from("businesses")
-      .select("id")
-      .ilike("slug", slug)
-      .maybeSingle();
-
-    if (slugError) {
-      throw new Error(
-        `Unable to check store address: ${slugError.message}`,
-      );
-    }
-
-    if (existingSlug) {
-      return {
-        success: false,
-        message: "This Tenh POS store address is already in use.",
       };
     }
 
@@ -194,10 +103,7 @@ export async function registerOwnerBusiness(
         options: {
           emailRedirectTo: getRootUrl("/auth/continue"),
           data: {
-            full_name: ownerName,
-            business_name: businessName,
-            business_slug: slug,
-            business_type: preset.value,
+            full_name: fullName,
           },
         },
       });
@@ -206,8 +112,7 @@ export async function registerOwnerBusiness(
       return {
         success: false,
         message:
-          authError?.message ??
-          "Unable to create your owner account.",
+          authError?.message ?? "Unable to create your account.",
       };
     }
 
@@ -223,166 +128,52 @@ export async function registerOwnerBusiness(
 
     createdAuthUserId = authData.user.id;
 
-    const subscriptionStartedAt = new Date();
-    const subscriptionExpiresAt = new Date(
-      subscriptionStartedAt,
-    );
-    subscriptionExpiresAt.setMonth(
-      subscriptionExpiresAt.getMonth() +
-        SELF_REGISTRATION_MONTHS,
-    );
-
-    const {
-      data: business,
-      error: businessError,
-    } = await supabaseAdmin
-      .from("businesses")
-      .insert({
-        name: businessName,
-        slug,
-        owner_id: createdAuthUserId,
-        product_mode: preset.productMode,
-        max_staff: 3,
-        subscription_months:
-          SELF_REGISTRATION_MONTHS,
-        subscription_started_at:
-          subscriptionStartedAt.toISOString(),
-        subscription_expires_at:
-          subscriptionExpiresAt.toISOString(),
-        is_active: true,
-        disabled_at: null,
-        disabled_reason: null,
-      })
-      .select("id")
-      .single();
-
-    if (businessError || !business) {
-      throw new Error(
-        businessError?.message ??
-          "Unable to create your business workspace.",
+    const { error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .upsert(
+        {
+          id: createdAuthUserId,
+          full_name: fullName,
+          email,
+          role: "owner",
+          is_active: true,
+        },
+        { onConflict: "id" },
       );
-    }
-
-    createdBusinessId = business.id;
-
-    const { error: profileError } =
-      await supabaseAdmin
-        .from("profiles")
-        .upsert(
-          {
-            id: createdAuthUserId,
-            full_name: ownerName,
-            email,
-            role: "owner",
-            is_active: true,
-          },
-          { onConflict: "id" },
-        );
 
     if (profileError) {
       throw new Error(
-        `Unable to create owner profile: ${profileError.message}`,
+        `Unable to create your profile: ${profileError.message}`,
       );
     }
 
-    const { error: membershipError } =
-      await supabaseAdmin
-        .from("business_members")
-        .insert({
-          business_id: createdBusinessId,
-          user_id: createdAuthUserId,
-          role: "owner",
-          is_active: true,
-        });
-
-    if (membershipError) {
-      throw new Error(
-        `Unable to create owner membership: ${membershipError.message}`,
-      );
-    }
-
-    const storefrontDefaults =
-      getBusinessModeDefaults(preset.value);
-
-    const { error: storefrontError } =
-      await supabaseAdmin
-        .from("business_storefronts")
-        .update({
-          business_type: preset.value,
-          display_name: businessName,
-          allow_pickup:
-            storefrontDefaults.allowPickup,
-          allow_delivery:
-            storefrontDefaults.allowDelivery,
-          allow_dine_in:
-            storefrontDefaults.allowDineIn,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("business_id", createdBusinessId);
-
-    if (storefrontError) {
-      throw new Error(
-        `Unable to configure your store: ${storefrontError.message}`,
-      );
-    }
-
-    const { error: historyError } =
-      await supabaseAdmin
-        .from("subscription_history")
-        .insert({
-          business_id: createdBusinessId,
-          action: "created",
-          months: SELF_REGISTRATION_MONTHS,
-          previous_expiry: null,
-          new_expiry:
-            subscriptionExpiresAt.toISOString(),
-          reason: "Owner self-registration",
-          created_by: createdAuthUserId,
-        });
-
-    if (historyError) {
-      throw new Error(
-        `Unable to create subscription history: ${historyError.message}`,
-      );
+    if (authData.session) {
+      // Email confirmation may be disabled in Supabase. Even then, keep the
+      // requested product flow explicit: registration first, sign-in second,
+      // business onboarding after the first successful sign-in.
+      await supabase.auth.signOut();
     }
 
     return {
       success: true,
       message: authData.session
-        ? "Your Tenh POS store is ready."
-        : "Your store has been created. Check your email to confirm your account, then sign in.",
+        ? "Your account is created. Sign in to set up your business."
+        : "Your account is created. Check your email to confirm it, then sign in to set up your business.",
       requiresEmailConfirmation: !authData.session,
       destination: authData.session
-        ? getTenantDashboardUrl(
-            slug,
-            "/dashboard",
-          )
+        ? getRootUrl("/login?registered=1")
         : null,
     };
   } catch (error) {
-    if (createdBusinessId) {
-      await supabaseAdmin
-        .from("businesses")
-        .delete()
-        .eq("id", createdBusinessId);
-    }
-
+    // Account creation only has two records to clean up. Business data does
+    // not exist until first-login onboarding succeeds.
     if (createdAuthUserId) {
       await supabaseAdmin
         .from("profiles")
         .delete()
         .eq("id", createdAuthUserId);
 
-      await supabaseAdmin.auth.admin.deleteUser(
-        createdAuthUserId,
-      );
-
-      try {
-        const supabase = await createClient();
-        await supabase.auth.signOut();
-      } catch {
-        // Cleanup is best effort; the deleted Auth user cannot use the session.
-      }
+      await supabaseAdmin.auth.admin.deleteUser(createdAuthUserId);
     }
 
     return {

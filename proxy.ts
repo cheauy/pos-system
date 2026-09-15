@@ -19,6 +19,7 @@ const CENTRAL_AUTH_PATHS = new Set([
   "/reset-password",
   "/auth/continue",
   "/auth/callback",
+  "/get-started",
 ]);
 
 function createResponse(
