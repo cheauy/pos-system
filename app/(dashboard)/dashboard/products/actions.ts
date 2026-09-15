@@ -317,6 +317,7 @@ export async function createProduct(
         category_id: categoryId,
         name,
         sku,
+        barcode: sku,
         image_url: imageUrl,
         description,
         cost_price: costPrice,
@@ -479,6 +480,16 @@ export async function updateProduct(
   const description = getOptionalText(
     formData,
     "description",
+  );
+
+  const size = getOptionalText(
+    formData,
+    "size",
+  );
+
+  const color = getOptionalText(
+    formData,
+    "color",
   );
 
   const costPrice = getNumber(
@@ -1041,12 +1052,12 @@ export async function createVariantProduct(
     .maybeSingle();
 
   if (
-    storefrontMode?.business_type === "shoes" &&
+    ["shoes", "fashion"].includes(storefrontMode?.business_type ?? "") &&
     variants.some((variant) => !variant.size.trim() || !variant.color.trim())
   ) {
     return {
       success: false,
-      message: "Shoes require both a size and a colour for every inventory row.",
+      message: "Shoes and Fashion require both a size and a colour for every inventory row.",
     };
   }
 
@@ -1105,6 +1116,7 @@ export async function createVariantProduct(
     category_id: categoryId,
     name,
     sku: variant.sku,
+    barcode: variant.sku,
     size: variant.size || null,
     color: variant.color || null,
     image_url: imageUrl,

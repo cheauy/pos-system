@@ -314,7 +314,7 @@ function ProductCard({
               {product.productType === "variant" ? "From " : ""}
               {formatMoney(product.priceFrom, settings.currency)}
             </p>
-            {settings.businessType === "shoes" && product.productType === "variant" && (
+            {(settings.businessType === "shoes" || settings.businessType === "fashion") && product.productType === "variant" && (
               <p className="mt-1 text-xs font-medium text-slate-500">
                 {new Set(product.variants.map((row) => row.size).filter(Boolean)).size} sizes · {new Set(product.variants.map((row) => row.color).filter(Boolean)).size} colours
               </p>
@@ -358,7 +358,8 @@ function ProductConfigurator({
   onAdd: (item: CartItem) => void;
 }) {
   const isShoeProduct =
-    businessType === "shoes" && product.productType === "variant";
+    (businessType === "shoes" || businessType === "fashion") && product.productType === "variant";
+  const isFashionProduct = businessType === "fashion" && product.productType === "variant";
   const isMilkTeaProduct =
     businessType === "milk_tea" && product.productType === "configurable";
   const initialVariant =
@@ -468,7 +469,7 @@ function ProductConfigurator({
   if (!variant) return null;
 
   const variantLabel = isShoeProduct
-    ? [variant.color, variant.size ? `EU ${variant.size}` : null]
+    ? [variant.color, variant.size ? `${isFashionProduct ? "Size" : "EU"} ${variant.size}` : null]
         .filter(Boolean)
         .join(" / ") || null
     : [variant.color, variant.size].filter(Boolean).join(" / ") || null;
@@ -544,7 +545,7 @@ function ProductConfigurator({
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-800">Size</p>
                   <span className="text-xs text-slate-400">
-                    {variant.size ? `EU ${variant.size}` : "Choose"}
+                    {variant.size ? `${isFashionProduct ? "Size" : "EU"} ${variant.size}` : "Choose"}
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6">

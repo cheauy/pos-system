@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   ChevronRight,
   Lock,
+  ReceiptText,
   User,
   Users,
 } from "lucide-react";
@@ -18,6 +19,12 @@ const settingsItems = [
     description: "Change your account password",
     href: "/dashboard/settings/security",
     icon: Lock,
+  },
+  {
+    title: "Receipt",
+    description: "Customize 58mm / 80mm receipts, sections and store QR",
+    href: "/dashboard/settings/receipts",
+    icon: ReceiptText,
   },
   {
     title: "Users",

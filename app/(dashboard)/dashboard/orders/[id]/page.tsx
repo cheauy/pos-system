@@ -95,6 +95,13 @@ type Order = {
   order_items: OrderItem[];
 };
 
+type ReceiptConfig = {
+  paper_size: string; header_text: string | null; footer_text: string | null;
+  show_logo: boolean; show_phone: boolean; show_address: boolean; show_cashier: boolean;
+  show_customer: boolean; show_discount: boolean; show_payment: boolean; show_loyalty: boolean; show_store_qr: boolean; store_qr_label: string | null;
+};
+type StorefrontReceiptInfo = { display_name: string | null; logo_url: string | null; phone: string | null; address: string | null; };
+
 type OrderDetailsPageProps = {
   params: Promise<{
     id: string;
@@ -177,6 +184,13 @@ const { data, error } = await supabase
   }
 
   
+
+  const [{ data: receiptSettingsData }, { data: storefrontReceiptData }] = await Promise.all([
+    supabase.from("business_receipt_settings").select("paper_size,header_text,footer_text,show_logo,show_phone,show_address,show_cashier,show_customer,show_discount,show_payment,show_loyalty,show_store_qr,store_qr_label").eq("business_id", business.id).maybeSingle(),
+    supabase.from("business_storefronts").select("display_name,logo_url,phone,address").eq("business_id", business.id).maybeSingle(),
+  ]);
+  const receiptConfig: ReceiptConfig = { paper_size: "80mm", header_text: null, footer_text: "Thank you for your purchase!", show_logo: true, show_phone: true, show_address: true, show_cashier: true, show_customer: true, show_discount: true, show_payment: true, show_loyalty: true, show_store_qr: true, store_qr_label: "Order online", ...(receiptSettingsData ?? {}) };
+  const storefrontReceipt = (storefrontReceiptData ?? { display_name: business.name, logo_url: null, phone: null, address: null }) as StorefrontReceiptInfo;
 
   const order = data as Order;
   const customer = getCustomer(order.customers);
@@ -835,6 +849,9 @@ const itemName =
   amountPaid={amountPaid}
   remainingBalance={remainingBalance}
   currentChangeAmount={currentChangeAmount}
+  receiptConfig={receiptConfig}
+  storefrontReceipt={storefrontReceipt}
+  storeUrl={`https://${business.slug}.tenh-pos.com`}
 />
 
           <div className="mt-6 flex justify-end print:hidden">
@@ -858,6 +875,9 @@ function Receipt({
   amountPaid,
   remainingBalance,
   currentChangeAmount,
+  receiptConfig,
+  storefrontReceipt,
+  storeUrl,
 }: {
   order: Order;
   customer: CustomerRelation | null;
@@ -870,6 +890,9 @@ function Receipt({
   amountPaid: number;
   remainingBalance: number;
   currentChangeAmount: number;
+  receiptConfig: ReceiptConfig;
+  storefrontReceipt: StorefrontReceiptInfo;
+  storeUrl: string;
 }) {
   const receiptItems = orderItems
     .map((item) => {
@@ -907,16 +930,14 @@ function Receipt({
   return (
     <article
       id="sale-receipt"
-      className="receipt mx-auto max-w-[380px] bg-white text-black"
+      className={`receipt mx-auto bg-white text-black ${receiptConfig.paper_size === "58mm" ? "max-w-[58mm]" : "max-w-[80mm]"}`}
     >
       <div className="border-b border-dashed border-black pb-4 text-center">
-        <h2 className="text-2xl font-bold">
-          SALE RECEIPT
-        </h2>
-
-        <p className="mt-2 text-sm">
-          Thank you for your purchase
-        </p>
+        {receiptConfig.show_logo && storefrontReceipt.logo_url && <img src={storefrontReceipt.logo_url} alt="Logo" className="mx-auto mb-2 h-12 w-12 rounded-lg object-cover" />}
+        <h2 className="text-xl font-bold">{storefrontReceipt.display_name || "SALE RECEIPT"}</h2>
+        {receiptConfig.header_text && <p className="mt-1 whitespace-pre-line text-xs">{receiptConfig.header_text}</p>}
+        {receiptConfig.show_phone && storefrontReceipt.phone && <p className="mt-1 text-xs">{storefrontReceipt.phone}</p>}
+        {receiptConfig.show_address && storefrontReceipt.address && <p className="text-xs">{storefrontReceipt.address}</p>}
       </div>
 
       <div className="space-y-1 border-b border-dashed border-black py-4 text-sm">
@@ -930,10 +951,10 @@ function Receipt({
           value={formatDate(order.created_at)}
         />
 
-        <ReceiptInformation
+        {receiptConfig.show_customer && <ReceiptInformation
           label="Customer"
           value={customer?.name ?? order.guest_name ?? "Walk-in customer"}
-        />
+        />}
 
         {(customer?.phone ?? order.guest_phone) && (
           <ReceiptInformation
@@ -942,12 +963,10 @@ function Receipt({
           />
         )}
 
-        <ReceiptInformation
+        {receiptConfig.show_payment && <ReceiptInformation
           label="Payment"
-          value={formatPaymentMethod(
-            order.payment_method,
-          )}
-        />
+          value={formatPaymentMethod(order.payment_method)}
+        />}
 
         <ReceiptInformation
           label="Status"
@@ -1027,7 +1046,7 @@ function Receipt({
           value={`$${remainingSubtotal.toFixed(2)}`}
         />
 
-        {discount > 0 && (
+        {receiptConfig.show_discount && discount > 0 && (
           <ReceiptInformation
             label="Discount"
             value={`-$${discount.toFixed(2)}`}
@@ -1072,6 +1091,9 @@ function Receipt({
       <div className="border-t border-dashed border-black pt-4 text-center text-xs">
         <p>Thank you. Please come again.</p>
       </div>
+      {(receiptConfig.show_loyalty && Number(order.loyalty_points_earned) > 0) && <p className="border-t border-dashed border-black pt-3 text-center text-xs">+{Number(order.loyalty_points_earned)} loyalty points</p>}
+      {receiptConfig.show_store_qr && <div className="mt-3 border-t border-dashed border-black pt-3 text-center"><p className="text-xs font-semibold">{receiptConfig.store_qr_label || "Order online"}</p><img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(storeUrl)}`} alt="Store QR" className="mx-auto mt-2 h-24 w-24"/><p className="mt-1 break-all text-[9px]">{storeUrl}</p></div>}
+      {receiptConfig.footer_text && <p className="mt-3 whitespace-pre-line border-t border-dashed border-black pt-3 text-center text-xs">{receiptConfig.footer_text}</p>}
     </article>
   );
 }

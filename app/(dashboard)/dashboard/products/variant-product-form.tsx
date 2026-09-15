@@ -36,6 +36,12 @@ const shoeSizeRuns = [
   { label: "EU 39–46", sizes: ["39", "40", "41", "42", "43", "44", "45", "46"] },
   { label: "EU 36–45", sizes: ["36", "37", "38", "39", "40", "41", "42", "43", "44", "45"] },
 ];
+const fashionSizeRuns = [
+  { label: "XS–XXL", sizes: ["XS", "S", "M", "L", "XL", "XXL"] },
+  { label: "Women 24–32", sizes: ["24", "25", "26", "27", "28", "29", "30", "31", "32"] },
+  { label: "Men 28–38", sizes: ["28", "30", "32", "34", "36", "38"] },
+];
+
 
 function createVariant(overrides: Partial<Omit<VariantRow, "id">> = {}): VariantRow {
   return {
@@ -68,6 +74,8 @@ export default function VariantProductForm({
   businessType?: string;
 }) {
   const isShoes = businessType === "shoes";
+  const isFashion = businessType === "fashion";
+  const isSpecialVariant = isShoes || isFashion;
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(
     createVariantProduct,
@@ -194,7 +202,7 @@ export default function VariantProductForm({
         )}
       />
 
-      <Field label={isShoes ? "Shoe model" : "Product name"} htmlFor="variant-name">
+      <Field label={isShoes ? "Shoe model" : isFashion ? "Style / model" : "Product name"} htmlFor="variant-name">
         <input
           id="variant-name"
           name="name"
@@ -202,7 +210,7 @@ export default function VariantProductForm({
           minLength={2}
           value={productName}
           onChange={(event) => setProductName(event.target.value)}
-          placeholder={isShoes ? "Air Runner 01" : "Classic T-Shirt"}
+          placeholder={isShoes ? "Air Runner 01" : isFashion ? "Oversized Essential Tee" : "Classic T-Shirt"}
           className={inputClass}
         />
       </Field>
@@ -230,17 +238,17 @@ export default function VariantProductForm({
           id="variant-description"
           name="description"
           rows={3}
-          placeholder={isShoes ? "Material, fit, collection or shoe details" : "Optional product description"}
+          placeholder={isShoes ? "Material, fit, collection or shoe details" : isFashion ? "Material, fit, collection, season or style details" : "Optional product description"}
           className={`${inputClass} resize-none`}
         />
       </Field>
 
-      {isShoes && (
+      {isSpecialVariant && (
         <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
           <div>
-            <h3 className="font-semibold text-slate-900">Quick shoe size run</h3>
+            <h3 className="font-semibold text-slate-900">{isShoes ? "Quick shoe size run" : "Quick fashion size run"}</h3>
             <p className="mt-1 text-xs leading-5 text-slate-600">
-              Enter a colour, SKU prefix, price and starting stock, then add a full EU size run in one tap. You can edit every size below before saving.
+              {isShoes ? "Enter a colour, SKU prefix, price and starting stock, then add a full EU size run in one tap." : "Enter a colour, SKU prefix, price and starting stock, then add a common clothing size run in one tap."} You can edit every size below before saving.
             </p>
           </div>
 
@@ -283,7 +291,7 @@ export default function VariantProductForm({
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            {shoeSizeRuns.map((run) => (
+            {(isShoes ? shoeSizeRuns : fashionSizeRuns).map((run) => (
               <button
                 key={run.label}
                 type="button"
@@ -301,7 +309,7 @@ export default function VariantProductForm({
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-4">
           <div>
             <h3 className="font-semibold text-slate-900">
-              {isShoes ? "Shoe sizes & colours" : "Variants"}
+              {isShoes ? "Shoe sizes & colours" : isFashion ? "Clothing sizes & colours" : "Variants"}
             </h3>
             <p className="mt-1 text-xs text-slate-500">
               {variants.length} variant{variants.length === 1 ? "" : "s"} · {totalStock} total stock
@@ -317,13 +325,13 @@ export default function VariantProductForm({
             }
             className="inline-flex items-center gap-2 rounded-xl bg-blue-100 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-200"
           >
-            <Plus size={16} /> {isShoes ? "Add Size" : "Add Variant"}
+            <Plus size={16} /> {isSpecialVariant ? "Add Size" : "Add Variant"}
           </button>
         </div>
 
         {duplicateCombinations.size > 0 && (
           <div className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            The same size + colour appears more than once. Keep only one inventory row for each shoe variation.
+            The same size + colour appears more than once. Keep only one inventory row for each variation.
           </div>
         )}
 
@@ -340,7 +348,9 @@ export default function VariantProductForm({
                   <p className="text-sm font-semibold text-slate-900">
                     {isShoes
                       ? `Shoe variation ${index + 1}${variant.size ? ` · EU ${variant.size}` : ""}`
-                      : `Variant ${index + 1}`}
+                      : isFashion
+                        ? `Fashion variation ${index + 1}${variant.size ? ` · Size ${variant.size}` : ""}`
+                        : `Variant ${index + 1}`}
                   </p>
                   <button
                     type="button"
@@ -360,21 +370,21 @@ export default function VariantProductForm({
                   <VariantField
                     label={isShoes ? "EU size" : "Size"}
                     value={variant.size}
-                    placeholder={isShoes ? "41" : "S, M, 40, 41"}
-                    required={isShoes}
+                    placeholder={isShoes ? "41" : isFashion ? "XS, S, M, L, XL" : "S, M, 40, 41"}
+                    required={isSpecialVariant}
                     onChange={(value) => updateVariant(variant.id, "size", value)}
                   />
                   <VariantField
                     label="Colour"
                     value={variant.color}
                     placeholder="Black"
-                    required={isShoes}
+                    required={isSpecialVariant}
                     onChange={(value) => updateVariant(variant.id, "color", value)}
                   />
                   <VariantField
                     label="SKU"
                     value={variant.sku}
-                    placeholder={isShoes ? "AIR01-BLK-41" : "TS-BLK-M"}
+                    placeholder={isShoes ? "AIR01-BLK-41" : isFashion ? "TEE01-BLK-M" : "TS-BLK-M"}
                     required
                     onChange={(value) => updateVariant(variant.id, "sku", value)}
                   />
@@ -430,7 +440,7 @@ export default function VariantProductForm({
           </>
         ) : (
           <>
-            <PackagePlus size={18} /> {isShoes ? "Create Shoe & Inventory" : "Create Variant Product"}
+            <PackagePlus size={18} /> {isShoes ? "Create Shoe & Inventory" : isFashion ? "Create Style & Inventory" : "Create Variant Product"}
           </>
         )}
       </button>

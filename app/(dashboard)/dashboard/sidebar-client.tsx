@@ -8,6 +8,7 @@ import type { ElementType } from "react";
 import {
   BadgePercent,
   BarChart3,
+  Barcode,
   Boxes,
   ChevronDown,
   LayoutDashboard,
@@ -101,6 +102,11 @@ const menuGroups: MenuGroup[] = [
         icon: Boxes,
       },
       {
+        name: "Barcode & Labels",
+        href: "/dashboard/barcodes",
+        icon: Barcode,
+      },
+      {
         name: "Low Stock",
         href: "/dashboard/low-stock",
         icon: TriangleAlert,
@@ -114,6 +120,11 @@ const menuGroups: MenuGroup[] = [
         name: "Suppliers",
         href: "/dashboard/suppliers",
         icon: Truck,
+      },
+      {
+        name: "Purchase Orders",
+        href: "/dashboard/purchase-orders",
+        icon: PackagePlus,
       },
       {
         name: "Purchases",

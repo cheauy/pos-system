@@ -26,6 +26,7 @@ type Product = {
   id: string;
   name: string;
   sku: string | null;
+  barcode: string | null;
   image_url: string | null;
   selling_price: number;
   stock_quantity: number;
@@ -122,6 +123,8 @@ export default function PosClient({
   const [selectedConfigurableProduct, setSelectedConfigurableProduct] =
     useState<Product | null>(null);
   const isShoesMode = businessType === "shoes";
+  const isFashionMode = businessType === "fashion";
+  const isVariantRetailMode = isShoesMode || isFashionMode;
   const isMilkTeaMode = businessType === "milk_tea";
   const [paymentMethod, setPaymentMethod] =
   useState<PaymentMethod>("cod");
@@ -142,14 +145,15 @@ const [deliveryFee, setDeliveryFee] = useState("");
       const matchesSearch =
         !keyword ||
         product.name.toLowerCase().includes(keyword) ||
-        (product.sku?.toLowerCase().includes(keyword) ?? false);
+        (product.sku?.toLowerCase().includes(keyword) ?? false) ||
+        (product.barcode?.toLowerCase().includes(keyword) ?? false);
 
       return matchesCategory && matchesSearch;
     });
   }, [products, search, selectedCategory]);
 
   const shoeGroups = useMemo<ShoeProductGroup[]>(() => {
-    if (!isShoesMode) return [];
+    if (!isVariantRetailMode) return [];
 
     const grouped = new Map<string, Product[]>();
     for (const product of products) {
@@ -195,10 +199,10 @@ const [deliveryFee, setDeliveryFee] = useState("");
         isVariant: variants.some((row) => row.product_type === "variant"),
       };
     });
-  }, [isShoesMode, products]);
+  }, [isVariantRetailMode, products]);
 
   const filteredShoeGroups = useMemo(() => {
-    if (!isShoesMode) return [];
+    if (!isVariantRetailMode) return [];
     const keyword = search.trim().toLowerCase();
     return shoeGroups.filter((group) => {
       const matchesCategory =
@@ -210,12 +214,13 @@ const [deliveryFee, setDeliveryFee] = useState("");
         group.variants.some(
           (row) =>
             row.sku?.toLowerCase().includes(keyword) ||
+            row.barcode?.toLowerCase().includes(keyword) ||
             row.color?.toLowerCase().includes(keyword) ||
             row.size?.toLowerCase().includes(keyword),
         );
       return matchesCategory && matchesSearch;
     });
-  }, [isShoesMode, search, selectedCategory, shoeGroups]);
+  }, [isVariantRetailMode, search, selectedCategory, shoeGroups]);
 
 const subtotal = cart.reduce(
   (sum, item) =>
@@ -495,7 +500,27 @@ window.location.href =
               onChange={(event) =>
                 setSearch(event.target.value)
               }
-              placeholder="Search name, SKU or barcode"
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                const code = search.trim().toLowerCase();
+                if (!code) return;
+                const exact = products.find((product) =>
+                  product.sku?.toLowerCase() === code ||
+                  product.barcode?.toLowerCase() === code
+                );
+                if (!exact) return;
+                event.preventDefault();
+                if (exact.product_type === "configurable") {
+                  setSelectedConfigurableProduct(exact);
+                } else if (isVariantRetailMode && exact.variant_group_id) {
+                  const group = shoeGroups.find((item) => item.variants.some((variant) => variant.id === exact.id));
+                  if (group) setSelectedShoeGroup(group);
+                } else {
+                  addToCart(exact);
+                }
+                setSearch("");
+              }}
+              placeholder="Search or scan SKU / barcode"
               className="w-full rounded-xl border border-slate-300 py-3 pl-12 pr-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
             />
           </div>
@@ -522,11 +547,11 @@ window.location.href =
           </div>
         </div>
 
-        {(isShoesMode ? filteredShoeGroups.length : filteredProducts.length) === 0 ? (
+        {(isVariantRetailMode ? filteredShoeGroups.length : filteredProducts.length) === 0 ? (
           <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-12 text-center">
             <p className="font-medium text-slate-700">No products found</p>
           </div>
-        ) : isShoesMode ? (
+        ) : isVariantRetailMode ? (
           <div className="mt-6 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
             {filteredShoeGroups.map((group) => (
               <button
