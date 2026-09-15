@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Plus, Settings2, Trash2 } from "lucide-react";
+import { CupSoda, Loader2, Plus, Settings2, Sparkles, Trash2 } from "lucide-react";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -53,17 +53,18 @@ function newGroup(): GroupRow {
   };
 }
 
-export default function ConfigurableProductForm({ categories }: { categories: Category[] }) {
+export default function ConfigurableProductForm({ categories, businessType = "general" }: { categories: Category[]; businessType?: string }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(createConfigurableProduct, initialState);
-  const [groups, setGroups] = useState<GroupRow[]>([newGroup()]);
+  const isMilkTea = businessType === "milk_tea";
+  const [groups, setGroups] = useState<GroupRow[]>(() => isMilkTea ? milkTeaTemplate() : [newGroup()]);
 
   useEffect(() => {
     if (!state.message) return;
     if (state.success) {
       toast.success(state.message);
       formRef.current?.reset();
-      setGroups([newGroup()]);
+      setGroups(isMilkTea ? milkTeaTemplate() : [newGroup()]);
     } else {
       toast.error(state.message);
     }
@@ -103,8 +104,23 @@ export default function ConfigurableProductForm({ categories }: { categories: Ca
         })))}
       />
 
-      <Field label="Product name" htmlFor="config-name">
-        <input id="config-name" name="name" required minLength={2} placeholder="Brown Sugar Milk Tea" className={inputClass} />
+      {isMilkTea && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-white p-2 text-amber-700 shadow-sm"><CupSoda size={20} /></div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-slate-900">Milk Tea quick setup</p>
+              <p className="mt-1 text-xs leading-5 text-slate-600">Start with Size, Sugar, Ice, Milk and Toppings. You can change every option and extra price before saving.</p>
+              <button type="button" onClick={() => setGroups(milkTeaTemplate())} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700">
+                <Sparkles size={14} /> Load Milk Tea Template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Field label={isMilkTea ? "Drink name" : "Product name"} htmlFor="config-name">
+        <input id="config-name" name="name" required minLength={2} placeholder={isMilkTea ? "Brown Sugar Pearl Milk Tea" : "Configurable product"} className={inputClass} />
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -143,8 +159,8 @@ export default function ConfigurableProductForm({ categories }: { categories: Ca
       <section className="rounded-2xl border border-slate-200 bg-slate-50">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-4">
           <div>
-            <h3 className="font-semibold text-slate-900">Configuration groups</h3>
-            <p className="mt-1 text-xs text-slate-500">Size, sugar, ice, toppings, extras and more.</p>
+            <h3 className="font-semibold text-slate-900">{isMilkTea ? "Drink options" : "Configuration groups"}</h3>
+            <p className="mt-1 text-xs text-slate-500">{isMilkTea ? "Control cup size, sweetness, ice, milk and add-ons." : "Size, sugar, ice, toppings, extras and more."}</p>
           </div>
           <button
             type="button"
@@ -266,10 +282,68 @@ export default function ConfigurableProductForm({ categories }: { categories: Ca
         disabled={pending}
         className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
       >
-        {pending ? <><Loader2 size={18} className="animate-spin" /> Creating...</> : <><Settings2 size={18} /> Create Configurable Product</>}
+        {pending ? <><Loader2 size={18} className="animate-spin" /> Creating...</> : isMilkTea ? <><CupSoda size={18} /> Create Drink</> : <><Settings2 size={18} /> Create Configurable Product</>}
       </button>
     </form>
   );
+}
+
+function makeTemplateOption(name: string, priceAdjustment = "0", isDefault = false): OptionRow {
+  return { id: crypto.randomUUID(), name, priceAdjustment, isDefault };
+}
+
+function makeTemplateGroup(
+  name: string,
+  options: OptionRow[],
+  config: Partial<Pick<GroupRow, "selectionType" | "isRequired" | "minSelections" | "maxSelections">> = {},
+): GroupRow {
+  return {
+    id: crypto.randomUUID(),
+    name,
+    selectionType: config.selectionType ?? "single",
+    isRequired: config.isRequired ?? true,
+    minSelections: config.minSelections ?? "1",
+    maxSelections: config.maxSelections ?? "1",
+    options,
+  };
+}
+
+function milkTeaTemplate(): GroupRow[] {
+  return [
+    makeTemplateGroup("Size", [
+      makeTemplateOption("M", "0", true),
+      makeTemplateOption("L", "0.50"),
+    ]),
+    makeTemplateGroup("Sugar", [
+      makeTemplateOption("0%"),
+      makeTemplateOption("25%"),
+      makeTemplateOption("50%"),
+      makeTemplateOption("75%"),
+      makeTemplateOption("100%", "0", true),
+    ]),
+    makeTemplateGroup("Ice", [
+      makeTemplateOption("No ice"),
+      makeTemplateOption("Less ice"),
+      makeTemplateOption("Normal ice", "0", true),
+      makeTemplateOption("Extra ice"),
+    ]),
+    makeTemplateGroup("Milk", [
+      makeTemplateOption("Regular milk", "0", true),
+      makeTemplateOption("Fresh milk", "0.50"),
+      makeTemplateOption("Oat milk", "0.75"),
+    ]),
+    makeTemplateGroup(
+      "Toppings",
+      [
+        makeTemplateOption("Pearl", "0.50"),
+        makeTemplateOption("Grass jelly", "0.50"),
+        makeTemplateOption("Pudding", "0.50"),
+        makeTemplateOption("Cheese foam", "0.75"),
+        makeTemplateOption("Coffee jelly", "0.50"),
+      ],
+      { selectionType: "multiple", isRequired: false, minSelections: "0", maxSelections: "5" },
+    ),
+  ];
 }
 
 function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: React.ReactNode }) {

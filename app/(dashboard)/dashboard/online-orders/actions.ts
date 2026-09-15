@@ -158,3 +158,97 @@ export async function updateOnlineOrderStatus(
     };
   }
 }
+
+const allowedPaymentStatuses = [
+  "pending_verification",
+  "paid",
+  "unpaid",
+] as const;
+
+type OnlinePaymentStatus =
+  (typeof allowedPaymentStatuses)[number];
+
+export async function updateOnlinePaymentStatus(
+  orderId: string,
+  nextStatus: OnlinePaymentStatus,
+): Promise<UpdateOnlineOrderResult> {
+  try {
+    const business = await requirePermission("orders.update");
+
+    if (!allowedPaymentStatuses.includes(nextStatus)) {
+      return {
+        success: false,
+        message: "Invalid payment status.",
+      };
+    }
+
+    const { data: order, error: loadError } = await supabaseAdmin
+      .from("orders")
+      .select(`
+        id,
+        order_number,
+        order_source,
+        payment_method,
+        payment_status,
+        total
+      `)
+      .eq("id", orderId)
+      .eq("business_id", business.id)
+      .in("order_source", ["online", "qr"])
+      .maybeSingle();
+
+    if (loadError) throw new Error(loadError.message);
+    if (!order) throw new Error("Online order not found.");
+    if (order.payment_method !== "khqr") {
+      throw new Error("Payment verification is only used for KHQR orders.");
+    }
+
+    const paid = nextStatus === "paid";
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from("orders")
+      .update({
+        payment_status: nextStatus,
+        amount_paid: paid ? Number(order.total) : 0,
+        remaining_balance: paid ? 0 : Number(order.total),
+        change_amount: 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId)
+      .eq("business_id", business.id)
+      .select("id")
+      .maybeSingle();
+
+    if (updateError) throw new Error(updateError.message);
+    if (!updated) throw new Error("Unable to update payment status.");
+
+    await createAuditLog({
+      action: "update",
+      entityType: "order",
+      entityId: orderId,
+      description: `Changed online order ${order.order_number} payment to ${nextStatus}`,
+      metadata: {
+        previous_payment_status: order.payment_status,
+        new_payment_status: nextStatus,
+        payment_method: order.payment_method,
+      },
+    });
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/orders");
+    revalidatePath("/dashboard/online-orders");
+    revalidatePath(`/dashboard/orders/${orderId}`);
+
+    return {
+      success: true,
+      message: `Payment for ${order.order_number} marked ${nextStatus.replaceAll("_", " ")}.`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unable to update payment status.",
+    };
+  }
+}

@@ -92,7 +92,7 @@ async function uploadStorefrontImage({
   file,
 }: {
   businessId: string;
-  kind: "logo" | "banner";
+  kind: "logo" | "banner" | "khqr";
   file: File;
 }) {
   const path = `${businessId}/${kind}/${crypto.randomUUID()}.${getExtension(
@@ -220,6 +220,43 @@ export async function updateStorefrontSettings(
       );
     }
 
+    const acceptCod = getBoolean(formData, "acceptCod");
+    const acceptKhqr = getBoolean(formData, "acceptKhqr");
+    const khqrAccountName = getOptionalText(formData, "khqrAccountName");
+    const khqrInstructions = getOptionalText(formData, "khqrInstructions");
+
+    if (khqrAccountName && khqrAccountName.length > 120) {
+      throw new Error("KHQR account name must be 120 characters or fewer.");
+    }
+
+    if (khqrInstructions && khqrInstructions.length > 300) {
+      throw new Error("KHQR instructions must be 300 characters or fewer.");
+    }
+
+    const allowScheduledOrders = getBoolean(formData, "allowScheduledOrders");
+    const minScheduleLeadMinutes = Number(
+      getText(formData, "minScheduleLeadMinutes") || "30",
+    );
+    const maxScheduleDays = Number(
+      getText(formData, "maxScheduleDays") || "7",
+    );
+
+    if (
+      !Number.isInteger(minScheduleLeadMinutes) ||
+      minScheduleLeadMinutes < 0 ||
+      minScheduleLeadMinutes > 10080
+    ) {
+      throw new Error("Schedule lead time must be between 0 and 10080 minutes.");
+    }
+
+    if (
+      !Number.isInteger(maxScheduleDays) ||
+      maxScheduleDays < 1 ||
+      maxScheduleDays > 90
+    ) {
+      throw new Error("Maximum scheduling window must be between 1 and 90 days.");
+    }
+
     const estimatedMinutesText = getText(
       formData,
       "estimatedMinutes",
@@ -274,6 +311,12 @@ export async function updateStorefrontSettings(
       );
     }
 
+    if (acceptOnlineOrders && !acceptCod && !acceptKhqr) {
+      throw new Error(
+        "Enable Pay Later or KHQR before accepting online orders.",
+      );
+    }
+
     const logoFile = getImageFile(
       formData,
       "logo",
@@ -282,13 +325,17 @@ export async function updateStorefrontSettings(
       formData,
       "banner",
     );
+    const khqrFile = getImageFile(
+      formData,
+      "khqr",
+    );
 
     const {
       data: existing,
       error: existingError,
     } = await supabaseAdmin
       .from("business_storefronts")
-      .select("logo_url, banner_url")
+      .select("logo_url, banner_url, khqr_image_url")
       .eq("business_id", business.id)
       .maybeSingle();
 
@@ -298,6 +345,7 @@ export async function updateStorefrontSettings(
 
     let logoUrl = existing?.logo_url ?? null;
     let bannerUrl = existing?.banner_url ?? null;
+    let khqrImageUrl = existing?.khqr_image_url ?? null;
 
     if (logoFile) {
       logoUrl = await uploadStorefrontImage({
@@ -313,6 +361,20 @@ export async function updateStorefrontSettings(
         kind: "banner",
         file: bannerFile,
       });
+    }
+
+    if (khqrFile) {
+      khqrImageUrl = await uploadStorefrontImage({
+        businessId: business.id,
+        kind: "khqr",
+        file: khqrFile,
+      });
+    }
+
+    if (acceptKhqr && !khqrImageUrl) {
+      throw new Error(
+        "Upload the shop KHQR image before enabling KHQR checkout.",
+      );
     }
 
     const now = new Date().toISOString();
@@ -347,6 +409,14 @@ export async function updateStorefrontSettings(
           minimum_order: minimumOrderRaw,
           delivery_fee: deliveryFee,
           checkout_message: checkoutMessage,
+          accept_cod: acceptCod,
+          accept_khqr: acceptKhqr,
+          khqr_image_url: khqrImageUrl,
+          khqr_account_name: khqrAccountName,
+          khqr_instructions: khqrInstructions,
+          allow_scheduled_orders: allowScheduledOrders,
+          min_schedule_lead_minutes: minScheduleLeadMinutes,
+          max_schedule_days: maxScheduleDays,
           estimated_minutes: estimatedMinutes,
           updated_at: now,
         },
@@ -375,6 +445,9 @@ export async function updateStorefrontSettings(
         allow_delivery: allowDelivery,
         allow_dine_in: allowDineIn,
         delivery_fee: deliveryFee,
+        accept_cod: acceptCod,
+        accept_khqr: acceptKhqr,
+        allow_scheduled_orders: allowScheduledOrders,
       },
     });
 

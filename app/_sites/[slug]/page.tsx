@@ -74,6 +74,13 @@ type OptionRow = {
   sort_order: number;
 };
 
+type DeliveryZoneRow = {
+  id: string;
+  name: string;
+  fee: number;
+  minimum_order: number;
+};
+
 export default async function StorefrontPage({
   params,
   searchParams,
@@ -147,6 +154,18 @@ export default async function StorefrontPage({
         minimum_order,
         delivery_fee,
         checkout_message,
+        accept_cod,
+        accept_khqr,
+        khqr_image_url,
+        khqr_account_name,
+        khqr_instructions,
+        allow_scheduled_orders,
+        min_schedule_lead_minutes,
+        max_schedule_days,
+        enable_coupons,
+        loyalty_enabled,
+        loyalty_spend_per_point,
+        loyalty_minimum_order,
         estimated_minutes,
         created_at,
         updated_at
@@ -171,7 +190,7 @@ export default async function StorefrontPage({
     );
   }
 
-  const [categoryResult, productResult] = await Promise.all([
+  const [categoryResult, productResult, zoneResult] = await Promise.all([
     supabaseAdmin
       .from("categories")
       .select("id, name")
@@ -200,6 +219,13 @@ export default async function StorefrontPage({
       .eq("is_online", true)
       .order("online_sort_order", { ascending: true })
       .order("created_at", { ascending: false }),
+    supabaseAdmin
+      .from("business_delivery_zones")
+      .select("id, name, fee, minimum_order")
+      .eq("business_id", business.id)
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true }),
   ]);
 
   if (categoryResult.error) {
@@ -213,6 +239,14 @@ export default async function StorefrontPage({
       `Unable to load store products: ${productResult.error.message}`,
     );
   }
+
+  if (zoneResult.error) {
+    throw new Error(
+      `Unable to load delivery zones: ${zoneResult.error.message}`,
+    );
+  }
+
+  const deliveryZones = (zoneResult.data ?? []) as DeliveryZoneRow[];
 
   const categories = (categoryResult.data ?? []) as CategoryRow[];
   const categoryIds = new Set(categories.map((category) => category.id));
@@ -411,6 +445,7 @@ export default async function StorefrontPage({
           products={catalogProducts}
           tableToken={tableToken}
           settings={{
+            businessType: storefront.business_type,
             currency: storefront.currency,
             primaryColor,
             orderingEnabled:
@@ -424,6 +459,24 @@ export default async function StorefrontPage({
             minimumOrder: Number(storefront.minimum_order ?? 0),
             deliveryFee: Number(storefront.delivery_fee ?? 0),
             checkoutMessage: storefront.checkout_message,
+            acceptCod: storefront.accept_cod,
+            acceptKhqr: storefront.accept_khqr,
+            khqrImageUrl: storefront.khqr_image_url,
+            khqrAccountName: storefront.khqr_account_name,
+            khqrInstructions: storefront.khqr_instructions,
+            allowScheduledOrders: storefront.allow_scheduled_orders,
+            minScheduleLeadMinutes: Number(storefront.min_schedule_lead_minutes ?? 30),
+            maxScheduleDays: Number(storefront.max_schedule_days ?? 7),
+            couponsEnabled: storefront.enable_coupons,
+            loyaltyEnabled: storefront.loyalty_enabled,
+            loyaltySpendPerPoint: Number(storefront.loyalty_spend_per_point ?? 1),
+            loyaltyMinimumOrder: Number(storefront.loyalty_minimum_order ?? 0),
+            deliveryZones: deliveryZones.map((zone) => ({
+              id: zone.id,
+              name: zone.name,
+              fee: Number(zone.fee),
+              minimumOrder: Number(zone.minimum_order),
+            })),
           }}
         />
       </div>

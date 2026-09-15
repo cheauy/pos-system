@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { ElementType } from "react";
 
 import {
+  BadgePercent,
   BarChart3,
   Boxes,
   ChevronDown,
@@ -73,6 +74,11 @@ const menuGroups: MenuGroup[] = [
         name: "Online Store",
         href: "/dashboard/online-store",
         icon: Store,
+      },
+      {
+        name: "Promotions & Loyalty",
+        href: "/dashboard/promotions",
+        icon: BadgePercent,
       },
       {
         name: "Returns",

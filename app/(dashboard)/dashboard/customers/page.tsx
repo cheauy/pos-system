@@ -20,6 +20,7 @@ type Customer = {
   phone: string | null;
   email: string | null;
   address: string | null;
+  loyalty_points: number;
   created_at: string;
 };
 
@@ -37,6 +38,7 @@ export default async function CustomersPage() {
       phone,
       email,
       address,
+      loyalty_points,
       created_at
     `)
     .eq("business_id", business.id)
@@ -191,6 +193,10 @@ export default async function CustomersPage() {
                       Address
                     </th>
 
+                    <th className="px-6 py-4 font-semibold">
+                      Loyalty
+                    </th>
+
                     <th className="px-6 py-4 text-right font-semibold">
                       Actions
                     </th>
@@ -216,6 +222,10 @@ export default async function CustomersPage() {
 
                       <td className="max-w-xs px-6 py-4 text-sm text-slate-600">
                         {customer.address || "—"}
+                      </td>
+
+                      <td className="px-6 py-4 text-sm font-semibold text-violet-700">
+                        {Number(customer.loyalty_points ?? 0).toLocaleString()} pts
                       </td>
 
                       <td className="px-6 py-4">

@@ -28,6 +28,10 @@ type Product = {
   is_active: boolean;
   is_online: boolean;
   created_at: string;
+  size: string | null;
+  color: string | null;
+  product_type: string | null;
+  variant_group_id: string | null;
   categories: ProductCategory | ProductCategory[] | null;
 };
 
@@ -44,12 +48,21 @@ export default async function ProductsPage({
   const supabase = await createClient();
   const business = await requirePermission("products.view");
 
-  const { data: categoryData, error: categoryError } =
-    await supabase
-      .from("categories")
-      .select("id, name")
-      .eq("business_id", business.id)
-      .order("name");
+  const [{ data: categoryData, error: categoryError }, { data: storefrontData }] =
+    await Promise.all([
+      supabase
+        .from("categories")
+        .select("id, name")
+        .eq("business_id", business.id)
+        .order("name"),
+      supabase
+        .from("business_storefronts")
+        .select("business_type")
+        .eq("business_id", business.id)
+        .maybeSingle(),
+    ]);
+
+  const businessType = storefrontData?.business_type ?? "general";
 
   let productQuery = supabase
     .from("products")
@@ -65,6 +78,10 @@ export default async function ProductsPage({
       is_active,
       is_online,
       created_at,
+      size,
+      color,
+      product_type,
+      variant_group_id,
       categories(name)
     `)
     .eq("business_id", business.id);
@@ -82,12 +99,24 @@ export default async function ProductsPage({
   const products = (productData ?? []) as Product[];
 
   const modeMeta =
-    business.product_mode === "variant"
+    businessType === "shoes"
+      ? {
+          title: "Add Shoe",
+          description: "Create one shoe model with size, colour, SKU and stock for every variation.",
+          icon: <SlidersHorizontal size={22} />,
+        }
+      : business.product_mode === "variant"
       ? {
           title: "Add Variant Product",
           description: "Create size, colour, SKU, price and stock variants.",
           icon: <SlidersHorizontal size={22} />,
         }
+      : businessType === "milk_tea"
+        ? {
+            title: "Add Drink",
+            description: "Create milk tea with cup size, sugar, ice, milk and toppings.",
+            icon: <Settings2 size={22} />,
+          }
       : business.product_mode === "configurable"
         ? {
             title: "Add Configurable Product",
@@ -126,7 +155,7 @@ export default async function ProductsPage({
           </div>
 
           <div className="mt-4 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold capitalize text-slate-600">
-            {business.product_mode.replaceAll("_", " ")} mode
+            {businessType === "shoes" ? "Shoes mode" : businessType === "milk_tea" ? "Milk Tea mode" : `${business.product_mode.replaceAll("_", " ")} mode`}
           </div>
 
           {categoryError && (
@@ -136,9 +165,9 @@ export default async function ProductsPage({
           )}
 
           {business.product_mode === "variant" ? (
-            <VariantProductForm categories={categories} />
+            <VariantProductForm categories={categories} businessType={businessType} />
           ) : business.product_mode === "configurable" ? (
-            <ConfigurableProductForm categories={categories} />
+            <ConfigurableProductForm categories={categories} businessType={businessType} />
           ) : (
             <StandardProductForm categories={categories} />
           )}

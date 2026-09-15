@@ -48,6 +48,7 @@ type CustomerRelation = {
   name: string;
   phone: string | null;
   address: string | null;
+  loyalty_points: number;
 };
 
 type Order = {
@@ -56,10 +57,15 @@ type Order = {
 
   subtotal: number;
   discount: number;
+  coupon_code: string | null;
+  coupon_discount: number;
+  loyalty_points_earned: number;
   delivery_fee: number;
   total: number;
 
   payment_method: string;
+  payment_status: string | null;
+  payment_reference: string | null;
   amount_paid: number;
   change_amount: number;
   remaining_balance: number;
@@ -73,6 +79,8 @@ type Order = {
   guest_address: string | null;
   customer_note: string | null;
   table_name: string | null;
+  delivery_zone_name: string | null;
+  requested_for: string | null;
   created_at: string;
 
   customers:
@@ -110,9 +118,14 @@ const { data, error } = await supabase
     order_number,
     subtotal,
     discount,
+    coupon_code,
+    coupon_discount,
+    loyalty_points_earned,
     delivery_fee,
     total,
     payment_method,
+    payment_status,
+    payment_reference,
     amount_paid,
     change_amount,
     remaining_balance,
@@ -125,12 +138,15 @@ const { data, error } = await supabase
     guest_address,
     customer_note,
     table_name,
+    delivery_zone_name,
+    requested_for,
     created_at,
     customers (
       id,
       name,
       phone,
-      address
+      address,
+      loyalty_points
     ),
     order_items (
       id,
@@ -444,6 +460,54 @@ const remainingItemCount = returnableOrderItems.reduce(
               icon={<CreditCard size={18} />}
             />
 
+            {order.order_source !== "pos" && order.payment_status && (
+              <InformationItem
+                label="Payment status"
+                value={formatPaymentStatus(order.payment_status)}
+                icon={<CreditCard size={18} />}
+              />
+            )}
+
+            {order.payment_reference && (
+              <InformationItem
+                label="Payment reference"
+                value={order.payment_reference}
+                icon={<ReceiptText size={18} />}
+              />
+            )}
+
+            {order.coupon_code && Number(order.discount) > 0 && (
+              <InformationItem
+                label="Coupon"
+                value={`${order.coupon_code} · -$${Number(order.discount).toFixed(2)}`}
+                icon={<ReceiptText size={18} />}
+              />
+            )}
+
+            {Number(order.loyalty_points_earned) > 0 && (
+              <InformationItem
+                label="Loyalty earned"
+                value={`+${Number(order.loyalty_points_earned).toLocaleString()} points`}
+                icon={<UserRound size={18} />}
+              />
+            )}
+
+            {order.delivery_zone_name && (
+              <InformationItem
+                label="Delivery zone"
+                value={order.delivery_zone_name}
+                icon={<MapPin size={18} />}
+              />
+            )}
+
+            {order.requested_for && (
+              <InformationItem
+                label="Requested for"
+                value={formatDate(order.requested_for)}
+                icon={<CalendarDays size={18} />}
+              />
+            )}
+
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Status
@@ -496,6 +560,14 @@ const remainingItemCount = returnableOrderItems.reduce(
               value={order.guest_address ?? customer?.address ?? "No address"}
               icon={<MapPin size={18} />}
             />
+
+            {customer && (
+              <InformationItem
+                label="Loyalty balance"
+                value={`${Number(customer.loyalty_points ?? 0).toLocaleString()} points`}
+                icon={<UserRound size={18} />}
+              />
+            )}
 
             {order.customer_note && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -650,7 +722,7 @@ const itemName =
   {discount > 0 && (
     <div className="mt-2 flex justify-between text-sm">
       <span className="text-slate-500">
-        Discount
+        {order.coupon_code ? `Coupon · ${order.coupon_code}` : "Discount"}
       </span>
 
       <span className="font-semibold text-red-600">
@@ -823,13 +895,13 @@ function Receipt({
 
         <ReceiptInformation
           label="Customer"
-          value={customer?.name ?? "Walk-in customer"}
+          value={customer?.name ?? order.guest_name ?? "Walk-in customer"}
         />
 
-        {customer?.phone && (
+        {(customer?.phone ?? order.guest_phone) && (
           <ReceiptInformation
             label="Phone"
-            value={customer.phone}
+            value={customer?.phone ?? order.guest_phone ?? ""}
           />
         )}
 
@@ -1063,6 +1135,9 @@ function formatPaymentMethod(value: string) {
     case "cod":
       return "COD";
 
+    case "khqr":
+      return "KHQR";
+
     case "deposit":
       return "Deposit";
 
@@ -1077,6 +1152,12 @@ function formatPaymentMethod(value: string) {
         .replaceAll("_", " ")
         .replace(/\b\w/g, (c) => c.toUpperCase());
   }
+}
+
+function formatPaymentStatus(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function capitalize(value: string) {

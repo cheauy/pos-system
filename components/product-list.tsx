@@ -33,6 +33,10 @@ export type Product = {
   is_active: boolean;
   is_online: boolean;
   created_at: string;
+  size?: string | null;
+  color?: string | null;
+  product_type?: string | null;
+  variant_group_id?: string | null;
   categories:
     | ProductCategory
     | ProductCategory[]
@@ -198,6 +202,15 @@ export default function ProductList({
                           SKU: {product.sku}
                         </p>
                       )}
+
+                      {product.product_type === "variant" &&
+                        (product.color || product.size) && (
+                          <p className="mt-1 text-xs font-medium text-blue-600">
+                            {[product.color, product.size ? `Size ${product.size}` : null]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        )}
                     </td>
 
                     <td className="px-6 py-4 text-sm text-slate-600">

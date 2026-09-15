@@ -20,6 +20,7 @@ import {
 } from "@/lib/tenancy/domain";
 import StorefrontSettingsForm from "./storefront-settings-form";
 import QrSection from "./qr-section";
+import DeliveryZonesSection from "./delivery-zones-section";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function OnlineStorePage() {
@@ -39,16 +40,32 @@ export default async function OnlineStorePage() {
     business.role === "owner" ||
     business.role === "admin";
 
-  const { data: tables, error: tablesError } = await supabaseAdmin
-    .from("business_tables")
-    .select("id, name, public_token, is_active")
-    .eq("business_id", business.id)
-    .eq("is_active", true)
-    .order("name", { ascending: true });
+  const [tablesResult, zonesResult] = await Promise.all([
+    supabaseAdmin
+      .from("business_tables")
+      .select("id, name, public_token, is_active")
+      .eq("business_id", business.id)
+      .eq("is_active", true)
+      .order("name", { ascending: true }),
+    supabaseAdmin
+      .from("business_delivery_zones")
+      .select("id, name, fee, minimum_order, is_active")
+      .eq("business_id", business.id)
+      .order("is_active", { ascending: false })
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true }),
+  ]);
 
-  if (tablesError) {
-    throw new Error(`Unable to load table QR codes: ${tablesError.message}`);
+  if (tablesResult.error) {
+    throw new Error(`Unable to load table QR codes: ${tablesResult.error.message}`);
   }
+
+  if (zonesResult.error) {
+    throw new Error(`Unable to load delivery zones: ${zonesResult.error.message}`);
+  }
+
+  const tables = tablesResult.data ?? [];
+  const deliveryZones = zonesResult.data ?? [];
 
   return (
     <main className="space-y-6">
@@ -120,9 +137,16 @@ export default async function OnlineStorePage() {
         canEdit={canEdit}
       />
 
+      <DeliveryZonesSection
+        zones={deliveryZones}
+        currency={settings.currency}
+        allowDelivery={settings.allow_delivery}
+        canEdit={canEdit}
+      />
+
       <QrSection
         storeUrl={storeUrl}
-        tables={tables ?? []}
+        tables={tables}
         allowDineIn={settings.allow_dine_in}
         canEdit={canEdit}
       />

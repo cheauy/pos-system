@@ -23,6 +23,11 @@ type CheckoutBody = {
   guestAddress?: string | null;
   customerNote?: string | null;
   tableToken?: string | null;
+  paymentMethod?: string | null;
+  paymentReference?: string | null;
+  deliveryZoneId?: string | null;
+  requestedFor?: string | null;
+  couponCode?: string | null;
 };
 
 function cleanText(value: unknown, maxLength: number) {
@@ -97,6 +102,11 @@ export async function POST(
     const guestAddress = cleanText(body.guestAddress, 500);
     const customerNote = cleanText(body.customerNote, 1000);
     const tableToken = cleanText(body.tableToken, 80);
+    const paymentMethod = cleanText(body.paymentMethod, 20) ?? "cod";
+    const paymentReference = cleanText(body.paymentReference, 120);
+    const deliveryZoneId = cleanText(body.deliveryZoneId, 80);
+    const requestedFor = cleanText(body.requestedFor, 80);
+    const couponCode = cleanText(body.couponCode, 30);
 
     if (!fulfillmentType || !guestName || !guestPhone) {
       return NextResponse.json(
@@ -104,6 +114,20 @@ export async function POST(
           success: false,
           message: "Name, phone and fulfillment type are required.",
         },
+        { status: 400 },
+      );
+    }
+
+    if (!["cod", "khqr"].includes(paymentMethod)) {
+      return NextResponse.json(
+        { success: false, message: "Invalid online payment method." },
+        { status: 400 },
+      );
+    }
+
+    if (requestedFor && Number.isNaN(new Date(requestedFor).getTime())) {
+      return NextResponse.json(
+        { success: false, message: "Invalid scheduled order time." },
         { status: 400 },
       );
     }
@@ -119,6 +143,11 @@ export async function POST(
         p_guest_address: guestAddress,
         p_customer_note: customerNote,
         p_table_token: tableToken || null,
+        p_payment_method: paymentMethod,
+        p_payment_reference: paymentReference,
+        p_delivery_zone_id: deliveryZoneId || null,
+        p_requested_for: requestedFor || null,
+        p_coupon_code: couponCode ? couponCode.toUpperCase() : null,
       },
     );
 

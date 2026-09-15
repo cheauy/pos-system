@@ -159,6 +159,16 @@ export async function createProduct(
     "description",
   );
 
+  const size = getOptionalText(
+    formData,
+    "size",
+  );
+
+  const color = getOptionalText(
+    formData,
+    "color",
+  );
+
   const costPrice = getNumber(
     formData,
     "costPrice",
@@ -625,6 +635,8 @@ export async function updateProduct(
       sku,
       image_url: newImageUrl,
       description,
+      size,
+      color,
       cost_price: costPrice,
       selling_price: sellingPrice,
       low_stock_quantity:
@@ -1008,6 +1020,34 @@ export async function createVariantProduct(
 
   if (variants.length === 0) {
     return { success: false, message: "Add at least one valid variant." };
+  }
+
+  const normalizedPairs = variants
+    .map(
+      (variant) => `${variant.color.trim().toLowerCase()}|${variant.size.trim().toLowerCase()}`,
+    )
+    .filter((pair) => pair !== "|");
+  if (new Set(normalizedPairs).size !== normalizedPairs.length) {
+    return {
+      success: false,
+      message: "Each size and colour combination must be unique.",
+    };
+  }
+
+  const { data: storefrontMode } = await supabaseAdmin
+    .from("business_storefronts")
+    .select("business_type")
+    .eq("business_id", business.id)
+    .maybeSingle();
+
+  if (
+    storefrontMode?.business_type === "shoes" &&
+    variants.some((variant) => !variant.size.trim() || !variant.color.trim())
+  ) {
+    return {
+      success: false,
+      message: "Shoes require both a size and a colour for every inventory row.",
+    };
   }
 
   const uniqueSkus = new Set(variants.map((variant) => variant.sku.toLowerCase()));

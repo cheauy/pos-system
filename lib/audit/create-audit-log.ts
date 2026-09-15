@@ -20,6 +20,8 @@ type AuditEntity =
   | "customer"
   | "supplier"
   | "business"
+  | "coupon"
+  | "storefront"
   | "user";
 
 type AuditLogParams = {

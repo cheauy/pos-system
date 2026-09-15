@@ -747,7 +747,11 @@ function formatDate(value: string) {
 }
 
 function formatPaymentMethod(value: string) {
-  return value.replaceAll("_", " ");
+  if (value === "khqr") return "KHQR";
+  if (value === "cod") return "Pay Later / Cash";
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function getOnlineStatusClass(status: string) {

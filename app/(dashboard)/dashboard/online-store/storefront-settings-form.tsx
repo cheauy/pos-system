@@ -53,6 +53,8 @@ export default function StorefrontSettingsForm({
     useState<string | null>(settings.logo_url);
   const [bannerPreview, setBannerPreview] =
     useState<string | null>(settings.banner_url);
+  const [khqrPreview, setKhqrPreview] =
+    useState<string | null>(settings.khqr_image_url);
 
   useEffect(() => {
     if (!state.message) return;
@@ -372,6 +374,121 @@ export default function StorefrontSettingsForm({
               />
             </Field>
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-xl font-semibold text-slate-900">
+          Online Payment
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Let customers pay later, or show your shop KHQR during checkout. KHQR orders are marked pending verification until your team confirms the payment.
+        </p>
+
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <ToggleCard
+            name="acceptCod"
+            title="Pay Later / Cash"
+            description="Customer pays at pickup, delivery, or the counter."
+            defaultChecked={settings.accept_cod}
+            disabled={!canEdit}
+          />
+          <ToggleCard
+            name="acceptKhqr"
+            title="KHQR"
+            description="Show your merchant KHQR image before the customer places the order."
+            defaultChecked={settings.accept_khqr}
+            disabled={!canEdit}
+          />
+        </div>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <ImageField
+            label="KHQR image"
+            name="khqr"
+            preview={khqrPreview}
+            disabled={!canEdit}
+            onChange={(file) =>
+              setPreview(file, setKhqrPreview)
+            }
+            imageClass="aspect-square w-full max-w-[220px] rounded-2xl"
+          />
+
+          <div className="grid content-start gap-5">
+            <Field label="KHQR account / merchant name" htmlFor="khqrAccountName">
+              <input
+                id="khqrAccountName"
+                name="khqrAccountName"
+                maxLength={120}
+                defaultValue={settings.khqr_account_name ?? ""}
+                disabled={!canEdit}
+                placeholder="Example: Melody Clothing"
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label="KHQR instructions" htmlFor="khqrInstructions">
+              <textarea
+                id="khqrInstructions"
+                name="khqrInstructions"
+                rows={3}
+                maxLength={300}
+                defaultValue={settings.khqr_instructions ?? ""}
+                disabled={!canEdit}
+                placeholder="Example: Scan the QR, pay the exact total, then enter the transaction reference below."
+                className={`${inputClass} resize-none`}
+              />
+            </Field>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-xl font-semibold text-slate-900">
+          Scheduled Orders
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Allow customers to choose a future pickup or delivery time. Table QR orders always stay immediate.
+        </p>
+
+        <div className="mt-6">
+          <ToggleCard
+            name="allowScheduledOrders"
+            title="Allow scheduled / preorder times"
+            description="Customers can choose Now or a future time during checkout."
+            defaultChecked={settings.allow_scheduled_orders}
+            disabled={!canEdit}
+          />
+        </div>
+
+        <div className="mt-6 grid gap-5 sm:grid-cols-2">
+          <Field label="Minimum lead time (minutes)" htmlFor="minScheduleLeadMinutes">
+            <input
+              id="minScheduleLeadMinutes"
+              name="minScheduleLeadMinutes"
+              type="number"
+              min="0"
+              max="10080"
+              step="1"
+              defaultValue={settings.min_schedule_lead_minutes ?? 30}
+              disabled={!canEdit}
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Maximum days in advance" htmlFor="maxScheduleDays">
+            <input
+              id="maxScheduleDays"
+              name="maxScheduleDays"
+              type="number"
+              min="1"
+              max="90"
+              step="1"
+              defaultValue={settings.max_schedule_days ?? 7}
+              disabled={!canEdit}
+              className={inputClass}
+            />
+          </Field>
         </div>
       </section>
 

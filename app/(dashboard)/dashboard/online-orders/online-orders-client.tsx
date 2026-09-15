@@ -22,7 +22,10 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { createClient } from "@/lib/supabase/client";
-import { updateOnlineOrderStatus } from "./actions";
+import {
+  updateOnlineOrderStatus,
+  updateOnlinePaymentStatus,
+} from "./actions";
 
 type OrderItem = {
   id: string;
@@ -47,7 +50,15 @@ export type OnlineOrder = {
   guest_address: string | null;
   customer_note: string | null;
   table_name: string | null;
+  delivery_zone_name: string | null;
+  requested_for: string | null;
+  payment_method: string;
+  payment_status: string;
+  payment_reference: string | null;
   subtotal: number;
+  discount: number;
+  coupon_code: string | null;
+  loyalty_points_earned: number;
   delivery_fee: number;
   total: number;
   created_at: string;
@@ -57,9 +68,11 @@ export type OnlineOrder = {
 export default function OnlineOrdersClient({
   businessId,
   initialOrders,
+  currency,
 }: {
   businessId: string;
   initialOrders: OnlineOrder[];
+  currency: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -189,6 +202,23 @@ export default function OnlineOrdersClient({
     });
   }
 
+  function changePaymentStatus(
+    orderId: string,
+    status: "pending_verification" | "paid" | "unpaid",
+  ) {
+    setPendingOrderId(orderId);
+    startTransition(async () => {
+      const result = await updateOnlinePaymentStatus(orderId, status);
+      if (result.success) {
+        toast.success(result.message);
+        router.refresh();
+      } else {
+        toast.error(result.message);
+      }
+      setPendingOrderId(null);
+    });
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -245,6 +275,8 @@ export default function OnlineOrdersClient({
               order={order}
               busy={pending && pendingOrderId === order.id}
               onChange={changeStatus}
+              onPaymentChange={changePaymentStatus}
+              currency={currency}
             />
           ))}
         </div>
@@ -271,12 +303,19 @@ function OrderCard({
   order,
   busy,
   onChange,
+  onPaymentChange,
+  currency,
 }: {
   order: OnlineOrder;
   busy: boolean;
+  currency: string;
   onChange: (
     orderId: string,
     status: "accepted" | "preparing" | "ready" | "completed" | "rejected",
+  ) => void;
+  onPaymentChange: (
+    orderId: string,
+    status: "pending_verification" | "paid" | "unpaid",
   ) => void;
 }) {
   const status = order.online_status ?? "new";
@@ -291,13 +330,22 @@ function OrderCard({
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold uppercase text-slate-600">
               {order.order_source === "qr" ? "QR" : "Online"}
             </span>
+            <PaymentBadge
+              method={order.payment_method}
+              status={order.payment_status}
+            />
+            {order.coupon_code && (
+              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                {order.coupon_code}
+              </span>
+            )}
           </div>
           <p className="mt-1 text-xs text-slate-500">
             {new Date(order.created_at).toLocaleString()}
           </p>
         </div>
 
-        <p className="text-xl font-bold text-slate-950">${Number(order.total).toFixed(2)}</p>
+        <p className="text-xl font-bold text-slate-950">{formatMoney(order.total, currency)}</p>
       </div>
 
       <div className="space-y-5 p-5">
@@ -309,10 +357,90 @@ function OrderCard({
             label="Fulfillment"
             value={formatFulfillment(order)}
           />
+          {order.delivery_zone_name && (
+            <Info
+              icon={<MapPin size={16} />}
+              label="Delivery zone"
+              value={order.delivery_zone_name}
+            />
+          )}
+          {order.requested_for && (
+            <Info
+              icon={<Clock3 size={16} />}
+              label="Requested for"
+              value={new Date(order.requested_for).toLocaleString()}
+            />
+          )}
           {order.guest_address && (
             <Info icon={<MapPin size={16} />} label="Address" value={order.guest_address} />
           )}
         </div>
+
+        {(Number(order.discount) > 0 || Number(order.loyalty_points_earned) > 0) && (
+          <div className="grid gap-2 rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm sm:grid-cols-2">
+            {Number(order.discount) > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
+                  Promotion
+                </p>
+                <p className="mt-1 font-semibold text-violet-950">
+                  {order.coupon_code ? `${order.coupon_code} · ` : ""}
+                  -{formatMoney(Number(order.discount), currency)}
+                </p>
+              </div>
+            )}
+            {Number(order.loyalty_points_earned) > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
+                  Loyalty Earned
+                </p>
+                <p className="mt-1 font-semibold text-violet-950">
+                  +{Number(order.loyalty_points_earned).toLocaleString()} points
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {order.payment_method === "khqr" && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">
+                  KHQR Payment
+                </p>
+                <p className="mt-1 font-semibold text-slate-900">
+                  {formatPaymentStatus(order.payment_status)}
+                </p>
+                {order.payment_reference && (
+                  <p className="mt-1 text-xs text-slate-600">
+                    Reference: {order.payment_reference}
+                  </p>
+                )}
+              </div>
+
+              {!busy && order.payment_status !== "paid" && (
+                <button
+                  type="button"
+                  onClick={() => onPaymentChange(order.id, "paid")}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                >
+                  <Check size={16} /> Mark Paid
+                </button>
+              )}
+
+              {!busy && order.payment_status === "paid" && (
+                <button
+                  type="button"
+                  onClick={() => onPaymentChange(order.id, "pending_verification")}
+                  className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+                >
+                  Reopen Verification
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="rounded-xl bg-slate-50 p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Items</p>
@@ -333,7 +461,7 @@ function OrderCard({
                   )}
                 </div>
                 <span className="font-semibold text-slate-700">
-                  ${(Number(item.unit_price) * item.quantity).toFixed(2)}
+                  {formatMoney(Number(item.unit_price) * item.quantity, currency)}
                 </span>
               </div>
             ))}
@@ -404,6 +532,41 @@ function Info({ icon, label, value }: { icon: React.ReactNode; label: string; va
   );
 }
 
+function PaymentBadge({
+  method,
+  status,
+}: {
+  method: string;
+  status: string;
+}) {
+  if (method !== "khqr") {
+    return (
+      <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+        Pay Later
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+        status === "paid"
+          ? "bg-emerald-50 text-emerald-700"
+          : "bg-blue-50 text-blue-700"
+      }`}
+    >
+      KHQR · {status === "paid" ? "Paid" : "Verify"}
+    </span>
+  );
+}
+
+function formatPaymentStatus(value: string) {
+  if (value === "pending_verification") return "Pending verification";
+  if (value === "paid") return "Paid";
+  if (value === "refunded") return "Refunded";
+  return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     new: "bg-blue-50 text-blue-700",
@@ -418,6 +581,19 @@ function StatusBadge({ status }: { status: string }) {
       {status.replaceAll("_", " ")}
     </span>
   );
+}
+
+function formatMoney(value: number, currency: string) {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: currency === "KHR" ? 0 : 2,
+      maximumFractionDigits: currency === "KHR" ? 0 : 2,
+    }).format(Number(value));
+  } catch {
+    return `${currency} ${Number(value).toFixed(2)}`;
+  }
 }
 
 function formatFulfillment(order: OnlineOrder) {

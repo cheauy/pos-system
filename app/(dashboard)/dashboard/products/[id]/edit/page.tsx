@@ -36,6 +36,9 @@ type Product = {
   sku: string | null;
   image_url: string | null;
   description: string | null;
+  size: string | null;
+  color: string | null;
+  product_type: string | null;
   cost_price: number;
   selling_price: number;
   stock_quantity: number;
@@ -79,6 +82,9 @@ export default async function EditProductPage({
         sku,
         image_url,
         description,
+        size,
+        color,
+        product_type,
         cost_price,
         selling_price,
         stock_quantity,
@@ -239,6 +245,30 @@ export default async function EditProductPage({
                 ))}
               </select>
             </FormField>
+
+            {product.product_type === "variant" && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField label="Size" htmlFor="size">
+                  <input
+                    id="size"
+                    name="size"
+                    type="text"
+                    defaultValue={product.size ?? ""}
+                    className={inputClass}
+                  />
+                </FormField>
+
+                <FormField label="Colour" htmlFor="color">
+                  <input
+                    id="color"
+                    name="color"
+                    type="text"
+                    defaultValue={product.color ?? ""}
+                    className={inputClass}
+                  />
+                </FormField>
+              </div>
+            )}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <FormField

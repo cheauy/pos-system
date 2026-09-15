@@ -17,6 +17,10 @@ type Product = {
   selling_price: number;
   stock_quantity: number;
   category_id: string | null;
+  size: string | null;
+  color: string | null;
+  product_type: string | null;
+  variant_group_id: string | null;
 };
 
 type Customer = {
@@ -34,6 +38,7 @@ export default async function PosPage() {
   { data: categoryData, error: categoryError },
   { data: productData, error: productError },
   { data: customerData, error: customerError },
+  { data: storefrontData },
 ] = await Promise.all([
   supabase
     .from("categories")
@@ -50,7 +55,11 @@ export default async function PosPage() {
       image_url,
       selling_price,
       stock_quantity,
-      category_id
+      category_id,
+      size,
+      color,
+      product_type,
+      variant_group_id
     `)
     .eq("business_id", business.id)
     .eq("is_active", true)
@@ -60,6 +69,11 @@ export default async function PosPage() {
     .select("id, name, phone")
     .eq("business_id", business.id)
     .order("name"),
+  supabase
+    .from("business_storefronts")
+    .select("business_type")
+    .eq("business_id", business.id)
+    .maybeSingle(),
 ]);
 
  if (
@@ -82,6 +96,7 @@ return (
     categories={(categoryData ?? []) as Category[]}
     products={(productData ?? []) as Product[]}
     customers={(customerData ?? []) as Customer[]}
+    businessType={storefrontData?.business_type ?? "general"}
   />
 );
 }

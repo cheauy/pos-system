@@ -12,6 +12,7 @@ import {
   Search,
   ShoppingCart,
   Trash2,
+  X,
 } from "lucide-react";
 
 import { checkoutOrder } from "./actions";
@@ -29,10 +30,27 @@ type Product = {
   selling_price: number;
   stock_quantity: number;
   category_id: string | null;
+  size: string | null;
+  color: string | null;
+  product_type: string | null;
+  variant_group_id: string | null;
 };
 
 type CartItem = Product & {
   quantity: number;
+};
+
+type ShoeProductGroup = {
+  key: string;
+  name: string;
+  image_url: string | null;
+  category_id: string | null;
+  variants: Product[];
+  totalStock: number;
+  priceFrom: number;
+  colors: string[];
+  sizes: string[];
+  isVariant: boolean;
 };
 type Customer = {
   id: string;
@@ -49,10 +67,12 @@ export default function PosClient({
   products,
   categories,
   customers,
+  businessType,
 }: {
   products: Product[];
   categories: Category[];
   customers: Customer[];
+  businessType: string;
 })  {
   const [customerId, setCustomerId] =
   useState("");
@@ -60,6 +80,9 @@ export default function PosClient({
   const [selectedCategory, setSelectedCategory] =
     useState("all");
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [selectedShoeGroup, setSelectedShoeGroup] =
+    useState<ShoeProductGroup | null>(null);
+  const isShoesMode = businessType === "shoes";
   const [paymentMethod, setPaymentMethod] =
   useState<PaymentMethod>("cod");
   const [amountPaid, setAmountPaid] = useState("");
@@ -84,6 +107,75 @@ const [deliveryFee, setDeliveryFee] = useState("");
       return matchesCategory && matchesSearch;
     });
   }, [products, search, selectedCategory]);
+
+  const shoeGroups = useMemo<ShoeProductGroup[]>(() => {
+    if (!isShoesMode) return [];
+
+    const grouped = new Map<string, Product[]>();
+    for (const product of products) {
+      const key =
+        product.product_type === "variant" && product.variant_group_id
+          ? `variant:${product.variant_group_id}`
+          : `product:${product.id}`;
+      const rows = grouped.get(key) ?? [];
+      rows.push(product);
+      grouped.set(key, rows);
+    }
+
+    return [...grouped.entries()].map(([key, variants]) => {
+      const first = variants[0];
+      return {
+        key,
+        name: first.name,
+        image_url:
+          variants.find((row) => row.image_url)?.image_url ?? null,
+        category_id: first.category_id,
+        variants,
+        totalStock: variants.reduce(
+          (sum, row) => sum + Number(row.stock_quantity),
+          0,
+        ),
+        priceFrom: Math.min(
+          ...variants.map((row) => Number(row.selling_price)),
+        ),
+        colors: Array.from(
+          new Set(
+            variants
+              .map((row) => row.color?.trim())
+              .filter((value): value is string => Boolean(value)),
+          ),
+        ),
+        sizes: Array.from(
+          new Set(
+            variants
+              .map((row) => row.size?.trim())
+              .filter((value): value is string => Boolean(value)),
+          ),
+        ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+        isVariant: variants.some((row) => row.product_type === "variant"),
+      };
+    });
+  }, [isShoesMode, products]);
+
+  const filteredShoeGroups = useMemo(() => {
+    if (!isShoesMode) return [];
+    const keyword = search.trim().toLowerCase();
+    return shoeGroups.filter((group) => {
+      const matchesCategory =
+        selectedCategory === "all" ||
+        group.category_id === selectedCategory;
+      const matchesSearch =
+        !keyword ||
+        group.name.toLowerCase().includes(keyword) ||
+        group.variants.some(
+          (row) =>
+            row.sku?.toLowerCase().includes(keyword) ||
+            row.color?.toLowerCase().includes(keyword) ||
+            row.size?.toLowerCase().includes(keyword),
+        );
+      return matchesCategory && matchesSearch;
+    });
+  }, [isShoesMode, search, selectedCategory, shoeGroups]);
 
 const subtotal = cart.reduce(
   (sum, item) =>
@@ -311,7 +403,8 @@ window.location.href =
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
+    <>
+      <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
       <section>
         <div className="mb-5">
           <h1 className="text-3xl font-bold text-slate-900">
@@ -363,11 +456,68 @@ window.location.href =
           </div>
         </div>
 
-        {filteredProducts.length === 0 ? (
+        {(isShoesMode ? filteredShoeGroups.length : filteredProducts.length) === 0 ? (
           <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-12 text-center">
-            <p className="font-medium text-slate-700">
-              No products found
-            </p>
+            <p className="font-medium text-slate-700">No products found</p>
+          </div>
+        ) : isShoesMode ? (
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+            {filteredShoeGroups.map((group) => (
+              <button
+                key={group.key}
+                type="button"
+                disabled={group.totalStock <= 0}
+                onClick={() => {
+                  if (group.isVariant) {
+                    setSelectedShoeGroup(group);
+                  } else if (group.variants[0]) {
+                    addToCart(group.variants[0]);
+                  }
+                }}
+                className="rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                  {group.image_url ? (
+                    <img
+                      src={group.image_url}
+                      alt={group.name}
+                      className="h-40 w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-40 items-center justify-center">
+                      <span className="text-3xl font-bold text-slate-300">
+                        {group.name.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <h2 className="mt-4 font-semibold text-slate-900">
+                  {group.name}
+                </h2>
+
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  {group.sizes.length} sizes · {group.colors.length} colours
+                </p>
+
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <span className="text-lg font-bold text-blue-600">
+                    From ${group.priceFrom.toFixed(2)}
+                  </span>
+                  <span
+                    className={
+                      group.totalStock > 0
+                        ? "text-sm text-slate-500"
+                        : "text-sm font-medium text-red-600"
+                    }
+                  >
+                    {group.totalStock > 0
+                      ? `${group.totalStock} total stock`
+                      : "Out of stock"}
+                  </span>
+                </div>
+              </button>
+            ))}
           </div>
         ) : (
           <div className="mt-6 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
@@ -380,20 +530,20 @@ window.location.href =
                 className="rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                              {product.image_url ? (
-                                <img
-                                  src={product.image_url}
-                                  alt={product.name}
-                                  className="h-36 w-full object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-36 items-center justify-center">
-                                  <span className="text-3xl font-bold text-slate-300">
-                                    {product.name.charAt(0).toUpperCase()}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
+                  {product.image_url ? (
+                    <img
+                      src={product.image_url}
+                      alt={product.name}
+                      className="h-36 w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-36 items-center justify-center">
+                      <span className="text-3xl font-bold text-slate-300">
+                        {product.name.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+                </div>
 
                 <h2 className="mt-4 font-semibold text-slate-900">
                   {product.name}
@@ -459,6 +609,14 @@ window.location.href =
                       <h3 className="font-semibold text-slate-900">
                         {item.name}
                       </h3>
+
+                      {(item.color || item.size) && (
+                        <p className="mt-1 text-xs font-semibold text-blue-600">
+                          {[item.color, item.size ? `Size ${item.size}` : null]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      )}
 
                       <p className="mt-1 text-sm text-slate-500">
                         $
@@ -724,7 +882,19 @@ window.location.href =
           </button>
         </form>
       </section>
-    </div>
+      </div>
+
+      {selectedShoeGroup && (
+        <ShoeVariantModal
+          group={selectedShoeGroup}
+          onClose={() => setSelectedShoeGroup(null)}
+          onAdd={(product) => {
+            addToCart(product);
+            setSelectedShoeGroup(null);
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -749,5 +919,161 @@ function CategoryButton({
     >
       {children}
     </button>
+  );
+}
+
+function ShoeVariantModal({
+  group,
+  onClose,
+  onAdd,
+}: {
+  group: ShoeProductGroup;
+  onClose: () => void;
+  onAdd: (product: Product) => void;
+}) {
+  const initialVariant =
+    group.variants.find((row) => row.stock_quantity > 0) ?? group.variants[0];
+  const [variantId, setVariantId] = useState(initialVariant?.id ?? "");
+  const variant =
+    group.variants.find((row) => row.id === variantId) ?? initialVariant;
+
+  if (!variant) return null;
+
+  const selectedColor = variant.color?.trim() ?? group.colors[0] ?? "";
+  const sizeRows = group.variants
+    .filter((row) => (row.color?.trim() ?? "") === selectedColor)
+    .sort((a, b) =>
+      (a.size ?? "").localeCompare(b.size ?? "", undefined, { numeric: true }),
+    );
+
+  function chooseColor(color: string) {
+    const sameSize = group.variants.find(
+      (row) =>
+        row.color?.trim() === color &&
+        row.size === variant.size &&
+        row.stock_quantity > 0,
+    );
+    const firstAvailable = group.variants.find(
+      (row) => row.color?.trim() === color && row.stock_quantity > 0,
+    );
+    const fallback = group.variants.find(
+      (row) => row.color?.trim() === color,
+    );
+    const next = sameSize ?? firstAvailable ?? fallback;
+    if (next) setVariantId(next.id);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-5">
+          <div>
+            <h2 className="text-xl font-bold text-slate-950">{group.name}</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Choose the exact colour and size before adding to the sale.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="space-y-6 p-5">
+          {group.image_url && (
+            <img
+              src={group.image_url}
+              alt={group.name}
+              className="aspect-[16/9] w-full rounded-2xl border border-slate-200 object-cover"
+            />
+          )}
+
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-800">Colour</p>
+              <span className="text-xs text-slate-400">{selectedColor}</span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {group.colors.map((color) => {
+                const available = group.variants.some(
+                  (row) =>
+                    row.color?.trim() === color && row.stock_quantity > 0,
+                );
+                const active = selectedColor === color;
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    disabled={!available}
+                    onClick={() => chooseColor(color)}
+                    className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 ${
+                      active
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-slate-200 text-slate-700 hover:border-slate-300"
+                    }`}
+                  >
+                    {color}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-800">Size</p>
+              <span className="text-xs text-slate-400">
+                {variant.size ? `EU ${variant.size}` : "Choose"}
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6">
+              {sizeRows.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  disabled={row.stock_quantity <= 0}
+                  onClick={() => setVariantId(row.id)}
+                  className={`rounded-xl border px-2 py-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-300 ${
+                    row.id === variant.id
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-slate-200 text-slate-800 hover:border-slate-300"
+                  }`}
+                >
+                  {row.size || "—"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold text-slate-900">
+                  {variant.color} · Size {variant.size || "—"}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  SKU {variant.sku || "—"} · {variant.stock_quantity} in stock
+                </p>
+              </div>
+              <p className="text-xl font-bold text-blue-600">
+                ${Number(variant.selling_price).toFixed(2)}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            disabled={variant.stock_quantity <= 0}
+            onClick={() => onAdd(variant)}
+            className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Add Size {variant.size || "—"} to Sale
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

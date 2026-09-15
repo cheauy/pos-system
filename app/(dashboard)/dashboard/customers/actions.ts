@@ -7,6 +7,7 @@ import {
   requirePermission,
 } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 function optionalText(
   formData: FormData,
   field: string,
@@ -190,4 +191,59 @@ export async function updateCustomer(
   redirect(
     `/dashboard/customers/${customerId}`,
   );
+}
+
+
+export async function adjustCustomerLoyalty(formData: FormData) {
+  const business = await requirePermission("customers.update");
+  const customerId = formData.get("customerId");
+  const pointsValue = formData.get("points");
+  const noteValue = formData.get("note");
+
+  if (typeof customerId !== "string" || !customerId) {
+    throw new Error("Invalid customer ID.");
+  }
+
+  const points = Number(pointsValue);
+  if (
+    !Number.isInteger(points) ||
+    points === 0 ||
+    Math.abs(points) > 1000000
+  ) {
+    throw new Error("Points must be a non-zero whole number.");
+  }
+
+  const note =
+    typeof noteValue === "string" && noteValue.trim()
+      ? noteValue.trim().slice(0, 300)
+      : "Manual loyalty adjustment";
+
+  const { data, error } = await supabaseAdmin.rpc(
+    "adjust_customer_loyalty_points",
+    {
+      p_business_id: business.id,
+      p_customer_id: customerId,
+      p_points: points,
+      p_note: note,
+    },
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  await createAuditLog({
+    action: "update",
+    entityType: "customer",
+    entityId: customerId,
+    description: `Adjusted customer loyalty by ${points} points`,
+    metadata: {
+      points,
+      balance: data,
+      note,
+    },
+  });
+
+  revalidatePath("/dashboard/customers");
+  revalidatePath(`/dashboard/customers/${customerId}`);
 }

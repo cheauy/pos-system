@@ -35,6 +35,18 @@ export type StorefrontSettings = {
   minimum_order: number;
   delivery_fee: number;
   checkout_message: string | null;
+  accept_cod: boolean;
+  accept_khqr: boolean;
+  khqr_image_url: string | null;
+  khqr_account_name: string | null;
+  khqr_instructions: string | null;
+  allow_scheduled_orders: boolean;
+  min_schedule_lead_minutes: number;
+  max_schedule_days: number;
+  enable_coupons: boolean;
+  loyalty_enabled: boolean;
+  loyalty_spend_per_point: number;
+  loyalty_minimum_order: number;
   estimated_minutes: number | null;
   created_at: string;
   updated_at: string;

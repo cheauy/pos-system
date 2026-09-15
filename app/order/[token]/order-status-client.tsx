@@ -14,9 +14,18 @@ type PublicOrder = {
   order_number: string;
   online_status: string | null;
   fulfillment_type: string | null;
+  discount: number;
+  coupon_code: string | null;
+  loyalty_points_earned: number;
   total: number;
   created_at: string;
   table_name: string | null;
+  delivery_zone_name: string | null;
+  requested_for: string | null;
+  payment_method: string;
+  payment_status: string;
+  payment_reference: string | null;
+  currency: string;
 };
 
 export default function OrderStatusClient({
@@ -80,7 +89,35 @@ export default function OrderStatusClient({
           <dl className="mt-8 divide-y divide-slate-100 rounded-2xl border border-slate-200 px-5">
             <Row label="Fulfillment" value={formatFulfillment(order.fulfillment_type)} />
             {order.table_name && <Row label="Table" value={order.table_name} />}
-            <Row label="Total" value={`$${Number(order.total).toFixed(2)}`} />
+            {order.delivery_zone_name && (
+              <Row label="Delivery zone" value={order.delivery_zone_name} />
+            )}
+            {order.requested_for && (
+              <Row
+                label="Requested for"
+                value={new Date(order.requested_for).toLocaleString()}
+              />
+            )}
+            <Row
+              label="Payment"
+              value={formatPayment(order.payment_method, order.payment_status)}
+            />
+            {order.payment_reference && (
+              <Row label="Payment reference" value={order.payment_reference} />
+            )}
+            {order.coupon_code && Number(order.discount) > 0 && (
+              <Row
+                label={`Coupon · ${order.coupon_code}`}
+                value={`-${formatMoney(Number(order.discount), order.currency)}`}
+              />
+            )}
+            <Row label="Total" value={formatMoney(order.total, order.currency)} />
+            {Number(order.loyalty_points_earned) > 0 && (
+              <Row
+                label="Loyalty earned"
+                value={`+${Number(order.loyalty_points_earned).toLocaleString()} points`}
+              />
+            )}
             <Row label="Placed" value={new Date(order.created_at).toLocaleString()} />
           </dl>
 
@@ -108,10 +145,30 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+function formatMoney(value: number, currency: string) {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: currency === "KHR" ? 0 : 2,
+      maximumFractionDigits: currency === "KHR" ? 0 : 2,
+    }).format(Number(value));
+  } catch {
+    return `${currency} ${Number(value).toFixed(2)}`;
+  }
+}
+
 function formatFulfillment(value: string | null) {
   if (value === "dine_in") return "Dine In";
   if (value === "delivery") return "Delivery";
   return "Pickup";
+}
+
+function formatPayment(method: string, status: string) {
+  if (method === "khqr") {
+    return status === "paid" ? "KHQR · Paid" : "KHQR · Pending verification";
+  }
+  return "Pay Later / Cash";
 }
 
 function getStatusAppearance(status: string) {
