@@ -22,5 +22,7 @@ export type CurrentBusiness = {
   name: string;
   slug: string;
   productMode: ProductMode;
+  // Compatibility alias for newer server actions that use the DB-style name.
+  product_mode: ProductMode;
   role: BusinessRole;
 };

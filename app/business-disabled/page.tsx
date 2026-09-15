@@ -2,12 +2,10 @@
 
 import { useState } from "react";
 import { Ban, Loader2, LogOut } from "lucide-react";
-import { useRouter } from "next/navigation";
-
 import { createClient } from "@/lib/supabase/client";
+import { getRootUrl } from "@/lib/tenancy/domain";
 
 export default function BusinessDisabledPage() {
-  const router = useRouter();
   const supabase = createClient();
 
   const [signingOut, setSigningOut] = useState(false);
@@ -18,8 +16,9 @@ export default function BusinessDisabledPage() {
     try {
       await supabase.auth.signOut();
 
-      router.replace("/login");
-      router.refresh();
+      window.location.assign(
+        getRootUrl("/login"),
+      );
     } finally {
       setSigningOut(false);
     }

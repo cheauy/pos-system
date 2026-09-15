@@ -1,5 +1,5 @@
 "use client";
-
+import { Loader2 } from "lucide-react";
 import {
   useActionState,
   useEffect,
@@ -35,14 +35,22 @@ function SubmitButton({
 
   return (
     <button
-      type="submit"
-      disabled={!isConfirmed || pending}
-      className="flex-1 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-    >
-      {pending
-        ? "Extending..."
-        : "Confirm Extension"}
-    </button>
+  type="submit"
+  disabled={!isConfirmed || pending}
+  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+>
+  {pending ? (
+    <>
+      <Loader2
+        size={17}
+        className="animate-spin"
+      />
+      Extending...
+    </>
+  ) : (
+    "Confirm Extension"
+  )}
+</button>
   );
 }
 

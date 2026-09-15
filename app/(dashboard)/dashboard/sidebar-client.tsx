@@ -221,7 +221,7 @@ function SidebarPanel({
 
         <div className="ml-3">
           <h1 className="font-bold text-slate-900">
-            POS System
+            TENH POS
           </h1>
 
           <p className="text-xs text-slate-500">

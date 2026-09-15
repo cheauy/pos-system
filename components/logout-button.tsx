@@ -1,27 +1,45 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
+
 import { createClient } from "@/lib/supabase/client";
+import { getRootUrl } from "@/lib/tenancy/domain";
 
 export default function LogoutButton() {
-  const router = useRouter();
+  const [pending, setPending] = useState(false);
 
   async function handleLogout() {
-    const supabase = createClient();
+    if (pending) return;
 
-    await supabase.auth.signOut();
+    setPending(true);
 
-    router.replace("/login");
-    router.refresh();
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+
+      window.location.assign(
+        getRootUrl("/login"),
+      );
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
     <button
       type="button"
+      disabled={pending}
       onClick={handleLogout}
-      className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+      className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      Sign out
+      {pending && (
+        <Loader2
+          size={16}
+          className="animate-spin"
+        />
+      )}
+      {pending ? "Signing out..." : "Sign out"}
     </button>
   );
 }

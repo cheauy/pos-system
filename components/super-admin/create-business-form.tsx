@@ -15,6 +15,10 @@ import {
 import {
   initialCreateBusinessState,
 } from "@/app/(super-admin)/super-admin/businesses/new/state";
+import {
+  getRootDomain,
+  normalizeTenantSlug,
+} from "@/lib/tenancy/domain";
 
 
 function previewExpiryDate(
@@ -63,6 +67,13 @@ export default function CreateBusinessForm({}
     );
 
     const router = useRouter();
+
+const [businessName, setBusinessName] =
+  useState("");
+const [subdomain, setSubdomain] =
+  useState("");
+const [subdomainTouched, setSubdomainTouched] =
+  useState(false);
 
 useEffect(() => {
   if (!state.success) return;
@@ -119,7 +130,7 @@ const [isCustomStaff, setIsCustomStaff] =
           </div>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-6 space-y-4">
           <FormField
             label="Business name"
             htmlFor="businessName"
@@ -129,9 +140,57 @@ const [isCustomStaff, setIsCustomStaff] =
               name="businessName"
               required
               minLength={2}
+              value={businessName}
+              onChange={(event) => {
+                const value = event.target.value;
+                setBusinessName(value);
+
+                if (!subdomainTouched) {
+                  setSubdomain(
+                    normalizeTenantSlug(value),
+                  );
+                }
+              }}
               className={inputClass}
               placeholder="Dara Shop"
             />
+          </FormField>
+
+          <FormField
+            label="TENH POS store address"
+            htmlFor="subdomain"
+          >
+            <div className="flex overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
+              <input
+                id="subdomain"
+                name="subdomain"
+                required
+                minLength={2}
+                maxLength={40}
+                value={subdomain}
+                onChange={(event) => {
+                  setSubdomainTouched(true);
+                  setSubdomain(
+                    normalizeTenantSlug(
+                      event.target.value,
+                    ),
+                  );
+                }}
+                className="min-w-0 flex-1 px-4 py-3 text-slate-900 outline-none"
+                placeholder="dara-shop"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+
+              <span className="flex items-center border-l border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-500">
+                .{getRootDomain()}
+              </span>
+            </div>
+
+            <p className="mt-2 text-xs text-slate-500">
+              Public store: {subdomain || "your-shop"}.{getRootDomain()}
+            </p>
           </FormField>
         </div>
       </section>

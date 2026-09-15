@@ -3,7 +3,7 @@ import {
   notFound,
 } from "next/navigation";
 
-
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 
 import {
   AlertTriangle,
@@ -252,13 +252,12 @@ return (
                 Cancel
               </Link>
 
-              <button
-                type="submit"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Save correction
-              </button>
+              <PendingSubmitButton
+  pendingText="Saving correction..."
+  className="h-12 rounded-xl bg-blue-600 px-6 text-sm font-semibold text-white hover:bg-blue-700"
+>
+  Save correction
+</PendingSubmitButton>
             </div>
           </form>
         </div>

@@ -1,5 +1,7 @@
 import { createBrowserClient } from "@supabase/ssr";
 
+import { getSharedAuthCookieOptions } from "@/lib/tenancy/domain";
+
 export function createClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey =
@@ -10,5 +12,12 @@ export function createClient() {
     throw new Error("Missing Supabase environment variables.");
   }
 
-  return createBrowserClient(supabaseUrl, supabaseKey);
+  const hostname =
+    typeof window === "undefined"
+      ? undefined
+      : window.location.hostname;
+
+  return createBrowserClient(supabaseUrl, supabaseKey, {
+    cookieOptions: getSharedAuthCookieOptions(hostname),
+  });
 }

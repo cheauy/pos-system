@@ -1,6 +1,17 @@
+import type { Metadata } from "next";
 import ThemeProvider from "@/components/providers/theme-provider";
 import "./globals.css";
 import { Toaster } from "sonner";
+
+export const metadata: Metadata = {
+  title: {
+    default: "TENH POS",
+    template: "%s | TENH POS",
+  },
+  description:
+    "POS, inventory and online ordering for modern businesses.",
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -17,10 +28,10 @@ export default function RootLayout({
         >
           {children}
           <Toaster
-          position="top-right"
-          richColors
-          closeButton
-        />
+            position="top-right"
+            richColors
+            closeButton
+          />
         </ThemeProvider>
       </body>
     </html>

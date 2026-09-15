@@ -3,6 +3,11 @@ import { redirect } from "next/navigation";
 import LogoutButton from "@/components/logout-button";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
+import {
+  getTenantDashboardUrl,
+  usesSharedSubdomainCookies,
+} from "@/lib/tenancy/domain";
+import { getRequestTenantSlug } from "@/lib/tenancy/request-tenant";
 import SidebarClient from "./sidebar-client";
 
 export default async function DashboardLayout({
@@ -21,15 +26,25 @@ export default async function DashboardLayout({
   }
 
   /*
-   * This checks:
-   * - User has an active business membership
-   * - Business exists
-   * - Business is active
-   *
-   * If the business is disabled, getCurrentBusiness()
-   * redirects to /business-disabled.
+   * getCurrentBusiness() validates the active membership against
+   * the tenant slug when the request is on a TENH subdomain.
    */
   const business = await getCurrentBusiness();
+  const tenantSlug = await getRequestTenantSlug();
+
+  // Production requests that arrive on the apex domain are moved
+  // to the canonical business subdomain after the business is known.
+  if (
+    !tenantSlug &&
+    usesSharedSubdomainCookies()
+  ) {
+    redirect(
+      getTenantDashboardUrl(
+        business.slug,
+        "/dashboard",
+      ),
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">

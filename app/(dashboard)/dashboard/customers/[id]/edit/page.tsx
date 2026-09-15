@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { updateCustomer } from "@/app/(dashboard)//dashboard/customers/actions";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 
 type EditCustomerPageProps = {
   params: Promise<{
@@ -118,12 +119,12 @@ export default async function EditCustomerPage({
               />
             </FormField>
 
-            <button
-              type="submit"
-              className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700"
-            >
-              Save Changes
-            </button>
+            <PendingSubmitButton
+  pendingText="Saving changes..."
+  className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
+>
+  Save Changes
+</PendingSubmitButton>
           </form>
         </section>
       </div>

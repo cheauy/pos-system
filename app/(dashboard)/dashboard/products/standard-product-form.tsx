@@ -19,7 +19,7 @@ const initialState: CreateProductState = {
   message: "",
 };
 
-export default function ProductForm({
+export default function StandardProductForm({
   categories,
 }: {
   categories: Category[];

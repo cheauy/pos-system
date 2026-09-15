@@ -1,10 +1,11 @@
 "use client";
-
+import { useFormStatus } from "react-dom";
 import {
   useEffect,
   useState,
   useTransition,
 } from "react";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   deleteBusiness,
   reactivateExpiredBusiness,
@@ -173,7 +174,7 @@ export function ToggleAndDeleteActions({
 
 const [showDelete, setShowDelete] =
   useState(false);
-
+const { pending } = useFormStatus();
 const [
   deleteConfirmation,
   setDeleteConfirmation,
@@ -262,9 +263,20 @@ const isExpired = useSubscriptionExpired(
     setShowDelete(true);
   }}
   className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
->
-  <Trash2 size={16} />
-  Delete Business
+>{pending ? (
+    <>
+      <Loader2
+        size={17}
+        className="animate-spin"
+      />
+      Deleting...
+    </>
+  ) : (
+    <>
+      <Trash2 size={17} />
+      Confirm Delete
+    </>
+  )}
 </button>
 </form>
  {showEdit && (
@@ -729,13 +741,13 @@ export function BusinessStatusActions({
     value={businessId}
   />
 
-  <button
-    type="submit"
-    className="inline-flex items-center gap-2 border-r border-slate-200 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50"
-  >
-    <PlayCircle size={16} />
-    Restore
-  </button>
+  <PendingSubmitButton
+  pendingText="Restoring..."
+  icon={<PlayCircle size={16} />}
+  className="border-r border-slate-200 px-4 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
+>
+  Restore
+</PendingSubmitButton>
 </form>
     );
   }
@@ -865,12 +877,12 @@ is restored.
                   Cancel
                 </button>
 
-                <button
-                  type="submit"
-                  className="rounded-xl bg-amber-600 px-4 py-3 font-semibold text-white hover:bg-amber-700"
-                >
-                  Confirm Suspend
-                </button>
+               <PendingSubmitButton
+  pendingText="Suspending..."
+  className="rounded-xl bg-amber-600 px-4 py-3 font-semibold text-white hover:bg-amber-700"
+>
+  Confirm Suspend
+</PendingSubmitButton>
               </div>
             </form>
           </div>

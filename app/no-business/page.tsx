@@ -1,8 +1,9 @@
-import Link from "next/link";
 import {
   Building2,
   LogOut,
 } from "lucide-react";
+
+import { getRootUrl } from "@/lib/tenancy/domain";
 
 export default function NoBusinessPage() {
   return (
@@ -17,18 +18,16 @@ export default function NoBusinessPage() {
         </h1>
 
         <p className="mt-3 text-sm leading-6 text-slate-500">
-          Your account is not connected to an active
-          business. Please contact the platform owner or
-          administrator.
+          Your account is not connected to an active business. Please contact the platform owner or administrator.
         </p>
 
-        <Link
-          href="/login"
+        <a
+          href={getRootUrl("/login")}
           className="mt-6 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
         >
           <LogOut size={18} />
           Back to Login
-        </Link>
+        </a>
       </section>
     </main>
   );

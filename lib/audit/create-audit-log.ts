@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentBusiness } from "@/lib/business/get-current-business";
 
 type AuditAction =
   | "create"
@@ -43,34 +44,22 @@ export async function createAuditLog({
 
   if (!user) return;
 
-  const {
-    data: membership,
-    error: membershipError,
-  } = await supabase
-    .from("business_members")
-    .select("business_id")
-    .eq("user_id", user.id)
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
+  // Resolve the business from the current TENH tenant hostname rather
+  // than taking the user's first membership. This keeps audit records
+  // isolated correctly when one user belongs to multiple businesses.
+  const business = await getCurrentBusiness();
 
-  if (membershipError || !membership) {
-    console.error(
-      "Unable to determine the business for an audit log:",
-      membershipError?.message ?? "Active membership not found.",
-    );
-    return;
-  }
-
-  const { error } = await supabase.from("audit_logs").insert({
-    business_id: membership.business_id,
-    user_id: user.id,
-    action,
-    entity_type: entityType,
-    entity_id: entityId,
-    description,
-    metadata,
-  });
+  const { error } = await supabase
+    .from("audit_logs")
+    .insert({
+      business_id: business.id,
+      user_id: user.id,
+      action,
+      entity_type: entityType,
+      entity_id: entityId,
+      description,
+      metadata,
+    });
 
   if (error) {
     console.error(

@@ -1,6 +1,8 @@
 import {
   Building2,
+  ExternalLink,
   Package,
+  Store,
 } from "lucide-react";
 
 import {
@@ -8,7 +10,12 @@ import {
 } from "@/lib/auth/require-permission";
 import {
   updateProductMode,
+  updateStoreAddress,
 } from "./actions";
+import {
+  getRootDomain,
+  getSubdomainUrl,
+} from "@/lib/tenancy/domain";
 
 export default async function BusinessSettingsPage() {
   const business =
@@ -39,7 +46,82 @@ export default async function BusinessSettingsPage() {
         </div>
       </div>
 
-      <section className="max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="max-w-2xl space-y-6">
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-blue-50 p-3 text-blue-600">
+              <Store size={22} />
+            </div>
+
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">
+                TENH POS Store Address
+              </h2>
+              <p className="text-sm text-slate-500">
+                Your public store and tenant dashboard use this address.
+              </p>
+            </div>
+          </div>
+
+          <form
+            action={updateStoreAddress}
+            className="mt-6 space-y-4"
+          >
+            <div>
+              <label
+                htmlFor="subdomain"
+                className="mb-2 block text-sm font-medium text-slate-700"
+              >
+                Store address
+              </label>
+
+              <div className="flex overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
+                <input
+                  id="subdomain"
+                  name="subdomain"
+                  defaultValue={business.slug}
+                  required
+                  minLength={2}
+                  maxLength={40}
+                  disabled={!canChangeProductMode}
+                  className="min-w-0 flex-1 px-4 py-3 text-slate-900 outline-none disabled:bg-slate-50 disabled:text-slate-500"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+
+                <span className="flex items-center border-l border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-500">
+                  .{getRootDomain()}
+                </span>
+              </div>
+            </div>
+
+            <a
+              href={getSubdomainUrl(business.slug)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700"
+            >
+              Open public store
+              <ExternalLink size={15} />
+            </a>
+
+            {canChangeProductMode ? (
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700"
+              >
+                Save Store Address
+              </button>
+            ) : (
+              <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
+                Only the business owner can change the store address.
+              </p>
+            )}
+          </form>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-violet-50 p-3 text-violet-600">
             <Package size={22} />
@@ -113,7 +195,8 @@ export default async function BusinessSettingsPage() {
             </p>
           )}
         </form>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }

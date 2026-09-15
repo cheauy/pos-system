@@ -5,6 +5,11 @@ import { revalidatePath } from "next/cache";
 import { requireSuperAdmin } from "@/lib/auth/require-super-admin";
 import type { ProductMode } from "@/lib/business/types";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  getSubdomainUrl,
+  isValidTenantSlug,
+  normalizeTenantSlug,
+} from "@/lib/tenancy/domain";
 
 import type { CreateBusinessState } from "./state";
 
@@ -12,6 +17,13 @@ const validProductModes: ProductMode[] = [
   "standard",
   "variant",
   "configurable",
+];
+
+const validSubscriptionMonths = [
+  1,
+  3,
+  5,
+  12,
 ];
 
 function getRequiredText(
@@ -59,20 +71,12 @@ function isProductMode(
   );
 }
 
-function createSlug(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 export async function createCustomerBusiness(
   _previousState: CreateBusinessState,
   formData: FormData,
 ): Promise<CreateBusinessState> {
-const superAdmin =
-  await requireSuperAdmin();
+  const superAdmin =
+    await requireSuperAdmin();
 
   let createdAuthUserId: string | null = null;
   let createdBusinessId: string | null = null;
@@ -83,48 +87,54 @@ const superAdmin =
       "businessName",
     );
 
+    const requestedSubdomain = getRequiredText(
+      formData,
+      "subdomain",
+    );
+
+    const subdomain = normalizeTenantSlug(
+      requestedSubdomain,
+    );
+
+    if (
+      !isValidTenantSlug(subdomain) ||
+      subdomain.length > 40 ||
+      subdomain !== requestedSubdomain.toLowerCase()
+    ) {
+      return {
+        success: false,
+        message:
+          "Choose a valid store address using 2–40 lowercase letters, numbers or hyphens. Reserved TENH addresses cannot be used.",
+      };
+    }
+
+    const {
+      data: existingBusinessSlug,
+      error: slugError,
+    } = await supabaseAdmin
+      .from("businesses")
+      .select("id")
+      .ilike("slug", subdomain)
+      .maybeSingle();
+
+    if (slugError) {
+      throw new Error(
+        `Unable to check store address: ${slugError.message}`,
+      );
+    }
+
+    if (existingBusinessSlug) {
+      return {
+        success: false,
+        message:
+          "This TENH POS store address is already in use. Choose another address.",
+      };
+    }
+
     const ownerName = getRequiredText(
       formData,
       "ownerName",
     );
-
-    
-
-    const subscriptionMonths =
-  getRequiredInteger(
-    formData,
-    "subscriptionMonths",
-  );
-
-  const validSubscriptionMonths = [
-  1,
-  3,
-  5,
-  12,
-];
-
-if (
-  !validSubscriptionMonths.includes(
-    subscriptionMonths,
-  )
-) {
-  return {
-    success: false,
-    message:
-      "Select a valid subscription period.",
-  };
-}
-
-const subscriptionStartedAt =
-  new Date();
-
-const subscriptionExpiresAt =
-  new Date(subscriptionStartedAt);
-
-subscriptionExpiresAt.setMonth(
-  subscriptionExpiresAt.getMonth() +
-    subscriptionMonths,
-);
 
     const ownerEmail = getRequiredText(
       formData,
@@ -140,6 +150,17 @@ subscriptionExpiresAt.setMonth(
       formData,
       "productMode",
     );
+
+    const maxStaff = getRequiredInteger(
+      formData,
+      "maxStaff",
+    );
+
+    const subscriptionMonths =
+      getRequiredInteger(
+        formData,
+        "subscriptionMonths",
+      );
 
     if (!ownerEmail.includes("@")) {
       return {
@@ -163,25 +184,54 @@ subscriptionExpiresAt.setMonth(
       };
     }
 
-    const baseSlug = createSlug(businessName);
-
-    if (!baseSlug) {
+    if (
+      maxStaff < 3 ||
+      maxStaff > 100
+    ) {
       return {
         success: false,
-        message: "Enter a valid business name.",
+        message:
+          "Staff limit must be between 3 and 100.",
       };
     }
 
-    const uniqueSlug =
-      `${baseSlug}-${crypto.randomUUID().slice(0, 8)}`;
+    if (
+      !validSubscriptionMonths.includes(
+        subscriptionMonths,
+      )
+    ) {
+      return {
+        success: false,
+        message:
+          "Select a valid subscription period.",
+      };
+    }
+
+    const subscriptionStartedAt =
+      new Date();
+
+    const subscriptionExpiresAt =
+      new Date(subscriptionStartedAt);
+
+    subscriptionExpiresAt.setMonth(
+      subscriptionExpiresAt.getMonth() +
+        subscriptionMonths,
+    );
 
     const {
       data: existingProfile,
+      error: existingProfileError,
     } = await supabaseAdmin
       .from("profiles")
       .select("id")
       .eq("email", ownerEmail)
       .maybeSingle();
+
+    if (existingProfileError) {
+      throw new Error(
+        `Unable to check owner email: ${existingProfileError.message}`,
+      );
+    }
 
     if (existingProfile) {
       return {
@@ -221,15 +271,16 @@ subscriptionExpiresAt.setMonth(
       .from("businesses")
       .insert({
         name: businessName,
-        slug: uniqueSlug,
+        slug: subdomain,
         owner_id: createdAuthUserId,
         product_mode: productModeValue,
+        max_staff: maxStaff,
         subscription_months:
-        subscriptionMonths,
+          subscriptionMonths,
         subscription_started_at:
-        subscriptionStartedAt.toISOString(),
+          subscriptionStartedAt.toISOString(),
         subscription_expires_at:
-        subscriptionExpiresAt.toISOString(),
+          subscriptionExpiresAt.toISOString(),
         is_active: true,
         disabled_at: null,
         disabled_reason: null,
@@ -244,48 +295,42 @@ subscriptionExpiresAt.setMonth(
       );
     }
 
-    
-
     createdBusinessId = business.id;
-const {
-  data: { user },
-} = await supabaseAdmin.auth.getUser();
 
-const { error: historyError } =
-  await supabaseAdmin
-    .from("subscription_history")
-    .insert({
-      business_id: createdBusinessId,
-      action: "created",
-      months: subscriptionMonths,
-      previous_expiry: null,
-      new_expiry:
-        subscriptionExpiresAt.toISOString(),
-      reason: "Initial subscription",
-      created_by: superAdmin.id,
-    });
+    const { error: historyError } =
+      await supabaseAdmin
+        .from("subscription_history")
+        .insert({
+          business_id: createdBusinessId,
+          action: "created",
+          months: subscriptionMonths,
+          previous_expiry: null,
+          new_expiry:
+            subscriptionExpiresAt.toISOString(),
+          reason: "Initial subscription",
+          created_by: superAdmin.id,
+        });
 
-if (historyError) {
-  throw new Error(
-    `Unable to create subscription history: ${historyError.message}`,
-  );
-}
-    const {
-      error: profileError,
-    } = await supabaseAdmin
-      .from("profiles")
-      .upsert(
-        {
-          id: createdAuthUserId,
-          full_name: ownerName,
-          email: ownerEmail,
-          role: "owner",
-       
-        },
-        {
-          onConflict: "id",
-        },
+    if (historyError) {
+      throw new Error(
+        `Unable to create subscription history: ${historyError.message}`,
       );
+    }
+
+    const { error: profileError } =
+      await supabaseAdmin
+        .from("profiles")
+        .upsert(
+          {
+            id: createdAuthUserId,
+            full_name: ownerName,
+            email: ownerEmail,
+            role: "owner",
+          },
+          {
+            onConflict: "id",
+          },
+        );
 
     if (profileError) {
       throw new Error(
@@ -293,18 +338,15 @@ if (historyError) {
       );
     }
 
-    
-
-    const {
-      error: membershipError,
-    } = await supabaseAdmin
-      .from("business_members")
-      .insert({
-        business_id: createdBusinessId,
-        user_id: createdAuthUserId,
-        role: "owner",
-        is_active: true,
-      });
+    const { error: membershipError } =
+      await supabaseAdmin
+        .from("business_members")
+        .insert({
+          business_id: createdBusinessId,
+          user_id: createdAuthUserId,
+          role: "owner",
+          is_active: true,
+        });
 
     if (membershipError) {
       throw new Error(
@@ -312,19 +354,20 @@ if (historyError) {
       );
     }
 
-    revalidatePath("/super-admin/businesses");
+    revalidatePath(
+      "/super-admin/businesses",
+    );
 
     return {
       success: true,
       message:
-        `${businessName} and its owner account were created successfully.`,
+        `${businessName} created successfully. Store: ${getSubdomainUrl(
+          subdomain,
+        )}`,
     };
   } catch (error) {
-    /*
-     * Supabase Auth and Postgres inserts are not one shared
-     * transaction here, so remove partially created records.
-     */
-
+    // Supabase Auth and Postgres are not one shared transaction,
+    // so remove records that were created before a later failure.
     if (createdBusinessId) {
       await supabaseAdmin
         .from("businesses")

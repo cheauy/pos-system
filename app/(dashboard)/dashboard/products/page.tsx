@@ -6,7 +6,7 @@ import {
   PowerOff,
 
 } from "lucide-react";
-import ProductForm from "./product-form";
+import ProductForm from "./standard-product-form";
 import { createClient } from "@/lib/supabase/server";
 import ProductList from "@/components/product-list";
 import {
