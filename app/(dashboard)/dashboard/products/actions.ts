@@ -849,3 +849,71 @@ export async function adjustStock(
   `/dashboard/products/${productId}/edit?success=stock-updated`,
 );
 }
+
+export async function toggleProductOnline(
+  formData: FormData,
+) {
+  const business = await requirePermission(
+    "products.update",
+  );
+
+  const productId = formData.get("productId");
+
+  if (
+    typeof productId !== "string" ||
+    !productId
+  ) {
+    throw new Error("Invalid product ID.");
+  }
+
+  const supabase = await createClient();
+
+  const {
+    data: product,
+    error: productError,
+  } = await supabase
+    .from("products")
+    .select("id, name, is_online")
+    .eq("id", productId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+
+  if (productError || !product) {
+    throw new Error(
+      productError?.message ??
+        "Product was not found.",
+    );
+  }
+
+  const newOnlineStatus =
+    !Boolean(product.is_online);
+
+  const { error } = await supabase
+    .from("products")
+    .update({
+      is_online: newOnlineStatus,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", productId)
+    .eq("business_id", business.id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  await createAuditLog({
+    action: "update",
+    entityType: "product",
+    entityId: productId,
+    description: newOnlineStatus
+      ? `Published ${product.name} to the online store`
+      : `Hidden ${product.name} from the online store`,
+    metadata: {
+      is_online: newOnlineStatus,
+    },
+  });
+
+  revalidatePath("/dashboard/products");
+  revalidatePath("/dashboard/online-store");
+  revalidatePath(`/_sites/${business.slug}`);
+}

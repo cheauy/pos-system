@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { Eye, EyeOff, Trash2 } from "lucide-react";
 import {
   requirePermission,
 } from "@/lib/auth/require-permission";
@@ -6,12 +6,14 @@ import { createClient } from "@/lib/supabase/server";
 import {
   createCategory,
   deleteCategory,
+  toggleCategoryOnline,
 } from "./actions";
 
 type Category = {
   id: string;
   name: string;
   description: string | null;
+  is_online: boolean;
   created_at: string;
 };
 
@@ -28,7 +30,7 @@ const { data: products } = await supabase
 
   const { data, error } = await supabase
     .from("categories")
-    .select("id, name, description, created_at")
+    .select("id, name, description, is_online, created_at")
     .order("created_at", {
       ascending: false,
     }).eq("business_id", business.id);
@@ -141,21 +143,48 @@ const { data: products } = await supabase
                     </p>
                   </div>
 
-                  <form action={deleteCategory}>
-                    <input
-                      type="hidden"
-                      name="categoryId"
-                      value={category.id}
-                    />
+                  <div className="flex items-center gap-2">
+                    <form action={toggleCategoryOnline}>
+                      <input
+                        type="hidden"
+                        name="categoryId"
+                        value={category.id}
+                      />
+                      <button
+                        type="submit"
+                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                          category.is_online
+                            ? "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        {category.is_online ? (
+                          <Eye size={14} />
+                        ) : (
+                          <EyeOff size={14} />
+                        )}
+                        {category.is_online
+                          ? "Online"
+                          : "Hidden"}
+                      </button>
+                    </form>
 
-                    <button
-                      type="submit"
-                      aria-label={`Delete ${category.name}`}
-                      className="rounded-lg p-2 text-red-600 transition hover:bg-red-50"
-                    >
-                      <Trash2 size={19} />
-                    </button>
-                  </form>
+                    <form action={deleteCategory}>
+                      <input
+                        type="hidden"
+                        name="categoryId"
+                        value={category.id}
+                      />
+
+                      <button
+                        type="submit"
+                        aria-label={`Delete ${category.name}`}
+                        className="rounded-lg p-2 text-red-600 transition hover:bg-red-50"
+                      >
+                        <Trash2 size={19} />
+                      </button>
+                    </form>
+                  </div>
                 </div>
               ))}
             </div>

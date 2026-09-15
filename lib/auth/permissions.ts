@@ -8,6 +8,10 @@ export const permissions = [
   "business.update",
   "business.product_mode.update",
 
+  // Online Store
+  "storefront.view",
+  "storefront.update",
+
   // Users
   "users.view",
   "users.create",
@@ -61,6 +65,8 @@ const ownerPermissions: Permission[] = [
 
 const adminPermissions: Permission[] = [
   "business.view",
+  "storefront.view",
+  "storefront.update",
 
   "users.view",
   "users.create_limited",
@@ -89,6 +95,7 @@ const adminPermissions: Permission[] = [
 
 const managerPermissions: Permission[] = [
   "business.view",
+  "storefront.view",
 
   "products.view",
   "products.create",

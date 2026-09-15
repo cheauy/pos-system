@@ -37,6 +37,7 @@ type Product = {
   stock_quantity: number;
   low_stock_quantity: number;
   is_active: boolean;
+  is_online: boolean;
   created_at: string;
   categories: ProductCategory | ProductCategory[] | null;
 };
@@ -95,6 +96,7 @@ const productQuery = supabase
     stock_quantity,
     low_stock_quantity,
     is_active,
+    is_online,
     created_at,
     categories(name)
   `)

@@ -89,3 +89,55 @@ export async function deleteCategory(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/categories");
 }
+
+export async function toggleCategoryOnline(
+  formData: FormData,
+) {
+  const business = await requirePermission(
+    "categories.manage",
+  );
+
+  const categoryId = formData.get("categoryId");
+
+  if (
+    typeof categoryId !== "string" ||
+    !categoryId
+  ) {
+    throw new Error("Invalid category ID.");
+  }
+
+  const supabase = await createClient();
+
+  const {
+    data: category,
+    error: categoryError,
+  } = await supabase
+    .from("categories")
+    .select("id, name, is_online")
+    .eq("id", categoryId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+
+  if (categoryError || !category) {
+    throw new Error(
+      categoryError?.message ??
+        "Category was not found.",
+    );
+  }
+
+  const { error } = await supabase
+    .from("categories")
+    .update({
+      is_online: !Boolean(category.is_online),
+    })
+    .eq("id", categoryId)
+    .eq("business_id", business.id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/dashboard/categories");
+  revalidatePath("/dashboard/online-store");
+  revalidatePath(`/_sites/${business.slug}`);
+}

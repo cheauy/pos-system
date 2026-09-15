@@ -8,9 +8,14 @@ import {
   Power,
   PowerOff,
   Search,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
-import { toggleProductStatus } from "@/app/(dashboard)/dashboard/products/actions";
+import {
+  toggleProductOnline,
+  toggleProductStatus,
+} from "@/app/(dashboard)/dashboard/products/actions";
 
 type ProductCategory = {
   name: string;
@@ -26,6 +31,7 @@ export type Product = {
   stock_quantity: number;
   low_stock_quantity: number;
   is_active: boolean;
+  is_online: boolean;
   created_at: string;
   categories:
     | ProductCategory
@@ -150,6 +156,10 @@ export default function ProductList({
                   Status
                 </th>
 
+                <th className="px-6 py-4 font-semibold">
+                  Online Store
+                </th>
+
                 <th className="px-6 py-4 text-right font-semibold">
                   Action
                 </th>
@@ -238,6 +248,38 @@ export default function ProductList({
                           ? "Active"
                           : "Inactive"}
                       </span>
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <form action={toggleProductOnline}>
+                        <input
+                          type="hidden"
+                          name="productId"
+                          value={product.id}
+                        />
+                        <button
+                          type="submit"
+                          className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition ${
+                            product.is_online
+                              ? "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          }`}
+                          aria-label={
+                            product.is_online
+                              ? `Hide ${product.name} from online store`
+                              : `Show ${product.name} in online store`
+                          }
+                        >
+                          {product.is_online ? (
+                            <Eye size={14} />
+                          ) : (
+                            <EyeOff size={14} />
+                          )}
+                          {product.is_online
+                            ? "Visible"
+                            : "Hidden"}
+                        </button>
+                      </form>
                     </td>
 
                     <td className="px-6 py-4">
