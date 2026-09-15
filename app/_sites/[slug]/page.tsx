@@ -3,13 +3,17 @@ import { notFound } from "next/navigation";
 import {
   Clock3,
   MapPin,
-  Package,
   Phone,
   ShoppingBag,
   Store,
 } from "lucide-react";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import type {
+  StorefrontCatalogCategory,
+  StorefrontCatalogOptionGroup,
+  StorefrontCatalogProduct,
+} from "@/lib/storefront/catalog-types";
 import {
   formatBusinessType,
   type StorefrontSettings,
@@ -18,59 +22,81 @@ import {
   getRootUrl,
   normalizeTenantSlug,
 } from "@/lib/tenancy/domain";
+import StorefrontShop from "./storefront-shop";
 
 type StorefrontPageProps = {
   params: Promise<{
     slug: string;
   }>;
+  searchParams: Promise<{
+    table?: string;
+  }>;
 };
 
-type Category = {
+type CategoryRow = {
   id: string;
   name: string;
-  is_online: boolean;
-  online_sort_order: number;
 };
 
-type Product = {
+type ProductRow = {
   id: string;
   category_id: string | null;
   name: string;
   sku: string | null;
+  size: string | null;
+  color: string | null;
   image_url: string | null;
   description: string | null;
   selling_price: number;
   stock_quantity: number;
-  is_online: boolean;
-  is_active: boolean;
-  online_sort_order: number;
+  product_type: string | null;
+  variant_group_id: string | null;
+};
+
+type GroupRow = {
+  id: string;
+  product_id: string;
+  name: string;
+  selection_type: "single" | "multiple";
+  is_required: boolean;
+  min_selections: number;
+  max_selections: number;
+  sort_order: number;
+};
+
+type OptionRow = {
+  id: string;
+  product_id: string;
+  group_id: string;
+  name: string;
+  price_adjustment: number;
+  is_default: boolean;
+  sort_order: number;
 };
 
 export default async function StorefrontPage({
   params,
+  searchParams,
 }: StorefrontPageProps) {
   const { slug: rawSlug } = await params;
+  const { table: tableTokenRaw } = await searchParams;
   const slug = normalizeTenantSlug(rawSlug);
 
-  if (!slug) {
-    notFound();
-  }
+  if (!slug) notFound();
 
-  const {
-    data: business,
-    error: businessError,
-  } = await supabaseAdmin
-    .from("businesses")
-    .select(`
-      id,
-      name,
-      slug,
-      is_active,
-      product_mode,
-      subscription_expires_at
-    `)
-    .eq("slug", slug)
-    .maybeSingle();
+  const { data: business, error: businessError } =
+    await supabaseAdmin
+      .from("businesses")
+      .select(`
+        id,
+        name,
+        slug,
+        is_active,
+        product_mode,
+        subscription_expires_at
+      `)
+      .eq("slug", slug)
+      .maybeSingle();
 
   if (businessError) {
     throw new Error(
@@ -78,66 +104,18 @@ export default async function StorefrontPage({
     );
   }
 
-  if (!business) {
-    notFound();
-  }
+  if (!business) notFound();
 
-  const expiryTime =
-    business.subscription_expires_at
-      ? new Date(
-          business.subscription_expires_at,
-        ).getTime()
-      : null;
+  const expiryTime = business.subscription_expires_at
+    ? new Date(business.subscription_expires_at).getTime()
+    : null;
 
   const subscriptionExpired =
     expiryTime !== null &&
     !Number.isNaN(expiryTime) &&
     expiryTime <= Date.now();
 
-  const businessAvailable =
-    business.is_active &&
-    !subscriptionExpired;
-
-  const {
-    data: storefrontData,
-    error: storefrontError,
-  } = await supabaseAdmin
-    .from("business_storefronts")
-    .select(`
-      business_id,
-      business_type,
-      is_published,
-      accept_online_orders,
-      template_key,
-      display_name,
-      description,
-      logo_url,
-      banner_url,
-      primary_color,
-      phone,
-      address,
-      currency,
-      allow_pickup,
-      allow_delivery,
-      allow_dine_in,
-      minimum_order,
-      estimated_minutes,
-      created_at,
-      updated_at
-    `)
-    .eq("business_id", business.id)
-    .maybeSingle();
-
-  if (storefrontError) {
-    throw new Error(
-      `Unable to load storefront settings: ${storefrontError.message}`,
-    );
-  }
-
-  const storefront =
-    (storefrontData ?? null) as StorefrontSettings | null;
-
-  if (!businessAvailable) {
+  if (!business.is_active || subscriptionExpired) {
     return (
       <UnavailableStore
         businessName={business.name}
@@ -145,6 +123,44 @@ export default async function StorefrontPage({
       />
     );
   }
+
+  const { data: storefrontData, error: storefrontError } =
+    await supabaseAdmin
+      .from("business_storefronts")
+      .select(`
+        business_id,
+        business_type,
+        is_published,
+        accept_online_orders,
+        template_key,
+        display_name,
+        description,
+        logo_url,
+        banner_url,
+        primary_color,
+        phone,
+        address,
+        currency,
+        allow_pickup,
+        allow_delivery,
+        allow_dine_in,
+        minimum_order,
+        delivery_fee,
+        checkout_message,
+        estimated_minutes,
+        created_at,
+        updated_at
+      `)
+      .eq("business_id", business.id)
+      .maybeSingle();
+
+  if (storefrontError) {
+    throw new Error(
+      `Unable to load storefront settings: ${storefrontError.message}`,
+    );
+  }
+
+  const storefront = storefrontData as StorefrontSettings | null;
 
   if (!storefront?.is_published) {
     return (
@@ -155,49 +171,36 @@ export default async function StorefrontPage({
     );
   }
 
-  const [categoryResult, productResult] =
-    await Promise.all([
-      supabaseAdmin
-        .from("categories")
-        .select(`
-          id,
-          name,
-          is_online,
-          online_sort_order
-        `)
-        .eq("business_id", business.id)
-        .eq("is_online", true)
-        .order("online_sort_order", {
-          ascending: true,
-        })
-        .order("name", {
-          ascending: true,
-        }),
-      supabaseAdmin
-        .from("products")
-        .select(`
-          id,
-          category_id,
-          name,
-          sku,
-          image_url,
-          description,
-          selling_price,
-          stock_quantity,
-          is_online,
-          is_active,
-          online_sort_order
-        `)
-        .eq("business_id", business.id)
-        .eq("is_active", true)
-        .eq("is_online", true)
-        .order("online_sort_order", {
-          ascending: true,
-        })
-        .order("created_at", {
-          ascending: false,
-        }),
-    ]);
+  const [categoryResult, productResult] = await Promise.all([
+    supabaseAdmin
+      .from("categories")
+      .select("id, name")
+      .eq("business_id", business.id)
+      .eq("is_online", true)
+      .order("online_sort_order", { ascending: true })
+      .order("name", { ascending: true }),
+    supabaseAdmin
+      .from("products")
+      .select(`
+        id,
+        category_id,
+        name,
+        sku,
+        size,
+        color,
+        image_url,
+        description,
+        selling_price,
+        stock_quantity,
+        product_type,
+        variant_group_id
+      `)
+      .eq("business_id", business.id)
+      .eq("is_active", true)
+      .eq("is_online", true)
+      .order("online_sort_order", { ascending: true })
+      .order("created_at", { ascending: false }),
+  ]);
 
   if (categoryResult.error) {
     throw new Error(
@@ -211,31 +214,98 @@ export default async function StorefrontPage({
     );
   }
 
-  const categories =
-    (categoryResult.data ?? []) as Category[];
-
-  const categoryIds = new Set(
-    categories.map((category) => category.id),
+  const categories = (categoryResult.data ?? []) as CategoryRow[];
+  const categoryIds = new Set(categories.map((category) => category.id));
+  const productRows = ((productResult.data ?? []) as ProductRow[]).filter(
+    (product) => !product.category_id || categoryIds.has(product.category_id),
   );
 
-  const products = (
-    (productResult.data ?? []) as Product[]
-  ).filter(
-    (product) =>
-      !product.category_id ||
-      categoryIds.has(product.category_id),
+  const configurableProductIds = productRows
+    .filter((product) => product.product_type === "configurable")
+    .map((product) => product.id);
+
+  const optionGroupsByProduct = new Map<string, StorefrontCatalogOptionGroup[]>();
+
+  if (configurableProductIds.length > 0) {
+    const [groupResult, optionResult] = await Promise.all([
+      supabaseAdmin
+        .from("product_option_groups")
+        .select(`
+          id,
+          product_id,
+          name,
+          selection_type,
+          is_required,
+          min_selections,
+          max_selections,
+          sort_order
+        `)
+        .eq("business_id", business.id)
+        .in("product_id", configurableProductIds)
+        .order("sort_order", { ascending: true }),
+      supabaseAdmin
+        .from("product_options")
+        .select(`
+          id,
+          product_id,
+          group_id,
+          name,
+          price_adjustment,
+          is_default,
+          sort_order
+        `)
+        .eq("business_id", business.id)
+        .in("product_id", configurableProductIds)
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true }),
+    ]);
+
+    if (groupResult.error) {
+      throw new Error(`Unable to load product options: ${groupResult.error.message}`);
+    }
+    if (optionResult.error) {
+      throw new Error(`Unable to load product options: ${optionResult.error.message}`);
+    }
+
+    const groups = (groupResult.data ?? []) as GroupRow[];
+    const options = (optionResult.data ?? []) as OptionRow[];
+
+    for (const group of groups) {
+      const list = optionGroupsByProduct.get(group.product_id) ?? [];
+      list.push({
+        id: group.id,
+        name: group.name,
+        selectionType: group.selection_type,
+        isRequired: group.is_required,
+        minSelections: Number(group.min_selections),
+        maxSelections: Number(group.max_selections),
+        options: options
+          .filter((option) => option.group_id === group.id)
+          .map((option) => ({
+            id: option.id,
+            name: option.name,
+            priceAdjustment: Number(option.price_adjustment),
+            isDefault: option.is_default,
+          })),
+      });
+      optionGroupsByProduct.set(group.product_id, list);
+    }
+  }
+
+  const catalogProducts = buildCatalog(
+    productRows,
+    optionGroupsByProduct,
   );
+
+  const tableToken = await validateTableToken({
+    businessId: business.id,
+    token: tableTokenRaw ?? null,
+  });
 
   const displayName =
-    storefront.display_name?.trim() ||
-    business.name;
-
+    storefront.display_name?.trim() || business.name;
   const primaryColor =
     storefront.primary_color || "#2563EB";
-
-  const uncategorized = products.filter(
-    (product) => !product.category_id,
-  );
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
@@ -251,9 +321,7 @@ export default async function StorefrontPage({
             ) : (
               <div
                 className="flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-sm"
-                style={{
-                  backgroundColor: primaryColor,
-                }}
+                style={{ backgroundColor: primaryColor }}
               >
                 <Store size={22} />
               </div>
@@ -264,9 +332,7 @@ export default async function StorefrontPage({
                 {displayName}
               </p>
               <p className="text-xs text-slate-500">
-                {formatBusinessType(
-                  storefront.business_type,
-                )}
+                {formatBusinessType(storefront.business_type)}
               </p>
             </div>
           </div>
@@ -301,9 +367,11 @@ export default async function StorefrontPage({
 
         <div className="relative mx-auto max-w-7xl px-4 py-14 text-white sm:px-6 sm:py-20 lg:px-8">
           <span className="inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
-            {storefront.accept_online_orders
-              ? "Online ordering enabled"
-              : "Browse online"}
+            {tableToken
+              ? "Table QR ordering"
+              : storefront.accept_online_orders
+                ? "Online ordering enabled"
+                : "Browse online"}
           </span>
 
           <h1 className="mt-5 max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">
@@ -319,106 +387,45 @@ export default async function StorefrontPage({
           <div className="mt-7 flex flex-wrap gap-x-5 gap-y-3 text-sm text-white/90">
             {storefront.phone && (
               <span className="inline-flex items-center gap-2">
-                <Phone size={16} />
-                {storefront.phone}
+                <Phone size={16} /> {storefront.phone}
               </span>
             )}
-
             {storefront.address && (
               <span className="inline-flex items-center gap-2">
-                <MapPin size={16} />
-                {storefront.address}
+                <MapPin size={16} /> {storefront.address}
               </span>
             )}
-
             {storefront.estimated_minutes && (
               <span className="inline-flex items-center gap-2">
-                <Clock3 size={16} />
-                About {storefront.estimated_minutes} min
+                <Clock3 size={16} /> About {storefront.estimated_minutes} min
               </span>
             )}
           </div>
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-8 flex flex-wrap gap-2">
-          {categories.map((category) => (
-            <a
-              key={category.id}
-              href={`#category-${category.id}`}
-              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-            >
-              {category.name}
-            </a>
-          ))}
-
-          {uncategorized.length > 0 && (
-            <a
-              href="#category-other"
-              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-            >
-              Other
-            </a>
-          )}
-        </div>
-
-        {products.length === 0 ? (
-          <section className="rounded-3xl border border-dashed border-slate-300 bg-white p-12 text-center">
-            <Package
-              size={42}
-              className="mx-auto text-slate-300"
-            />
-            <h2 className="mt-4 text-lg font-bold text-slate-900">
-              No products online yet
-            </h2>
-            <p className="mt-2 text-sm text-slate-500">
-              This store is published, but the owner has not made any products visible online.
-            </p>
-          </section>
-        ) : (
-          <div className="space-y-12">
-            {categories.map((category) => {
-              const categoryProducts =
-                products.filter(
-                  (product) =>
-                    product.category_id ===
-                    category.id,
-                );
-
-              if (categoryProducts.length === 0) {
-                return null;
-              }
-
-              return (
-                <ProductSection
-                  key={category.id}
-                  id={`category-${category.id}`}
-                  title={category.name}
-                  products={categoryProducts}
-                  currency={storefront.currency}
-                  primaryColor={primaryColor}
-                  orderingEnabled={
-                    storefront.accept_online_orders
-                  }
-                />
-              );
-            })}
-
-            {uncategorized.length > 0 && (
-              <ProductSection
-                id="category-other"
-                title="Other"
-                products={uncategorized}
-                currency={storefront.currency}
-                primaryColor={primaryColor}
-                orderingEnabled={
-                  storefront.accept_online_orders
-                }
-              />
-            )}
-          </div>
-        )}
+      <div className="mx-auto max-w-7xl px-4 py-8 pb-28 sm:px-6 lg:px-8">
+        <StorefrontShop
+          slug={slug}
+          categories={categories as StorefrontCatalogCategory[]}
+          products={catalogProducts}
+          tableToken={tableToken}
+          settings={{
+            currency: storefront.currency,
+            primaryColor,
+            orderingEnabled:
+              storefront.accept_online_orders &&
+              (storefront.allow_pickup ||
+                storefront.allow_delivery ||
+                (storefront.allow_dine_in && Boolean(tableToken))),
+            allowPickup: storefront.allow_pickup,
+            allowDelivery: storefront.allow_delivery,
+            allowDineIn: storefront.allow_dine_in,
+            minimumOrder: Number(storefront.minimum_order ?? 0),
+            deliveryFee: Number(storefront.delivery_fee ?? 0),
+            checkoutMessage: storefront.checkout_message,
+          }}
+        />
       </div>
 
       <footer className="border-t border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
@@ -428,124 +435,88 @@ export default async function StorefrontPage({
   );
 }
 
-function ProductSection({
-  id,
-  title,
-  products,
-  currency,
-  primaryColor,
-  orderingEnabled,
-}: {
-  id: string;
-  title: string;
-  products: Product[];
-  currency: string;
-  primaryColor: string;
-  orderingEnabled: boolean;
-}) {
-  return (
-    <section id={id} className="scroll-mt-6">
-      <div className="mb-5 flex items-end justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-950">
-            {title}
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {products.length} item
-            {products.length === 1 ? "" : "s"}
-          </p>
-        </div>
-      </div>
+function buildCatalog(
+  rows: ProductRow[],
+  optionGroupsByProduct: Map<string, StorefrontCatalogOptionGroup[]>,
+): StorefrontCatalogProduct[] {
+  const grouped = new Map<string, ProductRow[]>();
 
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {products.map((product) => (
-          <article
-            key={product.id}
-            className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-          >
-            {product.image_url ? (
-              <img
-                src={product.image_url}
-                alt={product.name}
-                className="aspect-[4/3] w-full object-cover"
-              />
-            ) : (
-              <div className="flex aspect-[4/3] w-full items-center justify-center bg-slate-100 text-slate-300">
-                <ShoppingBag size={34} />
-              </div>
-            )}
+  for (const row of rows) {
+    const key =
+      row.product_type === "variant" && row.variant_group_id
+        ? `variant:${row.variant_group_id}`
+        : `product:${row.id}`;
+    const list = grouped.get(key) ?? [];
+    list.push(row);
+    grouped.set(key, list);
+  }
 
-            <div className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h3 className="font-bold text-slate-900">
-                    {product.name}
-                  </h3>
-                  {product.description && (
-                    <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-500">
-                      {product.description}
-                    </p>
-                  )}
-                </div>
+  return [...grouped.entries()].map(([key, groupRows]) => {
+    const first = groupRows[0];
+    const productType = normalizeProductType(first.product_type);
+    const variants = groupRows.map((row) => ({
+      id: row.id,
+      sku: row.sku,
+      size: row.size,
+      color: row.color,
+      sellingPrice: Number(row.selling_price),
+      stockQuantity: Number(row.stock_quantity),
+    }));
 
-                <p
-                  className="shrink-0 font-bold"
-                  style={{
-                    color: primaryColor,
-                  }}
-                >
-                  {formatMoney(
-                    product.selling_price,
-                    currency,
-                  )}
-                </p>
-              </div>
-
-              <div className="mt-4 flex items-center justify-between gap-3">
-                <span className="text-xs font-medium text-slate-400">
-                  {product.stock_quantity > 0
-                    ? "In stock"
-                    : "Out of stock"}
-                </span>
-
-                {orderingEnabled && (
-                  <span
-                    className="rounded-full px-3 py-1 text-xs font-semibold text-white"
-                    style={{
-                      backgroundColor:
-                        product.stock_quantity > 0
-                          ? primaryColor
-                          : "#94A3B8",
-                    }}
-                  >
-                    Ordering soon
-                  </span>
-                )}
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
+    return {
+      key,
+      categoryId: first.category_id,
+      name: first.name,
+      imageUrl:
+        groupRows.find((row) => row.image_url)?.image_url ?? null,
+      description: first.description,
+      productType,
+      priceFrom: Math.min(
+        ...variants.map((variant) => variant.sellingPrice),
+      ),
+      totalStock: variants.reduce(
+        (sum, variant) => sum + variant.stockQuantity,
+        0,
+      ),
+      variants,
+      optionGroups:
+        productType === "configurable"
+          ? optionGroupsByProduct.get(first.id) ?? []
+          : [],
+    };
+  });
 }
 
-function formatMoney(
-  value: number,
-  currency: string,
-) {
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      minimumFractionDigits:
-        currency === "KHR" ? 0 : 2,
-      maximumFractionDigits:
-        currency === "KHR" ? 0 : 2,
-    }).format(Number(value));
-  } catch {
-    return `${currency} ${Number(value).toFixed(2)}`;
+function normalizeProductType(value: string | null) {
+  if (
+    value === "variant" ||
+    value === "configurable" ||
+    value === "bundle"
+  ) {
+    return value;
   }
+  return "standard" as const;
+}
+
+async function validateTableToken({
+  businessId,
+  token,
+}: {
+  businessId: string;
+  token: string | null;
+}) {
+  if (!token) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from("business_tables")
+    .select("public_token")
+    .eq("business_id", businessId)
+    .eq("public_token", token)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data.public_token as string;
 }
 
 function UnavailableStore({
@@ -567,9 +538,7 @@ function UnavailableStore({
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">
                 TENH POS Store
               </p>
-              <h1 className="font-bold text-slate-950">
-                {businessName}
-              </h1>
+              <h1 className="font-bold text-slate-950">{businessName}</h1>
             </div>
           </div>
 
@@ -582,10 +551,7 @@ function UnavailableStore({
         </header>
 
         <section className="mt-16 rounded-3xl border border-amber-200 bg-amber-50 p-10 text-center">
-          <ShoppingBag
-            size={40}
-            className="mx-auto text-amber-500"
-          />
+          <ShoppingBag size={40} className="mx-auto text-amber-500" />
           <p className="mt-5 text-lg font-bold text-amber-950">
             Store temporarily unavailable
           </p>

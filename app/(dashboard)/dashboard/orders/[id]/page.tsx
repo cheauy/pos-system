@@ -11,6 +11,7 @@ import {
   Package,
   Phone,
   ReceiptText,
+  ShoppingBag,
   UserRound,
 } from "lucide-react";
 
@@ -34,6 +35,8 @@ type OrderItem = {
   quantity: number;
   unit_price: number;
   subtotal: number;
+  variant_label: string | null;
+  selected_options: Array<{ name?: string }> | null;
   products:
     | ProductRelation
     | ProductRelation[]
@@ -62,6 +65,14 @@ type Order = {
   remaining_balance: number;
 
   status: string;
+  order_source: string;
+  fulfillment_type: string | null;
+  online_status: string | null;
+  guest_name: string | null;
+  guest_phone: string | null;
+  guest_address: string | null;
+  customer_note: string | null;
+  table_name: string | null;
   created_at: string;
 
   customers:
@@ -106,6 +117,14 @@ const { data, error } = await supabase
     change_amount,
     remaining_balance,
     status,
+    order_source,
+    fulfillment_type,
+    online_status,
+    guest_name,
+    guest_phone,
+    guest_address,
+    customer_note,
+    table_name,
     created_at,
     customers (
       id,
@@ -120,6 +139,8 @@ const { data, error } = await supabase
       quantity,
       unit_price,
       subtotal,
+      variant_label,
+      selected_options,
       products (
         name,
         sku,
@@ -407,6 +428,14 @@ const remainingItemCount = returnableOrderItems.reduce(
               icon={<CalendarDays size={18} />}
             />
 
+            {order.order_source !== "pos" && (
+              <InformationItem
+                label="Order source"
+                value={`${order.order_source === "qr" ? "Table QR" : "Online Store"}${order.table_name ? ` · ${order.table_name}` : ""}`}
+                icon={<ShoppingBag size={18} />}
+              />
+            )}
+
             <InformationItem
               label="Payment method"
               value={formatPaymentMethod(
@@ -452,21 +481,27 @@ const remainingItemCount = returnableOrderItems.reduce(
           <div className="mt-6 space-y-5">
             <InformationItem
               label="Customer name"
-              value={customer?.name ?? "Walk-in customer"}
+              value={order.guest_name ?? customer?.name ?? "Walk-in customer"}
               icon={<UserRound size={18} />}
             />
 
             <InformationItem
               label="Phone"
-              value={customer?.phone ?? "No phone number"}
+              value={order.guest_phone ?? customer?.phone ?? "No phone number"}
               icon={<Phone size={18} />}
             />
 
             <InformationItem
               label="Address"
-              value={customer?.address ?? "No address"}
+              value={order.guest_address ?? customer?.address ?? "No address"}
               icon={<MapPin size={18} />}
             />
+
+            {order.customer_note && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <span className="font-semibold">Customer note:</span> {order.customer_note}
+              </div>
+            )}
           </div>
         </div>
       </section>

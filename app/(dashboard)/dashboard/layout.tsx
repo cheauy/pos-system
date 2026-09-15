@@ -9,6 +9,7 @@ import {
 } from "@/lib/tenancy/domain";
 import { getRequestTenantSlug } from "@/lib/tenancy/request-tenant";
 import SidebarClient from "./sidebar-client";
+import OnlineOrderListener from "@/components/online-order-listener";
 
 export default async function DashboardLayout({
   children,
@@ -49,6 +50,7 @@ export default async function DashboardLayout({
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <SidebarClient />
+      <OnlineOrderListener businessId={business.id} />
 
       <div className="lg:pl-64">
         <header className="flex h-20 items-center justify-between border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">

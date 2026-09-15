@@ -33,6 +33,8 @@ export type StorefrontSettings = {
   allow_delivery: boolean;
   allow_dine_in: boolean;
   minimum_order: number;
+  delivery_fee: number;
+  checkout_message: string | null;
   estimated_minutes: number | null;
   created_at: string;
   updated_at: string;

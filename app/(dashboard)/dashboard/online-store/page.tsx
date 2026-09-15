@@ -19,6 +19,8 @@ import {
   getSubdomainUrl,
 } from "@/lib/tenancy/domain";
 import StorefrontSettingsForm from "./storefront-settings-form";
+import QrSection from "./qr-section";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function OnlineStorePage() {
   const business = await requirePermission(
@@ -36,6 +38,17 @@ export default async function OnlineStorePage() {
   const canEdit =
     business.role === "owner" ||
     business.role === "admin";
+
+  const { data: tables, error: tablesError } = await supabaseAdmin
+    .from("business_tables")
+    .select("id, name, public_token, is_active")
+    .eq("business_id", business.id)
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (tablesError) {
+    throw new Error(`Unable to load table QR codes: ${tablesError.message}`);
+  }
 
   return (
     <main className="space-y-6">
@@ -104,6 +117,13 @@ export default async function OnlineStorePage() {
         settings={settings}
         storeUrl={storeUrl}
         businessName={business.name}
+        canEdit={canEdit}
+      />
+
+      <QrSection
+        storeUrl={storeUrl}
+        tables={tables ?? []}
+        allowDineIn={settings.allow_dine_in}
         canEdit={canEdit}
       />
     </main>

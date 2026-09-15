@@ -20,6 +20,9 @@ type Order = {
   amount_paid: number;
   change_amount: number;
   status: string;
+  order_source: string;
+  fulfillment_type: string | null;
+  online_status: string | null;
   created_at: string;
 };
 
@@ -91,6 +94,9 @@ let query = supabase
       amount_paid,
       change_amount,
       status,
+      order_source,
+      fulfillment_type,
+      online_status,
       created_at
     `,
     {
@@ -333,6 +339,10 @@ const lastShown =
                   </th>
 
                   <th className="px-6 py-4 font-semibold">
+                    Source
+                  </th>
+
+                  <th className="px-6 py-4 font-semibold">
                     Payment
                   </th>
 
@@ -367,6 +377,29 @@ const lastShown =
                     </td>
 
                     <td className="px-6 py-4">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          order.order_source === "online"
+                            ? "bg-blue-50 text-blue-700"
+                            : order.order_source === "qr"
+                              ? "bg-violet-50 text-violet-700"
+                              : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {order.order_source === "qr"
+                          ? "QR"
+                          : order.order_source === "online"
+                            ? "Online"
+                            : "POS"}
+                      </span>
+                      {order.fulfillment_type && order.order_source !== "pos" && (
+                        <p className="mt-1 text-xs capitalize text-slate-500">
+                          {order.fulfillment_type.replaceAll("_", " ")}
+                        </p>
+                      )}
+                    </td>
+
+                    <td className="px-6 py-4">
                       <p className="text-sm font-medium capitalize text-slate-700">
                         {formatPaymentMethod(
                           order.payment_method,
@@ -386,18 +419,29 @@ const lastShown =
                     </td>
 
                     <td className="px-6 py-4">
-                                <OrderStatusSelect
-                                  orderId={order.id}
-                                  status={
-                                    order.status as
-                                      | "new"
-                                      | "pending"
-                                      | "completed"
-                                      | "cancelled"
-                                      | "refunded"
-                                  }
-                                />
-                              </td>
+                      {order.order_source === "pos" ? (
+                        <OrderStatusSelect
+                          orderId={order.id}
+                          status={
+                            order.status as
+                              | "new"
+                              | "pending"
+                              | "completed"
+                              | "cancelled"
+                              | "refunded"
+                          }
+                        />
+                      ) : (
+                        <Link
+                          href="/dashboard/online-orders"
+                          className={`inline-flex rounded-full px-3 py-1.5 text-sm font-semibold capitalize ${getOnlineStatusClass(
+                            order.online_status ?? "new",
+                          )}`}
+                        >
+                          {(order.online_status ?? "new").replaceAll("_", " ")}
+                        </Link>
+                      )}
+                    </td>
 
                     <td className="px-6 py-4 text-right">
                       <Link
@@ -704,4 +748,21 @@ function formatDate(value: string) {
 
 function formatPaymentMethod(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function getOnlineStatusClass(status: string) {
+  switch (status) {
+    case "accepted":
+      return "bg-cyan-50 text-cyan-700";
+    case "preparing":
+      return "bg-amber-50 text-amber-700";
+    case "ready":
+      return "bg-violet-50 text-violet-700";
+    case "completed":
+      return "bg-emerald-50 text-emerald-700";
+    case "rejected":
+      return "bg-red-50 text-red-700";
+    default:
+      return "bg-blue-50 text-blue-700";
+  }
 }

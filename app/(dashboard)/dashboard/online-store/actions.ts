@@ -199,6 +199,27 @@ export async function updateStorefrontSettings(
       );
     }
 
+    const deliveryFee = Number(
+      getText(formData, "deliveryFee") || "0",
+    );
+
+    if (!Number.isFinite(deliveryFee) || deliveryFee < 0) {
+      throw new Error(
+        "Delivery fee must be zero or greater.",
+      );
+    }
+
+    const checkoutMessage = getOptionalText(
+      formData,
+      "checkoutMessage",
+    );
+
+    if (checkoutMessage && checkoutMessage.length > 300) {
+      throw new Error(
+        "Checkout message must be 300 characters or fewer.",
+      );
+    }
+
     const estimatedMinutesText = getText(
       formData,
       "estimatedMinutes",
@@ -324,6 +345,8 @@ export async function updateStorefrontSettings(
           allow_delivery: allowDelivery,
           allow_dine_in: allowDineIn,
           minimum_order: minimumOrderRaw,
+          delivery_fee: deliveryFee,
+          checkout_message: checkoutMessage,
           estimated_minutes: estimatedMinutes,
           updated_at: now,
         },
@@ -351,6 +374,7 @@ export async function updateStorefrontSettings(
         allow_pickup: allowPickup,
         allow_delivery: allowDelivery,
         allow_dine_in: allowDineIn,
+        delivery_fee: deliveryFee,
       },
     });
 

@@ -344,6 +344,34 @@ export default function StorefrontSettingsForm({
               className={inputClass}
             />
           </Field>
+
+          <Field label="Delivery fee" htmlFor="deliveryFee">
+            <input
+              id="deliveryFee"
+              name="deliveryFee"
+              type="number"
+              min="0"
+              step="0.01"
+              defaultValue={Number(settings.delivery_fee ?? 0)}
+              disabled={!canEdit}
+              className={inputClass}
+            />
+          </Field>
+
+          <div className="sm:col-span-2">
+            <Field label="Checkout message" htmlFor="checkoutMessage">
+              <textarea
+                id="checkoutMessage"
+                name="checkoutMessage"
+                rows={3}
+                maxLength={300}
+                defaultValue={settings.checkout_message ?? ""}
+                disabled={!canEdit}
+                placeholder="Example: We will call you after your order is accepted."
+                className={`${inputClass} resize-none`}
+              />
+            </Field>
+          </div>
         </div>
       </section>
 

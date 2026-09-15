@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   requirePermission,
 } from "@/lib/auth/require-permission";
@@ -104,6 +105,13 @@ export async function createProduct(
   const business = await requirePermission(
     "products.create",
   );
+
+  if (business.product_mode !== "standard") {
+    return {
+      success: false,
+      message: `This business uses ${business.product_mode} product mode. Use the matching product form.`,
+    };
+  }
 
   const nameValue = formData.get("name");
 
@@ -306,6 +314,7 @@ export async function createProduct(
         stock_quantity: stockQuantity,
         low_stock_quantity:
           lowStockQuantity,
+        product_type: "standard",
         is_active: true,
       })
       .select("id, name")
@@ -916,4 +925,441 @@ export async function toggleProductOnline(
   revalidatePath("/dashboard/products");
   revalidatePath("/dashboard/online-store");
   revalidatePath(`/_sites/${business.slug}`);
+}
+
+
+// ---------------------------------------------------------------------------
+// Variant products
+// Each exact size/color SKU remains a normal products row so existing POS,
+// inventory, bundle and reporting code keeps working. variant_group_id groups
+// those rows into one public-store product card.
+// ---------------------------------------------------------------------------
+type VariantInput = {
+  size: string;
+  color: string;
+  sku: string;
+  costPrice: number;
+  sellingPrice: number;
+  stockQuantity: number;
+  lowStockQuantity: number;
+};
+
+function parseVariantInputs(value: FormDataEntryValue | null): VariantInput[] {
+  if (typeof value !== "string") return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row): VariantInput | null => {
+        if (!row || typeof row !== "object") return null;
+        const source = row as Record<string, unknown>;
+        const sku = typeof source.sku === "string" ? source.sku.trim() : "";
+        const size = typeof source.size === "string" ? source.size.trim() : "";
+        const color = typeof source.color === "string" ? source.color.trim() : "";
+        const costPrice = Number(source.costPrice);
+        const sellingPrice = Number(source.sellingPrice);
+        const stockQuantity = Number(source.stockQuantity);
+        const lowStockQuantity = Number(source.lowStockQuantity);
+        if (
+          !sku ||
+          !Number.isFinite(costPrice) || costPrice < 0 ||
+          !Number.isFinite(sellingPrice) || sellingPrice < 0 ||
+          !Number.isInteger(stockQuantity) || stockQuantity < 0 ||
+          !Number.isInteger(lowStockQuantity) || lowStockQuantity < 0
+        ) return null;
+        return {
+          size,
+          color,
+          sku,
+          costPrice,
+          sellingPrice,
+          stockQuantity,
+          lowStockQuantity,
+        };
+      })
+      .filter((row): row is VariantInput => row !== null);
+  } catch {
+    return [];
+  }
+}
+
+export async function createVariantProduct(
+  _previousState: CreateProductState,
+  formData: FormData,
+): Promise<CreateProductState> {
+  const business = await requirePermission("products.create");
+
+  if (business.product_mode !== "variant") {
+    return {
+      success: false,
+      message: "This business is not using Variant product mode.",
+    };
+  }
+
+  const nameValue = formData.get("name");
+  const name = typeof nameValue === "string" ? nameValue.trim() : "";
+  const categoryId = getOptionalText(formData, "categoryId");
+  const description = getOptionalText(formData, "description");
+  const variants = parseVariantInputs(formData.get("variants"));
+
+  if (name.length < 2) {
+    return { success: false, message: "Please enter a product name." };
+  }
+
+  if (variants.length === 0) {
+    return { success: false, message: "Add at least one valid variant." };
+  }
+
+  const uniqueSkus = new Set(variants.map((variant) => variant.sku.toLowerCase()));
+  if (uniqueSkus.size !== variants.length) {
+    return { success: false, message: "Each variant must use a unique SKU." };
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from("products")
+    .select("sku")
+    .eq("business_id", business.id)
+    .in("sku", variants.map((variant) => variant.sku));
+
+  if (existingError) {
+    return { success: false, message: existingError.message };
+  }
+
+  if ((existing ?? []).length > 0) {
+    return {
+      success: false,
+      message: `SKU ${(existing ?? [])[0]?.sku ?? ""} is already in use.`,
+    };
+  }
+
+  const imageFile = getImageFile(formData);
+  let imageUrl: string | null = null;
+  let uploadedImagePath: string | null = null;
+
+  if (imageFile) {
+    const extension = getImageExtension(imageFile);
+    uploadedImagePath = `${business.id}/${user.id}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(PRODUCT_IMAGE_BUCKET)
+      .upload(uploadedImagePath, imageFile, {
+        contentType: imageFile.type,
+        cacheControl: "3600",
+        upsert: false,
+      });
+    if (uploadError) {
+      return { success: false, message: `Unable to upload product image: ${uploadError.message}` };
+    }
+    imageUrl = supabaseAdmin.storage
+      .from(PRODUCT_IMAGE_BUCKET)
+      .getPublicUrl(uploadedImagePath).data.publicUrl;
+  }
+
+  const variantGroupId = crypto.randomUUID();
+  const rows = variants.map((variant) => ({
+    owner_id: user.id,
+    business_id: business.id,
+    category_id: categoryId,
+    name,
+    sku: variant.sku,
+    size: variant.size || null,
+    color: variant.color || null,
+    image_url: imageUrl,
+    description,
+    cost_price: variant.costPrice,
+    selling_price: variant.sellingPrice,
+    stock_quantity: variant.stockQuantity,
+    low_stock_quantity: variant.lowStockQuantity,
+    product_type: "variant",
+    variant_group_id: variantGroupId,
+    is_active: true,
+    is_online: true,
+  }));
+
+  const { data: created, error } = await supabaseAdmin
+    .from("products")
+    .insert(rows)
+    .select("id, name, sku");
+
+  if (error || !created) {
+    if (uploadedImagePath) {
+      await supabaseAdmin.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploadedImagePath]);
+    }
+    return { success: false, message: error?.message ?? "Unable to create variants." };
+  }
+
+  await createAuditLog({
+    action: "create",
+    entityType: "product",
+    entityId: created[0].id,
+    description: `Created variant product ${name}`,
+    metadata: {
+      variant_group_id: variantGroupId,
+      variants: created.map((row) => ({ id: row.id, sku: row.sku })),
+    },
+  });
+
+  revalidatePath("/dashboard/products");
+  revalidatePath("/dashboard/pos");
+  revalidatePath("/dashboard/online-store");
+
+  return {
+    success: true,
+    message: `${name} created with ${created.length} variant${created.length === 1 ? "" : "s"}.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Configurable products
+// Base stock/price remains in products. Option groups add checkout selections
+// and optional price adjustments without generating every combination.
+// ---------------------------------------------------------------------------
+type ConfigurableOptionInput = {
+  name: string;
+  priceAdjustment: number;
+  isDefault: boolean;
+};
+
+type ConfigurableGroupInput = {
+  name: string;
+  selectionType: "single" | "multiple";
+  isRequired: boolean;
+  minSelections: number;
+  maxSelections: number;
+  options: ConfigurableOptionInput[];
+};
+
+function parseConfigurableGroups(value: FormDataEntryValue | null): ConfigurableGroupInput[] {
+  if (typeof value !== "string") return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row): ConfigurableGroupInput | null => {
+        if (!row || typeof row !== "object") return null;
+        const source = row as Record<string, unknown>;
+        const name = typeof source.name === "string" ? source.name.trim() : "";
+        const selectionType = source.selectionType === "multiple" ? "multiple" : "single";
+        const isRequired = Boolean(source.isRequired);
+        const minSelections = Number(source.minSelections ?? (isRequired ? 1 : 0));
+        const maxSelections = selectionType === "single" ? 1 : Number(source.maxSelections ?? 1);
+        const rawOptions = Array.isArray(source.options) ? source.options : [];
+        const options = rawOptions
+          .map((option): ConfigurableOptionInput | null => {
+            if (!option || typeof option !== "object") return null;
+            const optionSource = option as Record<string, unknown>;
+            const optionName = typeof optionSource.name === "string" ? optionSource.name.trim() : "";
+            const priceAdjustment = Number(optionSource.priceAdjustment ?? 0);
+            if (!optionName || !Number.isFinite(priceAdjustment) || priceAdjustment < 0) return null;
+            return {
+              name: optionName,
+              priceAdjustment,
+              isDefault: Boolean(optionSource.isDefault),
+            };
+          })
+          .filter((option): option is ConfigurableOptionInput => option !== null);
+
+        if (
+          !name ||
+          options.length === 0 ||
+          !Number.isInteger(minSelections) || minSelections < 0 ||
+          !Number.isInteger(maxSelections) || maxSelections < 1 ||
+          minSelections > maxSelections ||
+          maxSelections > options.length
+        ) return null;
+
+        return {
+          name,
+          selectionType,
+          isRequired,
+          minSelections,
+          maxSelections,
+          options,
+        };
+      })
+      .filter((group): group is ConfigurableGroupInput => group !== null);
+  } catch {
+    return [];
+  }
+}
+
+export async function createConfigurableProduct(
+  _previousState: CreateProductState,
+  formData: FormData,
+): Promise<CreateProductState> {
+  const business = await requirePermission("products.create");
+
+  if (business.product_mode !== "configurable") {
+    return {
+      success: false,
+      message: "This business is not using Configurable product mode.",
+    };
+  }
+
+  const nameValue = formData.get("name");
+  const name = typeof nameValue === "string" ? nameValue.trim() : "";
+  const categoryId = getOptionalText(formData, "categoryId");
+  const sku = getOptionalText(formData, "sku");
+  const description = getOptionalText(formData, "description");
+  const costPrice = getNumber(formData, "costPrice");
+  const sellingPrice = getNumber(formData, "sellingPrice");
+  const stockQuantity = getNumber(formData, "stockQuantity");
+  const lowStockQuantity = getNumber(formData, "lowStockQuantity");
+  const groups = parseConfigurableGroups(formData.get("optionGroups"));
+
+  if (name.length < 2 || !sku) {
+    return { success: false, message: "Product name and SKU are required." };
+  }
+
+  if (costPrice < 0 || sellingPrice < 0) {
+    return { success: false, message: "Prices cannot be negative." };
+  }
+
+  if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
+    return { success: false, message: "Stock must be a whole number of zero or greater." };
+  }
+
+  if (!Number.isInteger(lowStockQuantity) || lowStockQuantity < 0) {
+    return { success: false, message: "Low-stock alert must be zero or greater." };
+  }
+
+  if (groups.length === 0) {
+    return { success: false, message: "Add at least one valid option group." };
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: existingSku, error: skuError } = await supabaseAdmin
+    .from("products")
+    .select("id")
+    .eq("business_id", business.id)
+    .eq("sku", sku)
+    .maybeSingle();
+
+  if (skuError) return { success: false, message: skuError.message };
+  if (existingSku) return { success: false, message: "This SKU is already in use." };
+
+  const imageFile = getImageFile(formData);
+  let imageUrl: string | null = null;
+  let uploadedImagePath: string | null = null;
+
+  if (imageFile) {
+    const extension = getImageExtension(imageFile);
+    uploadedImagePath = `${business.id}/${user.id}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(PRODUCT_IMAGE_BUCKET)
+      .upload(uploadedImagePath, imageFile, {
+        contentType: imageFile.type,
+        cacheControl: "3600",
+        upsert: false,
+      });
+    if (uploadError) {
+      return { success: false, message: `Unable to upload product image: ${uploadError.message}` };
+    }
+    imageUrl = supabaseAdmin.storage
+      .from(PRODUCT_IMAGE_BUCKET)
+      .getPublicUrl(uploadedImagePath).data.publicUrl;
+  }
+
+  const { data: product, error: productError } = await supabaseAdmin
+    .from("products")
+    .insert({
+      owner_id: user.id,
+      business_id: business.id,
+      category_id: categoryId,
+      name,
+      sku,
+      image_url: imageUrl,
+      description,
+      cost_price: costPrice,
+      selling_price: sellingPrice,
+      stock_quantity: stockQuantity,
+      low_stock_quantity: lowStockQuantity,
+      product_type: "configurable",
+      is_active: true,
+      is_online: true,
+    })
+    .select("id, name")
+    .single();
+
+  if (productError || !product) {
+    if (uploadedImagePath) {
+      await supabaseAdmin.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploadedImagePath]);
+    }
+    return { success: false, message: productError?.message ?? "Unable to create product." };
+  }
+
+  try {
+    for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+      const group = groups[groupIndex];
+      const { data: createdGroup, error: groupError } = await supabaseAdmin
+        .from("product_option_groups")
+        .insert({
+          business_id: business.id,
+          product_id: product.id,
+          name: group.name,
+          selection_type: group.selectionType,
+          is_required: group.isRequired,
+          min_selections: group.minSelections,
+          max_selections: group.maxSelections,
+          sort_order: groupIndex,
+        })
+        .select("id")
+        .single();
+
+      if (groupError || !createdGroup) {
+        throw new Error(groupError?.message ?? "Unable to create option group.");
+      }
+
+      const { error: optionsError } = await supabaseAdmin
+        .from("product_options")
+        .insert(
+          group.options.map((option, optionIndex) => ({
+            business_id: business.id,
+            product_id: product.id,
+            group_id: createdGroup.id,
+            name: option.name,
+            price_adjustment: option.priceAdjustment,
+            is_default: option.isDefault,
+            sort_order: optionIndex,
+          })),
+        );
+
+      if (optionsError) throw new Error(optionsError.message);
+    }
+  } catch (error) {
+    await supabaseAdmin.from("products").delete().eq("id", product.id);
+    if (uploadedImagePath) {
+      await supabaseAdmin.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploadedImagePath]);
+    }
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to create product options.",
+    };
+  }
+
+  await createAuditLog({
+    action: "create",
+    entityType: "product",
+    entityId: product.id,
+    description: `Created configurable product ${product.name}`,
+    metadata: {
+      sku,
+      option_groups: groups.length,
+    },
+  });
+
+  revalidatePath("/dashboard/products");
+  revalidatePath("/dashboard/pos");
+  revalidatePath("/dashboard/online-store");
+
+  return {
+    success: true,
+    message: `${product.name} created successfully.`,
+  };
 }

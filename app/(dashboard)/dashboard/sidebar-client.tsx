@@ -17,6 +17,7 @@ import {
   RotateCcw,
   Settings,
   ShoppingCart,
+  ShoppingBag,
   Store,
   Tags,
   TriangleAlert,
@@ -62,6 +63,11 @@ const menuGroups: MenuGroup[] = [
         name: "Orders",
         href: "/dashboard/orders",
         icon: ReceiptText,
+      },
+      {
+        name: "Online Orders",
+        href: "/dashboard/online-orders",
+        icon: ShoppingBag,
       },
       {
         name: "Online Store",

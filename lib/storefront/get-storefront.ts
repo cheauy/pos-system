@@ -31,6 +31,8 @@ export async function getStorefrontSettings(
       allow_delivery,
       allow_dine_in,
       minimum_order,
+      delivery_fee,
+      checkout_message,
       estimated_minutes,
       created_at,
       updated_at
@@ -74,6 +76,8 @@ export async function getStorefrontSettings(
       allow_delivery,
       allow_dine_in,
       minimum_order,
+      delivery_fee,
+      checkout_message,
       estimated_minutes,
       created_at,
       updated_at
