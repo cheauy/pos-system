@@ -79,8 +79,25 @@ export default function ResetPasswordPage() {
     setLoading(true);
 
     try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setErrorMessage(
+          userError?.message ?? "Your password-reset session has expired.",
+        );
+        return;
+      }
+
       const { error } = await supabase.auth.updateUser({
         password,
+        data: {
+          ...(user.user_metadata ?? {}),
+          require_password_change: false,
+          staff_invite_pending: false,
+        },
       });
 
       if (error) {

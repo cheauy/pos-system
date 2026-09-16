@@ -152,18 +152,17 @@ export default function DeleteUserButton({
             </h2>
 
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              This will permanently delete{" "}
+              This will remove{" "}
               <strong>{userName}</strong>{" "}
-              and remove their login account.
-              This action cannot be undone.
+              from this business and disable their Tenh POS login.
+              Historical POS records are kept.
             </p>
 
             <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4">
               <p className="text-sm text-red-700">
-                Historical orders and audit
-                records should remain, but the
-                user will no longer be able to
-                sign in.
+                The Auth account is soft-deleted so historical
+                orders and audit records can safely keep their
+                original user reference.
               </p>
             </div>
 

@@ -11,8 +11,6 @@ import {
   Bell,
   Search,
   ArrowRightLeft,
-  Building2,
-  Download,
   HandCoins,
   Landmark,
   BarChart3,
@@ -32,7 +30,6 @@ import {
   Tags,
   TriangleAlert,
   Truck,
-  ScrollText,
   Users,
   WalletCards,
   X,
@@ -187,31 +184,14 @@ const menuGroups: MenuGroup[] = [
     ],
     
   },
- {
+  {
     title: "Settings",
     items: [
-      {
-        name: "Branches",
-        href: "/dashboard/locations",
-        icon: Building2,
-      },
-      {
-        name: "Backup & Export",
-        href: "/dashboard/exports",
-        icon: Download,
-      },
       {
         name: "Settings",
         href: "/dashboard/settings",
         icon: Settings,
       },
-      {
-        
-      name: "Audit Logs",
-      href: "/dashboard/audit-logs",
-     icon: ScrollText,
-  
-}
     ],
   },
   

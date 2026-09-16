@@ -78,6 +78,28 @@ export async function getAccountDestination(
   userId: string,
 ): Promise<string> {
   const supabase = await createClient();
+
+  const { data: assurance, error: assuranceError } =
+    await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+
+  if (
+    !assuranceError &&
+    assurance?.nextLevel === "aal2" &&
+    assurance.currentLevel !== "aal2"
+  ) {
+    return getRootUrl("/auth/mfa");
+  }
+
+  const { data: authRecord, error: authRecordError } =
+    await supabaseAdmin.auth.admin.getUserById(userId);
+
+  if (
+    !authRecordError &&
+    authRecord.user?.user_metadata?.require_password_change === true
+  ) {
+    return getRootUrl("/auth/change-temporary-password");
+  }
+
   const profile = await ensureProfile(userId);
 
   if (profile.is_active !== true) {

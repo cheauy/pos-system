@@ -1,9 +1,9 @@
-import { redirect } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+
 import { createClient } from "@/lib/supabase/server";
 import AuditLogsTable from "./audit-log-table";
-import {
-  requirePermission,
-} from "@/lib/auth/require-permission";
+import { requirePermission } from "@/lib/auth/require-permission";
 
 export type AuditLog = {
   id: string;
@@ -15,38 +15,17 @@ export type AuditLog = {
   created_at: string;
   ip_address: string | null;
   user_agent: string | null;
-
   profiles: {
     full_name: string | null;
   } | null;
 };
 
 export default async function AuditLogsPage() {
+  // audit_logs.view is intentionally granted only to business owners.
+  // requirePermission resolves the current tenant through business_members,
+  // so do not repeat an incompatible role/business check against profiles.
+  const business = await requirePermission("audit_logs.view");
   const supabase = await createClient();
-  const business = await requirePermission(
-  "audit_logs.view",
-);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .eq("business_id", business.id)
-    .single();
-
-  if (
-    !profile ||
-    !["owner", "admin"].includes(profile.role)
-  ) {
-    redirect("/dashboard");
-  }
 
   const { data, error } = await supabase
     .from("audit_logs")
@@ -64,45 +43,41 @@ export default async function AuditLogsPage() {
       profiles:profiles!audit_logs_user_id_fkey (
         full_name
       )
-    `).eq("business_id", business.id)
-    .order("created_at", {
-      ascending: false,
-    })
+    `)
+    .eq("business_id", business.id)
+    .order("created_at", { ascending: false })
     .limit(100);
 
-  if (error) {
-    return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">
-        <h2 className="font-semibold">
-          Failed to load audit logs
-        </h2>
-
-        <p className="mt-2 text-sm">
-          {error.message}
-        </p>
-
-        <p className="mt-1 text-xs">
-          Error code: {error.code}
-        </p>
-      </div>
-    );
-  }
-
-  const logs = (data ?? []) as unknown as AuditLog[];
-
   return (
-    <div className="space-y-6">
+    <main className="mx-auto w-full max-w-[1600px] space-y-5 pb-8">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
+        <Link
+          href="/dashboard/settings"
+          className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-blue-600 dark:text-slate-400"
+        >
+          <ArrowLeft size={16} />
+          Back to settings
+        </Link>
+      </div>
+
+      <section>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">
           Audit Logs
         </h1>
-
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Review important activity performed in the POS system.
         </p>
-      </div>
+      </section>
 
-      <AuditLogsTable logs={logs} />
-    </div>
+      {error ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+          <h2 className="font-semibold">Failed to load audit logs</h2>
+          <p className="mt-2 text-sm">{error.message}</p>
+          <p className="mt-1 text-xs">Error code: {error.code}</p>
+        </div>
+      ) : (
+        <AuditLogsTable logs={(data ?? []) as unknown as AuditLog[]} />
+      )}
+    </main>
   );
 }

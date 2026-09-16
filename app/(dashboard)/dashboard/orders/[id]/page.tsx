@@ -21,6 +21,7 @@ import {
   requirePermission,
 } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
+import { code39Bars } from "@/lib/barcode/code39";
 
 type ProductRelation = {
   name: string;
@@ -99,6 +100,7 @@ type ReceiptConfig = {
   paper_size: string; header_text: string | null; footer_text: string | null;
   show_logo: boolean; show_phone: boolean; show_address: boolean; show_cashier: boolean;
   show_customer: boolean; show_discount: boolean; show_payment: boolean; show_loyalty: boolean; show_store_qr: boolean; store_qr_label: string | null;
+  show_order_number: boolean; show_fulfillment: boolean; show_notes: boolean; show_invoice_barcode: boolean; return_policy: string | null;
 };
 type StorefrontReceiptInfo = { display_name: string | null; logo_url: string | null; phone: string | null; address: string | null; };
 
@@ -186,10 +188,10 @@ const { data, error } = await supabase
   
 
   const [{ data: receiptSettingsData }, { data: storefrontReceiptData }] = await Promise.all([
-    supabase.from("business_receipt_settings").select("paper_size,header_text,footer_text,show_logo,show_phone,show_address,show_cashier,show_customer,show_discount,show_payment,show_loyalty,show_store_qr,store_qr_label").eq("business_id", business.id).maybeSingle(),
+    supabase.from("business_receipt_settings").select("paper_size,header_text,footer_text,show_logo,show_phone,show_address,show_cashier,show_customer,show_discount,show_payment,show_loyalty,show_store_qr,store_qr_label,show_order_number,show_fulfillment,show_notes,show_invoice_barcode,return_policy").eq("business_id", business.id).maybeSingle(),
     supabase.from("business_storefronts").select("display_name,logo_url,phone,address").eq("business_id", business.id).maybeSingle(),
   ]);
-  const receiptConfig: ReceiptConfig = { paper_size: "80mm", header_text: null, footer_text: "Thank you for your purchase!", show_logo: true, show_phone: true, show_address: true, show_cashier: true, show_customer: true, show_discount: true, show_payment: true, show_loyalty: true, show_store_qr: true, store_qr_label: "Order online", ...(receiptSettingsData ?? {}) };
+  const receiptConfig: ReceiptConfig = { paper_size: "80mm", header_text: null, footer_text: "Thank you for your purchase!", show_logo: true, show_phone: true, show_address: true, show_cashier: true, show_customer: true, show_discount: true, show_payment: true, show_loyalty: true, show_store_qr: true, store_qr_label: "Order online", show_order_number: true, show_fulfillment: true, show_notes: false, show_invoice_barcode: false, return_policy: null, ...(receiptSettingsData ?? {}) };
   const storefrontReceipt = (storefrontReceiptData ?? { display_name: business.name, logo_url: null, phone: null, address: null }) as StorefrontReceiptInfo;
 
   const order = data as Order;
@@ -941,10 +943,10 @@ function Receipt({
       </div>
 
       <div className="space-y-1 border-b border-dashed border-black py-4 text-sm">
-        <ReceiptInformation
+        {receiptConfig.show_order_number && <ReceiptInformation
           label="Order"
           value={order.order_number}
-        />
+        />}
 
         <ReceiptInformation
           label="Date"
@@ -966,6 +968,16 @@ function Receipt({
         {receiptConfig.show_payment && <ReceiptInformation
           label="Payment"
           value={formatPaymentMethod(order.payment_method)}
+        />}
+
+        {receiptConfig.show_fulfillment && order.fulfillment_type && <ReceiptInformation
+          label="Fulfillment"
+          value={capitalize(order.fulfillment_type)}
+        />}
+
+        {receiptConfig.show_notes && order.customer_note && <ReceiptInformation
+          label="Note"
+          value={order.customer_note}
         />}
 
         <ReceiptInformation
@@ -1092,9 +1104,24 @@ function Receipt({
         <p>Thank you. Please come again.</p>
       </div>
       {(receiptConfig.show_loyalty && Number(order.loyalty_points_earned) > 0) && <p className="border-t border-dashed border-black pt-3 text-center text-xs">+{Number(order.loyalty_points_earned)} loyalty points</p>}
+      {receiptConfig.show_invoice_barcode && <InvoiceBarcode value={order.order_number} />}
       {receiptConfig.show_store_qr && <div className="mt-3 border-t border-dashed border-black pt-3 text-center"><p className="text-xs font-semibold">{receiptConfig.store_qr_label || "Order online"}</p><img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(storeUrl)}`} alt="Store QR" className="mx-auto mt-2 h-24 w-24"/><p className="mt-1 break-all text-[9px]">{storeUrl}</p></div>}
+      {receiptConfig.return_policy && <p className="mt-3 whitespace-pre-line border-t border-dashed border-black pt-3 text-center text-[10px]">{receiptConfig.return_policy}</p>}
       {receiptConfig.footer_text && <p className="mt-3 whitespace-pre-line border-t border-dashed border-black pt-3 text-center text-xs">{receiptConfig.footer_text}</p>}
     </article>
+  );
+}
+
+function InvoiceBarcode({ value }: { value: string }) {
+  const safe = value.replace(/[^A-Za-z0-9 .\-$\/%+]/g, "-").slice(0, 32);
+  const data = code39Bars(safe || "ORDER");
+  return (
+    <div className="mt-3 border-t border-dashed border-black pt-3 text-center">
+      <svg viewBox={`0 0 ${data.width} 44`} className="mx-auto h-10 w-full max-w-[210px]" preserveAspectRatio="none">
+        {data.bars.map((bar, index) => <rect key={index} x={bar.x} y="0" width={bar.width} height="44" fill="black" />)}
+      </svg>
+      <p className="mt-1 text-[9px] tracking-wider">{data.text}</p>
+    </div>
   );
 }
 

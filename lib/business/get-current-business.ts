@@ -168,17 +168,25 @@ export async function getCurrentBusiness(): Promise<CurrentBusiness> {
     ).getTime() <= Date.now();
 
   if (subscriptionExpired) {
-    const now = new Date().toISOString();
+    const now = new Date();
+    const expiry = business.subscription_expires_at
+      ? new Date(business.subscription_expires_at)
+      : now;
+    const disabledAt = Number.isNaN(expiry.getTime()) ? now : expiry;
+    const releaseAt = new Date(disabledAt);
+    releaseAt.setUTCDate(releaseAt.getUTCDate() + 60);
 
     await supabase
       .from("businesses")
       .update({
         is_active: false,
-        disabled_at: now,
+        disabled_at: disabledAt.toISOString(),
         disabled_reason: "subscription_expired",
-        updated_at: now,
+        scheduled_deletion_at: releaseAt.toISOString(),
+        updated_at: now.toISOString(),
       })
-      .eq("id", business.id);
+      .eq("id", business.id)
+      .eq("is_active", true);
 
     redirect("/business-disabled");
   }

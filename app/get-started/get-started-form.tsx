@@ -21,7 +21,6 @@ import {
   Link2,
   Loader2,
   LogOut,
-  Info,
   Package,
   Shirt,
   ShoppingBasket,
@@ -223,14 +222,7 @@ export default function GetStartedForm({ accountEmail }: { accountEmail: string 
                   Choose the business type. TENH will automatically prepare the right POS and product setup for you.
                 </p>
 
-                <div className="mt-4 flex max-w-3xl items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm text-blue-950">
-                  <Info size={18} className="mt-0.5 shrink-0 text-blue-600" />
-                  <p className="leading-6">
-                    Choose the mode that best matches your business and product setup. Each mode enables the right product workflow for that business. You can change it later in Settings.
-                  </p>
-                </div>
-
-                <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {orderedBusinessModePresets.map((preset) => (
                     <BusinessModeCard
                       key={preset.value}
@@ -635,15 +627,18 @@ function StoreDetailsForm({
                 setSubdomain(normalizeTenantSlug(event.target.value));
               }}
               className="min-w-0 flex-1 px-4 py-3 text-slate-900 outline-none"
-              placeholder="my-shop"
+              placeholder="melody"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
             />
             <span className="flex items-center border-l border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-500">
-              .tenh-pos.com
+              .{previewHost}
             </span>
           </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Development example: <span className="font-semibold text-slate-700">http://melody.localhost:3000</span>. Production uses your configured TENH POS root domain.
+          </p>
         </Field>
 
       </div>

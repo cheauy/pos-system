@@ -1180,8 +1180,8 @@ if (!business) {
     const disabledAt = new Date();
     const scheduledDeletionAt = new Date();
 
-    scheduledDeletionAt.setMonth(
-      scheduledDeletionAt.getMonth() + 6,
+    scheduledDeletionAt.setDate(
+      scheduledDeletionAt.getDate() + 60,
     );
 
     const { error } = await supabaseAdmin
