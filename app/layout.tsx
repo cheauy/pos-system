@@ -27,11 +27,19 @@ const hanuman = Hanuman({
 
 export const metadata: Metadata = {
   title: {
-    default: "Tenh POS",
+    default: "Tenh POS | Manage your Business",
     template: "%s | Tenh POS",
   },
+  applicationName: "Tenh POS",
   description:
-    "POS, inventory and online ordering for modern businesses.",
+    "Manage your business with Tenh POS — sales, inventory, customers, reports and online ordering in one place.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/favicon.ico",
+  },
 };
 
 export default async function RootLayout({
