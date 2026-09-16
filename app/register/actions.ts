@@ -16,12 +16,76 @@ function requiredText(formData: FormData, key: string) {
   return value.trim();
 }
 
-function cleanupMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
+function readableError(error: unknown): string {
+  if (typeof error === "string") {
+    const value = error.trim();
+    return value && value !== "{}" ? value : "";
   }
 
-  return "Unable to create your Tenh POS account.";
+  if (error instanceof Error) {
+    const value = error.message?.trim();
+    return value && value !== "{}" ? value : "";
+  }
+
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+
+    for (const key of [
+      "message",
+      "error_description",
+      "error",
+      "details",
+      "hint",
+    ]) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim() && value.trim() !== "{}") {
+        return value.trim();
+      }
+    }
+
+    const code = record.code;
+    if (typeof code === "string" && code.trim()) {
+      return `Registration failed (${code.trim()}).`;
+    }
+  }
+
+  return "";
+}
+
+function cleanupMessage(error: unknown) {
+  return (
+    readableError(error) ||
+    "Unable to create your Tenh POS account. Please try again."
+  );
+}
+
+async function cleanupPartialRegistration(userId: string) {
+  // Cleanup must never replace the original registration error. Every step is
+  // intentionally best-effort because the database/Auth state can be only
+  // partially created when signup fails.
+  try {
+    await supabaseAdmin.from("profiles").delete().eq("id", userId);
+  } catch (cleanupError) {
+    console.error(
+      "[registerAccount] profile cleanup failed:",
+      readableError(cleanupError) || "unknown cleanup error",
+    );
+  }
+
+  try {
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (error) {
+      console.error(
+        "[registerAccount] auth cleanup failed:",
+        readableError(error) || "unknown cleanup error",
+      );
+    }
+  } catch (cleanupError) {
+    console.error(
+      "[registerAccount] auth cleanup threw:",
+      readableError(cleanupError) || "unknown cleanup error",
+    );
+  }
 }
 
 export async function registerAccount(
@@ -73,46 +137,27 @@ export async function registerAccount(
       };
     }
 
-    const {
-      data: existingProfile,
-      error: profileLookupError,
-    } = await supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .ilike("email", email)
-      .maybeSingle();
-
-    if (profileLookupError) {
-      throw new Error(
-        `Unable to check email address: ${profileLookupError.message}`,
-      );
-    }
-
-    if (existingProfile) {
-      return {
-        success: false,
-        message: "An account already exists with this email address.",
-      };
-    }
-
+    // Supabase Auth remains the source of truth for whether an email can sign
+    // up. We intentionally do not query profiles first: a stale/missing profile
+    // must not block creating an Auth account, and duplicate-email protection is
+    // already enforced by Supabase Auth below.
     const supabase = await createClient();
-    const { data: authData, error: authError } =
-      await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: getRootUrl("/auth/continue"),
-          data: {
-            full_name: fullName,
-          },
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: getRootUrl("/auth/continue"),
+        data: {
+          full_name: fullName,
         },
-      });
+      },
+    });
 
     if (authError || !authData.user) {
       return {
         success: false,
         message:
-          authError?.message ?? "Unable to create your account.",
+          readableError(authError) || "Unable to create your account.",
       };
     }
 
@@ -143,15 +188,23 @@ export async function registerAccount(
 
     if (profileError) {
       throw new Error(
-        `Unable to create your profile: ${profileError.message}`,
+        `Unable to create your profile: ${
+          readableError(profileError) || "database rejected the profile"
+        }`,
       );
     }
 
     if (authData.session) {
-      // Email confirmation may be disabled in Supabase. Even then, keep the
-      // requested product flow explicit: registration first, sign-in second,
-      // business onboarding after the first successful sign-in.
-      await supabase.auth.signOut();
+      // Registration creates the account only. Even when email confirmation is
+      // disabled, sign the new account out so the next explicit sign-in is what
+      // starts first-login business onboarding.
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) {
+        console.error(
+          "[registerAccount] post-registration sign-out failed:",
+          readableError(signOutError) || "unknown sign-out error",
+        );
+      }
     }
 
     return {
@@ -165,20 +218,19 @@ export async function registerAccount(
         : null,
     };
   } catch (error) {
-    // Account creation only has two records to clean up. Business data does
-    // not exist until first-login onboarding succeeds.
-    if (createdAuthUserId) {
-      await supabaseAdmin
-        .from("profiles")
-        .delete()
-        .eq("id", createdAuthUserId);
+    const message = cleanupMessage(error);
 
-      await supabaseAdmin.auth.admin.deleteUser(createdAuthUserId);
+    // Log only a human-readable error string. Never log submitted passwords or
+    // the service-role key.
+    console.error("[registerAccount] failed:", message);
+
+    if (createdAuthUserId) {
+      await cleanupPartialRegistration(createdAuthUserId);
     }
 
     return {
       success: false,
-      message: cleanupMessage(error),
+      message,
     };
   }
 }

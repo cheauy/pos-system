@@ -6,6 +6,7 @@ import {
   useActionState,
   useEffect,
   useState,
+  type FormEvent,
   type ReactNode,
 } from "react";
 import { ArrowRight, CheckCircle2, Eye, EyeOff } from "lucide-react";
@@ -19,6 +20,19 @@ import { initialRegisterAccountState } from "./state";
 
 type OAuthProvider = "google" | "facebook";
 
+function safeUiMessage(value: unknown) {
+  if (typeof value !== "string") {
+    return "Unable to create your account. Please try again.";
+  }
+
+  const message = value.trim();
+  if (!message || message === "{}" || message === "[object Object]") {
+    return "Unable to create your account. Please try again.";
+  }
+
+  return message;
+}
+
 export default function RegisterForm() {
   const supabase = createClient();
   const [state, formAction, pending] = useActionState(
@@ -26,6 +40,11 @@ export default function RegisterForm() {
     initialRegisterAccountState,
   );
   const [showPassword, setShowPassword] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [clientError, setClientError] = useState("");
   const [oauthLoading, setOauthLoading] =
     useState<OAuthProvider | null>(null);
   const [oauthError, setOauthError] = useState("");
@@ -35,6 +54,16 @@ export default function RegisterForm() {
       window.location.assign(state.destination);
     }
   }, [state.success, state.destination]);
+
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    setClientError("");
+
+    if (password !== confirmPassword) {
+      event.preventDefault();
+      setClientError("Passwords do not match.");
+    }
+  }
 
   async function handleOAuth(provider: OAuthProvider) {
     setOauthError("");
@@ -158,7 +187,7 @@ export default function RegisterForm() {
             <div className="h-px flex-1 bg-slate-200" />
           </div>
 
-          <form action={formAction} className="space-y-4">
+          <form action={formAction} onSubmit={handleSubmit} className="space-y-4">
             <div className="pointer-events-none absolute -left-[9999px] h-px w-px overflow-hidden" aria-hidden="true">
               <label htmlFor="website">Website</label>
               <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
@@ -172,6 +201,11 @@ export default function RegisterForm() {
                 minLength={2}
                 maxLength={100}
                 autoComplete="name"
+                value={fullName}
+                onChange={(event) => {
+                  setFullName(event.target.value);
+                  setClientError("");
+                }}
                 className={inputClass}
                 placeholder="Your name"
               />
@@ -184,6 +218,11 @@ export default function RegisterForm() {
                 type="email"
                 required
                 autoComplete="email"
+                value={email}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setClientError("");
+                }}
                 className={inputClass}
                 placeholder="owner@example.com"
               />
@@ -199,6 +238,11 @@ export default function RegisterForm() {
                     required
                     minLength={8}
                     autoComplete="new-password"
+                    value={password}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                      setClientError("");
+                    }}
                     className={`${inputClass} pr-11`}
                     placeholder="At least 8 characters"
                   />
@@ -221,15 +265,20 @@ export default function RegisterForm() {
                   required
                   minLength={8}
                   autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(event) => {
+                    setConfirmPassword(event.target.value);
+                    setClientError("");
+                  }}
                   className={inputClass}
                   placeholder="Repeat password"
                 />
               </Field>
             </div>
 
-            {(state.message && !state.success) || oauthError ? (
+            {clientError || ((state.message && !state.success) || oauthError) ? (
               <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {oauthError || state.message}
+                {clientError || oauthError || safeUiMessage(state.message)}
               </div>
             ) : null}
 
