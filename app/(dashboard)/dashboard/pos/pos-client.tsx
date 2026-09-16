@@ -467,6 +467,7 @@ const result = await checkoutOrder({
         return;
       }
 
+
 setCart([]);
 setAmountPaid("");
 setDiscount("");
@@ -475,8 +476,9 @@ setCustomerId("");
 setPaymentMethod("cod");
 setMessage("Order completed successfully.");
 
-window.location.href =
-  `/dashboard/orders/${result.orderId}`;
+window.setTimeout(() => {
+  window.location.href = `/dashboard/orders/${result.orderId}`;
+}, 320);
     });
   }
 

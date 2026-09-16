@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -503,7 +503,7 @@ function SetupPreviewPanel({ preset }: { preset: BusinessModePreset | null }) {
 
         <div className="mt-6 rounded-2xl border border-white/10 bg-[#061b40]/55 p-5">
           <div className="flex gap-3">
-            <span className="text-4xl font-black leading-none text-blue-300">“</span>
+            <span className="text-4xl font-black leading-none text-blue-300">â€œ</span>
             <div>
               <p className="text-sm italic leading-6 text-blue-50/90">
                 Simple to set up, powerful enough to grow with you.
@@ -633,7 +633,7 @@ function StoreDetailsForm({
               spellCheck={false}
             />
             <span className="flex items-center border-l border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-500">
-              .{previewHost}
+              .tenh-pos.com
             </span>
           </div>
           <p className="mt-2 text-xs text-slate-500">
