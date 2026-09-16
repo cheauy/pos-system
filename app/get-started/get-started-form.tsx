@@ -21,6 +21,7 @@ import {
   Link2,
   Loader2,
   LogOut,
+  Info,
   Package,
   Shirt,
   ShoppingBasket,
@@ -222,7 +223,14 @@ export default function GetStartedForm({ accountEmail }: { accountEmail: string 
                   Choose the business type. TENH will automatically prepare the right POS and product setup for you.
                 </p>
 
-                <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="mt-4 flex max-w-3xl items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm text-blue-950">
+                  <Info size={18} className="mt-0.5 shrink-0 text-blue-600" />
+                  <p className="leading-6">
+                    Choose the mode that best matches your business and product setup. Each mode enables the right product workflow for that business. You can change it later in Settings.
+                  </p>
+                </div>
+
+                <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {orderedBusinessModePresets.map((preset) => (
                     <BusinessModeCard
                       key={preset.value}

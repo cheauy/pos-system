@@ -1,6 +1,6 @@
 "use client";
 
-import { CupSoda, Loader2, Plus, Settings2, Sparkles, Trash2 } from "lucide-react";
+import { Coffee, CupSoda, Loader2, Plus, Settings2, Sparkles, Trash2, UtensilsCrossed } from "lucide-react";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -57,14 +57,15 @@ export default function ConfigurableProductForm({ categories, businessType = "ge
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(createConfigurableProduct, initialState);
   const isMilkTea = businessType === "milk_tea";
-  const [groups, setGroups] = useState<GroupRow[]>(() => isMilkTea ? milkTeaTemplate() : [newGroup()]);
+  const presetMeta = configurablePresetMeta(businessType);
+  const [groups, setGroups] = useState<GroupRow[]>(() => configurableTemplate(businessType));
 
   useEffect(() => {
     if (!state.message) return;
     if (state.success) {
       toast.success(state.message);
       formRef.current?.reset();
-      setGroups(isMilkTea ? milkTeaTemplate() : [newGroup()]);
+      setGroups(configurableTemplate(businessType));
     } else {
       toast.error(state.message);
     }
@@ -104,28 +105,30 @@ export default function ConfigurableProductForm({ categories, businessType = "ge
         })))}
       />
 
-      {isMilkTea && (
+      {presetMeta && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-white p-2 text-amber-700 shadow-sm"><CupSoda size={20} /></div>
+            <div className="rounded-xl bg-white p-2 text-amber-700 shadow-sm">
+              {presetMeta.icon === "milk" ? <CupSoda size={20} /> : presetMeta.icon === "cafe" ? <Coffee size={20} /> : <UtensilsCrossed size={20} />}
+            </div>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold text-slate-900">Milk Tea quick setup</p>
-              <p className="mt-1 text-xs leading-5 text-slate-600">Start with Size, Sugar, Ice, Milk and Toppings. You can change every option and extra price before saving.</p>
-              <button type="button" onClick={() => setGroups(milkTeaTemplate())} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700">
-                <Sparkles size={14} /> Load Milk Tea Template
+              <p className="font-semibold text-slate-900">{presetMeta.title}</p>
+              <p className="mt-1 text-xs leading-5 text-slate-600">{presetMeta.description}</p>
+              <button type="button" onClick={() => setGroups(configurableTemplate(businessType))} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700">
+                <Sparkles size={14} /> {presetMeta.button}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <Field label={isMilkTea ? "Drink name" : "Product name"} htmlFor="config-name">
-        <input id="config-name" name="name" required minLength={2} placeholder={isMilkTea ? "Brown Sugar Pearl Milk Tea" : "Configurable product"} className={inputClass} />
+      <Field label={presetMeta?.nameLabel ?? "Product name"} htmlFor="config-name">
+        <input id="config-name" name="name" required minLength={2} placeholder={presetMeta?.namePlaceholder ?? "Configurable product"} className={inputClass} />
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="SKU" htmlFor="config-sku">
-          <input id="config-sku" name="sku" required placeholder="MILKTEA-001" className={inputClass} />
+          <input id="config-sku" name="sku" required placeholder={presetMeta?.skuPlaceholder ?? "CONFIG-001"} className={inputClass} />
         </Field>
         <Field label="Category" htmlFor="config-category">
           <select id="config-category" name="categoryId" defaultValue="" className={inputClass}>
@@ -159,8 +162,8 @@ export default function ConfigurableProductForm({ categories, businessType = "ge
       <section className="rounded-2xl border border-slate-200 bg-slate-50">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-4">
           <div>
-            <h3 className="font-semibold text-slate-900">{isMilkTea ? "Drink options" : "Configuration groups"}</h3>
-            <p className="mt-1 text-xs text-slate-500">{isMilkTea ? "Control cup size, sweetness, ice, milk and add-ons." : "Size, sugar, ice, toppings, extras and more."}</p>
+            <h3 className="font-semibold text-slate-900">{presetMeta?.optionsTitle ?? "Configuration groups"}</h3>
+            <p className="mt-1 text-xs text-slate-500">{presetMeta?.optionsDescription ?? "Size, options, extras and more."}</p>
           </div>
           <button
             type="button"
@@ -282,10 +285,79 @@ export default function ConfigurableProductForm({ categories, businessType = "ge
         disabled={pending}
         className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
       >
-        {pending ? <><Loader2 size={18} className="animate-spin" /> Creating...</> : isMilkTea ? <><CupSoda size={18} /> Create Drink</> : <><Settings2 size={18} /> Create Configurable Product</>}
+        {pending ? <><Loader2 size={18} className="animate-spin" /> Creating...</> : presetMeta ? <><Settings2 size={18} /> {presetMeta.createLabel}</> : <><Settings2 size={18} /> Create Configurable Product</>}
       </button>
     </form>
   );
+}
+
+type ConfigurablePresetMeta = {
+  title: string;
+  description: string;
+  button: string;
+  icon: "milk" | "cafe" | "restaurant";
+  nameLabel: string;
+  namePlaceholder: string;
+  skuPlaceholder: string;
+  optionsTitle: string;
+  optionsDescription: string;
+  createLabel: string;
+};
+
+function configurablePresetMeta(businessType: string): ConfigurablePresetMeta | null {
+  if (businessType === "milk_tea") {
+    return {
+      title: "Milk Tea quick setup",
+      description: "Start with Size, Sugar, Ice, Milk and Toppings. You can change every option and extra price before saving.",
+      button: "Load Milk Tea Template",
+      icon: "milk",
+      nameLabel: "Drink name",
+      namePlaceholder: "Brown Sugar Pearl Milk Tea",
+      skuPlaceholder: "MILKTEA-001",
+      optionsTitle: "Drink options",
+      optionsDescription: "Control cup size, sweetness, ice, milk and add-ons.",
+      createLabel: "Create Drink",
+    };
+  }
+
+  if (businessType === "cafe") {
+    return {
+      title: "Cafe quick setup",
+      description: "Start with Size, Temperature, Milk and Extras for coffee and cafe items. Edit any option before saving.",
+      button: "Load Cafe Template",
+      icon: "cafe",
+      nameLabel: "Cafe item name",
+      namePlaceholder: "Iced Cafe Latte",
+      skuPlaceholder: "CAFE-001",
+      optionsTitle: "Cafe options",
+      optionsDescription: "Control size, hot/iced choice, milk and extras.",
+      createLabel: "Create Cafe Item",
+    };
+  }
+
+  if (businessType === "restaurant") {
+    return {
+      title: "Restaurant quick setup",
+      description: "Start with Portion, Spice Level, Preparation and Extras for menu ordering. Edit any option before saving.",
+      button: "Load Restaurant Template",
+      icon: "restaurant",
+      nameLabel: "Menu item name",
+      namePlaceholder: "Grilled Chicken Rice",
+      skuPlaceholder: "MENU-001",
+      optionsTitle: "Menu options",
+      optionsDescription: "Control portions, preparation choices and paid extras.",
+      createLabel: "Create Menu Item",
+    };
+  }
+
+  return null;
+}
+
+function configurableTemplate(businessType: string): GroupRow[] {
+  if (businessType === "milk_tea") return milkTeaTemplate();
+  if (businessType === "cafe") return cafeTemplate();
+  if (businessType === "restaurant") return restaurantTemplate();
+  return [newGroup()];
 }
 
 function makeTemplateOption(name: string, priceAdjustment = "0", isDefault = false): OptionRow {
@@ -342,6 +414,62 @@ function milkTeaTemplate(): GroupRow[] {
         makeTemplateOption("Coffee jelly", "0.50"),
       ],
       { selectionType: "multiple", isRequired: false, minSelections: "0", maxSelections: "5" },
+    ),
+  ];
+}
+
+function cafeTemplate(): GroupRow[] {
+  return [
+    makeTemplateGroup("Size", [
+      makeTemplateOption("Small"),
+      makeTemplateOption("Medium", "0", true),
+      makeTemplateOption("Large", "0.50"),
+    ]),
+    makeTemplateGroup("Temperature", [
+      makeTemplateOption("Hot", "0", true),
+      makeTemplateOption("Iced"),
+    ]),
+    makeTemplateGroup("Milk", [
+      makeTemplateOption("Regular milk", "0", true),
+      makeTemplateOption("Fresh milk", "0.50"),
+      makeTemplateOption("Oat milk", "0.75"),
+    ]),
+    makeTemplateGroup(
+      "Extras",
+      [
+        makeTemplateOption("Extra espresso shot", "0.75"),
+        makeTemplateOption("Whipped cream", "0.50"),
+        makeTemplateOption("Vanilla syrup", "0.50"),
+      ],
+      { selectionType: "multiple", isRequired: false, minSelections: "0", maxSelections: "3" },
+    ),
+  ];
+}
+
+function restaurantTemplate(): GroupRow[] {
+  return [
+    makeTemplateGroup("Portion", [
+      makeTemplateOption("Regular", "0", true),
+      makeTemplateOption("Large", "1.50"),
+    ]),
+    makeTemplateGroup("Spice level", [
+      makeTemplateOption("Mild"),
+      makeTemplateOption("Medium", "0", true),
+      makeTemplateOption("Hot"),
+    ]),
+    makeTemplateGroup("Preparation", [
+      makeTemplateOption("Standard", "0", true),
+      makeTemplateOption("No onion"),
+      makeTemplateOption("No garlic"),
+    ]),
+    makeTemplateGroup(
+      "Extras",
+      [
+        makeTemplateOption("Extra egg", "0.75"),
+        makeTemplateOption("Extra meat", "1.50"),
+        makeTemplateOption("Extra cheese", "0.75"),
+      ],
+      { selectionType: "multiple", isRequired: false, minSelections: "0", maxSelections: "3" },
     ),
   ];
 }

@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import ImageUpload from "@/components/image-upload";
+import { getProductExperience } from "@/lib/business/product-experience";
 import {
   createProduct,
   type CreateProductState,
@@ -21,10 +22,13 @@ const initialState: CreateProductState = {
 
 export default function StandardProductForm({
   categories,
+  businessType = "general",
 }: {
   categories: Category[];
+  businessType?: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const experience = getProductExperience(businessType).standard ?? getProductExperience("general").standard!;
 
   const [state, formAction, pending] =
     useActionState(createProduct, initialState);
@@ -46,12 +50,17 @@ export default function StandardProductForm({
       action={formAction}
       className="mt-6 space-y-5"
     >
+      <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 text-sm text-slate-700">
+        <p className="font-semibold text-slate-900">{getProductExperience(businessType).modeLabel}</p>
+        <p className="mt-1 text-xs leading-5 text-slate-600">{experience.helper}</p>
+      </div>
+
       <div>
         <label
           htmlFor="name"
           className="mb-2 block text-sm font-medium text-slate-700"
         >
-          Product name
+          {experience.nameLabel}
         </label>
 
         <input
@@ -60,7 +69,7 @@ export default function StandardProductForm({
           type="text"
           required
           minLength={2}
-          placeholder="Example: Coca-Cola 330ml"
+          placeholder={experience.namePlaceholder}
           className={inputClass}
         />
       </div>
@@ -106,7 +115,7 @@ export default function StandardProductForm({
             name="sku"
             type="text"
             required
-            placeholder="DRINK-001"
+            placeholder={experience.skuPlaceholder}
             className={inputClass}
           />
         </div>
@@ -162,7 +171,7 @@ export default function StandardProductForm({
             htmlFor="stockQuantity"
             className="mb-2 block text-sm font-medium text-slate-700"
           >
-            Stock quantity
+            {experience.stockLabel}
           </label>
 
           <input
@@ -210,7 +219,7 @@ export default function StandardProductForm({
           id="description"
           name="description"
           rows={3}
-          placeholder="Optional product description"
+          placeholder={experience.descriptionPlaceholder}
           className={`${inputClass} resize-none`}
         />
       </div>
@@ -220,7 +229,7 @@ export default function StandardProductForm({
         disabled={pending}
         className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {pending ? "Adding product..." : "Add Product"}
+        {pending ? "Adding product..." : experience.buttonLabel}
       </button>
     </form>
   );

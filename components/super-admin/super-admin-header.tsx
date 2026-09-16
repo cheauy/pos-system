@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, ShieldCheck } from "lucide-react";
+import { Building2, LayoutDashboard, LogOut, ShieldCheck } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 
@@ -46,13 +47,31 @@ export default function SuperAdminHeader({
         </div>
       </div>
 
-      <button
-        onClick={handleSignOut}
-        className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-3 font-semibold text-white transition hover:bg-red-700"
-      >
-        <LogOut size={18} />
-        Sign Out
-      </button>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 font-semibold text-blue-700 transition hover:bg-blue-100"
+        >
+          <LayoutDashboard size={18} />
+          Dashboard
+        </Link>
+
+        <Link
+          href="/super-admin/businesses"
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+        >
+          <Building2 size={18} />
+          Businesses
+        </Link>
+
+        <button
+          onClick={handleSignOut}
+          className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-3 font-semibold text-white transition hover:bg-red-700"
+        >
+          <LogOut size={18} />
+          Sign Out
+        </button>
+      </div>
     </header>
   );
 }

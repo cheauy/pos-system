@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import LogoutButton from "@/components/logout-button";
@@ -12,6 +13,7 @@ import SidebarClient from "./sidebar-client";
 import OnlineOrderListener from "@/components/online-order-listener";
 import NotificationBell from "@/components/notification-bell";
 import GlobalSearchBox from "@/components/global-search-box";
+import { ShieldCheck } from "lucide-react";
 
 export default async function DashboardLayout({
   children,
@@ -27,6 +29,16 @@ export default async function DashboardLayout({
   if (!user) {
     redirect("/login");
   }
+
+  const { data: accountProfile } = await supabase
+    .from("profiles")
+    .select("role, is_active")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const isSuperAdmin =
+    accountProfile?.role === "super_admin" &&
+    accountProfile?.is_active === true;
 
   /*
    * getCurrentBusiness() validates the active membership against
@@ -62,6 +74,15 @@ export default async function DashboardLayout({
           </div>
           <div className="flex min-w-0 flex-1 justify-center"><GlobalSearchBox /></div>
           <div className="ml-auto flex items-center gap-2">
+            {isSuperAdmin ? (
+              <Link
+                href="/super-admin/businesses"
+                className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+              >
+                <ShieldCheck size={17} />
+                Super Admin
+              </Link>
+            ) : null}
             <NotificationBell businessId={business.id} />
             <LogoutButton />
           </div>

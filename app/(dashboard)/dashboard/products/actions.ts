@@ -37,6 +37,28 @@ function getNumber(formData: FormData, key: string) {
   return parsedValue;
 }
 
+async function assertCategoryBelongsToBusiness(
+  businessId: string,
+  categoryId: string | null,
+) {
+  if (!categoryId) return;
+
+  const { data, error } = await supabaseAdmin
+    .from("categories")
+    .select("id")
+    .eq("id", categoryId)
+    .eq("business_id", businessId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Unable to validate category: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error("The selected category does not belong to this business.");
+  }
+}
+
 const PRODUCT_IMAGE_BUCKET = "product-images";
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
@@ -139,6 +161,8 @@ export async function createProduct(
     formData,
     "categoryId",
   );
+
+  await assertCategoryBelongsToBusiness(business.id, categoryId);
 
   const skuValue = getOptionalText(
     formData,
@@ -405,7 +429,6 @@ export async function toggleProductStatus(
       .select("id, name, is_active")
       .eq("id", productId)
       .eq("business_id", business.id)
-      .eq("owner_id", user.id)
       .single();
 
   if (productError || !product) {
@@ -420,7 +443,8 @@ export async function toggleProductStatus(
       is_active: newStatus,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", productId);
+    .eq("id", productId)
+    .eq("business_id", business.id);
 
   if (error) {
     throw new Error(error.message);
@@ -469,6 +493,8 @@ export async function updateProduct(
     formData,
     "categoryId",
   );
+
+  await assertCategoryBelongsToBusiness(business.id, categoryId);
 
   const skuValue = getOptionalText(
     formData,
@@ -1022,6 +1048,7 @@ export async function createVariantProduct(
   const nameValue = formData.get("name");
   const name = typeof nameValue === "string" ? nameValue.trim() : "";
   const categoryId = getOptionalText(formData, "categoryId");
+  await assertCategoryBelongsToBusiness(business.id, categoryId);
   const description = getOptionalText(formData, "description");
   const variants = parseVariantInputs(formData.get("variants"));
 
@@ -1254,6 +1281,7 @@ export async function createConfigurableProduct(
   const nameValue = formData.get("name");
   const name = typeof nameValue === "string" ? nameValue.trim() : "";
   const categoryId = getOptionalText(formData, "categoryId");
+  await assertCategoryBelongsToBusiness(business.id, categoryId);
   const sku = getOptionalText(formData, "sku");
   const description = getOptionalText(formData, "description");
   const costPrice = getNumber(formData, "costPrice");
@@ -1385,7 +1413,7 @@ export async function createConfigurableProduct(
       if (optionsError) throw new Error(optionsError.message);
     }
   } catch (error) {
-    await supabaseAdmin.from("products").delete().eq("id", product.id);
+    await supabaseAdmin.from("products").delete().eq("id", product.id).eq("business_id", business.id);
     if (uploadedImagePath) {
       await supabaseAdmin.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploadedImagePath]);
     }

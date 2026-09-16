@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { requirePermission } from "@/lib/auth/require-permission";
 import type { ProductMode } from "@/lib/business/types";
+import { getBusinessModePreset } from "@/lib/business/business-mode-presets";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import {
@@ -50,6 +51,26 @@ export async function updateProductMode(
   ) {
     throw new Error(
       "Please select a valid product type.",
+    );
+  }
+
+  const { data: storefront } = await supabaseAdmin
+    .from("business_storefronts")
+    .select("business_type")
+    .eq("business_id", business.id)
+    .maybeSingle();
+
+  const preset = storefront?.business_type
+    ? getBusinessModePreset(storefront.business_type)
+    : null;
+
+  if (
+    preset &&
+    storefront?.business_type !== "other" &&
+    productMode !== preset.productMode
+  ) {
+    throw new Error(
+      `This business type uses ${preset.productHint}. Change the business type in Settings / Online Store to change the product workflow safely.`,
     );
   }
 
@@ -148,7 +169,7 @@ export async function updateStoreAddress(
 
   if (existingBusiness) {
     throw new Error(
-      "This Tenh POS store address is already in use.",
+      "This TENH POS store address is already in use.",
     );
   }
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { getBusinessModePreset } from "@/lib/business/business-mode-presets";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   isBusinessType,
@@ -138,6 +139,11 @@ export async function updateStorefrontSettings(
       throw new Error(
         "Please select a valid business type.",
       );
+    }
+
+    const businessPreset = getBusinessModePreset(businessType);
+    if (!businessPreset) {
+      throw new Error("Unable to load the selected business mode.");
     }
 
     const displayName = getOptionalText(
@@ -335,12 +341,20 @@ export async function updateStorefrontSettings(
       error: existingError,
     } = await supabaseAdmin
       .from("business_storefronts")
-      .select("logo_url, banner_url, khqr_image_url")
+      .select("logo_url, banner_url, khqr_image_url, business_type")
       .eq("business_id", business.id)
       .maybeSingle();
 
     if (existingError) {
       throw new Error(existingError.message);
+    }
+
+    const businessTypeChanged =
+      Boolean(existing?.business_type) && existing?.business_type !== businessType;
+    const productModeChanged = business.product_mode !== businessPreset.productMode;
+
+    if ((businessTypeChanged || productModeChanged) && business.role !== "owner") {
+      throw new Error("Only the business owner can change the business mode.");
     }
 
     let logoUrl = existing?.logo_url ?? null;
@@ -378,6 +392,23 @@ export async function updateStorefrontSettings(
     }
 
     const now = new Date().toISOString();
+
+    let productModeUpdated = false;
+    if (productModeChanged) {
+      const { error: productModeError } = await supabaseAdmin
+        .from("businesses")
+        .update({
+          product_mode: businessPreset.productMode,
+          updated_at: now,
+        })
+        .eq("id", business.id);
+
+      if (productModeError) {
+        throw new Error(`Unable to update product mode: ${productModeError.message}`);
+      }
+
+      productModeUpdated = true;
+    }
 
     const { error } = await supabaseAdmin
       .from("business_storefronts")
@@ -426,6 +457,16 @@ export async function updateStorefrontSettings(
       );
 
     if (error) {
+      if (productModeUpdated) {
+        await supabaseAdmin
+          .from("businesses")
+          .update({
+            product_mode: business.product_mode,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", business.id);
+      }
+
       throw new Error(
         `Unable to save online store: ${error.message}`,
       );
@@ -437,7 +478,10 @@ export async function updateStorefrontSettings(
       entityId: business.id,
       description: "Updated online store settings",
       metadata: {
+        old_business_type: existing?.business_type ?? null,
         business_type: businessType,
+        old_product_mode: business.product_mode,
+        product_mode: businessPreset.productMode,
         is_published: isPublished,
         accept_online_orders:
           acceptOnlineOrders,
@@ -453,6 +497,7 @@ export async function updateStorefrontSettings(
 
     revalidatePath("/dashboard/online-store");
     revalidatePath("/dashboard/products");
+    revalidatePath("/dashboard/settings/business");
     revalidatePath(`/_sites/${business.slug}`);
 
     return {

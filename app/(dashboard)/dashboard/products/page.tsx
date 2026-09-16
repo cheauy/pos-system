@@ -2,6 +2,7 @@ import { Package, Settings2, SlidersHorizontal } from "lucide-react";
 
 import ProductList from "@/components/product-list";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { getProductExperience } from "@/lib/business/product-experience";
 import { createClient } from "@/lib/supabase/server";
 import ConfigurableProductForm from "./configurable-product-form";
 import StandardProductForm from "./standard-product-form";
@@ -98,36 +99,19 @@ export default async function ProductsPage({
   const categories = (categoryData ?? []) as Category[];
   const products = (productData ?? []) as Product[];
 
-  const modeMeta =
-    businessType === "shoes"
-      ? {
-          title: "Add Shoe",
-          description: "Create one shoe model with size, colour, SKU and stock for every variation.",
-          icon: <SlidersHorizontal size={22} />,
-        }
-      : business.product_mode === "variant"
-      ? {
-          title: "Add Variant Product",
-          description: "Create size, colour, SKU, price and stock variants.",
-          icon: <SlidersHorizontal size={22} />,
-        }
-      : businessType === "milk_tea"
-        ? {
-            title: "Add Drink",
-            description: "Create milk tea with cup size, sugar, ice, milk and toppings.",
-            icon: <Settings2 size={22} />,
-          }
-      : business.product_mode === "configurable"
-        ? {
-            title: "Add Configurable Product",
-            description: "Create option groups such as size, sugar, ice and toppings.",
-            icon: <Settings2 size={22} />,
-          }
-        : {
-            title: "Add Product",
-            description: "Enter the product information.",
-            icon: <Package size={22} />,
-          };
+  const experience = getProductExperience(businessType);
+  const modeMeta = {
+    title: experience.formTitle,
+    description: experience.formDescription,
+    icon:
+      business.product_mode === "variant" ? (
+        <SlidersHorizontal size={22} />
+      ) : business.product_mode === "configurable" ? (
+        <Settings2 size={22} />
+      ) : (
+        <Package size={22} />
+      ),
+  };
 
   return (
     <main>
@@ -155,7 +139,7 @@ export default async function ProductsPage({
           </div>
 
           <div className="mt-4 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold capitalize text-slate-600">
-            {businessType === "shoes" ? "Shoes mode" : businessType === "milk_tea" ? "Milk Tea mode" : `${business.product_mode.replaceAll("_", " ")} mode`}
+            {experience.modeLabel}
           </div>
 
           {categoryError && (
@@ -169,7 +153,7 @@ export default async function ProductsPage({
           ) : business.product_mode === "configurable" ? (
             <ConfigurableProductForm categories={categories} businessType={businessType} />
           ) : (
-            <StandardProductForm categories={categories} />
+            <StandardProductForm categories={categories} businessType={businessType} />
           )}
         </section>
 
