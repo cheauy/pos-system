@@ -87,10 +87,25 @@ function readableAuthError(error: unknown): string {
     normalized.includes("database error") ||
     normalized.includes("saving new user")
   ) {
-    return "Registration is temporarily unavailable. Please try again shortly.";
+    const status = getErrorStatus(error);
+    const diagnostic = [
+      status ? `HTTP ${status}` : null,
+      code || null,
+    ].filter(Boolean).join(" · ");
+
+    return `Supabase Auth could not save the new account${diagnostic ? ` (${diagnostic})` : ""}: ${rawMessage || "Database error saving new user."}`;
   }
 
-  return rawMessage || "Registration is temporarily unavailable. Please try again.";
+  if (rawMessage) {
+    const status = getErrorStatus(error);
+    const diagnostic = [
+      status ? `HTTP ${status}` : null,
+      code || null,
+    ].filter(Boolean).join(" · ");
+    return `${rawMessage}${diagnostic ? ` (${diagnostic})` : ""}`;
+  }
+
+  return "Registration is temporarily unavailable. Please try again.";
 }
 
 export async function registerAccount(

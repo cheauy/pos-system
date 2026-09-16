@@ -21,16 +21,24 @@ import { initialRegisterAccountState } from "./state";
 type OAuthProvider = "google" | "facebook";
 
 function safeUiMessage(value: unknown) {
-  if (typeof value !== "string") {
-    return "Unable to create your account. Please try again.";
+  if (typeof value === "string") {
+    const message = value.trim();
+    if (message && message !== "{}" && message !== "[object Object]") {
+      return message;
+    }
   }
 
-  const message = value.trim();
-  if (!message || message === "{}" || message === "[object Object]") {
-    return "Unable to create your account. Please try again.";
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of ["message", "error_description", "error"]) {
+      const candidate = record[key];
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
   }
 
-  return message;
+  return "Unable to create your account. Check the Supabase Auth logs for the exact database error.";
 }
 
 export default function RegisterForm() {
