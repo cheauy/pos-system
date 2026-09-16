@@ -1,10 +1,13 @@
 "use server";
 
+import { cookies } from "next/headers";
+
 import { createClient } from "@/lib/supabase/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getRootUrl } from "@/lib/tenancy/domain";
 
 import type { RegisterAccountState } from "./state";
+
+const PENDING_EMAIL_COOKIE = "tenh_pending_signup_email";
 
 function requiredText(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -16,92 +19,88 @@ function requiredText(formData: FormData, key: string) {
   return value.trim();
 }
 
-function readableError(error: unknown): string {
-  if (typeof error === "string") {
-    const value = error.trim();
-    return value && value !== "{}" ? value : "";
-  }
-
-  if (error instanceof Error) {
-    const value = error.message?.trim();
-    return value && value !== "{}" ? value : "";
-  }
-
-  if (error && typeof error === "object") {
-    const record = error as Record<string, unknown>;
-
-    for (const key of [
-      "message",
-      "error_description",
-      "error",
-      "details",
-      "hint",
-    ]) {
-      const value = record[key];
-      if (typeof value === "string" && value.trim() && value.trim() !== "{}") {
-        return value.trim();
-      }
-    }
-
-    const code = record.code;
-    if (typeof code === "string" && code.trim()) {
-      return `Registration failed (${code.trim()}).`;
-    }
-  }
-
-  return "";
+function getErrorField(error: unknown, key: string) {
+  if (!error || typeof error !== "object") return null;
+  const value = (error as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function cleanupMessage(error: unknown) {
-  return (
-    readableError(error) ||
-    "Unable to create your Tenh POS account. Please try again."
-  );
+function getErrorStatus(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const value = (error as Record<string, unknown>).status;
+  return typeof value === "number" ? value : null;
 }
 
-async function cleanupPartialRegistration(userId: string) {
-  // Cleanup must never replace the original registration error. Every step is
-  // intentionally best-effort because the database/Auth state can be only
-  // partially created when signup fails.
-  try {
-    await supabaseAdmin.from("profiles").delete().eq("id", userId);
-  } catch (cleanupError) {
-    console.error(
-      "[registerAccount] profile cleanup failed:",
-      readableError(cleanupError) || "unknown cleanup error",
-    );
+function readableAuthError(error: unknown): string {
+  const rawMessage =
+    error instanceof Error
+      ? error.message.trim()
+      : getErrorField(error, "message") ??
+        getErrorField(error, "error_description") ??
+        getErrorField(error, "error") ??
+        "";
+  const code = getErrorField(error, "code")?.toLowerCase() ?? "";
+  const normalized = rawMessage.toLowerCase();
+
+  if (
+    code.includes("user_already_exists") ||
+    code.includes("email_exists") ||
+    normalized.includes("already registered") ||
+    normalized.includes("already exists")
+  ) {
+    return "An account already exists with this email address.";
   }
 
-  try {
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
-    if (error) {
-      console.error(
-        "[registerAccount] auth cleanup failed:",
-        readableError(error) || "unknown cleanup error",
-      );
-    }
-  } catch (cleanupError) {
-    console.error(
-      "[registerAccount] auth cleanup threw:",
-      readableError(cleanupError) || "unknown cleanup error",
-    );
+  if (
+    code.includes("weak_password") ||
+    normalized.includes("weak password") ||
+    normalized.includes("password should")
+  ) {
+    return rawMessage || "Please choose a stronger password.";
   }
+
+  if (
+    code.includes("email_address_invalid") ||
+    normalized.includes("invalid email")
+  ) {
+    return "Enter a valid email address.";
+  }
+
+  if (
+    code.includes("signup_disabled") ||
+    normalized.includes("signups not allowed") ||
+    normalized.includes("signup is disabled") ||
+    normalized.includes("email signups are disabled")
+  ) {
+    return "Email registration is currently disabled. Please contact support.";
+  }
+
+  if (
+    code.includes("over_email_send_rate_limit") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("too many requests")
+  ) {
+    return "Too many registration attempts. Please wait a few minutes and try again.";
+  }
+
+  if (
+    normalized.includes("database error") ||
+    normalized.includes("saving new user")
+  ) {
+    return "Registration is temporarily unavailable. Please try again shortly.";
+  }
+
+  return rawMessage || "Registration is temporarily unavailable. Please try again.";
 }
 
 export async function registerAccount(
   _previousState: RegisterAccountState,
   formData: FormData,
 ): Promise<RegisterAccountState> {
-  let createdAuthUserId: string | null = null;
-
   try {
-    // Simple bot trap. Real users never see or fill this field.
     const website = formData.get("website");
     if (typeof website === "string" && website.trim()) {
-      return {
-        success: false,
-        message: "Unable to create account.",
-      };
+      return { success: false, message: "Unable to create account." };
     }
 
     const fullName = requiredText(formData, "fullName");
@@ -117,10 +116,7 @@ export async function registerAccount(
     }
 
     if (!email.includes("@") || email.length > 254) {
-      return {
-        success: false,
-        message: "Enter a valid email address.",
-      };
+      return { success: false, message: "Enter a valid email address." };
     }
 
     if (password.length < 8) {
@@ -131,106 +127,95 @@ export async function registerAccount(
     }
 
     if (password !== confirmPassword) {
-      return {
-        success: false,
-        message: "Passwords do not match.",
-      };
+      return { success: false, message: "Passwords do not match." };
     }
 
-    // Supabase Auth remains the source of truth for whether an email can sign
-    // up. We intentionally do not query profiles first: a stale/missing profile
-    // must not block creating an Auth account, and duplicate-email protection is
-    // already enforced by Supabase Auth below.
+    // Account-only registration. Business/profile setup happens after the
+    // first confirmed sign-in through /auth/continue.
     const supabase = await createClient();
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+    const confirmationCallback = getRootUrl(
+      "/auth/callback?flow=email-confirmation",
+    );
+
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: getRootUrl("/auth/continue"),
-        data: {
-          full_name: fullName,
-        },
+        emailRedirectTo: confirmationCallback,
+        data: { full_name: fullName },
       },
     });
 
-    if (authError || !authData.user) {
+    if (error) {
+      const message = readableAuthError(error);
+      console.error("[registerAccount] Supabase signup failed", {
+        code: getErrorField(error, "code"),
+        status: getErrorStatus(error),
+        message:
+          error instanceof Error ? error.message : getErrorField(error, "message"),
+      });
+      return { success: false, message };
+    }
+
+    if (!data.user) {
+      console.error(
+        "[registerAccount] Supabase signup returned no user and no error.",
+      );
       return {
         success: false,
-        message:
-          readableError(authError) || "Unable to create your account.",
+        message: "Registration is temporarily unavailable. Please try again.",
       };
     }
 
-    if (
-      Array.isArray(authData.user.identities) &&
-      authData.user.identities.length === 0
-    ) {
+    if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
       return {
         success: false,
         message: "An account already exists with this email address.",
       };
     }
 
-    createdAuthUserId = authData.user.id;
+    const cookieStore = await cookies();
 
-    const { error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .upsert(
-        {
-          id: createdAuthUserId,
-          full_name: fullName,
-          email,
-          role: "owner",
-          is_active: true,
-        },
-        { onConflict: "id" },
-      );
+    if (!data.session) {
+      // Confirmation is enabled. Keep the email server-only so the waiting page
+      // can display/resend without putting the address in the URL.
+      cookieStore.set(PENDING_EMAIL_COOKIE, email, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 60 * 60 * 24,
+      });
 
-    if (profileError) {
-      throw new Error(
-        `Unable to create your profile: ${
-          readableError(profileError) || "database rejected the profile"
-        }`,
+      return {
+        success: true,
+        message: "We sent a confirmation link to your email address.",
+        requiresEmailConfirmation: true,
+        destination: getRootUrl("/register/check-email"),
+      };
+    }
+
+    // If Confirm email is disabled in Supabase, no confirmation email is sent.
+    // Sign the user out so registration still remains account-only.
+    const { error: signOutError } = await supabase.auth.signOut();
+    if (signOutError) {
+      console.error(
+        "[registerAccount] post-registration sign-out failed:",
+        signOutError.message,
       );
     }
 
-    if (authData.session) {
-      // Registration creates the account only. Even when email confirmation is
-      // disabled, sign the new account out so the next explicit sign-in is what
-      // starts first-login business onboarding.
-      const { error: signOutError } = await supabase.auth.signOut();
-      if (signOutError) {
-        console.error(
-          "[registerAccount] post-registration sign-out failed:",
-          readableError(signOutError) || "unknown sign-out error",
-        );
-      }
-    }
+    cookieStore.delete(PENDING_EMAIL_COOKIE);
 
     return {
       success: true,
-      message: authData.session
-        ? "Your account is created. Sign in to set up your business."
-        : "Your account is created. Check your email to confirm it, then sign in to set up your business.",
-      requiresEmailConfirmation: !authData.session,
-      destination: authData.session
-        ? getRootUrl("/login?registered=1")
-        : null,
+      message: "Your account is created. Sign in to set up your business.",
+      requiresEmailConfirmation: false,
+      destination: getRootUrl("/login?registered=1"),
     };
   } catch (error) {
-    const message = cleanupMessage(error);
-
-    // Log only a human-readable error string. Never log submitted passwords or
-    // the service-role key.
+    const message = readableAuthError(error);
     console.error("[registerAccount] failed:", message);
-
-    if (createdAuthUserId) {
-      await cleanupPartialRegistration(createdAuthUserId);
-    }
-
-    return {
-      success: false,
-      message,
-    };
+    return { success: false, message };
   }
 }

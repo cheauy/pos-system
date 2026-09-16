@@ -9,7 +9,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { ArrowRight, CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { FaFacebookF } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 
@@ -92,29 +92,6 @@ export default function RegisterForm() {
     }
   }
 
-  if (state.success && state.requiresEmailConfirmation) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f6f8fc] px-4 py-10">
-        <section className="w-full max-w-lg rounded-[28px] border border-slate-200 bg-white p-8 text-center shadow-xl shadow-slate-200/50">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
-            <CheckCircle2 size={32} />
-          </div>
-          <h1 className="mt-5 text-2xl font-bold text-slate-950">
-            Check your email
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            {state.message}
-          </p>
-          <Link
-            href="/login"
-            className="mt-7 inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700"
-          >
-            Go to sign in
-          </Link>
-        </section>
-      </main>
-    );
-  }
 
   const busy = pending || oauthLoading !== null;
 

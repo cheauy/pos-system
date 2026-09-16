@@ -1,5 +1,6 @@
 import "server-only";
 
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
   getAdminUrl,
@@ -7,38 +8,87 @@ import {
   getTenantDashboardUrl,
 } from "@/lib/tenancy/domain";
 
+function accountName(user: {
+  email?: string | null;
+  user_metadata?: Record<string, unknown>;
+}) {
+  const metadata = user.user_metadata ?? {};
+  for (const candidate of [
+    metadata.full_name,
+    metadata.name,
+    metadata.user_name,
+    metadata.preferred_username,
+  ]) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim().slice(0, 100);
+    }
+  }
+
+  return user.email?.split("@")[0]?.slice(0, 100) || "Tenh POS User";
+}
+
+async function ensureProfile(userId: string) {
+  const { data: existing, error: lookupError } = await supabaseAdmin
+    .from("profiles")
+    .select("id, role, is_active")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (lookupError) {
+    throw new Error(`Unable to check account profile: ${lookupError.message}`);
+  }
+
+  if (existing) return existing;
+
+  const { data: authRecord, error: authError } =
+    await supabaseAdmin.auth.admin.getUserById(userId);
+
+  if (authError || !authRecord.user?.email) {
+    throw new Error(
+      `Unable to load account details: ${
+        authError?.message ?? "email address is unavailable"
+      }`,
+    );
+  }
+
+  const { data: created, error: createError } = await supabaseAdmin
+    .from("profiles")
+    .insert({
+      id: userId,
+      full_name: accountName(authRecord.user),
+      email: authRecord.user.email.toLowerCase(),
+      role: "owner",
+      is_active: true,
+    })
+    .select("id, role, is_active")
+    .single();
+
+  if (createError || !created) {
+    throw new Error(
+      `Unable to create account profile: ${
+        createError?.message ?? "profile was not returned"
+      }`,
+    );
+  }
+
+  return created;
+}
+
 export async function getAccountDestination(
   userId: string,
 ): Promise<string> {
   const supabase = await createClient();
+  const profile = await ensureProfile(userId);
 
-  const {
-    data: profile,
-    error,
-  } = await supabase
-    .from("profiles")
-    .select("role, is_active")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(
-      `Unable to check account destination: ${error.message}`,
-    );
-  }
-
-  if (!profile || profile.is_active !== true) {
-    return getRootUrl("/login");
+  if (profile.is_active !== true) {
+    return getRootUrl("/login?error=account_inactive");
   }
 
   if (profile.role === "super_admin") {
     return getAdminUrl("/super-admin/businesses");
   }
 
-  const {
-    data: membership,
-    error: membershipError,
-  } = await supabase
+  const { data: membership, error: membershipError } = await supabase
     .from("business_members")
     .select("business_id")
     .eq("user_id", userId)
@@ -56,10 +106,7 @@ export async function getAccountDestination(
     return getRootUrl("/get-started");
   }
 
-  const {
-    data: business,
-    error: businessError,
-  } = await supabase
+  const { data: business, error: businessError } = await supabase
     .from("businesses")
     .select("slug")
     .eq("id", membership.business_id)
@@ -75,8 +122,5 @@ export async function getAccountDestination(
     return getRootUrl("/no-business");
   }
 
-  return getTenantDashboardUrl(
-    business.slug,
-    "/dashboard",
-  );
+  return getTenantDashboardUrl(business.slug, "/dashboard");
 }

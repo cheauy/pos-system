@@ -15,11 +15,12 @@ import {
   BarChart3,
   Box,
   Check,
-  CircleHelp,
   Coffee,
   Gem,
   Laptop,
   Link2,
+  Loader2,
+  LogOut,
   Package,
   Shirt,
   ShoppingBasket,
@@ -39,7 +40,9 @@ import {
   getBusinessModePreset,
   type BusinessModePreset,
 } from "@/lib/business/business-mode-presets";
+import { createClient } from "@/lib/supabase/client";
 import {
+  getRootUrl,
   normalizeTenantSlug,
 } from "@/lib/tenancy/domain";
 
@@ -60,19 +63,41 @@ const iconByMode = {
   other: Package,
 } as const;
 
-const modeVisual = {
-  shoes: "bg-blue-50 text-blue-600",
-  milk_tea: "bg-amber-50 text-amber-700",
-  restaurant: "bg-orange-50 text-orange-600",
-  cafe: "bg-stone-100 text-stone-700",
-  fashion: "bg-pink-50 text-pink-600",
-  accessories: "bg-orange-50 text-orange-600",
-  beauty: "bg-rose-50 text-rose-600",
-  electronics: "bg-sky-50 text-sky-700",
-  grocery: "bg-yellow-50 text-yellow-700",
-  general: "bg-blue-50 text-blue-600",
-  other: "bg-slate-100 text-slate-600",
+const businessIllustrationByMode = {
+  general: "/business-types/general-shop.svg",
+  milk_tea: "/business-types/milk-tea.svg",
+  shoes: "/business-types/shoes.svg",
+  restaurant: "/business-types/restaurant.svg",
+  cafe: "/business-types/cafe.svg",
+  fashion: "/business-types/fashion.svg",
+  grocery: "/business-types/grocery.svg",
+  accessories: "/business-types/accessories.svg",
+  beauty: "/business-types/beauty.svg",
+  electronics: "/business-types/electronics.svg",
+  other: "/business-types/other-business.svg",
 } as const;
+
+const businessModeOrder = new Map(
+  [
+    "general",
+    "milk_tea",
+    "shoes",
+    "restaurant",
+    "cafe",
+    "fashion",
+    "grocery",
+    "accessories",
+    "beauty",
+    "electronics",
+    "other",
+  ].map((value, index) => [value, index]),
+);
+
+const orderedBusinessModePresets = [...businessModePresets].sort(
+  (a, b) =>
+    (businessModeOrder.get(a.value) ?? 999) -
+    (businessModeOrder.get(b.value) ?? 999),
+);
 
 export default function GetStartedForm({ accountEmail }: { accountEmail: string }) {
   const [state, formAction, pending] = useActionState(
@@ -85,13 +110,28 @@ export default function GetStartedForm({ accountEmail }: { accountEmail: string 
   const [businessName, setBusinessName] = useState("");
   const [subdomain, setSubdomain] = useState("");
   const [subdomainTouched, setSubdomainTouched] = useState(false);
+  const [previewHost, setPreviewHost] = useState("tenh-pos.com");
+  const [signingOut, setSigningOut] = useState(false);
 
   const selectedPreset = useMemo(
     () => getBusinessModePreset(businessMode),
     [businessMode],
   );
 
-  const storePreviewUrl = `${subdomain || "your-shop"}.tenh-pos.com`;
+  const storePreviewUrl = `${subdomain || "your-shop"}.${previewHost}`;
+
+  useEffect(() => {
+    const rootDomain = (process.env.NEXT_PUBLIC_ROOT_DOMAIN || "tenh-pos.com")
+      .replace(/^https?:\/\//, "")
+      .replace(/\/.*$/, "");
+
+    if (window.location.hostname === "localhost" || window.location.hostname.endsWith(".localhost")) {
+      setPreviewHost(`localhost:${window.location.port || "3000"}`);
+      return;
+    }
+
+    setPreviewHost(rootDomain);
+  }, []);
 
   useEffect(() => {
     if (!state.success || !state.destination) {
@@ -100,6 +140,23 @@ export default function GetStartedForm({ accountEmail }: { accountEmail: string 
 
     window.location.assign(state.destination);
   }, [state.success, state.destination]);
+
+  async function handleSignOut() {
+    if (signingOut) return;
+
+    setSigningOut(true);
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        console.error("[get-started] sign out failed:", error.message);
+      }
+    } finally {
+      window.location.assign(getRootUrl("/login"));
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[#f6f8fc] px-3 py-4 sm:px-5 sm:py-6 lg:px-7">
@@ -124,11 +181,28 @@ export default function GetStartedForm({ accountEmail }: { accountEmail: string 
             </div>
           </Link>
 
-          <div className="min-w-0 text-right">
-            <p className="text-[11px] font-medium text-slate-400">Signed in</p>
-            <p className="max-w-[220px] truncate text-xs font-semibold text-slate-700 sm:text-sm">
-              {accountEmail || "Tenh POS account"}
-            </p>
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+            <div className="min-w-0 text-right">
+              <p className="text-[11px] font-medium text-slate-400">Signed in</p>
+              <p className="max-w-[150px] truncate text-xs font-semibold text-slate-700 sm:max-w-[220px] sm:text-sm">
+                {accountEmail || "Tenh POS account"}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSignOut}
+              disabled={signingOut}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60 sm:px-3.5 sm:text-sm"
+              aria-label="Sign out"
+            >
+              {signingOut ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <LogOut size={15} />
+              )}
+              <span className="hidden sm:inline">{signingOut ? "Signing out..." : "Sign out"}</span>
+            </button>
           </div>
         </header>
 
@@ -148,8 +222,8 @@ export default function GetStartedForm({ accountEmail }: { accountEmail: string 
                   Choose the business type. TENH will automatically prepare the right POS and product setup for you.
                 </p>
 
-                <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {businessModePresets.map((preset) => (
+                <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {orderedBusinessModePresets.map((preset) => (
                     <BusinessModeCard
                       key={preset.value}
                       preset={preset}
@@ -167,23 +241,23 @@ export default function GetStartedForm({ accountEmail }: { accountEmail: string 
                       setIsUnsure(true);
                       setBusinessMode("other");
                     }}
-                    className={`group relative min-h-[142px] rounded-2xl border border-dashed p-4 text-left transition ${
+                    className={`group relative flex min-h-[190px] flex-col items-center justify-center rounded-2xl border border-dashed p-4 text-center transition duration-200 ${
                       isUnsure
-                        ? "border-blue-500 bg-blue-50 ring-2 ring-blue-100"
-                        : "border-slate-300 bg-slate-50/60 hover:border-blue-300 hover:bg-blue-50/40"
+                        ? "border-blue-500 bg-blue-50/70 shadow-[0_8px_28px_rgba(37,99,235,0.08)] ring-2 ring-blue-100"
+                        : "border-blue-200 bg-white hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-md hover:shadow-blue-100/60"
                     }`}
                   >
                     {isUnsure && (
-                      <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white">
-                        <Check size={13} strokeWidth={3} />
+                      <span className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
+                        <Check size={14} strokeWidth={3} />
                       </span>
                     )}
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm ring-1 ring-slate-200">
-                      <CircleHelp size={22} />
+                    <div className="flex h-[74px] w-[74px] items-center justify-center rounded-[22px] bg-blue-50 text-3xl font-light text-blue-600 transition group-hover:scale-105">
+                      +
                     </div>
-                    <p className="mt-3 font-bold text-slate-900">Not sure yet?</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                      Start with standard setup. You can change this later in settings.
+                    <p className="mt-3 text-[15px] font-extrabold leading-5 text-slate-950">Not sure yet?</p>
+                    <p className="mt-1.5 max-w-[160px] text-xs leading-[1.45] text-slate-500">
+                      You can change this later in settings.
                     </p>
                   </button>
                 </div>
@@ -285,33 +359,35 @@ function BusinessModeCard({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const Icon = iconByMode[preset.value];
-  const visual = modeVisual[preset.value];
+  const illustration = businessIllustrationByMode[preset.value];
 
   return (
     <button
       type="button"
       onClick={onSelect}
-      className={`group relative min-h-[142px] rounded-2xl border p-4 text-left transition duration-200 ${
+      className={`group relative flex min-h-[190px] flex-col items-center rounded-2xl border px-3.5 py-4 text-center transition duration-200 ${
         selected
-          ? "border-blue-500 bg-blue-50/70 shadow-[0_8px_28px_rgba(37,99,235,0.08)] ring-2 ring-blue-100"
+          ? "border-blue-500 bg-white shadow-[0_10px_30px_rgba(37,99,235,0.10)] ring-2 ring-blue-100"
           : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md hover:shadow-slate-200/60"
       }`}
     >
       {selected && (
-        <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white">
-          <Check size={13} strokeWidth={3} />
+        <span className="absolute right-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
+          <Check size={14} strokeWidth={3} />
         </span>
       )}
-      <div className="flex items-start gap-3">
-        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${visual}`}>
-          <Icon size={23} />
-        </div>
-        <div className="min-w-0 pr-2">
-          <p className="font-bold leading-5 text-slate-900">{preset.label}</p>
-          <p className="mt-1.5 text-xs leading-5 text-slate-500">{preset.description}</p>
-        </div>
+      <div className="flex h-[78px] w-[78px] shrink-0 items-center justify-center overflow-hidden rounded-[22px] bg-gradient-to-br from-slate-50 to-blue-50 transition duration-200 group-hover:scale-[1.04]">
+        <Image
+          src={illustration}
+          alt=""
+          width={78}
+          height={78}
+          aria-hidden="true"
+          className="h-full w-full object-contain p-1"
+        />
       </div>
+      <p className="mt-3 text-[15px] font-extrabold leading-5 text-slate-950">{preset.label}</p>
+      <p className="mt-1.5 max-w-[185px] text-xs leading-[1.45] text-slate-500">{preset.description}</p>
     </button>
   );
 }
@@ -347,20 +423,20 @@ function SetupSummaryBar({
   ];
 
   return (
-    <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
+    <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_6px_22px_rgba(15,23,42,0.04)] sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">
-          Your setup based on this selection
+          Your business setup
         </p>
         <span className="hidden text-xs text-slate-400 sm:block">You can change this later.</span>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {items.map((item, index) => {
           const Icon = item.icon;
           return (
             <div
               key={item.label}
-              className={`flex min-w-0 items-start gap-3 ${index > 0 ? "xl:border-l xl:border-slate-200 xl:pl-4" : ""}`}
+              className={`flex min-w-0 items-start gap-3 ${index > 0 ? "lg:border-l lg:border-slate-200 lg:pl-4" : ""}`}
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm ring-1 ring-slate-200">
                 <Icon size={18} />
