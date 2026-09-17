@@ -28,6 +28,7 @@ type Product = {
   sku: string | null;
   barcode: string | null;
   image_url: string | null;
+  variant_image_url: string | null;
   selling_price: number;
   stock_quantity: number;
   category_id: string | null;
@@ -173,7 +174,9 @@ const [deliveryFee, setDeliveryFee] = useState("");
         key,
         name: first.name,
         image_url:
-          variants.find((row) => row.image_url)?.image_url ?? null,
+          variants.find((row) => row.image_url)?.image_url ??
+          variants.find((row) => row.variant_image_url)?.variant_image_url ??
+          null,
         category_id: first.category_id,
         variants,
         totalStock: variants.reduce(
@@ -467,7 +470,6 @@ const result = await checkoutOrder({
         return;
       }
 
-
 setCart([]);
 setAmountPaid("");
 setDiscount("");
@@ -476,9 +478,8 @@ setCustomerId("");
 setPaymentMethod("cod");
 setMessage("Order completed successfully.");
 
-window.setTimeout(() => {
-  window.location.href = `/dashboard/orders/${result.orderId}`;
-}, 320);
+window.location.href =
+  `/dashboard/orders/${result.orderId}`;
     });
   }
 
@@ -581,6 +582,8 @@ window.setTimeout(() => {
                     <img
                       src={group.image_url}
                       alt={group.name}
+                      loading="lazy"
+                      decoding="async"
                       className="h-40 w-full object-cover"
                     />
                   ) : (
@@ -640,6 +643,8 @@ window.setTimeout(() => {
                     <img
                       src={product.image_url}
                       alt={product.name}
+                      loading="lazy"
+                      decoding="async"
                       className="h-36 w-full object-cover"
                     />
                   ) : (
@@ -1329,10 +1334,11 @@ function ShoeVariantModal({
         </div>
 
         <div className="space-y-6 p-5">
-          {group.image_url && (
+          {(variant.variant_image_url ?? variant.image_url ?? group.image_url) && (
             <img
-              src={group.image_url}
-              alt={group.name}
+              src={variant.variant_image_url ?? variant.image_url ?? group.image_url ?? ""}
+              alt={`${group.name}${selectedColor ? ` · ${selectedColor}` : ""}`}
+              loading="lazy"
               className="aspect-[16/9] w-full rounded-2xl border border-slate-200 object-cover"
             />
           )}

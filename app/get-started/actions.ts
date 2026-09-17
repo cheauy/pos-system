@@ -16,6 +16,79 @@ import type { GetStartedState } from "./state";
 
 const SELF_REGISTRATION_MONTHS = 1;
 
+export type GetStartedStoreAddressAvailabilityResult = {
+  slug: string;
+  available: boolean;
+  status: "available" | "invalid" | "taken" | "error";
+  message: string;
+};
+
+export async function checkGetStartedStoreAddressAvailability(
+  rawSubdomain: string,
+): Promise<GetStartedStoreAddressAvailabilityResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return {
+      slug: "",
+      available: false,
+      status: "error",
+      message: "Sign in before checking a TENH POS store address.",
+    };
+  }
+
+  const subdomain = normalizeTenantSlug(rawSubdomain);
+
+  if (
+    !isValidTenantSlug(subdomain) ||
+    subdomain.length > 40 ||
+    subdomain !== rawSubdomain.trim().toLowerCase()
+  ) {
+    return {
+      slug: subdomain,
+      available: false,
+      status: "invalid",
+      message:
+        "Use 2–40 lowercase letters, numbers or hyphens. Reserved TENH addresses cannot be used.",
+    };
+  }
+
+  const { data: existingBusiness, error } = await supabaseAdmin
+    .from("businesses")
+    .select("id")
+    .ilike("slug", subdomain)
+    .maybeSingle();
+
+  if (error) {
+    return {
+      slug: subdomain,
+      available: false,
+      status: "error",
+      message: "TENH could not check this address right now. Please try again.",
+    };
+  }
+
+  if (existingBusiness) {
+    return {
+      slug: subdomain,
+      available: false,
+      status: "taken",
+      message: "This TENH POS address is already in use. Try another one.",
+    };
+  }
+
+  return {
+    slug: subdomain,
+    available: true,
+    status: "available",
+    message: "Available — you can use this TENH POS store address.",
+  };
+}
+
 function requiredText(formData: FormData, key: string) {
   const value = formData.get(key);
 
@@ -201,6 +274,14 @@ export async function createOwnerBusiness(
       .single();
 
     if (businessError || !business) {
+      if (businessError?.code === "23505") {
+        return {
+          success: false,
+          message:
+            "This TENH POS store address was just claimed. Choose another address and check availability again.",
+        };
+      }
+
       throw new Error(
         businessError?.message ?? "Unable to create your business workspace.",
       );

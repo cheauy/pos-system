@@ -1,6 +1,5 @@
 import "server-only";
 
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
   getAdminUrl,
@@ -8,109 +7,38 @@ import {
   getTenantDashboardUrl,
 } from "@/lib/tenancy/domain";
 
-function accountName(user: {
-  email?: string | null;
-  user_metadata?: Record<string, unknown>;
-}) {
-  const metadata = user.user_metadata ?? {};
-  for (const candidate of [
-    metadata.full_name,
-    metadata.name,
-    metadata.user_name,
-    metadata.preferred_username,
-  ]) {
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim().slice(0, 100);
-    }
-  }
-
-  return user.email?.split("@")[0]?.slice(0, 100) || "Tenh POS User";
-}
-
-async function ensureProfile(userId: string) {
-  const { data: existing, error: lookupError } = await supabaseAdmin
-    .from("profiles")
-    .select("id, role, is_active")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (lookupError) {
-    throw new Error(`Unable to check account profile: ${lookupError.message}`);
-  }
-
-  if (existing) return existing;
-
-  const { data: authRecord, error: authError } =
-    await supabaseAdmin.auth.admin.getUserById(userId);
-
-  if (authError || !authRecord.user?.email) {
-    throw new Error(
-      `Unable to load account details: ${
-        authError?.message ?? "email address is unavailable"
-      }`,
-    );
-  }
-
-  const { data: created, error: createError } = await supabaseAdmin
-    .from("profiles")
-    .insert({
-      id: userId,
-      full_name: accountName(authRecord.user),
-      email: authRecord.user.email.toLowerCase(),
-      role: "owner",
-      is_active: true,
-    })
-    .select("id, role, is_active")
-    .single();
-
-  if (createError || !created) {
-    throw new Error(
-      `Unable to create account profile: ${
-        createError?.message ?? "profile was not returned"
-      }`,
-    );
-  }
-
-  return created;
-}
-
 export async function getAccountDestination(
   userId: string,
 ): Promise<string> {
   const supabase = await createClient();
 
-  const { data: assurance, error: assuranceError } =
-    await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  const {
+    data: profile,
+    error,
+  } = await supabase
+    .from("profiles")
+    .select("role, is_active")
+    .eq("id", userId)
+    .maybeSingle();
 
-  if (
-    !assuranceError &&
-    assurance?.nextLevel === "aal2" &&
-    assurance.currentLevel !== "aal2"
-  ) {
-    return getRootUrl("/auth/mfa");
+  if (error) {
+    throw new Error(
+      `Unable to check account destination: ${error.message}`,
+    );
   }
 
-  const { data: authRecord, error: authRecordError } =
-    await supabaseAdmin.auth.admin.getUserById(userId);
-
-  if (
-    !authRecordError &&
-    authRecord.user?.user_metadata?.require_password_change === true
-  ) {
-    return getRootUrl("/auth/change-temporary-password");
-  }
-
-  const profile = await ensureProfile(userId);
-
-  if (profile.is_active !== true) {
-    return getRootUrl("/login?error=account_inactive");
+  if (!profile || profile.is_active !== true) {
+    return getRootUrl("/login");
   }
 
   if (profile.role === "super_admin") {
     return getAdminUrl("/super-admin/businesses");
   }
 
-  const { data: membership, error: membershipError } = await supabase
+  const {
+    data: membership,
+    error: membershipError,
+  } = await supabase
     .from("business_members")
     .select("business_id")
     .eq("user_id", userId)
@@ -125,12 +53,15 @@ export async function getAccountDestination(
   }
 
   if (!membership) {
-    return getRootUrl("/get-started");
+    return getRootUrl("/no-business");
   }
 
-  const { data: business, error: businessError } = await supabase
+  const {
+    data: business,
+    error: businessError,
+  } = await supabase
     .from("businesses")
-    .select("slug")
+    .select("slug,subscription_expires_at,subscription_status")
     .eq("id", membership.business_id)
     .maybeSingle();
 
@@ -144,5 +75,19 @@ export async function getAccountDestination(
     return getRootUrl("/no-business");
   }
 
-  return getTenantDashboardUrl(business.slug, "/dashboard");
+  const expiresAt = business.subscription_expires_at
+    ? new Date(business.subscription_expires_at).getTime()
+    : Number.NaN;
+  const subscriptionLocked =
+    business.subscription_status === "trial_blocked" ||
+    (business.subscription_status === "expired" &&
+      (!Number.isFinite(expiresAt) || expiresAt <= Date.now())) ||
+    (Number.isFinite(expiresAt) && expiresAt <= Date.now());
+
+  return getTenantDashboardUrl(
+    business.slug,
+    subscriptionLocked
+      ? "/dashboard/settings/subscription"
+      : "/dashboard",
+  );
 }

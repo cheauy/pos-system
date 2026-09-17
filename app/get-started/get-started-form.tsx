@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -7,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useTransition,
   type ReactNode,
 } from "react";
 import {
@@ -46,7 +47,11 @@ import {
   normalizeTenantSlug,
 } from "@/lib/tenancy/domain";
 
-import { createOwnerBusiness } from "./actions";
+import {
+  checkGetStartedStoreAddressAvailability,
+  createOwnerBusiness,
+  type GetStartedStoreAddressAvailabilityResult,
+} from "./actions";
 import { initialGetStartedState } from "./state";
 
 const iconByMode = {
@@ -293,6 +298,7 @@ export default function GetStartedForm({ accountEmail }: { accountEmail: string 
                 subdomainTouched={subdomainTouched}
                 setSubdomainTouched={setSubdomainTouched}
                 selectedPreset={selectedPreset}
+                previewHost={previewHost}
                 onBack={() => setStep(1)}
               />
             )}
@@ -503,7 +509,7 @@ function SetupPreviewPanel({ preset }: { preset: BusinessModePreset | null }) {
 
         <div className="mt-6 rounded-2xl border border-white/10 bg-[#061b40]/55 p-5">
           <div className="flex gap-3">
-            <span className="text-4xl font-black leading-none text-blue-300">â€œ</span>
+            <span className="text-4xl font-black leading-none text-blue-300">“</span>
             <div>
               <p className="text-sm italic leading-6 text-blue-50/90">
                 Simple to set up, powerful enough to grow with you.
@@ -547,6 +553,7 @@ function StoreDetailsForm({
   subdomainTouched,
   setSubdomainTouched,
   selectedPreset,
+  previewHost,
   onBack,
 }: {
   formAction: (payload: FormData) => void;
@@ -560,8 +567,26 @@ function StoreDetailsForm({
   subdomainTouched: boolean;
   setSubdomainTouched: (value: boolean) => void;
   selectedPreset: BusinessModePreset | null;
+  previewHost: string;
   onBack: () => void;
 }) {
+  const [availabilityResult, setAvailabilityResult] =
+    useState<GetStartedStoreAddressAvailabilityResult | null>(null);
+  const [checkedSlug, setCheckedSlug] = useState("");
+  const [checkingAvailability, startAvailabilityCheck] = useTransition();
+  const normalizedSubdomain = normalizeTenantSlug(subdomain);
+  const availabilityMatchesCurrentSlug =
+    checkedSlug === normalizedSubdomain && availabilityResult !== null;
+  const storeAddressIsAvailable =
+    availabilityMatchesCurrentSlug &&
+    availabilityResult?.available === true &&
+    availabilityResult.status === "available";
+
+  function clearAvailabilityCheck() {
+    setAvailabilityResult(null);
+    setCheckedSlug("");
+  }
+
   return (
     <form action={formAction} className="mt-8 space-y-6">
       <input type="hidden" name="businessMode" value={businessMode} />
@@ -606,6 +631,7 @@ function StoreDetailsForm({
               setBusinessName(value);
               if (!subdomainTouched) {
                 setSubdomain(normalizeTenantSlug(value));
+                clearAvailabilityCheck();
               }
             }}
             className={inputClass}
@@ -614,31 +640,71 @@ function StoreDetailsForm({
         </Field>
 
         <Field label="Store address" htmlFor="subdomain" className="sm:col-span-2">
-          <div className="flex overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
-            <input
-              id="subdomain"
-              name="subdomain"
-              required
-              minLength={2}
-              maxLength={40}
-              value={subdomain}
-              onChange={(event) => {
-                setSubdomainTouched(true);
-                setSubdomain(normalizeTenantSlug(event.target.value));
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="flex min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
+              <input
+                id="subdomain"
+                name="subdomain"
+                required
+                minLength={2}
+                maxLength={40}
+                value={subdomain}
+                onChange={(event) => {
+                  setSubdomainTouched(true);
+                  setSubdomain(normalizeTenantSlug(event.target.value));
+                  clearAvailabilityCheck();
+                }}
+                className="min-w-0 flex-1 px-4 py-3 text-slate-900 outline-none"
+                placeholder="melody"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              <span className="flex items-center border-l border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-500">
+                .{previewHost}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              disabled={checkingAvailability || normalizedSubdomain.length < 2}
+              onClick={() => {
+                const candidate = normalizedSubdomain;
+                startAvailabilityCheck(async () => {
+                  const result = await checkGetStartedStoreAddressAvailability(subdomain);
+                  setCheckedSlug(candidate);
+                  setAvailabilityResult(result);
+                });
               }}
-              className="min-w-0 flex-1 px-4 py-3 text-slate-900 outline-none"
-              placeholder="melody"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-            <span className="flex items-center border-l border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-500">
-              .tenh-pos.com
-            </span>
+              className="inline-flex min-h-[50px] shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 sm:min-w-[155px]"
+            >
+              {checkingAvailability ? (
+                <Loader2 size={17} className="animate-spin" />
+              ) : availabilityMatchesCurrentSlug && availabilityResult?.available ? (
+                <Check size={17} />
+              ) : null}
+              {checkingAvailability
+                ? "Checking…"
+                : availabilityMatchesCurrentSlug && availabilityResult?.available
+                  ? "Available"
+                  : "Check availability"}
+            </button>
           </div>
-          <p className="mt-2 text-xs text-slate-500">
-            Development example: <span className="font-semibold text-slate-700">http://melody.localhost:3000</span>. Production uses your configured TENH POS root domain.
-          </p>
+
+          {availabilityMatchesCurrentSlug && availabilityResult ? (
+            <p
+              className={`mt-2 text-xs font-semibold ${
+                availabilityResult.available ? "text-emerald-600" : "text-red-600"
+              }`}
+            >
+              {availabilityResult.available ? "✓ " : ""}
+              {availabilityResult.message}
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-slate-500">
+              Check this address before creating the business. Production uses your configured TENH POS root domain.
+            </p>
+          )}
         </Field>
 
       </div>
@@ -651,11 +717,15 @@ function StoreDetailsForm({
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || !storeAddressIsAvailable}
         className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 font-bold text-white shadow-lg shadow-blue-600/15 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {pending ? "Creating your business..." : "Create my business"}
-        {!pending && <ArrowRight size={18} />}
+        {pending
+          ? "Creating your business..."
+          : storeAddressIsAvailable
+            ? "Create my business"
+            : "Check store address first"}
+        {!pending && storeAddressIsAvailable && <ArrowRight size={18} />}
       </button>
 
       <p className="text-center text-xs leading-5 text-slate-500">

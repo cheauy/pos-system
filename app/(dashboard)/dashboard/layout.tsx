@@ -1,19 +1,19 @@
-import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import LogoutButton from "@/components/logout-button";
+import OnlineOrderListener from "@/components/online-order-listener";
+import {
+  getCurrentBusinessForSubscription,
+} from "@/lib/business/get-current-business";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentBusiness } from "@/lib/business/get-current-business";
 import {
   getTenantDashboardUrl,
   usesSharedSubdomainCookies,
 } from "@/lib/tenancy/domain";
 import { getRequestTenantSlug } from "@/lib/tenancy/request-tenant";
 import SidebarClient from "./sidebar-client";
-import OnlineOrderListener from "@/components/online-order-listener";
-import NotificationBell from "@/components/notification-bell";
-import GlobalSearchBox from "@/components/global-search-box";
-import { ShieldCheck } from "lucide-react";
+
+const SUBSCRIPTION_PATH = "/dashboard/settings/subscription";
 
 export default async function DashboardLayout({
   children,
@@ -30,67 +30,49 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  const { data: accountProfile } = await supabase
-    .from("profiles")
-    .select("role, is_active")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  const isSuperAdmin =
-    accountProfile?.role === "super_admin" &&
-    accountProfile?.is_active === true;
-
-  /*
-   * getCurrentBusiness() validates the active membership against
-   * the tenant slug when the request is on a TENH subdomain.
-   */
-  const business = await getCurrentBusiness();
+  const business =
+    await getCurrentBusinessForSubscription();
   const tenantSlug = await getRequestTenantSlug();
+  const requestHeaders = await headers();
+  const pathname =
+    requestHeaders.get("x-tenh-pathname") ??
+    "/dashboard";
 
-  // Production requests that arrive on the apex domain are moved
-  // to the canonical business subdomain after the business is known.
-  if (
-    !tenantSlug &&
-    usesSharedSubdomainCookies()
-  ) {
+  if (!tenantSlug && usesSharedSubdomainCookies()) {
     redirect(
       getTenantDashboardUrl(
         business.slug,
-        "/dashboard",
+        business.subscriptionLocked
+          ? SUBSCRIPTION_PATH
+          : "/dashboard",
       ),
+    );
+  }
+
+  if (
+    business.subscriptionLocked &&
+    !pathname.startsWith(SUBSCRIPTION_PATH)
+  ) {
+    redirect(`${SUBSCRIPTION_PATH}?locked=1`);
+  }
+
+  if (business.subscriptionLocked) {
+    return (
+      <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+        <main className="mx-auto min-h-screen w-full max-w-[1500px] p-4 sm:p-6">
+          {children}
+        </main>
+      </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <SidebarClient />
+      <SidebarClient businessId={business.id} />
       <OnlineOrderListener businessId={business.id} />
 
-      <div className="lg:pl-64">
-        <header className="flex h-20 items-center gap-4 border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">
-          <div className="min-w-0 shrink-0">
-            <p className="truncate text-sm text-slate-500 dark:text-slate-400">{business.name}</p>
-            <p className="max-w-48 truncate font-medium text-slate-900 dark:text-slate-100">{user.email}</p>
-          </div>
-          <div className="flex min-w-0 flex-1 justify-center"><GlobalSearchBox /></div>
-          <div className="ml-auto flex items-center gap-2">
-            {isSuperAdmin ? (
-              <Link
-                href="/super-admin/businesses"
-                className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
-              >
-                <ShieldCheck size={17} />
-                Super Admin
-              </Link>
-            ) : null}
-            <NotificationBell businessId={business.id} />
-            <LogoutButton />
-          </div>
-        </header>
-
-        <main className="p-6">
-          {children}
-        </main>
+      <div className="lg:pl-16">
+        <main className="p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

@@ -17,12 +17,11 @@ import {
 } from "@/lib/auth/user-role-options";
 import type {
   BusinessRole,
+  ProductMode,
 } from "@/lib/business/types";
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
-import { getRootUrl } from "@/lib/tenancy/domain";
 import {
   createAuditLog,
 } from "@/lib/audit/create-audit-log";
@@ -57,9 +56,31 @@ function isBusinessRole(
     "admin",
     "manager",
     "cashier",
+    "editor",
+    "viewer",
   ].includes(value);
 }
 
+async function assertTeamPlanEnabled(businessId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("businesses")
+    .select("subscription_status,subscription_team_enabled,subscription_plan_key")
+    .eq("id", businessId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Unable to verify the team subscription: ${error.message}`);
+  }
+
+  if (
+    data?.subscription_status === "active" &&
+    data.subscription_team_enabled === false
+  ) {
+    throw new Error(
+      "Team users are locked on the Solo plan. Upgrade to Small Team, Growth Team, or Custom Team to manage staff.",
+    );
+  }
+}
 
 
 export async function createBusinessUser(
@@ -67,126 +88,181 @@ export async function createBusinessUser(
   formData: FormData,
 ): Promise<UserActionState> {
   try {
-    const business = await requireAnyPermission([
-      "users.create",
-      "users.create_limited",
-    ]);
 
-    const { data: businessLimit, error: businessLimitError } =
-      await supabaseAdmin
-        .from("businesses")
-        .select("max_staff")
-        .eq("id", business.id)
-        .maybeSingle();
+ const business =
+      await requireAnyPermission([
+        "users.create",
+        "users.create_limited",
+      ]);
 
-    if (businessLimitError) {
-      return { success: false, message: businessLimitError.message };
-    }
+  await assertTeamPlanEnabled(business.id);
 
-    if (!businessLimit) {
-      return { success: false, message: "Business was not found." };
-    }
+  const {
+  data: businessLimit,
+  error: businessLimitError,
+} = await supabaseAdmin
+  .from("businesses")
+  .select("max_staff")
+  .eq("id", business.id)
+  .maybeSingle();
 
-    const { count: activeStaffCount, error: staffCountError } =
-      await supabaseAdmin
-        .from("business_members")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", business.id)
-        .eq("is_active", true)
-        .neq("role", "owner");
+if (businessLimitError) {
+  return {
+    success: false,
+    message:
+      businessLimitError.message,
+  };
+}
 
-    if (staffCountError) {
-      return { success: false, message: staffCountError.message };
-    }
+if (!businessLimit) {
+  return {
+    success: false,
+    message:
+      "Business was not found.",
+  };
+}
 
-    const maxStaff = Number(businessLimit.max_staff ?? 3);
-    if ((activeStaffCount ?? 0) >= maxStaff) {
-      return {
-        success: false,
-        message: `You've reached the maximum of ${maxStaff} active staff members. Disable an active user or increase your staff limit before adding another user.`,
-      };
-    }
+const {
+  count: activeStaffCount,
+  error: staffCountError,
+} = await supabaseAdmin
+  .from("business_members")
+  .select("id", {
+    count: "exact",
+    head: true,
+  })
+  .eq("business_id", business.id)
+  .eq("is_active", true)
+  .neq("role", "owner");
 
-    const fullName = getRequiredText(formData, "fullName");
-    const email = getRequiredText(formData, "email").toLowerCase();
-    const password = getRequiredText(formData, "password");
-    const confirmPassword = getRequiredText(formData, "confirmPassword");
-    const roleValue = getRequiredText(formData, "role");
-    const sendInviteEmail = formData.get("sendInviteEmail") === "on";
-    const requirePasswordChange =
-      sendInviteEmail || formData.get("requirePasswordChange") === "on";
+if (staffCountError) {
+  return {
+    success: false,
+    message:
+      staffCountError.message,
+  };
+}
 
-    if (password !== confirmPassword) {
-      return {
-        success: false,
-        message: "Password and confirmation password do not match.",
-      };
-    }
+const maxStaff = Number(
+  businessLimit.max_staff ?? 3,
+);
+
+if (
+  (activeStaffCount ?? 0) >= maxStaff
+) {
+ return {
+    success: false,
+    message: `You've reached the maximum of ${maxStaff} active staff members. Upgrade your staff plan or disable an active user before creating another user.`
+  }
+}
+
+
+
+    const fullName = getRequiredText(
+      formData,
+      "fullName",
+    );
+
+    const email = getRequiredText(
+      formData,
+      "email",
+    ).toLowerCase();
+
+    const password = getRequiredText(
+      formData,
+      "password",
+    );
+    const confirmPassword =
+  getRequiredText(
+    formData,
+    "confirmPassword",
+  );
+
+if (password !== confirmPassword) {
+  return {
+    success: false,
+    message:
+      "Password and confirmation password do not match.",
+  };
+}
+
+    const roleValue = getRequiredText(
+      formData,
+      "role",
+    );
 
     if (!isBusinessRole(roleValue)) {
-      return { success: false, message: "Invalid role." };
+      return {
+        success: false,
+        message: "Invalid role.",
+      };
     }
 
-    if (!canAssignRole(business.role, roleValue)) {
+    if (
+      !canAssignRole(
+        business.role,
+        roleValue,
+      )
+    ) {
       return {
         success: false,
         message:
           business.role === "admin"
-            ? "Admins may create only Manager or Cashier users."
+            ? "Admins may create only Editor or Viewer users."
             : "You are not allowed to assign this role.",
       };
     }
 
-    if (!email.includes("@") || email.length < 5) {
-      return { success: false, message: "Enter a valid email address." };
+    if (
+      !email.includes("@") ||
+      email.length < 5
+    ) {
+      return {
+        success: false,
+        message:
+          "Enter a valid email address.",
+      };
     }
 
     if (password.length < 8) {
       return {
         success: false,
-        message: "Password must contain at least 8 characters.",
+        message:
+          "Password must contain at least 8 characters.",
       };
     }
 
-    const baseMetadata = {
-      full_name: fullName,
-      business_id: business.id,
-      business_role: roleValue,
-      require_password_change: requirePasswordChange,
-      staff_invite_pending: false,
-    };
-
-    const { data: createdAuthData, error: createAuthError } =
+    const {
+      data: createdAuthData,
+      error: createAuthError,
+    } =
       await supabaseAdmin.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
-        user_metadata: baseMetadata,
+        user_metadata: {
+          full_name: fullName,
+        },
       });
 
-    if (createAuthError || !createdAuthData.user) {
-      const message = createAuthError?.message ?? "Unable to create the user.";
+    if (
+      createAuthError ||
+      !createdAuthData.user
+    ) {
       return {
         success: false,
-        message: /already|registered|exists/i.test(message)
-          ? "An account with this email already exists."
-          : message,
+        message:
+          createAuthError?.message ??
+          "Unable to create the user.",
       };
     }
 
-    const newUserId = createdAuthData.user.id;
+    const newUserId =
+      createdAuthData.user.id;
 
-    async function cleanupCreatedAccount() {
-      await supabaseAdmin
-        .from("business_members")
-        .delete()
-        .eq("business_id", business.id)
-        .eq("user_id", newUserId);
-      await supabaseAdmin.from("profiles").delete().eq("id", newUserId);
-      await supabaseAdmin.auth.admin.deleteUser(newUserId);
-    }
-
-    const { error: profileError } = await supabaseAdmin
+    const {
+      error: profileError,
+    } = await supabaseAdmin
       .from("profiles")
       .upsert(
         {
@@ -194,93 +270,85 @@ export async function createBusinessUser(
           full_name: fullName,
           email,
           role: roleValue,
-          business_id: business.id,
-          is_active: true,
         },
-        { onConflict: "id" },
+        {
+          onConflict: "id",
+        },
       );
 
     if (profileError) {
-      await cleanupCreatedAccount();
+      await supabaseAdmin.auth.admin.deleteUser(
+        newUserId,
+      );
+
       return {
         success: false,
-        message: `Unable to create profile: ${profileError.message}`,
+        message:
+          `Unable to create profile: ${profileError.message}`,
       };
     }
 
-    const { error: membershipError } = await supabaseAdmin
-      .from("business_members")
-      .insert({
-        business_id: business.id,
-        user_id: newUserId,
-        role: roleValue,
-        is_active: true,
-      });
+
+
+const {
+  error: membershipError,
+} = await supabaseAdmin
+  .from("business_members")
+  .insert({
+    business_id: business.id,
+    user_id: newUserId,
+    role: roleValue,
+    is_active: true,
+  });
 
     if (membershipError) {
-      await cleanupCreatedAccount();
+      await supabaseAdmin
+        .from("profiles")
+        .delete()
+        .eq("id", newUserId);
+
+      await supabaseAdmin.auth.admin.deleteUser(
+        newUserId,
+      );
+
       return {
         success: false,
-        message: `Unable to assign business access: ${membershipError.message}`,
+        message:
+          `Unable to assign business: ${membershipError.message}`,
       };
-    }
-
-    let inviteWarning = "";
-
-    if (sendInviteEmail) {
-      try {
-        const supabase = await createClient();
-        const { error: inviteError } =
-          await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: getRootUrl("/reset-password"),
-          });
-
-        if (inviteError) {
-          inviteWarning = ` User created, but the invite email could not be sent: ${inviteError.message}`;
-        } else {
-          await supabaseAdmin.auth.admin.updateUserById(newUserId, {
-            user_metadata: {
-              ...baseMetadata,
-              staff_invite_pending: true,
-              require_password_change: true,
-            },
-          });
-        }
-      } catch (inviteError) {
-        inviteWarning = ` User created, but the invite email could not be sent: ${
-          inviteError instanceof Error
-            ? inviteError.message
-            : "unknown email error"
-        }`;
-      }
     }
 
     await createAuditLog({
       action: "create",
       entityType: "user",
       entityId: newUserId,
-      description: `Created ${roleValue} user ${fullName}`,
-      metadata: {
-        business_id: business.id,
-        email,
-        role: roleValue,
-        business_product_mode: business.productMode,
-        send_invite_email: sendInviteEmail,
-        require_password_change: requirePasswordChange,
-      },
+      description:
+        `Created ${roleValue} user ${fullName}`,
+ metadata: {
+  business_id: business.id,
+  email,
+  role: roleValue,
+  business_product_mode:
+    business.productMode,
+},
     });
 
-    revalidatePath("/dashboard/settings/users");
+    revalidatePath(
+      "/dashboard/settings/users",
+    );
 
-    return {
-      success: true,
-      message: `${fullName} was created successfully.${inviteWarning}`,
-    };
+   return {
+  success: true,
+  message:
+    `${fullName} was created successfully.`,
+};
   } catch (error) {
     return {
       success: false,
       message:
-        error instanceof Error ? error.message : "Unable to create user.",
+        error instanceof Error
+          ? error.message
+          : "Unable to create user.",
     };
   }
 }
@@ -294,6 +362,8 @@ export async function updateBusinessUserRole(
       await requirePermission(
         "users.update_role",
       );
+
+    await assertTeamPlanEnabled(business.id);
 
     const memberId = getRequiredText(
       formData,
@@ -497,6 +567,8 @@ export async function deleteBusinessUser(
       "users.delete",
     );
 
+  await assertTeamPlanEnabled(business.id);
+
   const memberId = getRequiredText(
     formData,
     "memberId",
@@ -531,12 +603,12 @@ export async function deleteBusinessUser(
 
   if (
     business.role === "admin" &&
-    !["manager", "cashier"].includes(
+    !["editor", "viewer"].includes(
       member.role,
     )
   ) {
     throw new Error(
-      "Admins may delete only Manager or Cashier users.",
+      "Admins may delete only Editor or Viewer users.",
     );
   }
 
@@ -567,7 +639,6 @@ export async function deleteBusinessUser(
   } =
     await supabaseAdmin.auth.admin.deleteUser(
       member.user_id,
-      true,
     );
 
   if (authDeleteError) {
@@ -611,6 +682,8 @@ export async function toggleBusinessUserStatus(
       "users.update_role",
     );
 
+  await assertTeamPlanEnabled(business.id);
+
   const memberId = getRequiredText(
     formData,
     "memberId",
@@ -653,12 +726,12 @@ if (error) {
 
   if (
     business.role === "admin" &&
-    !["manager", "cashier"].includes(
+    !["editor", "viewer"].includes(
       member.role,
     )
   ) {
     throw new Error(
-      "Admins may manage only Manager and Cashier users.",
+      "Admins may manage only Editor and Viewer users.",
     );
   }
 

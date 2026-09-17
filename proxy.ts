@@ -18,8 +18,6 @@ const CENTRAL_AUTH_PATHS = new Set([
   "/forgot-password",
   "/reset-password",
   "/auth/continue",
-  "/auth/callback",
-  "/get-started",
 ]);
 
 function createResponse(
@@ -143,6 +141,13 @@ export async function proxy(request: NextRequest) {
 
   const requestHeaders = new Headers(
     request.headers,
+  );
+
+  // Expose the canonical request path to server layouts so subscription
+  // access can be enforced before protected dashboard content renders.
+  requestHeaders.set(
+    "x-tenh-pathname",
+    request.nextUrl.pathname,
   );
 
   if (tenantSlug) {

@@ -2,6 +2,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getRootUrl } from "@/lib/tenancy/domain";
 import { getRequestTenantSlug } from "@/lib/tenancy/request-tenant";
@@ -10,6 +11,25 @@ import type {
   CurrentBusiness,
   ProductMode,
 } from "./types";
+
+export type SubscriptionStatus =
+  | "trial_pending"
+  | "trialing"
+  | "active"
+  | "expired"
+  | "trial_blocked";
+
+export type CurrentBusinessAccess = CurrentBusiness & {
+  subscriptionStatus: SubscriptionStatus;
+  subscriptionLocked: boolean;
+  subscriptionStartedAt: string | null;
+  subscriptionExpiresAt: string | null;
+  trialStartedAt: string | null;
+  trialExpiresAt: string | null;
+  expiredAt: string | null;
+  deletionScheduledAt: string | null;
+  trialBlockReason: string | null;
+};
 
 type BusinessMember = {
   business_id: string;
@@ -21,28 +41,42 @@ type Business = {
   name: string;
   slug: string;
   is_active: boolean;
+  disabled_reason: string | null;
   product_mode: ProductMode;
+  subscription_months: number | null;
+  subscription_started_at: string | null;
   subscription_expires_at: string | null;
+  subscription_status: SubscriptionStatus | null;
+  trial_started_at: string | null;
+  trial_expires_at: string | null;
+  expired_at: string | null;
+  deletion_scheduled_at: string | null;
+  trial_block_reason: string | null;
 };
 
-async function loadBusiness(
-  businessId: string,
-) {
-  const supabase = await createClient();
+const BUSINESS_SELECT = `
+  id,
+  name,
+  slug,
+  is_active,
+  disabled_reason,
+  product_mode,
+  subscription_months,
+  subscription_started_at,
+  subscription_expires_at,
+  subscription_status,
+  trial_started_at,
+  trial_expires_at,
+  expired_at,
+  deletion_scheduled_at,
+  trial_block_reason
+`;
 
-  const {
-    data,
-    error,
-  } = await supabase
+async function loadBusiness(businessId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
     .from("businesses")
-    .select(`
-      id,
-      name,
-      slug,
-      is_active,
-      product_mode,
-      subscription_expires_at
-    `)
+    .select(BUSINESS_SELECT)
     .eq("id", businessId)
     .maybeSingle();
 
@@ -55,7 +89,7 @@ async function loadBusiness(
   return (data ?? null) as Business | null;
 }
 
-export async function getCurrentBusiness(): Promise<CurrentBusiness> {
+async function loadContext() {
   const supabase = await createClient();
   const tenantSlug = await getRequestTenantSlug();
 
@@ -72,21 +106,12 @@ export async function getCurrentBusiness(): Promise<CurrentBusiness> {
   let business: Business | null = null;
 
   if (tenantSlug) {
-    const {
-      data: businessData,
-      error: businessError,
-    } = await supabase
-      .from("businesses")
-      .select(`
-        id,
-        name,
-        slug,
-        is_active,
-        product_mode,
-        subscription_expires_at
-      `)
-      .eq("slug", tenantSlug)
-      .maybeSingle();
+    const { data: businessData, error: businessError } =
+      await supabase
+        .from("businesses")
+        .select(BUSINESS_SELECT)
+        .eq("slug", tenantSlug)
+        .maybeSingle();
 
     if (businessError) {
       throw new Error(
@@ -100,19 +125,14 @@ export async function getCurrentBusiness(): Promise<CurrentBusiness> {
       redirect(getRootUrl("/no-business"));
     }
 
-    const {
-      data: memberData,
-      error: memberError,
-    } = await supabase
-      .from("business_members")
-      .select(`
-        business_id,
-        role
-      `)
-      .eq("user_id", user.id)
-      .eq("business_id", business.id)
-      .eq("is_active", true)
-      .maybeSingle();
+    const { data: memberData, error: memberError } =
+      await supabase
+        .from("business_members")
+        .select("business_id,role")
+        .eq("user_id", user.id)
+        .eq("business_id", business.id)
+        .eq("is_active", true)
+        .maybeSingle();
 
     if (memberError) {
       throw new Error(
@@ -123,24 +143,17 @@ export async function getCurrentBusiness(): Promise<CurrentBusiness> {
     member = (memberData ?? null) as BusinessMember | null;
 
     if (!member) {
-      // The user is signed in, but not a member of the requested tenant.
-      // Continue routing them to a business they actually belong to.
       redirect(getRootUrl("/auth/continue"));
     }
   } else {
-    const {
-      data: memberData,
-      error: memberError,
-    } = await supabase
-      .from("business_members")
-      .select(`
-        business_id,
-        role
-      `)
-      .eq("user_id", user.id)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
+    const { data: memberData, error: memberError } =
+      await supabase
+        .from("business_members")
+        .select("business_id,role")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
 
     if (memberError) {
       throw new Error(
@@ -161,46 +174,178 @@ export async function getCurrentBusiness(): Promise<CurrentBusiness> {
     }
   }
 
-  const subscriptionExpired =
-    business.subscription_expires_at !== null &&
-    new Date(
-      business.subscription_expires_at,
-    ).getTime() <= Date.now();
+  return { supabase, user, member, business };
+}
 
-  if (subscriptionExpired) {
-    const now = new Date();
-    const expiry = business.subscription_expires_at
-      ? new Date(business.subscription_expires_at)
-      : now;
-    const disabledAt = Number.isNaN(expiry.getTime()) ? now : expiry;
-    const releaseAt = new Date(disabledAt);
-    releaseAt.setUTCDate(releaseAt.getUTCDate() + 60);
+async function refreshSubscriptionState(
+  business: Business,
+  role: BusinessRole,
+) {
+  const supabase = await createClient();
+  let current = business;
 
-    await supabase
+  if (
+    current.subscription_status === "trial_pending" &&
+    role === "owner"
+  ) {
+    const { error } = await supabase.rpc(
+      "ensure_business_trial_started",
+      { p_business_id: current.id },
+    );
+
+    if (error) {
+      throw new Error(
+        `Unable to start free trial: ${error.message}`,
+      );
+    }
+
+    const reloaded = await loadBusiness(current.id);
+    if (reloaded) current = reloaded;
+  }
+
+  const expiryMs = current.subscription_expires_at
+    ? new Date(current.subscription_expires_at).getTime()
+    : Number.NaN;
+  const now = Date.now();
+
+  if (
+    Number.isFinite(expiryMs) &&
+    expiryMs <= now &&
+    current.subscription_status !== "expired"
+  ) {
+    const expiredAt = current.subscription_expires_at;
+    const deletionScheduledAt = new Date(
+      expiryMs + 180 * 86_400_000,
+    ).toISOString();
+
+    const { error } = await supabaseAdmin
       .from("businesses")
       .update({
-        is_active: false,
-        disabled_at: disabledAt.toISOString(),
-        disabled_reason: "subscription_expired",
-        scheduled_deletion_at: releaseAt.toISOString(),
-        updated_at: now.toISOString(),
+        subscription_status: "expired",
+        expired_at: current.expired_at ?? expiredAt,
+        deletion_scheduled_at: deletionScheduledAt,
+        updated_at: new Date().toISOString(),
       })
-      .eq("id", business.id)
-      .eq("is_active", true);
+      .eq("id", current.id);
 
+    if (error) {
+      throw new Error(
+        `Unable to lock expired subscription: ${error.message}`,
+      );
+    }
+
+    current = {
+      ...current,
+      subscription_status: "expired",
+      expired_at: current.expired_at ?? expiredAt,
+      deletion_scheduled_at: deletionScheduledAt,
+    };
+  } else if (
+    Number.isFinite(expiryMs) &&
+    expiryMs > now &&
+    current.subscription_status === "expired"
+  ) {
+    const nextStatus: SubscriptionStatus =
+      Number(current.subscription_months ?? 0) > 0
+        ? "active"
+        : "trialing";
+
+    const { error } = await supabaseAdmin
+      .from("businesses")
+      .update({
+        subscription_status: nextStatus,
+        expired_at: null,
+        deletion_scheduled_at: null,
+        disabled_at: null,
+        disabled_reason: null,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", current.id);
+
+    if (error) {
+      throw new Error(
+        `Unable to restore subscription access: ${error.message}`,
+      );
+    }
+
+    current = {
+      ...current,
+      subscription_status: nextStatus,
+      expired_at: null,
+      deletion_scheduled_at: null,
+      is_active: true,
+      disabled_reason: null,
+    };
+  }
+
+  return current;
+}
+
+function toAccess(
+  business: Business,
+  role: BusinessRole,
+): CurrentBusinessAccess {
+  const subscriptionStatus =
+    business.subscription_status ?? "active";
+  const subscriptionLocked =
+    subscriptionStatus === "expired" ||
+    subscriptionStatus === "trial_pending" ||
+    subscriptionStatus === "trial_blocked";
+
+  return {
+    id: business.id,
+    name: business.name,
+    slug: business.slug,
+    role,
+    productMode: business.product_mode,
+    product_mode: business.product_mode,
+    subscriptionStatus,
+    subscriptionLocked,
+    subscriptionStartedAt:
+      business.subscription_started_at,
+    subscriptionExpiresAt:
+      business.subscription_expires_at,
+    trialStartedAt: business.trial_started_at,
+    trialExpiresAt: business.trial_expires_at,
+    expiredAt: business.expired_at,
+    deletionScheduledAt:
+      business.deletion_scheduled_at,
+    trialBlockReason: business.trial_block_reason,
+  };
+}
+
+export async function getCurrentBusinessForSubscription(): Promise<CurrentBusinessAccess> {
+  const { member, business } = await loadContext();
+
+  const legacySubscriptionExpiry =
+    business.disabled_reason === "subscription_expired";
+
+  if (!business.is_active && !legacySubscriptionExpiry) {
     redirect("/business-disabled");
   }
 
-  if (!business.is_active) {
-    redirect("/business-disabled");
+  const current = await refreshSubscriptionState(
+    business,
+    member.role,
+  );
+
+  return toAccess(current, member.role);
+}
+
+export async function getCurrentBusiness(): Promise<CurrentBusiness> {
+  const business = await getCurrentBusinessForSubscription();
+
+  if (business.subscriptionLocked) {
+    redirect("/dashboard/settings/subscription?locked=1");
   }
 
   return {
     id: business.id,
     name: business.name,
     slug: business.slug,
-    role: member.role,
-    productMode: business.product_mode,
+    role: business.role,
+    productMode: business.productMode,
     product_mode: business.product_mode,
   };
 }

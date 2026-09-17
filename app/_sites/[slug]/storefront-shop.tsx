@@ -292,6 +292,8 @@ function ProductCard({
         <img
           src={product.imageUrl}
           alt={product.name}
+          loading="lazy"
+          decoding="async"
           className="aspect-[4/3] w-full object-cover"
         />
       ) : (
@@ -498,10 +500,11 @@ function ProductConfigurator({
         </div>
 
         <div className="space-y-6 p-5">
-          {isShoeProduct && product.imageUrl && (
+          {isShoeProduct && (variant.imageUrl ?? product.imageUrl) && (
             <img
-              src={product.imageUrl}
-              alt={product.name}
+              src={variant.imageUrl ?? product.imageUrl ?? ""}
+              alt={`${product.name}${selectedColor ? ` · ${selectedColor}` : ""}`}
+              loading="lazy"
               className="aspect-[16/10] w-full rounded-2xl border border-slate-200 object-cover"
             />
           )}
@@ -1391,7 +1394,7 @@ function makeCartItem(
     unitPrice,
     quantity: 1,
     maxStock: variant.stockQuantity,
-    imageUrl: product.imageUrl,
+    imageUrl: variant.imageUrl ?? product.imageUrl,
   };
 }
 

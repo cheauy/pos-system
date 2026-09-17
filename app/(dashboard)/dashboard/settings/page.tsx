@@ -1,36 +1,23 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  BarChart3,
   Building2,
   ChevronRight,
-  CircleHelp,
-  Download,
-  FileSearch,
   Languages,
   LockKeyhole,
   MapPinned,
   Palette,
   ReceiptText,
   ShieldCheck,
-  SlidersHorizontal,
   Store,
   UserRound,
   UsersRound,
 } from "lucide-react";
 
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
+import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
 import { hasPermission } from "@/lib/auth/permissions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-
-type OrderRow = {
-  total: number | string | null;
-};
-
-type StorefrontRow = {
-  currency: string | null;
-  business_type: string | null;
-};
 
 type SettingItem = {
   title: string;
@@ -80,14 +67,10 @@ const baseSettings: SettingItem[] = [
 export default async function SettingsPage() {
   const business = await getCurrentBusiness();
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
   const [
     { data: locations },
     { data: memberships },
-    { data: orders },
-    { data: storefront },
+    businessMode,
   ] = await Promise.all([
     supabaseAdmin
       .from("business_locations")
@@ -97,17 +80,10 @@ export default async function SettingsPage() {
       .from("business_members")
       .select("id,role,is_active")
       .eq("business_id", business.id),
-    supabaseAdmin
-      .from("orders")
-      .select("total")
-      .eq("business_id", business.id)
-      .eq("status", "completed")
-      .gte("created_at", today.toISOString()),
-    supabaseAdmin
-      .from("business_storefronts")
-      .select("currency,business_type")
-      .eq("business_id", business.id)
-      .maybeSingle(),
+    getCurrentBusinessMode({
+      businessId: business.id,
+      productMode: business.productMode,
+    }),
   ]);
 
   const locationRows = (locations ?? []) as unknown as Array<{
@@ -130,16 +106,7 @@ export default async function SettingsPage() {
       member.role !== "owner",
   ).length;
 
-  const dailySales = ((orders ?? []) as OrderRow[]).reduce(
-    (sum, order) => sum + Number(order.total ?? 0),
-    0,
-  );
-
-  const storefrontRow = (storefront ?? null) as StorefrontRow | null;
-  const currency = storefrontRow?.currency || "USD";
-  const businessType = formatBusinessType(
-    storefrontRow?.business_type || "general",
-  );
+  const businessType = businessMode.shortLabel;
 
   const canManageUsers =
     business.role === "owner" || business.role === "admin";
@@ -150,14 +117,6 @@ export default async function SettingsPage() {
   const canManageReceipt = hasPermission(
     business.role,
     "business.update",
-  );
-  const canExport = hasPermission(
-    business.role,
-    "exports.manage",
-  );
-  const canAudit = hasPermission(
-    business.role,
-    "audit_logs.view",
   );
 
   const settingsItems: SettingItem[] = [
@@ -186,87 +145,39 @@ export default async function SettingsPage() {
         "Access control",
       ],
     },
-    {
-      title: "Branches",
-      description: "Manage store branches and locations.",
-      href: "/dashboard/locations",
-      icon: Store,
-      visible: canManageBranches,
-      details: [
-        "Add and edit branches",
-        "Default location",
-        "Branch status",
-      ],
-    },
-    {
-      title: "Backup & Export",
-      description: "Export business data and keep portable backups.",
-      href: "/dashboard/exports",
-      icon: Download,
-      visible: canExport,
-      details: [
-        "Export sales data",
-        "Inventory and customer export",
-        "Backup history",
-      ],
-    },
-    {
-      title: "Audit Logs",
-      description: "Review important actions and security activity.",
-      href: "/dashboard/audit-logs",
-      icon: FileSearch,
-      visible: canAudit,
-      details: [
-        "System activity logs",
-        "User actions",
-        "Security events",
-      ],
-    },
   ].filter((item) => item.visible !== false);
 
   return (
     <main className="mx-auto w-full max-w-[1600px] space-y-5 pb-8">
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">
-            Settings
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Manage your store, team, and account preferences.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-          >
-            <CircleHelp size={16} />
-            Dashboard
-          </Link>
-          <Link
-            href="/dashboard/settings/business"
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-          >
-            <SlidersHorizontal size={16} />
-            Store Setup Guide
-          </Link>
-        </div>
+      <section>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">
+          General
+        </h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Manage your business, account, appearance, security, receipt and users.
+        </p>
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="grid divide-y divide-slate-100 lg:grid-cols-[1.7fr_repeat(3,minmax(0,0.72fr))] lg:divide-x lg:divide-y-0 dark:divide-slate-800">
-          <div className="flex min-w-0 items-center gap-4 p-5 sm:p-6">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300">
+        <div className="grid divide-y divide-slate-100 lg:grid-cols-[2.2fr_repeat(2,minmax(0,0.85fr))] lg:divide-x lg:divide-y-0 dark:divide-slate-800">
+          <Link
+            href="/dashboard/settings/business"
+            aria-label={`Manage ${business.name} store URL and business mode`}
+            className="group flex min-w-0 items-center gap-4 p-5 transition hover:bg-blue-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:p-6 dark:hover:bg-blue-950/20"
+          >
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 transition group-hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:group-hover:bg-blue-900/60">
               <Store size={27} strokeWidth={2.1} />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h2 className="truncate text-lg font-bold text-slate-950 dark:text-white">
                 {business.name}
               </h2>
-              <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-                {businessType} · Modern POS for growing businesses
-              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                <span className="text-slate-500 dark:text-slate-400">Business mode:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100">
+                  {businessType}
+                </span>
+              </div>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                 <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
                   <span className="h-2 w-2 rounded-full bg-emerald-500" />
@@ -275,8 +186,15 @@ export default async function SettingsPage() {
                 <span className="text-slate-300 dark:text-slate-600">|</span>
                 <span className="text-slate-400">All systems operational</span>
               </div>
+              <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                Modern POS for growing businesses
+              </p>
             </div>
-          </div>
+            <div className="flex shrink-0 items-center gap-1 text-xs font-semibold text-blue-600 opacity-80 transition group-hover:translate-x-0.5 group-hover:opacity-100 dark:text-blue-300">
+              <span className="hidden sm:inline">Change URL & mode</span>
+              <ChevronRight size={17} />
+            </div>
+          </Link>
 
           <SummaryMetric
             icon={Building2}
@@ -291,13 +209,6 @@ export default async function SettingsPage() {
             label="Employees"
             href={canManageUsers ? "/dashboard/settings/users" : undefined}
             action="Manage"
-          />
-          <SummaryMetric
-            icon={BarChart3}
-            value={formatMoney(dailySales, currency)}
-            label="Today's Sales"
-            href={hasPermission(business.role, "reports.view") ? "/dashboard/reports" : undefined}
-            action="View Reports"
           />
         </div>
       </section>
@@ -423,21 +334,3 @@ function SummaryMetric({
   );
 }
 
-function formatBusinessType(value: string) {
-  return value
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-}
-
-function formatMoney(value: number, currency: string) {
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: currency === "KHR" ? 0 : 2,
-      maximumFractionDigits: currency === "KHR" ? 0 : 2,
-    }).format(value);
-  } catch {
-    return `${currency} ${value.toFixed(2)}`;
-  }
-}

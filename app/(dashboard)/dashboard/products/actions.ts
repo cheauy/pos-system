@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
+import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -62,8 +63,8 @@ async function assertCategoryBelongsToBusiness(
 const PRODUCT_IMAGE_BUCKET = "product-images";
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
-function getImageFile(formData: FormData): File | null {
-  const value = formData.get("image");
+function getImageFile(formData: FormData, key = "image"): File | null {
+  const value = formData.get(key);
 
   if (!(value instanceof File) || value.size === 0) {
     return null;
@@ -128,10 +129,15 @@ export async function createProduct(
     "products.create",
   );
 
-  if (business.product_mode !== "standard") {
+  const currentBusinessMode = await getCurrentBusinessMode({
+    businessId: business.id,
+    productMode: business.productMode,
+  });
+
+  if (currentBusinessMode.productMode !== "standard") {
     return {
       success: false,
-      message: `This business uses ${business.product_mode} product mode. Use the matching product form.`,
+      message: `This business uses ${currentBusinessMode.productMode} product mode. Use the matching product form.`,
     };
   }
 
@@ -977,6 +983,419 @@ export async function toggleProductOnline(
 }
 
 
+export type ProductRowActionResult = {
+  success: boolean;
+  message: string;
+};
+
+export async function setProductGroupOnline(
+  productId: string,
+  visible: boolean,
+): Promise<ProductRowActionResult> {
+  const business = await requirePermission("products.update");
+
+  if (!productId) {
+    return { success: false, message: "Invalid product ID." };
+  }
+
+  const supabase = await createClient();
+  const { data: product, error: productError } = await supabase
+    .from("products")
+    .select("id, name, product_type, variant_group_id")
+    .eq("id", productId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+
+  if (productError || !product) {
+    return {
+      success: false,
+      message: productError?.message ?? "Product was not found.",
+    };
+  }
+
+  let ids: string[] = [product.id];
+  if (product.product_type === "variant" && product.variant_group_id) {
+    const { data: groupRows, error: groupError } = await supabase
+      .from("products")
+      .select("id")
+      .eq("business_id", business.id)
+      .eq("variant_group_id", product.variant_group_id);
+
+    if (groupError) {
+      return { success: false, message: groupError.message };
+    }
+    ids = (groupRows ?? []).map((row) => row.id);
+  }
+
+  if (ids.length === 0) {
+    return { success: false, message: "Product was not found." };
+  }
+
+  const { error } = await supabase
+    .from("products")
+    .update({
+      is_online: visible,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("business_id", business.id)
+    .in("id", ids);
+
+  if (error) {
+    return { success: false, message: error.message };
+  }
+
+  await createAuditLog({
+    action: "update",
+    entityType: "product",
+    entityId: product.id,
+    description: visible
+      ? `Published ${product.name} to the online store`
+      : `Hidden ${product.name} from the online store`,
+    metadata: {
+      is_online: visible,
+      affected_product_rows: ids.length,
+    },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/products");
+  revalidatePath("/dashboard/online-store");
+  revalidatePath(`/_sites/${business.slug}`);
+
+  return {
+    success: true,
+    message: visible
+      ? `${product.name} is visible online.`
+      : `${product.name} is hidden from the online store.`,
+  };
+}
+
+export async function setProductGroupActive(
+  productId: string,
+  active: boolean,
+): Promise<ProductRowActionResult> {
+  const business = await requirePermission("products.disable");
+  if (!productId) return { success: false, message: "Invalid product ID." };
+
+  const supabase = await createClient();
+  const { data: product, error: productError } = await supabase
+    .from("products")
+    .select("id, name, product_type, variant_group_id")
+    .eq("id", productId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+
+  if (productError || !product) {
+    return { success: false, message: productError?.message ?? "Product was not found." };
+  }
+
+  let query = supabase.from("products").select("id").eq("business_id", business.id);
+  query = product.product_type === "variant" && product.variant_group_id
+    ? query.eq("variant_group_id", product.variant_group_id)
+    : query.eq("id", product.id);
+  const { data: rows, error: rowsError } = await query;
+  if (rowsError) return { success: false, message: rowsError.message };
+  const ids = (rows ?? []).map((row) => row.id);
+  if (ids.length === 0) return { success: false, message: "Product was not found." };
+
+  const payload: Record<string, unknown> = {
+    is_active: active,
+    updated_at: new Date().toISOString(),
+  };
+  if (!active) payload.is_online = false;
+
+  const { error } = await supabase
+    .from("products")
+    .update(payload)
+    .eq("business_id", business.id)
+    .in("id", ids);
+  if (error) return { success: false, message: error.message };
+
+  await createAuditLog({
+    action: "update",
+    entityType: "product",
+    entityId: product.id,
+    description: active ? `Activated ${product.name}` : `Hid ${product.name}`,
+    metadata: { is_active: active, affected_product_rows: ids.length },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/products");
+  revalidatePath("/dashboard/inventory");
+  revalidatePath("/dashboard/pos");
+  revalidatePath("/dashboard/online-store");
+  revalidatePath(`/_sites/${business.slug}`);
+  return {
+    success: true,
+    message: active
+      ? `${product.name} is active again.`
+      : `${product.name} is inactive and hidden from POS and online.`,
+  };
+}
+
+export async function setProductVariantsActive(
+  productId: string,
+  variantIds: string[],
+  active: boolean,
+): Promise<ProductRowActionResult> {
+  const business = await requirePermission("products.disable");
+  const uniqueIds = Array.from(new Set(variantIds.filter(Boolean)));
+  if (!productId || uniqueIds.length === 0) {
+    return { success: false, message: "Select at least one variant." };
+  }
+
+  const supabase = await createClient();
+  const { data: representative, error: representativeError } = await supabase
+    .from("products")
+    .select("id, name, product_type, variant_group_id")
+    .eq("id", productId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+  if (representativeError || !representative) {
+    return { success: false, message: representativeError?.message ?? "Product was not found." };
+  }
+
+  let groupQuery = supabase.from("products").select("id").eq("business_id", business.id);
+  groupQuery = representative.product_type === "variant" && representative.variant_group_id
+    ? groupQuery.eq("variant_group_id", representative.variant_group_id)
+    : groupQuery.eq("id", representative.id);
+  const { data: groupRows, error: groupError } = await groupQuery;
+  if (groupError) return { success: false, message: groupError.message };
+  const allowedIds = new Set((groupRows ?? []).map((row) => row.id));
+  if (uniqueIds.some((id) => !allowedIds.has(id))) {
+    return { success: false, message: "One selected variant does not belong to this product." };
+  }
+
+  const payload: Record<string, unknown> = {
+    is_active: active,
+    updated_at: new Date().toISOString(),
+  };
+  if (!active) payload.is_online = false;
+  const { error } = await supabase
+    .from("products")
+    .update(payload)
+    .eq("business_id", business.id)
+    .in("id", uniqueIds);
+  if (error) return { success: false, message: error.message };
+
+  await createAuditLog({
+    action: "update",
+    entityType: "product",
+    entityId: representative.id,
+    description: active ? `Activated ${uniqueIds.length} variants` : `Hid ${uniqueIds.length} variants`,
+    metadata: { variant_ids: uniqueIds, is_active: active },
+  });
+
+  revalidatePath("/dashboard/products");
+  revalidatePath(`/dashboard/products/${representative.id}/edit`);
+  revalidatePath("/dashboard/inventory");
+  revalidatePath("/dashboard/pos");
+  revalidatePath("/dashboard/online-store");
+  revalidatePath(`/_sites/${business.slug}`);
+  return {
+    success: true,
+    message: active ? `${uniqueIds.length} variants activated.` : `${uniqueIds.length} variants hidden.`,
+  };
+}
+
+export async function deleteProductVariants(
+  productId: string,
+  variantIds: string[],
+): Promise<ProductRowActionResult> {
+  const business = await requirePermission("products.delete");
+  const uniqueIds = Array.from(new Set(variantIds.filter(Boolean)));
+  if (!productId || uniqueIds.length === 0) {
+    return { success: false, message: "Select at least one variant." };
+  }
+
+  const supabase = await createClient();
+  const { data: representative, error: representativeError } = await supabase
+    .from("products")
+    .select("id, name, product_type, variant_group_id")
+    .eq("id", productId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+  if (representativeError || !representative) {
+    return { success: false, message: representativeError?.message ?? "Product was not found." };
+  }
+
+  let groupQuery = supabase
+    .from("products")
+    .select("id, image_url, variant_image_url")
+    .eq("business_id", business.id);
+  groupQuery = representative.product_type === "variant" && representative.variant_group_id
+    ? groupQuery.eq("variant_group_id", representative.variant_group_id)
+    : groupQuery.eq("id", representative.id);
+  const { data: groupRows, error: groupError } = await groupQuery;
+  if (groupError) return { success: false, message: groupError.message };
+  const rows = groupRows ?? [];
+  const allowedIds = new Set(rows.map((row) => row.id));
+  if (uniqueIds.some((id) => !allowedIds.has(id))) {
+    return { success: false, message: "One selected variant does not belong to this product." };
+  }
+  if (rows.length - uniqueIds.length < 1) {
+    return { success: false, message: "Keep at least one variant. Use Delete Product to remove the whole style." };
+  }
+
+  const imageUrls = Array.from(
+    new Set(
+      rows
+        .filter((row) => uniqueIds.includes(row.id))
+        .flatMap((row) => [row.image_url, row.variant_image_url])
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+  const { error: deleteError } = await supabase
+    .from("products")
+    .delete()
+    .eq("business_id", business.id)
+    .in("id", uniqueIds);
+  if (deleteError) {
+    if (deleteError.code === "23503") {
+      return { success: false, message: "One or more selected variants are already used in sales, purchases, bundles, or inventory history. Hide them instead." };
+    }
+    return { success: false, message: deleteError.message };
+  }
+
+  for (const imageUrl of imageUrls) {
+    const { data: remaining } = await supabase
+      .from("products")
+      .select("id")
+      .eq("business_id", business.id)
+      .or(`image_url.eq.${imageUrl},variant_image_url.eq.${imageUrl}`)
+      .limit(1);
+    if ((remaining ?? []).length > 0) continue;
+    const storagePath = getStoragePathFromUrl(imageUrl);
+    if (storagePath) await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([storagePath]);
+  }
+
+  await createAuditLog({
+    action: "delete",
+    entityType: "product",
+    entityId: representative.id,
+    description: `Deleted ${uniqueIds.length} variants from ${representative.name}`,
+    metadata: { variant_ids: uniqueIds },
+  });
+
+  revalidatePath("/dashboard/products");
+  revalidatePath(`/dashboard/products/${representative.id}/edit`);
+  revalidatePath("/dashboard/inventory");
+  revalidatePath("/dashboard/pos");
+  revalidatePath("/dashboard/online-store");
+  revalidatePath(`/_sites/${business.slug}`);
+  return { success: true, message: `${uniqueIds.length} variants deleted.` };
+}
+
+export async function deleteProductGroup(
+  productId: string,
+): Promise<ProductRowActionResult> {
+  const business = await requirePermission("products.delete");
+
+  if (!productId) {
+    return { success: false, message: "Invalid product ID." };
+  }
+
+  const supabase = await createClient();
+  const { data: product, error: productError } = await supabase
+    .from("products")
+    .select("id, name, product_type, variant_group_id")
+    .eq("id", productId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+
+  if (productError || !product) {
+    return {
+      success: false,
+      message: productError?.message ?? "Product was not found.",
+    };
+  }
+
+  let groupQuery = supabase
+    .from("products")
+    .select("id, image_url, variant_image_url")
+    .eq("business_id", business.id);
+
+  groupQuery =
+    product.product_type === "variant" && product.variant_group_id
+      ? groupQuery.eq("variant_group_id", product.variant_group_id)
+      : groupQuery.eq("id", product.id);
+
+  const { data: groupRows, error: groupError } = await groupQuery;
+  if (groupError) {
+    return { success: false, message: groupError.message };
+  }
+
+  const ids = (groupRows ?? []).map((row) => row.id);
+  if (ids.length === 0) {
+    return { success: false, message: "Product was not found." };
+  }
+
+  const imageUrls = Array.from(
+    new Set(
+      (groupRows ?? [])
+        .flatMap((row) => [row.image_url, row.variant_image_url])
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  const { error: deleteError } = await supabase
+    .from("products")
+    .delete()
+    .eq("business_id", business.id)
+    .in("id", ids);
+
+  if (deleteError) {
+    if (deleteError.code === "23503") {
+      return {
+        success: false,
+        message:
+          "This product is already used in an order, purchase, bundle, or inventory history. Hide it instead so historical records stay safe.",
+      };
+    }
+    return { success: false, message: deleteError.message };
+  }
+
+  for (const imageUrl of imageUrls) {
+    const { data: remaining } = await supabase
+      .from("products")
+      .select("id")
+      .eq("business_id", business.id)
+      .or(`image_url.eq.${imageUrl},variant_image_url.eq.${imageUrl}`)
+      .limit(1);
+
+    if ((remaining ?? []).length > 0) continue;
+    const storagePath = getStoragePathFromUrl(imageUrl);
+    if (storagePath) {
+      await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([storagePath]);
+    }
+  }
+
+  await createAuditLog({
+    action: "delete",
+    entityType: "product",
+    entityId: product.id,
+    description: `Deleted ${product.name}`,
+    metadata: {
+      affected_product_rows: ids.length,
+      variant_group_id: product.variant_group_id,
+    },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/products");
+  revalidatePath("/dashboard/inventory");
+  revalidatePath("/dashboard/pos");
+  revalidatePath("/dashboard/online-store");
+  revalidatePath("/dashboard/audit-logs");
+  revalidatePath(`/_sites/${business.slug}`);
+
+  return {
+    success: true,
+    message: `${product.name} deleted successfully.`,
+  };
+}
+
+
 // ---------------------------------------------------------------------------
 // Variant products
 // Each exact size/color SKU remains a normal products row so existing POS,
@@ -991,6 +1410,7 @@ type VariantInput = {
   sellingPrice: number;
   stockQuantity: number;
   lowStockQuantity: number;
+  imageSlot: string | null;
 };
 
 function parseVariantInputs(value: FormDataEntryValue | null): VariantInput[] {
@@ -1009,6 +1429,10 @@ function parseVariantInputs(value: FormDataEntryValue | null): VariantInput[] {
         const sellingPrice = Number(source.sellingPrice);
         const stockQuantity = Number(source.stockQuantity);
         const lowStockQuantity = Number(source.lowStockQuantity);
+        const imageSlot =
+          typeof source.imageSlot === "string" && source.imageSlot.trim()
+            ? source.imageSlot.trim()
+            : null;
         if (
           !sku ||
           !Number.isFinite(costPrice) || costPrice < 0 ||
@@ -1024,6 +1448,7 @@ function parseVariantInputs(value: FormDataEntryValue | null): VariantInput[] {
           sellingPrice,
           stockQuantity,
           lowStockQuantity,
+          imageSlot,
         };
       })
       .filter((row): row is VariantInput => row !== null);
@@ -1038,7 +1463,12 @@ export async function createVariantProduct(
 ): Promise<CreateProductState> {
   const business = await requirePermission("products.create");
 
-  if (business.product_mode !== "variant") {
+  const currentBusinessMode = await getCurrentBusinessMode({
+    businessId: business.id,
+    productMode: business.productMode,
+  });
+
+  if (currentBusinessMode.productMode !== "variant") {
     return {
       success: false,
       message: "This business is not using Variant product mode.",
@@ -1072,14 +1502,8 @@ export async function createVariantProduct(
     };
   }
 
-  const { data: storefrontMode } = await supabaseAdmin
-    .from("business_storefronts")
-    .select("business_type")
-    .eq("business_id", business.id)
-    .maybeSingle();
-
   if (
-    ["shoes", "fashion"].includes(storefrontMode?.business_type ?? "") &&
+    ["shoes", "fashion"].includes(currentBusinessMode.value) &&
     variants.some((variant) => !variant.size.trim() || !variant.color.trim())
   ) {
     return {
@@ -1115,25 +1539,52 @@ export async function createVariantProduct(
   }
 
   const imageFile = getImageFile(formData);
+  const imageSlots = Array.from(
+    new Set(
+      variants
+        .map((variant) => variant.imageSlot)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
   let imageUrl: string | null = null;
-  let uploadedImagePath: string | null = null;
+  const runImageUrls = new Map<string, string>();
+  const uploadedImagePaths: string[] = [];
 
-  if (imageFile) {
-    const extension = getImageExtension(imageFile);
-    uploadedImagePath = `${business.id}/${user.id}/${crypto.randomUUID()}.${extension}`;
+  async function uploadVariantImage(file: File, label: string) {
+    const extension = getImageExtension(file);
+    const path = `${business.id}/${user.id}/${crypto.randomUUID()}.${extension}`;
     const { error: uploadError } = await supabaseAdmin.storage
       .from(PRODUCT_IMAGE_BUCKET)
-      .upload(uploadedImagePath, imageFile, {
-        contentType: imageFile.type,
+      .upload(path, file, {
+        contentType: file.type,
         cacheControl: "3600",
         upsert: false,
       });
     if (uploadError) {
-      return { success: false, message: `Unable to upload product image: ${uploadError.message}` };
+      throw new Error(`Unable to upload ${label}: ${uploadError.message}`);
     }
-    imageUrl = supabaseAdmin.storage
-      .from(PRODUCT_IMAGE_BUCKET)
-      .getPublicUrl(uploadedImagePath).data.publicUrl;
+    uploadedImagePaths.push(path);
+    return supabaseAdmin.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
+  }
+
+  try {
+    if (imageFile) imageUrl = await uploadVariantImage(imageFile, "product image");
+    for (const slot of imageSlots) {
+      const runImageFile = getImageFile(formData, `runImage_${slot}`);
+      if (!runImageFile) continue;
+      runImageUrls.set(
+        slot,
+        await uploadVariantImage(runImageFile, "colour / size-run image"),
+      );
+    }
+  } catch (error) {
+    if (uploadedImagePaths.length > 0) {
+      await supabaseAdmin.storage.from(PRODUCT_IMAGE_BUCKET).remove(uploadedImagePaths);
+    }
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to upload product image.",
+    };
   }
 
   const variantGroupId = crypto.randomUUID();
@@ -1147,6 +1598,9 @@ export async function createVariantProduct(
     size: variant.size || null,
     color: variant.color || null,
     image_url: imageUrl,
+    variant_image_url: variant.imageSlot
+      ? runImageUrls.get(variant.imageSlot) ?? null
+      : null,
     description,
     cost_price: variant.costPrice,
     selling_price: variant.sellingPrice,
@@ -1164,8 +1618,8 @@ export async function createVariantProduct(
     .select("id, name, sku");
 
   if (error || !created) {
-    if (uploadedImagePath) {
-      await supabaseAdmin.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploadedImagePath]);
+    if (uploadedImagePaths.length > 0) {
+      await supabaseAdmin.storage.from(PRODUCT_IMAGE_BUCKET).remove(uploadedImagePaths);
     }
     return { success: false, message: error?.message ?? "Unable to create variants." };
   }
@@ -1178,6 +1632,7 @@ export async function createVariantProduct(
     metadata: {
       variant_group_id: variantGroupId,
       variants: created.map((row) => ({ id: row.id, sku: row.sku })),
+      run_images: runImageUrls.size,
     },
   });
 
@@ -1271,7 +1726,12 @@ export async function createConfigurableProduct(
 ): Promise<CreateProductState> {
   const business = await requirePermission("products.create");
 
-  if (business.product_mode !== "configurable") {
+  const currentBusinessMode = await getCurrentBusinessMode({
+    businessId: business.id,
+    productMode: business.productMode,
+  });
+
+  if (currentBusinessMode.productMode !== "configurable") {
     return {
       success: false,
       message: "This business is not using Configurable product mode.",
@@ -1441,5 +1901,387 @@ export async function createConfigurableProduct(
   return {
     success: true,
     message: `${product.name} created successfully.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Professional product/style editor
+// Updates one product row or an entire variant style without exposing online-
+// store controls in the edit UI. Existing stock changes still go through the
+// stock-adjustment RPC so inventory history remains intact.
+// ---------------------------------------------------------------------------
+export type UpdateProductGroupState = {
+  success: boolean;
+  message: string;
+};
+
+type EditVariantInput = {
+  id: string | null;
+  size: string;
+  color: string;
+  sku: string;
+  costPrice: number;
+  sellingPrice: number;
+  stockQuantity: number;
+  lowStockQuantity: number;
+  isActive: boolean;
+  imageSlot: string | null;
+};
+
+function parseEditVariants(value: FormDataEntryValue | null): EditVariantInput[] {
+  if (typeof value !== "string") return [];
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((row): EditVariantInput | null => {
+        if (!row || typeof row !== "object") return null;
+        const source = row as Record<string, unknown>;
+        const id = typeof source.id === "string" && source.id.trim() ? source.id.trim() : null;
+        const size = typeof source.size === "string" ? source.size.trim() : "";
+        const color = typeof source.color === "string" ? source.color.trim() : "";
+        const sku = typeof source.sku === "string" ? source.sku.trim() : "";
+        const costPrice = Number(source.costPrice);
+        const sellingPrice = Number(source.sellingPrice);
+        const stockQuantity = Number(source.stockQuantity);
+        const lowStockQuantity = Number(source.lowStockQuantity);
+        const isActive = Boolean(source.isActive);
+        const imageSlot =
+          typeof source.imageSlot === "string" && source.imageSlot.trim()
+            ? source.imageSlot.trim()
+            : null;
+
+        if (
+          !sku ||
+          !Number.isFinite(costPrice) || costPrice < 0 ||
+          !Number.isFinite(sellingPrice) || sellingPrice < 0 ||
+          !Number.isInteger(stockQuantity) || stockQuantity < 0 ||
+          !Number.isInteger(lowStockQuantity) || lowStockQuantity < 0
+        ) {
+          return null;
+        }
+
+        return {
+          id,
+          size,
+          color,
+          sku,
+          costPrice,
+          sellingPrice,
+          stockQuantity,
+          lowStockQuantity,
+          isActive,
+          imageSlot,
+        };
+      })
+      .filter((row): row is EditVariantInput => row !== null);
+  } catch {
+    return [];
+  }
+}
+
+export async function updateProductGroup(
+  _previousState: UpdateProductGroupState,
+  formData: FormData,
+): Promise<UpdateProductGroupState> {
+  const business = await requirePermission("products.update");
+  const productIdValue = formData.get("productId");
+  const nameValue = formData.get("name");
+  const productId = typeof productIdValue === "string" ? productIdValue.trim() : "";
+  const name = typeof nameValue === "string" ? nameValue.trim() : "";
+  const categoryId = getOptionalText(formData, "categoryId");
+  const description = getOptionalText(formData, "description");
+  const isOnline = formData.get("isOnline") === "true";
+  const variants = parseEditVariants(formData.get("variants"));
+
+  if (!productId) return { success: false, message: "Invalid product ID." };
+  if (name.length < 2) return { success: false, message: "Product name must contain at least 2 characters." };
+  if (variants.length === 0) return { success: false, message: "Add at least one valid variant." };
+
+  await assertCategoryBelongsToBusiness(business.id, categoryId);
+
+  const localSkus = variants.map((variant) => variant.sku.toLowerCase());
+  if (new Set(localSkus).size !== localSkus.length) {
+    return { success: false, message: "Every variant must use a unique SKU." };
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: representative, error: representativeError } = await supabase
+    .from("products")
+    .select("id, name, product_type, variant_group_id, image_url, is_online")
+    .eq("id", productId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+
+  if (representativeError || !representative) {
+    return {
+      success: false,
+      message: representativeError?.message ?? "Product was not found.",
+    };
+  }
+
+  let currentQuery = supabase
+    .from("products")
+    .select("id, sku, stock_quantity, image_url, variant_image_url")
+    .eq("business_id", business.id);
+
+  currentQuery =
+    representative.product_type === "variant" && representative.variant_group_id
+      ? currentQuery.eq("variant_group_id", representative.variant_group_id)
+      : currentQuery.eq("id", representative.id);
+
+  const { data: currentRows, error: currentRowsError } = await currentQuery;
+  if (currentRowsError) {
+    return { success: false, message: currentRowsError.message };
+  }
+
+  const current = currentRows ?? [];
+  const currentIds = new Set(current.map((row) => row.id));
+  const submittedExistingIds = variants
+    .map((variant) => variant.id)
+    .filter((value): value is string => Boolean(value));
+
+  if (submittedExistingIds.some((id) => !currentIds.has(id))) {
+    return { success: false, message: "One of these variants does not belong to this product." };
+  }
+
+  const supportsVariants =
+    representative.product_type === "variant" && Boolean(representative.variant_group_id);
+
+  if (!supportsVariants && (variants.length !== 1 || variants[0].id !== representative.id)) {
+    return { success: false, message: "This product does not support multiple variants." };
+  }
+
+  if (supportsVariants) {
+    const normalizedPairs = variants
+      .map((variant) => `${variant.color.toLowerCase()}|${variant.size.toLowerCase()}`)
+      .filter((pair) => pair !== "|");
+    if (new Set(normalizedPairs).size !== normalizedPairs.length) {
+      return { success: false, message: "Each size and colour combination must be unique." };
+    }
+  }
+
+  const { data: duplicateRows, error: duplicateError } = await supabase
+    .from("products")
+    .select("id, sku")
+    .eq("business_id", business.id)
+    .in("sku", variants.map((variant) => variant.sku));
+
+  if (duplicateError) {
+    return { success: false, message: duplicateError.message };
+  }
+
+  const externalDuplicate = (duplicateRows ?? []).find((row) => !currentIds.has(row.id));
+  if (externalDuplicate) {
+    return {
+      success: false,
+      message: `SKU ${externalDuplicate.sku ?? ""} is already used by another product.`,
+    };
+  }
+
+  const imageFile = getImageFile(formData);
+  const imageSlots = Array.from(
+    new Set(
+      variants
+        .map((variant) => variant.imageSlot)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+  let newImageUrl: string | null = representative.image_url;
+  const runImageUrls = new Map<string, string>();
+  const uploadedImagePaths: string[] = [];
+
+  async function uploadEditImage(file: File, label: string) {
+    const extension = getImageExtension(file);
+    const path = `${business.id}/${user.id}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await supabase.storage
+      .from(PRODUCT_IMAGE_BUCKET)
+      .upload(path, file, {
+        contentType: file.type,
+        cacheControl: "3600",
+        upsert: false,
+      });
+    if (uploadError) throw new Error(`Unable to upload ${label}: ${uploadError.message}`);
+    uploadedImagePaths.push(path);
+    return supabase.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
+  }
+
+  try {
+    if (imageFile) newImageUrl = await uploadEditImage(imageFile, "product image");
+    for (const slot of imageSlots) {
+      const runImageFile = getImageFile(formData, `runImage_${slot}`);
+      if (!runImageFile) continue;
+      runImageUrls.set(
+        slot,
+        await uploadEditImage(runImageFile, "colour / size-run image"),
+      );
+    }
+  } catch (error) {
+    if (uploadedImagePaths.length > 0) {
+      await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(uploadedImagePaths);
+    }
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to upload product image.",
+    };
+  }
+
+  const currentById = new Map(current.map((row) => [row.id, row]));
+  const now = new Date().toISOString();
+
+  try {
+    for (const variant of variants) {
+      if (variant.id) {
+        const existing = currentById.get(variant.id);
+        if (!existing) throw new Error("Variant was not found.");
+
+        const updatePayload: Record<string, unknown> = {
+          category_id: categoryId,
+          name,
+          sku: variant.sku,
+          barcode: variant.sku,
+          description,
+          size: variant.size || null,
+          color: variant.color || null,
+          cost_price: variant.costPrice,
+          selling_price: variant.sellingPrice,
+          low_stock_quantity: variant.lowStockQuantity,
+          is_active: variant.isActive,
+          is_online: isOnline,
+          updated_at: now,
+        };
+
+        const { error: updateError } = await supabase
+          .from("products")
+          .update(updatePayload)
+          .eq("id", variant.id)
+          .eq("business_id", business.id);
+
+        if (updateError) throw new Error(updateError.message);
+
+        const currentStock = Number(existing.stock_quantity ?? 0);
+        const delta = variant.stockQuantity - currentStock;
+        if (delta !== 0) {
+          const { error: stockError } = await supabase.rpc("adjust_product_stock", {
+            p_business_id: business.id,
+            p_product_id: variant.id,
+            p_quantity: delta,
+            p_note: "Product edit",
+          });
+          if (stockError) throw new Error(stockError.message);
+        }
+      } else {
+        if (!supportsVariants || !representative.variant_group_id) {
+          throw new Error("This product does not support adding variants.");
+        }
+
+        const { error: insertError } = await supabaseAdmin
+          .from("products")
+          .insert({
+            owner_id: user.id,
+            business_id: business.id,
+            category_id: categoryId,
+            name,
+            sku: variant.sku,
+            barcode: variant.sku,
+            size: variant.size || null,
+            color: variant.color || null,
+            image_url: newImageUrl,
+            variant_image_url: variant.imageSlot
+              ? runImageUrls.get(variant.imageSlot) ?? null
+              : null,
+            description,
+            cost_price: variant.costPrice,
+            selling_price: variant.sellingPrice,
+            stock_quantity: variant.stockQuantity,
+            low_stock_quantity: variant.lowStockQuantity,
+            product_type: "variant",
+            variant_group_id: representative.variant_group_id,
+            is_active: variant.isActive,
+            is_online: isOnline,
+          });
+
+        if (insertError) throw new Error(insertError.message);
+      }
+    }
+  } catch (error) {
+    if (uploadedImagePaths.length > 0) {
+      await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(uploadedImagePaths);
+    }
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to update product.",
+    };
+  }
+
+  if (imageFile) {
+    const primaryTargetIds = supportsVariants
+      ? current.map((row) => row.id)
+      : [representative.id];
+
+    if (primaryTargetIds.length > 0) {
+      const { error: imageUpdateError } = await supabase
+        .from("products")
+        .update({ image_url: newImageUrl, updated_at: now })
+        .eq("business_id", business.id)
+        .in("id", primaryTargetIds);
+
+      if (imageUpdateError) {
+        if (uploadedImagePaths.length > 0) {
+          await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(uploadedImagePaths);
+        }
+        return {
+          success: false,
+          message: `Unable to update product image: ${imageUpdateError.message}`,
+        };
+      }
+    }
+
+    if (representative.image_url && representative.image_url !== newImageUrl) {
+      const { data: remaining } = await supabase
+        .from("products")
+        .select("id")
+        .eq("business_id", business.id)
+        .or(`image_url.eq.${representative.image_url},variant_image_url.eq.${representative.image_url}`)
+        .limit(1);
+
+      if ((remaining ?? []).length === 0) {
+        const storagePath = getStoragePathFromUrl(representative.image_url);
+        if (storagePath) await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([storagePath]);
+      }
+    }
+  }
+
+  await createAuditLog({
+    action: "update",
+    entityType: "product",
+    entityId: representative.id,
+    description: `Updated product ${name}`,
+    metadata: {
+      variant_group_id: representative.variant_group_id,
+      variants: variants.length,
+      image_changed: Boolean(imageFile),
+      run_images_added: runImageUrls.size,
+      is_online: isOnline,
+    },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/products");
+  revalidatePath(`/dashboard/products/${representative.id}/edit`);
+  revalidatePath("/dashboard/inventory");
+  revalidatePath("/dashboard/pos");
+  revalidatePath("/dashboard/online-store");
+  revalidatePath("/dashboard/audit-logs");
+  revalidatePath(`/_sites/${business.slug}`);
+
+  return {
+    success: true,
+    message: `${name} updated successfully.`,
   };
 }

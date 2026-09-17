@@ -1,2 +1,56 @@
-import {requirePermission} from "@/lib/auth/require-permission"; import {createClient} from "@/lib/supabase/server"; import PurchaseOrderForm from "./purchase-order-form";
-export default async function Page(){const b=await requirePermission("purchases.create"); const s=await createClient(); const [{data:suppliers},{data:products}]=await Promise.all([s.from("suppliers").select("id,name").eq("business_id",b.id).eq("is_active",true).order("name"),s.from("products").select("id,name,sku,cost_price,size,color").eq("business_id",b.id).eq("is_active",true).order("name")]); return <main><h1 className="text-3xl font-bold">New Purchase Order</h1><p className="mt-1 mb-6 text-slate-500">Order stock now and receive it partially or completely later.</p><PurchaseOrderForm suppliers={(suppliers??[]) as any} products={(products??[]) as any}/></main>}
+import { requirePermission } from "@/lib/auth/require-permission";
+import { createClient } from "@/lib/supabase/server";
+
+import PurchaseOrderForm from "./purchase-order-form";
+
+type SupplierRow = {
+  id: string;
+  name: string;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  notes: string | null;
+  is_active: boolean;
+};
+
+type ProductRow = {
+  id: string;
+  name: string;
+  sku: string | null;
+  barcode: string | null;
+  cost_price: number | string | null;
+  size: string | null;
+  color: string | null;
+};
+
+export default async function NewPurchaseOrderPage() {
+  const business = await requirePermission("purchases.create");
+  const supabase = await createClient();
+
+  const [{ data: suppliers }, { data: products }] = await Promise.all([
+    supabase
+      .from("suppliers")
+      .select(
+        "id,name,contact_person,phone,email,address,notes,is_active",
+      )
+      .eq("business_id", business.id)
+      .eq("is_active", true)
+      .order("name"),
+    supabase
+      .from("products")
+      .select("id,name,sku,barcode,cost_price,size,color")
+      .eq("business_id", business.id)
+      .eq("is_active", true)
+      .order("name"),
+  ]);
+
+  return (
+    <main>
+      <PurchaseOrderForm
+        suppliers={(suppliers ?? []) as SupplierRow[]}
+        products={(products ?? []) as ProductRow[]}
+      />
+    </main>
+  );
+}

@@ -1,301 +1,148 @@
-import Link from "next/link";
-import {
-  Eye,
-  Trash2,
-  Pencil,
-  UserRound,
-} from "lucide-react";
-import {
-  requirePermission,
-} from "@/lib/auth/require-permission";
+import { requirePermission } from "@/lib/auth/require-permission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { getCustomerFieldSettings } from "@/lib/customers/get-customer-field-settings";
+import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
 import { createClient } from "@/lib/supabase/server";
-import {
-  createCustomer,
-  deleteCustomer,
-} from "./actions";
+import { CustomersWorkspace } from "./customers-workspace";
 
-type Customer = {
+type CustomerRow = {
   id: string;
   name: string;
   phone: string | null;
   email: string | null;
+  birthday: string | null;
   address: string | null;
-  loyalty_points: number;
   created_at: string;
 };
 
+type OrderRow = {
+  id: string;
+  customer_id: string | null;
+  order_number: string;
+  total: number;
+  status: string;
+  order_source: string;
+  created_at: string;
+};
+
+type PurchaseHistoryItem = {
+  id: string;
+  orderNumber: string;
+  total: number;
+  status: string;
+  orderSource: string;
+  createdAt: string;
+};
+
 export default async function CustomersPage() {
+  const business = await requirePermission("customers.view");
   const supabase = await createClient();
-   const business = await requirePermission(
-  "customers.view",
-);
 
-  const { data, error } = await supabase
-    .from("customers")
-    .select(`
-      id,
-      name,
-      phone,
-      email,
-      address,
-      loyalty_points,
-      created_at
-    `)
-    .eq("business_id", business.id)
-    .order("created_at", {
-      ascending: false,
-    });
+  const [customerResult, orderResult, fieldSettings, storefrontSettings] =
+    await Promise.all([
+      supabase
+        .from("customers")
+        .select("id,name,phone,email,birthday,address,created_at")
+        .eq("business_id", business.id)
+        .order("created_at", { ascending: false })
+        .limit(2000),
+      supabase
+        .from("orders")
+        .select("id,customer_id,order_number,total,status,order_source,created_at")
+        .eq("business_id", business.id)
+        .not("customer_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(10000),
+      getCustomerFieldSettings(business.id),
+      getStorefrontSettings(business.id),
+    ]);
 
-  const customers = (data ?? []) as Customer[];
+  if (customerResult.error) {
+    throw new Error(customerResult.error.message);
+  }
+
+  if (orderResult.error) {
+    throw new Error(orderResult.error.message);
+  }
+
+  const customers = (customerResult.data ?? []) as CustomerRow[];
+  const orders = (orderResult.data ?? []) as OrderRow[];
+  const metrics = new Map<
+    string,
+    { orderCount: number; totalSpent: number; lastPurchaseAt: string | null }
+  >();
+  const historyByCustomer = new Map<string, PurchaseHistoryItem[]>();
+
+  for (const order of orders) {
+    if (!order.customer_id) continue;
+
+    const history = historyByCustomer.get(order.customer_id) ?? [];
+    if (history.length < 25) {
+      history.push({
+        id: order.id,
+        orderNumber: order.order_number,
+        total: Number(order.total ?? 0),
+        status: order.status,
+        orderSource: order.order_source,
+        createdAt: order.created_at,
+      });
+      historyByCustomer.set(order.customer_id, history);
+    }
+
+    if (order.status !== "completed") continue;
+
+    const current = metrics.get(order.customer_id) ?? {
+      orderCount: 0,
+      totalSpent: 0,
+      lastPurchaseAt: null,
+    };
+
+    current.orderCount += 1;
+    current.totalSpent += Number(order.total ?? 0);
+    if (!current.lastPurchaseAt) {
+      current.lastPurchaseAt = order.created_at;
+    }
+    metrics.set(order.customer_id, current);
+  }
+
+  const activeCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const enrichedCustomers = customers.map((customer) => {
+    const metric = metrics.get(customer.id);
+    const lastPurchaseAt = metric?.lastPurchaseAt ?? null;
+    return {
+      ...customer,
+      orderCount: metric?.orderCount ?? 0,
+      totalSpent: metric?.totalSpent ?? 0,
+      lastPurchaseAt,
+      isActive:
+        lastPurchaseAt !== null &&
+        new Date(lastPurchaseAt).getTime() >= activeCutoff,
+      purchaseHistory: historyByCustomer.get(customer.id) ?? [],
+    };
+  });
+
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+  const stats = {
+    total: enrichedCustomers.length,
+    newThisMonth: enrichedCustomers.filter(
+      (customer) => new Date(customer.created_at).getTime() >= monthStart.getTime(),
+    ).length,
+    repeat: enrichedCustomers.filter((customer) => customer.orderCount >= 2).length,
+    active: enrichedCustomers.filter((customer) => customer.isActive).length,
+  };
 
   return (
-    <main>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">
-          Customers
-        </h1>
-
-        <p className="mt-1 text-slate-500">
-          Manage customer information and purchase history
-        </p>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[400px_1fr]">
-        <section className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-blue-50 p-3 text-blue-600">
-              <UserRound size={22} />
-            </div>
-
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900">
-                Add Customer
-              </h2>
-
-              <p className="text-sm text-slate-500">
-                Save customer contact information
-              </p>
-            </div>
-          </div>
-
-          <form
-            action={createCustomer}
-            className="mt-6 space-y-5"
-          >
-            <FormField
-              label="Customer name"
-              htmlFor="name"
-            >
-              <input
-                id="name"
-                name="name"
-                type="text"
-                required
-                minLength={2}
-                placeholder="Customer name"
-                className={inputClass}
-              />
-            </FormField>
-
-            <FormField label="Phone" htmlFor="phone">
-              <input
-                id="phone"
-                name="phone"
-                type="tel"
-                placeholder="012 345 678"
-                className={inputClass}
-              />
-            </FormField>
-
-            <FormField label="Email" htmlFor="email">
-              <input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="customer@example.com"
-                className={inputClass}
-              />
-            </FormField>
-
-            <FormField label="Address" htmlFor="address">
-              <textarea
-                id="address"
-                name="address"
-                rows={3}
-                placeholder="Customer address"
-                className={`${inputClass} resize-none`}
-              />
-            </FormField>
-
-            <FormField label="Note" htmlFor="note">
-              <textarea
-                id="note"
-                name="note"
-                rows={3}
-                placeholder="Optional note"
-                className={`${inputClass} resize-none`}
-              />
-            </FormField>
-
-            <button
-              type="submit"
-              className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700"
-            >
-              Add Customer
-            </button>
-          </form>
-        </section>
-
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-5">
-            <h2 className="text-xl font-semibold text-slate-900">
-              Customer List
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              {customers.length} customers
-            </p>
-          </div>
-
-          {error ? (
-            <div className="p-6 text-red-600">
-              {error.message}
-            </div>
-          ) : customers.length === 0 ? (
-            <div className="p-12 text-center">
-              <UserRound
-                size={44}
-                className="mx-auto text-slate-300"
-              />
-
-              <p className="mt-4 font-medium text-slate-700">
-                No customers yet
-              </p>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Add your first customer using the form.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px]">
-                <thead className="bg-slate-50">
-                  <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="px-6 py-4 font-semibold">
-                      Customer
-                    </th>
-
-                    <th className="px-6 py-4 font-semibold">
-                      Phone
-                    </th>
-
-                    <th className="px-6 py-4 font-semibold">
-                      Address
-                    </th>
-
-                    <th className="px-6 py-4 font-semibold">
-                      Loyalty
-                    </th>
-
-                    <th className="px-6 py-4 text-right font-semibold">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-200">
-                  {customers.map((customer) => (
-                    <tr key={customer.id}>
-                      <td className="px-6 py-4">
-                        <p className="font-semibold text-slate-900">
-                          {customer.name}
-                        </p>
-
-                        <p className="mt-1 text-xs text-slate-500">
-                          {customer.email || "No email"}
-                        </p>
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-600">
-                        {customer.phone || "—"}
-                      </td>
-
-                      <td className="max-w-xs px-6 py-4 text-sm text-slate-600">
-                        {customer.address || "—"}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm font-semibold text-violet-700">
-                        {Number(customer.loyalty_points ?? 0).toLocaleString()} pts
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <div className="flex justify-end gap-2">
-                          <Link
-                            href={`/dashboard/customers/${customer.id}`}
-                            className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50"
-                            aria-label={`View ${customer.name}`}
-                          >
-                            <Eye size={19} />
-                          </Link>
-                              <Link
-  href={`/dashboard/customers/${customer.id}/edit`}
-  className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-50"
->
-  <Pencil size={19} />
- 
-</Link>
-
-                          <form action={deleteCustomer}>
-                            <input
-                              type="hidden"
-                              name="customerId"
-                              value={customer.id}
-                            />
-
-                            <button
-                              type="submit"
-                              aria-label={`Delete ${customer.name}`}
-                              className="rounded-lg p-2 text-red-600 transition hover:bg-red-50"
-                            >
-                              <Trash2 size={19} />
-                            </button>
-                          </form>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      </div>
-    </main>
-  );
-}
-
-const inputClass =
-  "w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100";
-
-function FormField({
-  label,
-  htmlFor,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label
-        htmlFor={htmlFor}
-        className="mb-2 block text-sm font-medium text-slate-700"
-      >
-        {label}
-      </label>
-
-      {children}
-    </div>
+    <CustomersWorkspace
+      customers={enrichedCustomers}
+      stats={stats}
+      currency={storefrontSettings.currency}
+      accentColor={storefrontSettings.primary_color || "#2563EB"}
+      fieldSettings={fieldSettings}
+      canManageSettings={business.role === "owner"}
+      canCreate={hasPermission(business.role, "customers.create")}
+      canUpdate={hasPermission(business.role, "customers.update")}
+    />
   );
 }

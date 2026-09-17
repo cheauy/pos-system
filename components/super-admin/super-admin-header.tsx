@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, LayoutDashboard, LogOut, ShieldCheck } from "lucide-react";
+import {
+  BadgeDollarSign,
+  Building2,
+  LayoutDashboard,
+  LogOut,
+  ShieldCheck,
+} from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 
@@ -26,28 +32,30 @@ export default function SuperAdminHeader({
   }
 
   return (
-    <header className="mb-8 flex items-center justify-between rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
-      <div className="flex items-center gap-4">
-        <div className="rounded-xl bg-blue-100 p-3 text-blue-700">
-          <ShieldCheck size={26} />
+    <header className="mb-8 flex flex-col gap-4 rounded-2xl border border-slate-300 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-4">
+          <div className="rounded-xl bg-blue-100 p-3 text-blue-700">
+            <ShieldCheck size={26} />
+          </div>
+
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Super Admin</h1>
+            <p className="text-sm text-slate-500">{fullName}</p>
+            <p className="text-xs text-slate-400">{email}</p>
+          </div>
         </div>
 
-        <div>
-          <h1 className="text-xl font-bold text-slate-900">
-            Super Admin
-          </h1>
-
-          <p className="text-sm text-slate-500">
-            {fullName}
-          </p>
-
-          <p className="text-xs text-slate-400">
-            {email}
-          </p>
-        </div>
+        <Link
+          href="/super-admin/manual-payments"
+          className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 font-semibold text-amber-800 transition hover:bg-amber-100"
+        >
+          <BadgeDollarSign size={18} />
+          Manual Payments
+        </Link>
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <nav className="flex flex-wrap items-center gap-2" aria-label="Super Admin navigation">
         <Link
           href="/dashboard"
           className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 font-semibold text-blue-700 transition hover:bg-blue-100"
@@ -71,7 +79,7 @@ export default function SuperAdminHeader({
           <LogOut size={18} />
           Sign Out
         </button>
-      </div>
+      </nav>
     </header>
   );
 }

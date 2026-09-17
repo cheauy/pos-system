@@ -46,6 +46,7 @@ type ProductRow = {
   size: string | null;
   color: string | null;
   image_url: string | null;
+  variant_image_url: string | null;
   description: string | null;
   selling_price: number;
   stock_quantity: number;
@@ -208,6 +209,7 @@ export default async function StorefrontPage({
         size,
         color,
         image_url,
+        variant_image_url,
         description,
         selling_price,
         stock_quantity,
@@ -482,7 +484,7 @@ export default async function StorefrontPage({
       </div>
 
       <footer className="border-t border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
-        Powered by Tenh POS
+        Powered by TENH POS
       </footer>
     </main>
   );
@@ -512,6 +514,7 @@ function buildCatalog(
       sku: row.sku,
       size: row.size,
       color: row.color,
+      imageUrl: row.variant_image_url,
       sellingPrice: Number(row.selling_price),
       stockQuantity: Number(row.stock_quantity),
     }));
@@ -521,7 +524,9 @@ function buildCatalog(
       categoryId: first.category_id,
       name: first.name,
       imageUrl:
-        groupRows.find((row) => row.image_url)?.image_url ?? null,
+        groupRows.find((row) => row.image_url)?.image_url ??
+        groupRows.find((row) => row.variant_image_url)?.variant_image_url ??
+        null,
       description: first.description,
       productType,
       priceFrom: Math.min(
@@ -589,7 +594,7 @@ function UnavailableStore({
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">
-                Tenh POS Store
+                TENH POS Store
               </p>
               <h1 className="font-bold text-slate-950">{businessName}</h1>
             </div>

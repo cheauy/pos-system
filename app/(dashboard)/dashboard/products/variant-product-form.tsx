@@ -1,10 +1,17 @@
 "use client";
 
-import { Loader2, PackagePlus, Plus, Trash2 } from "lucide-react";
+import {
+  Loader2,
+  PackagePlus,
+  Plus,
+  Shirt,
+  Trash2,
+  Upload,
+  Zap,
+} from "lucide-react";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import ImageUpload from "@/components/image-upload";
 import {
   createVariantProduct,
   type CreateProductState,
@@ -24,7 +31,19 @@ type VariantRow = {
   sellingPrice: string;
   stockQuantity: string;
   lowStockQuantity: string;
+  imageSlot: string | null;
 };
+
+type RunImageSlot = {
+  id: string;
+  preview: string | null;
+  name: string;
+  locked: boolean;
+};
+
+function createRunImageSlot(id: string): RunImageSlot {
+  return { id, preview: null, name: "", locked: false };
+}
 
 const initialState: CreateProductState = {
   success: false,
@@ -36,16 +55,19 @@ const shoeSizeRuns = [
   { label: "EU 39–46", sizes: ["39", "40", "41", "42", "43", "44", "45", "46"] },
   { label: "EU 36–45", sizes: ["36", "37", "38", "39", "40", "41", "42", "43", "44", "45"] },
 ];
+
 const fashionSizeRuns = [
-  { label: "XS–XXL", sizes: ["XS", "S", "M", "L", "XL", "XXL"] },
-  { label: "Women 24–32", sizes: ["24", "25", "26", "27", "28", "29", "30", "31", "32"] },
-  { label: "Men 28–38", sizes: ["28", "30", "32", "34", "36", "38"] },
+  { label: "XS – XXL", sizes: ["XS", "S", "M", "L", "XL", "XXL"] },
+  { label: "Women 24 – 32", sizes: ["24", "25", "26", "27", "28", "29", "30", "31", "32"] },
+  { label: "Men 28 – 38", sizes: ["28", "30", "32", "34", "36", "38"] },
 ];
 
-
-function createVariant(overrides: Partial<Omit<VariantRow, "id">> = {}): VariantRow {
+function createVariant(
+  id: string,
+  overrides: Partial<Omit<VariantRow, "id">> = {},
+): VariantRow {
   return {
-    id: crypto.randomUUID(),
+    id,
     size: "",
     color: "",
     sku: "",
@@ -53,6 +75,7 @@ function createVariant(overrides: Partial<Omit<VariantRow, "id">> = {}): Variant
     sellingPrice: "0",
     stockQuantity: "0",
     lowStockQuantity: "5",
+    imageSlot: null,
     ...overrides,
   };
 }
@@ -77,19 +100,40 @@ export default function VariantProductForm({
   const isFashion = businessType === "fashion";
   const isSpecialVariant = isShoes || isFashion;
   const formRef = useRef<HTMLFormElement>(null);
-  const [state, formAction, pending] = useActionState(
-    createVariantProduct,
-    initialState,
-  );
+  const variantCounterRef = useRef(1);
+  const runSlotCounterRef = useRef(1);
+  const [state, formAction, pending] = useActionState(createVariantProduct, initialState);
   const [productName, setProductName] = useState("");
-  const [variants, setVariants] = useState<VariantRow[]>([
-    createVariant(),
-  ]);
+  const [variants, setVariants] = useState<VariantRow[]>(() => [createVariant("variant-0")]);
   const [quickColor, setQuickColor] = useState("Black");
   const [quickSkuPrefix, setQuickSkuPrefix] = useState("");
   const [quickCost, setQuickCost] = useState("0");
   const [quickPrice, setQuickPrice] = useState("0");
   const [quickStock, setQuickStock] = useState("0");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageName, setImageName] = useState("");
+  const [runImageSlots, setRunImageSlots] = useState<RunImageSlot[]>(() => [createRunImageSlot("run-0")]);
+
+  const activeRunImageSlot =
+    runImageSlots.find((slot) => !slot.locked) ?? runImageSlots[runImageSlots.length - 1];
+
+  function nextVariantId() {
+    const id = `variant-${variantCounterRef.current}`;
+    variantCounterRef.current += 1;
+    return id;
+  }
+
+  function nextRunSlot() {
+    const id = `run-${runSlotCounterRef.current}`;
+    runSlotCounterRef.current += 1;
+    return createRunImageSlot(id);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+    };
+  }, [imagePreview]);
 
   useEffect(() => {
     if (!state.message) return;
@@ -97,24 +141,27 @@ export default function VariantProductForm({
       toast.success(state.message);
       formRef.current?.reset();
       setProductName("");
-      setVariants([createVariant()]);
+      variantCounterRef.current = 1;
+      runSlotCounterRef.current = 1;
+      setVariants([createVariant("variant-0")]);
       setQuickColor("Black");
       setQuickSkuPrefix("");
       setQuickCost("0");
       setQuickPrice("0");
       setQuickStock("0");
+      setImagePreview(null);
+      setImageName("");
+      for (const slot of runImageSlots) {
+        if (slot.preview) URL.revokeObjectURL(slot.preview);
+      }
+      setRunImageSlots([createRunImageSlot("run-0")]);
     } else {
       toast.error(state.message);
     }
   }, [state]);
 
   const totalStock = useMemo(
-    () =>
-      variants.reduce(
-        (total, variant) =>
-          total + Number(variant.stockQuantity || 0),
-        0,
-      ),
+    () => variants.reduce((total, variant) => total + Number(variant.stockQuantity || 0), 0),
     [variants],
   );
 
@@ -134,21 +181,19 @@ export default function VariantProductForm({
 
   function updateVariant(
     id: string,
-    field: keyof Omit<VariantRow, "id">,
+    field: keyof Omit<VariantRow, "id" | "imageSlot">,
     value: string,
   ) {
     setVariants((current) =>
       current.map((variant) =>
-        variant.id === id
-          ? { ...variant, [field]: value }
-          : variant,
+        variant.id === id ? { ...variant, [field]: value } : variant,
       ),
     );
   }
 
-  function addShoeSizeRun(sizes: string[]) {
+  function addSizeRun(sizes: string[]) {
     const color = quickColor.trim() || "Default";
-    const base = skuPart(quickSkuPrefix) || skuPart(productName) || "SHOE";
+    const base = skuPart(quickSkuPrefix) || skuPart(productName) || (isShoes ? "SHOE" : "STYLE");
     const colorCode = skuPart(color).slice(0, 8) || "CLR";
     const existingKeys = new Set(
       variants
@@ -156,17 +201,19 @@ export default function VariantProductForm({
         .map((row) => `${row.color.trim().toLowerCase()}|${row.size.trim().toLowerCase()}`),
     );
 
+    const runImageSlotId = activeRunImageSlot?.preview ? activeRunImageSlot.id : null;
     const generated = sizes
       .filter((size) => !existingKeys.has(`${color.toLowerCase()}|${size.toLowerCase()}`))
       .map((size) =>
-        createVariant({
+        createVariant(nextVariantId(), {
           size,
           color,
           sku: `${base}-${colorCode}-${size}`,
           costPrice: quickCost || "0",
           sellingPrice: quickPrice || "0",
           stockQuantity: quickStock || "0",
-          lowStockQuantity: "2",
+          lowStockQuantity: "5",
+          imageSlot: runImageSlotId,
         }),
       );
 
@@ -178,14 +225,77 @@ export default function VariantProductForm({
         !current[0].sku;
       return onlyBlank ? generated : [...current, ...generated];
     });
+
+    if (generated.length > 0 && runImageSlotId) {
+      setRunImageSlots((current) => [
+        ...current.map((slot) =>
+          slot.id === runImageSlotId ? { ...slot, locked: true } : slot,
+        ),
+        nextRunSlot(),
+      ]);
+    }
+  }
+
+  function handleImageChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setImageName("");
+      setImagePreview(null);
+      return;
+    }
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast.error("Only JPG, PNG or WebP images are allowed.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image size must not exceed 5 MB.");
+      event.target.value = "";
+      return;
+    }
+
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImagePreview(URL.createObjectURL(file));
+    setImageName(file.name);
+  }
+
+  function handleRunImageChange(
+    slotId: string,
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setRunImageSlots((current) =>
+        current.map((slot) => {
+          if (slot.id !== slotId) return slot;
+          if (slot.preview) URL.revokeObjectURL(slot.preview);
+          return { ...slot, preview: null, name: "" };
+        }),
+      );
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast.error("Only JPG, PNG or WebP images are allowed.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image size must not exceed 5 MB.");
+      event.target.value = "";
+      return;
+    }
+    setRunImageSlots((current) =>
+      current.map((slot) => {
+        if (slot.id !== slotId) return slot;
+        if (slot.preview) URL.revokeObjectURL(slot.preview);
+        return { ...slot, preview: URL.createObjectURL(file), name: file.name };
+      }),
+    );
   }
 
   return (
-    <form
-      ref={formRef}
-      action={formAction}
-      className="mt-6 space-y-5"
-    >
+    <form ref={formRef} action={formAction} className="space-y-4">
       <input
         type="hidden"
         name="variants"
@@ -198,249 +308,254 @@ export default function VariantProductForm({
             sellingPrice: Number(variant.sellingPrice),
             stockQuantity: Number(variant.stockQuantity),
             lowStockQuantity: Number(variant.lowStockQuantity),
+            imageSlot: variant.imageSlot,
           })),
         )}
       />
 
-      <Field label={isShoes ? "Shoe model" : isFashion ? "Style / model" : "Product name"} htmlFor="variant-name">
+      {runImageSlots.map((slot) => (
         <input
-          id="variant-name"
-          name="name"
-          required
-          minLength={2}
-          value={productName}
-          onChange={(event) => setProductName(event.target.value)}
-          placeholder={isShoes ? "Air Runner 01" : isFashion ? "Oversized Essential Tee" : "Classic T-Shirt"}
-          className={inputClass}
+          key={slot.id}
+          id={`run-image-${slot.id}`}
+          name={`runImage_${slot.id}`}
+          type="file"
+          accept=".jpg,.jpeg,.png,.webp"
+          onChange={(event) => handleRunImageChange(slot.id, event)}
+          className="sr-only"
         />
-      </Field>
+      ))}
 
-      <Field label="Category" htmlFor="variant-category">
-        <select
-          id="variant-category"
-          name="categoryId"
-          defaultValue=""
-          className={inputClass}
-        >
-          <option value="">No category</option>
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name}
-            </option>
-          ))}
-        </select>
-      </Field>
+      <section>
+        <h2 className="mb-3 text-sm font-bold text-slate-900">Basic Information</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label={isShoes ? "Shoe / Model name" : isFashion ? "Style / Model name" : "Product name"} required>
+            <input
+              name="name"
+              required
+              minLength={2}
+              value={productName}
+              onChange={(event) => setProductName(event.target.value)}
+              placeholder={isShoes ? "Air Runner 01" : isFashion ? "Oversized Essential Tee" : "Classic T-Shirt"}
+              className={inputClass}
+            />
+          </Field>
 
-      <ImageUpload />
+          <Field label="Category">
+            <select name="categoryId" defaultValue="" className={inputClass}>
+              <option value="">No category</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </section>
 
-      <Field label="Description" htmlFor="variant-description">
+      <section>
+        <p className="mb-2 text-xs font-semibold text-slate-800">Product Image</p>
+        <label className="group flex min-h-28 cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center transition hover:border-blue-400 hover:bg-blue-50/40">
+          {imagePreview ? (
+            <div className="flex w-full items-center gap-3 p-3 text-left">
+              <img src={imagePreview} alt="Product preview" className="h-20 w-20 rounded-xl border border-slate-200 object-cover" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-800">{imageName}</p>
+                <p className="mt-1 text-xs text-slate-500">Click to replace image</p>
+              </div>
+            </div>
+          ) : (
+            <div className="px-4 py-5">
+              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Upload size={19} />
+              </div>
+              <p className="mt-2 text-sm font-semibold text-slate-700">Upload product image</p>
+              <p className="mt-1 text-[11px] text-slate-400">JPG, PNG or WebP · Max 5 MB</p>
+            </div>
+          )}
+          <input
+            name="image"
+            type="file"
+            accept=".jpg,.jpeg,.png,.webp"
+            onChange={handleImageChange}
+            className="sr-only"
+          />
+        </label>
+      </section>
+
+      <Field label="Description">
         <textarea
-          id="variant-description"
           name="description"
           rows={3}
-          placeholder={isShoes ? "Material, fit, collection or shoe details" : isFashion ? "Material, fit, collection, season or style details" : "Optional product description"}
+          placeholder={
+            isShoes
+              ? "Material, fit, collection or shoe details..."
+              : isFashion
+                ? "Material, fit, collection, season or style details..."
+                : "Optional product description..."
+          }
           className={`${inputClass} resize-none`}
         />
       </Field>
 
       {isSpecialVariant && (
-        <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4">
-          <div>
-            <h3 className="font-semibold text-slate-900">{isShoes ? "Quick shoe size run" : "Quick fashion size run"}</h3>
-            <p className="mt-1 text-xs leading-5 text-slate-600">
-              {isShoes ? "Enter a colour, SKU prefix, price and starting stock, then add a full EU size run in one tap." : "Enter a colour, SKU prefix, price and starting stock, then add a common clothing size run in one tap."} You can edit every size below before saving.
-            </p>
+        <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-3">
+          <div className="flex items-start gap-2">
+            <Zap size={17} className="mt-0.5 shrink-0 text-blue-600" />
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">
+                {isShoes ? "Quick shoe size run" : "Quick fashion size run"}
+              </h3>
+              <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+                Enter a colour, SKU prefix, prices and starting stock, then add a common size run in one tap.
+              </p>
+            </div>
           </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <VariantField
-              label="Colour"
-              value={quickColor}
-              placeholder="Black"
-              onChange={setQuickColor}
-            />
-            <VariantField
-              label="SKU prefix"
-              value={quickSkuPrefix}
-              placeholder="AIR01"
-              onChange={setQuickSkuPrefix}
-            />
-            <VariantField
-              label="Cost price"
-              value={quickCost}
-              type="number"
-              min="0"
-              step="0.01"
-              onChange={setQuickCost}
-            />
-            <VariantField
-              label="Selling price"
-              value={quickPrice}
-              type="number"
-              min="0"
-              step="0.01"
-              onChange={setQuickPrice}
-            />
-            <VariantField
-              label="Stock per size"
-              value={quickStock}
-              type="number"
-              min="0"
-              onChange={setQuickStock}
-            />
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <MiniField label="Colour" value={quickColor} placeholder="Black" onChange={setQuickColor} />
+            <MiniField label="SKU prefix" value={quickSkuPrefix} placeholder="TEE01" onChange={setQuickSkuPrefix} />
+            <MiniField label="Cost price" value={quickCost} type="number" min="0" step="0.01" onChange={setQuickCost} />
+            <MiniField label="Selling price" value={quickPrice} type="number" min="0" step="0.01" onChange={setQuickPrice} />
+            <MiniField label="Initial stock per size" value={quickStock} type="number" min="0" onChange={setQuickStock} />
+            <label htmlFor={activeRunImageSlot ? `run-image-${activeRunImageSlot.id}` : undefined} className="block">
+              <span className="mb-1 block text-[10px] font-semibold text-slate-600">Colour image (optional)</span>
+              <span className="flex h-9 cursor-pointer items-center gap-2 overflow-hidden rounded-lg border border-blue-200 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:bg-blue-50">
+                {activeRunImageSlot?.preview ? (
+                  <>
+                    <img src={activeRunImageSlot.preview} alt="Colour run" className="h-6 w-6 rounded object-cover" />
+                    <span className="min-w-0 flex-1 truncate">{activeRunImageSlot.name || "Selected image"}</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload size={13} className="text-blue-600" />
+                    <span>Image for all sizes in this run</span>
+                  </>
+                )}
+              </span>
+            </label>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
             {(isShoes ? shoeSizeRuns : fashionSizeRuns).map((run) => (
               <button
                 key={run.label}
                 type="button"
-                onClick={() => addShoeSizeRun(run.sizes)}
-                className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+                onClick={() => addSizeRun(run.sizes)}
+                className="rounded-lg border border-blue-200 bg-white px-2.5 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
               >
-                + {run.label}
+                {run.label}
               </button>
             ))}
           </div>
         </section>
       )}
 
-      <section className="rounded-2xl border border-slate-200 bg-slate-50">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-4">
-          <div>
-            <h3 className="font-semibold text-slate-900">
-              {isShoes ? "Shoe sizes & colours" : isFashion ? "Clothing sizes & colours" : "Variants"}
-            </h3>
-            <p className="mt-1 text-xs text-slate-500">
-              {variants.length} variant{variants.length === 1 ? "" : "s"} · {totalStock} total stock
-            </p>
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-3">
+          <div className="flex min-w-0 items-start gap-2">
+            <Shirt size={17} className="mt-0.5 shrink-0 text-slate-600" />
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">
+                {isShoes ? "Shoe sizes & colours" : isFashion ? "Clothing sizes & colours" : "Variants"}
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                {variants.length} variant{variants.length === 1 ? "" : "s"} · {totalStock} total stock
+              </p>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() =>
-              setVariants((current) => [
-                ...current,
-                createVariant(),
-              ])
-            }
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-100 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-200"
-          >
-            <Plus size={16} /> {isSpecialVariant ? "Add Size" : "Add Variant"}
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {variants.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setVariants([])}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-100"
+              >
+                <Trash2 size={14} /> Delete All
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setVariants((current) => [...current, createVariant(nextVariantId())])}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+            >
+              <Plus size={14} /> {isSpecialVariant ? "Add Size" : "Add Variant"}
+            </button>
+          </div>
         </div>
 
         {duplicateCombinations.size > 0 && (
-          <div className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            The same size + colour appears more than once. Keep only one inventory row for each variation.
+          <div className="m-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+            The same size + colour appears more than once. Keep one inventory row for each variation.
           </div>
         )}
 
-        <div className="space-y-4 p-4">
-          {variants.map((variant, index) => {
-            const pairKey = `${variant.color.trim().toLowerCase()}|${variant.size.trim().toLowerCase()}`;
-            const duplicate = duplicateCombinations.has(pairKey);
-            return (
-              <div
-                key={variant.id}
-                className={`rounded-xl border bg-white p-4 ${duplicate ? "border-amber-300" : "border-slate-200"}`}
-              >
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-900">
-                    {isShoes
-                      ? `Shoe variation ${index + 1}${variant.size ? ` · EU ${variant.size}` : ""}`
-                      : isFashion
-                        ? `Fashion variation ${index + 1}${variant.size ? ` · Size ${variant.size}` : ""}`
-                        : `Variant ${index + 1}`}
-                  </p>
-                  <button
-                    type="button"
-                    disabled={variants.length === 1}
-                    onClick={() =>
-                      setVariants((current) =>
-                        current.filter((row) => row.id !== variant.id),
-                      )
-                    }
-                    className="rounded-lg p-2 text-red-600 hover:bg-red-50 disabled:opacity-30"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <VariantField
-                    label={isShoes ? "EU size" : "Size"}
-                    value={variant.size}
-                    placeholder={isShoes ? "41" : isFashion ? "XS, S, M, L, XL" : "S, M, 40, 41"}
-                    required={isSpecialVariant}
-                    onChange={(value) => updateVariant(variant.id, "size", value)}
-                  />
-                  <VariantField
-                    label="Colour"
-                    value={variant.color}
-                    placeholder="Black"
-                    required={isSpecialVariant}
-                    onChange={(value) => updateVariant(variant.id, "color", value)}
-                  />
-                  <VariantField
-                    label="SKU"
-                    value={variant.sku}
-                    placeholder={isShoes ? "AIR01-BLK-41" : isFashion ? "TEE01-BLK-M" : "TS-BLK-M"}
-                    required
-                    onChange={(value) => updateVariant(variant.id, "sku", value)}
-                  />
-                  <VariantField
-                    label="Stock"
-                    value={variant.stockQuantity}
-                    type="number"
-                    min="0"
-                    required
-                    onChange={(value) => updateVariant(variant.id, "stockQuantity", value)}
-                  />
-                  <VariantField
-                    label="Cost price"
-                    value={variant.costPrice}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                    onChange={(value) => updateVariant(variant.id, "costPrice", value)}
-                  />
-                  <VariantField
-                    label="Selling price"
-                    value={variant.sellingPrice}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                    onChange={(value) => updateVariant(variant.id, "sellingPrice", value)}
-                  />
-                  <VariantField
-                    label="Low-stock alert"
-                    value={variant.lowStockQuantity}
-                    type="number"
-                    min="0"
-                    required
-                    onChange={(value) => updateVariant(variant.id, "lowStockQuantity", value)}
-                  />
-                </div>
-              </div>
-            );
-          })}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[670px] text-xs">
+            <thead className="bg-white text-[10px] uppercase tracking-wide text-slate-400">
+              <tr className="border-b border-slate-200">
+                <th className="px-2 py-2 text-left font-semibold">Size</th>
+                <th className="px-2 py-2 text-left font-semibold">Colour</th>
+                <th className="px-2 py-2 text-left font-semibold">SKU</th>
+                <th className="px-2 py-2 text-left font-semibold">Cost</th>
+                <th className="px-2 py-2 text-left font-semibold">Price</th>
+                <th className="px-2 py-2 text-left font-semibold">Stock</th>
+                <th className="px-2 py-2 text-left font-semibold">Alert</th>
+                <th className="w-10 px-2 py-2" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {variants.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center">
+                    <p className="text-xs font-semibold text-slate-600">No sizes or variants added</p>
+                    <p className="mt-1 text-[11px] text-slate-400">Use Add Size or a quick size run to add inventory rows.</p>
+                  </td>
+                </tr>
+              )}
+              {variants.map((variant) => {
+                const pairKey = `${variant.color.trim().toLowerCase()}|${variant.size.trim().toLowerCase()}`;
+                const duplicate = duplicateCombinations.has(pairKey);
+                return (
+                  <tr key={variant.id} className={duplicate ? "bg-amber-50" : "bg-white"}>
+                    <CellInput value={variant.size} placeholder={isShoes ? "41" : "M"} required={isSpecialVariant} onChange={(value) => updateVariant(variant.id, "size", value)} />
+                    <CellInput value={variant.color} placeholder="Black" required={isSpecialVariant} onChange={(value) => updateVariant(variant.id, "color", value)} />
+                    <CellInput value={variant.sku} placeholder="TEE01-BLK-M" required onChange={(value) => updateVariant(variant.id, "sku", value)} wide />
+                    <CellInput value={variant.costPrice} type="number" min="0" step="0.01" required onChange={(value) => updateVariant(variant.id, "costPrice", value)} />
+                    <CellInput value={variant.sellingPrice} type="number" min="0" step="0.01" required onChange={(value) => updateVariant(variant.id, "sellingPrice", value)} />
+                    <CellInput value={variant.stockQuantity} type="number" min="0" required onChange={(value) => updateVariant(variant.id, "stockQuantity", value)} />
+                    <CellInput value={variant.lowStockQuantity} type="number" min="0" required onChange={(value) => updateVariant(variant.id, "lowStockQuantity", value)} />
+                    <td className="px-2 py-2 text-right">
+                      <button
+                        type="button"
+                        disabled={variants.length === 1}
+                        onClick={() => setVariants((current) => current.filter((row) => row.id !== variant.id))}
+                        className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
+                        aria-label="Remove variant"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </section>
 
       <button
         type="submit"
-        disabled={pending || duplicateCombinations.size > 0}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+        disabled={pending || variants.length === 0 || duplicateCombinations.size > 0}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {pending ? (
           <>
-            <Loader2 size={18} className="animate-spin" /> Creating...
+            <Loader2 size={17} className="animate-spin" /> Creating...
           </>
         ) : (
           <>
-            <PackagePlus size={18} /> {isShoes ? "Create Shoe & Inventory" : isFashion ? "Create Style & Inventory" : "Create Variant Product"}
+            <PackagePlus size={17} /> {isShoes ? "Create Shoe & Inventory" : isFashion ? "Create Style & Inventory" : "Create Variant Product"}
           </>
         )}
       </button>
@@ -450,31 +565,30 @@ export default function VariantProductForm({
 
 function Field({
   label,
-  htmlFor,
+  required,
   children,
 }: {
   label: string;
-  htmlFor: string;
+  required?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div>
-      <label htmlFor={htmlFor} className="mb-2 block text-sm font-medium text-slate-700">
-        {label}
-      </label>
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-semibold text-slate-700">
+        {label} {required && <span className="text-red-500">*</span>}
+      </span>
       {children}
-    </div>
+    </label>
   );
 }
 
-function VariantField({
+function MiniField({
   label,
   value,
   placeholder,
   type = "text",
   min,
   step,
-  required,
   onChange,
 }: {
   label: string;
@@ -483,25 +597,58 @@ function VariantField({
   type?: string;
   min?: string;
   step?: string;
-  required?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="text-xs font-medium text-slate-600">
+    <label className="block text-[10px] font-semibold text-slate-500">
       {label}
       <input
         value={value}
+        placeholder={placeholder}
         type={type}
         min={min}
         step={step}
-        required={required}
-        placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
       />
     </label>
   );
 }
 
+function CellInput({
+  value,
+  placeholder,
+  type = "text",
+  min,
+  step,
+  required,
+  wide,
+  onChange,
+}: {
+  value: string;
+  placeholder?: string;
+  type?: string;
+  min?: string;
+  step?: string;
+  required?: boolean;
+  wide?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <td className={`px-2 py-2 ${wide ? "min-w-32" : "min-w-20"}`}>
+      <input
+        value={value}
+        placeholder={placeholder}
+        type={type}
+        min={min}
+        step={step}
+        required={required}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+      />
+    </td>
+  );
+}
+
 const inputClass =
-  "w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100";
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100";

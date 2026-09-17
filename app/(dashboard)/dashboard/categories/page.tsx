@@ -1,196 +1,72 @@
-import { Eye, EyeOff, Trash2 } from "lucide-react";
-import {
-  requirePermission,
-} from "@/lib/auth/require-permission";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
-import {
-  createCategory,
-  deleteCategory,
-  toggleCategoryOnline,
-} from "./actions";
+import CategoriesClient, {
+  type CategoryViewModel,
+} from "./categories-client";
 
-type Category = {
+type CategoryRow = {
   id: string;
   name: string;
   description: string | null;
   is_online: boolean;
+  online_sort_order: number | null;
   created_at: string;
+};
+
+type ProductCategoryRow = {
+  id: string;
+  category_id: string | null;
 };
 
 export default async function CategoriesPage() {
   const supabase = await createClient();
-  const business = await requirePermission(
-    "categories.manage",
-  );
+  const business = await requirePermission("categories.manage");
 
-const { data: products } = await supabase
-  .from("products")
-  .select("*")
-  .eq("business_id", business.id);
+  const [categoryResult, productResult] = await Promise.all([
+    supabase
+      .from("categories")
+      .select(
+        "id, name, description, is_online, online_sort_order, created_at",
+      )
+      .eq("business_id", business.id)
+      .order("online_sort_order", { ascending: true })
+      .order("name", { ascending: true }),
+    supabase
+      .from("products")
+      .select("id, category_id")
+      .eq("business_id", business.id),
+  ]);
 
-  const { data, error } = await supabase
-    .from("categories")
-    .select("id, name, description, is_online, created_at")
-    .order("created_at", {
-      ascending: false,
-    }).eq("business_id", business.id);
+  const categoryRows = (categoryResult.data ?? []) as CategoryRow[];
+  const productRows = (productResult.data ?? []) as ProductCategoryRow[];
 
-  const categories = (data ?? []) as Category[];
+  const counts = new Map<string, number>();
+  for (const product of productRows) {
+    if (!product.category_id) continue;
+    counts.set(
+      product.category_id,
+      (counts.get(product.category_id) ?? 0) + 1,
+    );
+  }
+
+  const categories: CategoryViewModel[] = categoryRows.map((category) => ({
+    id: category.id,
+    name: category.name,
+    description: category.description,
+    isOnline: Boolean(category.is_online),
+    index: Number(category.online_sort_order ?? 0),
+    productCount: counts.get(category.id) ?? 0,
+    createdAt: category.created_at,
+  }));
+
+  const errorMessage =
+    categoryResult.error?.message ?? productResult.error?.message ?? null;
 
   return (
-    <main>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">
-          Categories
-        </h1>
-
-        <p className="mt-1 text-slate-500">
-          Organize your products into categories
-        </p>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-slate-900">
-            Add Category
-          </h2>
-
-          <form action={createCategory} className="mt-6 space-y-5">
-            <div>
-              <label
-                htmlFor="name"
-                className="mb-2 block text-sm font-medium text-slate-700"
-              >
-                Category name
-              </label>
-
-              <input
-                id="name"
-                name="name"
-                type="text"
-                required
-                minLength={2}
-                placeholder="Example: Drinks"
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="description"
-                className="mb-2 block text-sm font-medium text-slate-700"
-              >
-                Description
-              </label>
-
-              <textarea
-                id="description"
-                name="description"
-                rows={4}
-                placeholder="Optional description"
-                className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700"
-            >
-              Add Category
-            </button>
-          </form>
-        </section>
-
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-5">
-            <h2 className="text-xl font-semibold text-slate-900">
-              Category List
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              {categories.length} categories
-            </p>
-          </div>
-
-          {error ? (
-            <div className="p-6 text-red-600">
-              {error.message}
-            </div>
-          ) : categories.length === 0 ? (
-            <div className="p-10 text-center">
-              <p className="font-medium text-slate-700">
-                No categories yet
-              </p>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Create your first category using the form.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-200">
-              {categories.map((category) => (
-                <div
-                  key={category.id}
-                  className="flex items-center justify-between gap-4 px-6 py-5"
-                >
-                  <div>
-                    <h3 className="font-semibold text-slate-900">
-                      {category.name}
-                    </h3>
-
-                    <p className="mt-1 text-sm text-slate-500">
-                      {category.description || "No description"}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <form action={toggleCategoryOnline}>
-                      <input
-                        type="hidden"
-                        name="categoryId"
-                        value={category.id}
-                      />
-                      <button
-                        type="submit"
-                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                          category.is_online
-                            ? "bg-blue-50 text-blue-700 hover:bg-blue-100"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                        }`}
-                      >
-                        {category.is_online ? (
-                          <Eye size={14} />
-                        ) : (
-                          <EyeOff size={14} />
-                        )}
-                        {category.is_online
-                          ? "Online"
-                          : "Hidden"}
-                      </button>
-                    </form>
-
-                    <form action={deleteCategory}>
-                      <input
-                        type="hidden"
-                        name="categoryId"
-                        value={category.id}
-                      />
-
-                      <button
-                        type="submit"
-                        aria-label={`Delete ${category.name}`}
-                        className="rounded-lg p-2 text-red-600 transition hover:bg-red-50"
-                      >
-                        <Trash2 size={19} />
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
-    </main>
+    <CategoriesClient
+      categories={categories}
+      totalProducts={productRows.length}
+      loadError={errorMessage}
+    />
   );
 }
