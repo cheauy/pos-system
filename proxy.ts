@@ -1,15 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
-import {
-  NextRequest,
-  NextResponse,
-} from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import {
+  APP_SUBDOMAIN,
+  getAppUrl,
   getRootUrl,
   getSharedAuthCookieOptions,
   getSubdomainFromHost,
+  getTenantDashboardUrl,
   getTenantSlugFromHost,
   normalizeTenantSlug,
+  usesSharedSubdomainCookies,
 } from "@/lib/tenancy/domain";
 
 const CENTRAL_AUTH_PATHS = new Set([
@@ -17,8 +18,39 @@ const CENTRAL_AUTH_PATHS = new Set([
   "/register",
   "/forgot-password",
   "/reset-password",
-  "/auth/continue",
 ]);
+
+const APP_ONLY_PREFIXES = [
+  "/dashboard",
+  "/super-admin",
+  "/get-started",
+  "/account-disabled",
+  "/business-disabled",
+  "/no-business",
+];
+
+function isCentralAuthPath(pathname: string) {
+  return (
+    pathname.startsWith("/auth/") ||
+    Array.from(CENTRAL_AUTH_PATHS).some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    )
+  );
+}
+
+function isAppOnlyPath(pathname: string) {
+  return APP_ONLY_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+function requestPath(request: NextRequest) {
+  return `${request.nextUrl.pathname}${request.nextUrl.search}`;
+}
+
+function notFound() {
+  return new NextResponse("Not Found", { status: 404 });
+}
 
 function createResponse(
   request: NextRequest,
@@ -27,50 +59,111 @@ function createResponse(
   tenantSlug: string | null,
 ) {
   const pathname = request.nextUrl.pathname;
+  const pathWithSearch = requestPath(request);
+  const productionDomains = usesSharedSubdomainCookies();
 
   if (subdomain === "www") {
+    return NextResponse.redirect(getRootUrl(pathWithSearch));
+  }
+
+  // Preserve old admin.tenh-pos.com bookmarks without keeping a second admin
+  // application host. It is reserved and redirects to the centralized app.
+  if (productionDomains && subdomain === "admin") {
     return NextResponse.redirect(
-      getRootUrl(
-        `${pathname}${request.nextUrl.search}`,
-      ),
+      getAppUrl(pathname === "/" ? "/super-admin/businesses" : pathWithSearch),
     );
   }
 
+  // Login/authentication is centralized on app.tenh-pos.com. Public tenant
+  // hosts never run TENH owner/staff authentication pages.
   if (
-    tenantSlug &&
-    CENTRAL_AUTH_PATHS.has(pathname)
+    productionDomains &&
+    isCentralAuthPath(pathname) &&
+    subdomain !== APP_SUBDOMAIN
   ) {
-    return NextResponse.redirect(
-      getRootUrl(
-        `${pathname}${request.nextUrl.search}`,
-      ),
-    );
+    return NextResponse.redirect(getAppUrl(pathWithSearch));
   }
 
-  if (subdomain === "admin" && pathname === "/") {
-    const destination = request.nextUrl.clone();
-    destination.pathname = "/super-admin/businesses";
-    return NextResponse.redirect(destination);
+  // Existing/legacy tenant dashboard URLs may still exist in bookmarks or old
+  // links. Redirect them into app.tenh-pos.com while preserving the requested
+  // business selection through the authenticated selector route.
+  if (productionDomains && tenantSlug && isAppOnlyPath(pathname)) {
+    if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
+      return NextResponse.redirect(
+        getTenantDashboardUrl(tenantSlug, pathWithSearch),
+      );
+    }
+
+    return NextResponse.redirect(getAppUrl(pathWithSearch));
   }
 
-  if (tenantSlug && pathname === "/") {
-    const destination = request.nextUrl.clone();
-    destination.pathname = `/_sites/${encodeURIComponent(
-      tenantSlug,
-    )}`;
-
-    return NextResponse.rewrite(destination, {
-      request: {
-        headers: requestHeaders,
-      },
-    });
+  // Marketing/root-host application routes belong on the app domain.
+  if (
+    productionDomains &&
+    !subdomain &&
+    isAppOnlyPath(pathname)
+  ) {
+    return NextResponse.redirect(getAppUrl(pathWithSearch));
   }
 
-  return NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
+  if (subdomain === APP_SUBDOMAIN) {
+    if (pathname === "/") {
+      return NextResponse.redirect(getAppUrl("/dashboard"));
+    }
+
+    // Internal storefront implementation paths are never public on app host.
+    if (pathname.startsWith("/_sites/")) {
+      return notFound();
+    }
+  }
+
+  // Never expose Next's internal tenant rewrite path directly from a root or
+  // arbitrary/system host.
+  if (!tenantSlug && pathname.startsWith("/_sites/")) {
+    return notFound();
+  }
+
+  // Wildcard DNS may receive any label. Reserved/invalid labels (other than
+  // explicit www/app/admin handling above) must never become storefronts.
+  if (
+    subdomain &&
+    !tenantSlug &&
+    subdomain !== "www" &&
+    subdomain !== APP_SUBDOMAIN &&
+    subdomain !== "admin"
+  ) {
+    return notFound();
+  }
+
+  if (tenantSlug) {
+    // Storefront APIs are the only API surface exposed on tenant hosts.
+    if (pathname.startsWith("/api/storefront/")) {
+      return NextResponse.next({ request: { headers: requestHeaders } });
+    }
+
+    if (pathname.startsWith("/api/")) {
+      return notFound();
+    }
+
+    if (pathname.startsWith("/_sites/")) {
+      return notFound();
+    }
+
+    if (pathname === "/") {
+      const destination = request.nextUrl.clone();
+      destination.pathname = `/_sites/${encodeURIComponent(tenantSlug)}`;
+
+      return NextResponse.rewrite(destination, {
+        request: { headers: requestHeaders },
+      });
+    }
+
+    // Current TENH storefront is rendered from its public root. Do not allow
+    // admin/marketing application routes to bleed into tenant hostnames.
+    return notFound();
+  }
+
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 async function refreshAuthIfNeeded(
@@ -80,81 +173,54 @@ async function refreshAuthIfNeeded(
   const pathname = request.nextUrl.pathname;
 
   const needsAuthRefresh =
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/super-admin") ||
-    pathname.startsWith("/auth/") ||
-    CENTRAL_AUTH_PATHS.has(pathname);
+    isAppOnlyPath(pathname) ||
+    isCentralAuthPath(pathname);
 
-  if (!needsAuthRefresh) {
-    return response;
-  }
+  if (!needsAuthRefresh) return response;
 
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || !supabaseKey) {
-    return response;
-  }
+  if (!supabaseUrl || !supabaseKey) return response;
 
-  const cookieOptions =
-    getSharedAuthCookieOptions(
-      request.headers.get("host"),
-    );
+  const host =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const cookieOptions = getSharedAuthCookieOptions(host);
 
-  const supabase = createServerClient(
-    supabaseUrl,
-    supabaseKey,
-    {
-      cookieOptions,
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(
-            ({ name, value, options }) => {
-              request.cookies.set(name, value);
-              response.cookies.set(name, value, {
-                ...cookieOptions,
-                ...options,
-              });
-            },
-          );
-        },
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    cookieOptions,
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          request.cookies.set(name, value);
+          response.cookies.set(name, value, {
+            ...cookieOptions,
+            ...options,
+          });
+        });
       },
     },
-  );
+  });
 
-  // Refreshes the Supabase session when required.
   await supabase.auth.getUser();
-
   return response;
 }
 
 export async function proxy(request: NextRequest) {
-  const host = request.headers.get("host");
+  const host =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
   const subdomain = getSubdomainFromHost(host);
   const tenantSlug = getTenantSlugFromHost(host);
 
-  const requestHeaders = new Headers(
-    request.headers,
-  );
-
-  // Expose the canonical request path to server layouts so subscription
-  // access can be enforced before protected dashboard content renders.
-  requestHeaders.set(
-    "x-tenh-pathname",
-    request.nextUrl.pathname,
-  );
+  const requestHeaders = new Headers(request.headers);
 
   if (tenantSlug) {
-    requestHeaders.set(
-      "x-tenant-slug",
-      normalizeTenantSlug(tenantSlug),
-    );
+    requestHeaders.set("x-tenant-slug", normalizeTenantSlug(tenantSlug));
   } else {
     requestHeaders.delete("x-tenant-slug");
   }
@@ -166,10 +232,7 @@ export async function proxy(request: NextRequest) {
     tenantSlug,
   );
 
-  return refreshAuthIfNeeded(
-    request,
-    response,
-  );
+  return refreshAuthIfNeeded(request, response);
 }
 
 export const config = {

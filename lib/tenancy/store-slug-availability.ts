@@ -24,22 +24,22 @@ type StoreSlugAvailabilityOptions = {
 
 /**
  * Canonical backend check for a TENH-owned public store subdomain.
- *
- * The slug is only a public locator. Business ownership and authorization
- * continue to use businesses.id (UUID) and business_id on tenant records.
+ * The slug is only a locator; authorization/data ownership remains UUID-based.
  */
 export async function getStoreSlugAvailability(
   rawValue: string,
   options: StoreSlugAvailabilityOptions = {},
 ): Promise<StoreSlugAvailability> {
-  const raw = rawValue.trim().toLowerCase();
+  const trimmed = rawValue.trim();
+  const raw = trimmed.toLowerCase();
   const slug = normalizeTenantSlug(rawValue);
 
-  // Store addresses intentionally use the existing 2-40 character product
-  // rule even though DNS labels can technically be longer.
+  // Preserve the existing TENH UI/product rule of 2-40 characters even though
+  // a DNS label can technically be longer.
   if (
     !raw ||
     raw.length > 40 ||
+    trimmed !== raw ||
     slug !== raw ||
     slug.length < 2
   ) {
@@ -54,10 +54,7 @@ export async function getStoreSlugAvailability(
     return { status: "invalid", slug };
   }
 
-  let query = supabaseAdmin
-    .from("businesses")
-    .select("id")
-    .ilike("slug", slug);
+  let query = supabaseAdmin.from("businesses").select("id").ilike("slug", slug);
 
   if (options.excludeBusinessId) {
     query = query.neq("id", options.excludeBusinessId);
@@ -66,9 +63,7 @@ export async function getStoreSlugAvailability(
   const { data, error } = await query.limit(1).maybeSingle();
 
   if (error) {
-    throw new Error(
-      `Unable to check store address: ${error.message}`,
-    );
+    throw new Error(`Unable to check store address: ${error.message}`);
   }
 
   return {

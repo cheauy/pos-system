@@ -1202,7 +1202,7 @@ export async function deleteProductVariants(
   productId: string,
   variantIds: string[],
 ): Promise<ProductRowActionResult> {
-  const business = await requirePermission("products.delete");
+  const business = await requirePermission("products.disable");
   const uniqueIds = Array.from(new Set(variantIds.filter(Boolean)));
   if (!productId || uniqueIds.length === 0) {
     return { success: false, message: "Select at least one variant." };
@@ -1289,7 +1289,7 @@ export async function deleteProductVariants(
 export async function deleteProductGroup(
   productId: string,
 ): Promise<ProductRowActionResult> {
-  const business = await requirePermission("products.delete");
+  const business = await requirePermission("products.disable");
 
   if (!productId) {
     return { success: false, message: "Invalid product ID." };
@@ -1520,6 +1520,7 @@ export async function createVariantProduct(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  const userId = user.id;
 
   const { data: existing, error: existingError } = await supabaseAdmin
     .from("products")
@@ -1552,7 +1553,7 @@ export async function createVariantProduct(
 
   async function uploadVariantImage(file: File, label: string) {
     const extension = getImageExtension(file);
-    const path = `${business.id}/${user.id}/${crypto.randomUUID()}.${extension}`;
+    const path = `${business.id}/${userId}/${crypto.randomUUID()}.${extension}`;
     const { error: uploadError } = await supabaseAdmin.storage
       .from(PRODUCT_IMAGE_BUCKET)
       .upload(path, file, {
@@ -1589,7 +1590,7 @@ export async function createVariantProduct(
 
   const variantGroupId = crypto.randomUUID();
   const rows = variants.map((variant) => ({
-    owner_id: user.id,
+    owner_id: userId,
     business_id: business.id,
     category_id: categoryId,
     name,
@@ -2010,6 +2011,7 @@ export async function updateProductGroup(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  const userId = user.id;
 
   const { data: representative, error: representativeError } = await supabase
     .from("products")
@@ -2098,7 +2100,7 @@ export async function updateProductGroup(
 
   async function uploadEditImage(file: File, label: string) {
     const extension = getImageExtension(file);
-    const path = `${business.id}/${user.id}/${crypto.randomUUID()}.${extension}`;
+    const path = `${business.id}/${userId}/${crypto.randomUUID()}.${extension}`;
     const { error: uploadError } = await supabase.storage
       .from(PRODUCT_IMAGE_BUCKET)
       .upload(path, file, {
@@ -2183,7 +2185,7 @@ export async function updateProductGroup(
         const { error: insertError } = await supabaseAdmin
           .from("products")
           .insert({
-            owner_id: user.id,
+            owner_id: userId,
             business_id: business.id,
             category_id: categoryId,
             name,

@@ -160,8 +160,8 @@ export async function importReturnsCsv(formData: FormData) {
   if (error) throw new Error(error.message);
 
   await createAuditLog({
-    action: "create",
-    entityType: "return",
+    action: "return",
+    entityType: "order",
     description: `Imported ${inserts.length} historical return records from CSV`,
     metadata: { imported: inserts.length, source: "csv" },
   });

@@ -6,11 +6,8 @@ import {
 } from "@/lib/business/business-mode-presets";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import {
-  getTenantDashboardUrl,
-  isValidTenantSlug,
-  normalizeTenantSlug,
-} from "@/lib/tenancy/domain";
+import { getTenantDashboardUrl } from "@/lib/tenancy/domain";
+import { getStoreSlugAvailability } from "@/lib/tenancy/store-slug-availability";
 
 import type { GetStartedState } from "./state";
 
@@ -41,52 +38,42 @@ export async function checkGetStartedStoreAddressAvailability(
     };
   }
 
-  const subdomain = normalizeTenantSlug(rawSubdomain);
+  try {
+    const availability = await getStoreSlugAvailability(rawSubdomain);
 
-  if (
-    !isValidTenantSlug(subdomain) ||
-    subdomain.length > 40 ||
-    subdomain !== rawSubdomain.trim().toLowerCase()
-  ) {
+    if (availability.status === "invalid" || availability.status === "reserved") {
+      return {
+        slug: availability.slug,
+        available: false,
+        status: "invalid",
+        message:
+          "Use 2–40 lowercase letters, numbers or hyphens. Reserved TENH addresses cannot be used.",
+      };
+    }
+
+    if (availability.status === "already_taken") {
+      return {
+        slug: availability.slug,
+        available: false,
+        status: "taken",
+        message: "This TENH POS address is already in use. Try another one.",
+      };
+    }
+
     return {
-      slug: subdomain,
-      available: false,
-      status: "invalid",
-      message:
-        "Use 2–40 lowercase letters, numbers or hyphens. Reserved TENH addresses cannot be used.",
+      slug: availability.slug,
+      available: true,
+      status: "available",
+      message: "Available — you can use this TENH POS store address.",
     };
-  }
-
-  const { data: existingBusiness, error } = await supabaseAdmin
-    .from("businesses")
-    .select("id")
-    .ilike("slug", subdomain)
-    .maybeSingle();
-
-  if (error) {
+  } catch {
     return {
-      slug: subdomain,
+      slug: "",
       available: false,
       status: "error",
       message: "TENH could not check this address right now. Please try again.",
     };
   }
-
-  if (existingBusiness) {
-    return {
-      slug: subdomain,
-      available: false,
-      status: "taken",
-      message: "This TENH POS address is already in use. Try another one.",
-    };
-  }
-
-  return {
-    slug: subdomain,
-    available: true,
-    status: "available",
-    message: "Available — you can use this TENH POS store address.",
-  };
 }
 
 function requiredText(formData: FormData, key: string) {
@@ -203,7 +190,6 @@ export async function createOwnerBusiness(
 
     const businessName = requiredText(formData, "businessName");
     const requestedSlug = requiredText(formData, "subdomain");
-    const slug = normalizeTenantSlug(requestedSlug);
 
     if (businessName.length < 2 || businessName.length > 100) {
       return {
@@ -212,10 +198,12 @@ export async function createOwnerBusiness(
       };
     }
 
+    const slugAvailability = await getStoreSlugAvailability(requestedSlug);
+    const slug = slugAvailability.slug;
+
     if (
-      !isValidTenantSlug(slug) ||
-      slug.length > 40 ||
-      slug !== requestedSlug.toLowerCase()
+      slugAvailability.status === "invalid" ||
+      slugAvailability.status === "reserved"
     ) {
       return {
         success: false,
@@ -224,22 +212,7 @@ export async function createOwnerBusiness(
       };
     }
 
-    const {
-      data: existingSlug,
-      error: slugError,
-    } = await supabaseAdmin
-      .from("businesses")
-      .select("id")
-      .ilike("slug", slug)
-      .maybeSingle();
-
-    if (slugError) {
-      throw new Error(
-        `Unable to check store address: ${slugError.message}`,
-      );
-    }
-
-    if (existingSlug) {
+    if (slugAvailability.status === "already_taken") {
       return {
         success: false,
         message: "This Tenh POS store address is already in use.",

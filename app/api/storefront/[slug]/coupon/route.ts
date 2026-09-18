@@ -30,15 +30,11 @@ export async function POST(
       );
     }
 
-    const requestTenantSlug = getTenantSlugFromHost(
-      request.headers.get("x-forwarded-host") ??
-        request.headers.get("host"),
+    const hostTenant = getTenantSlugFromHost(
+      request.headers.get("x-forwarded-host") ?? request.headers.get("host"),
     );
 
-    // A public tenant hostname may only operate on its own store slug.
-    // The slug locates the business; every database operation still scopes
-    // data by the resolved business UUID/business_id.
-    if (requestTenantSlug && requestTenantSlug !== slug) {
+    if (hostTenant && hostTenant !== slug) {
       return NextResponse.json(
         { success: false, message: "Store not found." },
         { status: 404 },

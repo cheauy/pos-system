@@ -1,22 +1,15 @@
 "use server";
 
-import {
-  getBusinessModeDefaults,
-  getBusinessModePreset,
-} from "@/lib/business/business-mode-presets";
+import { cookies } from "next/headers";
+
 import { createClient } from "@/lib/supabase/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAppUrl } from "@/lib/tenancy/domain";
-import { getStoreSlugAvailability } from "@/lib/tenancy/store-slug-availability";
 
-import type { RegisterBusinessState } from "./state";
+import type { RegisterAccountState } from "./state";
 
-const SELF_REGISTRATION_MONTHS = 1;
+const PENDING_EMAIL_COOKIE = "tenh_pending_signup_email";
 
-function requiredText(
-  formData: FormData,
-  key: string,
-) {
+function requiredText(formData: FormData, key: string) {
   const value = formData.get(key);
 
   if (typeof value !== "string" || !value.trim()) {
@@ -26,92 +19,119 @@ function requiredText(
   return value.trim();
 }
 
-function cleanupMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Unable to create your TENH POS store.";
+function getErrorField(error: unknown, key: string) {
+  if (!error || typeof error !== "object") return null;
+  const value = (error as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-export async function registerOwnerBusiness(
-  _previousState: RegisterBusinessState,
-  formData: FormData,
-): Promise<RegisterBusinessState> {
-  let createdAuthUserId: string | null = null;
-  let createdBusinessId: string | null = null;
+function getErrorStatus(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const value = (error as Record<string, unknown>).status;
+  return typeof value === "number" ? value : null;
+}
 
+function readableAuthError(error: unknown): string {
+  const rawMessage =
+    error instanceof Error
+      ? error.message.trim()
+      : getErrorField(error, "message") ??
+        getErrorField(error, "error_description") ??
+        getErrorField(error, "error") ??
+        "";
+  const code = getErrorField(error, "code")?.toLowerCase() ?? "";
+  const normalized = rawMessage.toLowerCase();
+
+  if (
+    code.includes("user_already_exists") ||
+    code.includes("email_exists") ||
+    normalized.includes("already registered") ||
+    normalized.includes("already exists")
+  ) {
+    return "An account already exists with this email address.";
+  }
+
+  if (
+    code.includes("weak_password") ||
+    normalized.includes("weak password") ||
+    normalized.includes("password should")
+  ) {
+    return rawMessage || "Please choose a stronger password.";
+  }
+
+  if (
+    code.includes("email_address_invalid") ||
+    normalized.includes("invalid email")
+  ) {
+    return "Enter a valid email address.";
+  }
+
+  if (
+    code.includes("signup_disabled") ||
+    normalized.includes("signups not allowed") ||
+    normalized.includes("signup is disabled") ||
+    normalized.includes("email signups are disabled")
+  ) {
+    return "Email registration is currently disabled. Please contact support.";
+  }
+
+  if (
+    code.includes("over_email_send_rate_limit") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("too many requests")
+  ) {
+    return "Too many registration attempts. Please wait a few minutes and try again.";
+  }
+
+  if (
+    normalized.includes("database error") ||
+    normalized.includes("saving new user")
+  ) {
+    const status = getErrorStatus(error);
+    const diagnostic = [
+      status ? `HTTP ${status}` : null,
+      code || null,
+    ].filter(Boolean).join(" · ");
+
+    return `Supabase Auth could not save the new account${diagnostic ? ` (${diagnostic})` : ""}: ${rawMessage || "Database error saving new user."}`;
+  }
+
+  if (rawMessage) {
+    const status = getErrorStatus(error);
+    const diagnostic = [
+      status ? `HTTP ${status}` : null,
+      code || null,
+    ].filter(Boolean).join(" · ");
+    return `${rawMessage}${diagnostic ? ` (${diagnostic})` : ""}`;
+  }
+
+  return "Registration is temporarily unavailable. Please try again.";
+}
+
+export async function registerAccount(
+  _previousState: RegisterAccountState,
+  formData: FormData,
+): Promise<RegisterAccountState> {
   try {
-    // Simple bot trap. Real users never see or fill this field.
     const website = formData.get("website");
     if (typeof website === "string" && website.trim()) {
-      return {
-        success: false,
-        message: "Unable to create account.",
-      };
+      return { success: false, message: "Unable to create account." };
     }
 
-    const selectedMode = requiredText(
-      formData,
-      "businessMode",
-    );
-    const preset = getBusinessModePreset(selectedMode);
+    const fullName = requiredText(formData, "fullName");
+    const email = requiredText(formData, "email").toLowerCase();
+    const password = requiredText(formData, "password");
+    const confirmPassword = requiredText(formData, "confirmPassword");
 
-    if (!preset) {
+    if (fullName.length < 2 || fullName.length > 100) {
       return {
         success: false,
-        message: "Choose a valid business type.",
-      };
-    }
-
-    const businessName = requiredText(
-      formData,
-      "businessName",
-    );
-    const ownerName = requiredText(
-      formData,
-      "ownerName",
-    );
-    const email = requiredText(
-      formData,
-      "email",
-    ).toLowerCase();
-    const password = requiredText(
-      formData,
-      "password",
-    );
-    const confirmPassword = requiredText(
-      formData,
-      "confirmPassword",
-    );
-
-    const requestedSlug = requiredText(
-      formData,
-      "subdomain",
-    );
-    const slugAvailability =
-      await getStoreSlugAvailability(requestedSlug);
-    const slug = slugAvailability.slug;
-
-    if (businessName.length < 2 || businessName.length > 100) {
-      return {
-        success: false,
-        message: "Business name must be between 2 and 100 characters.",
-      };
-    }
-
-    if (ownerName.length < 2 || ownerName.length > 100) {
-      return {
-        success: false,
-        message: "Owner name must be between 2 and 100 characters.",
+        message: "Your name must be between 2 and 100 characters.",
       };
     }
 
     if (!email.includes("@") || email.length > 254) {
-      return {
-        success: false,
-        message: "Enter a valid email address.",
-      };
+      return { success: false, message: "Enter a valid email address." };
     }
 
     if (password.length < 8) {
@@ -122,257 +142,95 @@ export async function registerOwnerBusiness(
     }
 
     if (password !== confirmPassword) {
-      return {
-        success: false,
-        message: "Passwords do not match.",
-      };
+      return { success: false, message: "Passwords do not match." };
     }
 
-    if (
-      slugAvailability.status === "invalid" ||
-      slugAvailability.status === "reserved"
-    ) {
-      return {
-        success: false,
+    // Account-only registration. Business/profile setup happens after the
+    // first confirmed sign-in through /auth/continue.
+    const supabase = await createClient();
+    const confirmationCallback = getAppUrl(
+      "/auth/callback?flow=email-confirmation",
+    );
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: confirmationCallback,
+        data: { full_name: fullName },
+      },
+    });
+
+    if (error) {
+      const message = readableAuthError(error);
+      console.error("[registerAccount] Supabase signup failed", {
+        code: getErrorField(error, "code"),
+        status: getErrorStatus(error),
         message:
-          "Choose a store address using 2–40 lowercase letters, numbers or hyphens.",
-      };
+          error instanceof Error ? error.message : getErrorField(error, "message"),
+      });
+      return { success: false, message };
     }
 
-    if (slugAvailability.status === "already_taken") {
+    if (!data.user) {
+      console.error(
+        "[registerAccount] Supabase signup returned no user and no error.",
+      );
       return {
         success: false,
-        message: "This TENH POS store address is already in use.",
+        message: "Registration is temporarily unavailable. Please try again.",
       };
     }
 
-    const {
-      data: existingProfile,
-      error: profileLookupError,
-    } = await supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .ilike("email", email)
-      .maybeSingle();
-
-    if (profileLookupError) {
-      throw new Error(
-        `Unable to check email address: ${profileLookupError.message}`,
-      );
-    }
-
-    if (existingProfile) {
+    if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
       return {
         success: false,
         message: "An account already exists with this email address.",
       };
     }
 
-    const supabase = await createClient();
-    const { data: authData, error: authError } =
-      await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: getAppUrl("/auth/continue"),
-          data: {
-            full_name: ownerName,
-            business_name: businessName,
-            business_slug: slug,
-            business_type: preset.value,
-          },
-        },
+    const cookieStore = await cookies();
+
+    if (!data.session) {
+      // Confirmation is enabled. Keep the email server-only so the waiting page
+      // can display/resend without putting the address in the URL.
+      cookieStore.set(PENDING_EMAIL_COOKIE, email, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 60 * 60 * 24,
       });
 
-    if (authError || !authData.user) {
       return {
-        success: false,
-        message:
-          authError?.message ??
-          "Unable to create your owner account.",
+        success: true,
+        message: "We sent a confirmation link to your email address.",
+        requiresEmailConfirmation: true,
+        destination: getAppUrl("/register/check-email"),
       };
     }
 
-    if (
-      Array.isArray(authData.user.identities) &&
-      authData.user.identities.length === 0
-    ) {
-      return {
-        success: false,
-        message: "An account already exists with this email address.",
-      };
-    }
-
-    createdAuthUserId = authData.user.id;
-
-    const subscriptionStartedAt = new Date();
-    const subscriptionExpiresAt = new Date(
-      subscriptionStartedAt,
-    );
-    subscriptionExpiresAt.setMonth(
-      subscriptionExpiresAt.getMonth() +
-        SELF_REGISTRATION_MONTHS,
-    );
-
-    const {
-      data: business,
-      error: businessError,
-    } = await supabaseAdmin
-      .from("businesses")
-      .insert({
-        name: businessName,
-        slug,
-        owner_id: createdAuthUserId,
-        product_mode: preset.productMode,
-        max_staff: 3,
-        subscription_months:
-          SELF_REGISTRATION_MONTHS,
-        subscription_started_at:
-          subscriptionStartedAt.toISOString(),
-        subscription_expires_at:
-          subscriptionExpiresAt.toISOString(),
-        is_active: true,
-        disabled_at: null,
-        disabled_reason: null,
-      })
-      .select("id")
-      .single();
-
-    if (businessError || !business) {
-      if (businessError?.code === "23505") {
-        throw new Error(
-          "This TENH POS store address is already in use.",
-        );
-      }
-
-      throw new Error(
-        businessError?.message ??
-          "Unable to create your business workspace.",
+    // If Confirm email is disabled in Supabase, no confirmation email is sent.
+    // Sign the user out so registration still remains account-only.
+    const { error: signOutError } = await supabase.auth.signOut();
+    if (signOutError) {
+      console.error(
+        "[registerAccount] post-registration sign-out failed:",
+        signOutError.message,
       );
     }
 
-    createdBusinessId = business.id;
-
-    const { error: profileError } =
-      await supabaseAdmin
-        .from("profiles")
-        .upsert(
-          {
-            id: createdAuthUserId,
-            full_name: ownerName,
-            email,
-            role: "owner",
-            is_active: true,
-          },
-          { onConflict: "id" },
-        );
-
-    if (profileError) {
-      throw new Error(
-        `Unable to create owner profile: ${profileError.message}`,
-      );
-    }
-
-    const { error: membershipError } =
-      await supabaseAdmin
-        .from("business_members")
-        .insert({
-          business_id: createdBusinessId,
-          user_id: createdAuthUserId,
-          role: "owner",
-          is_active: true,
-        });
-
-    if (membershipError) {
-      throw new Error(
-        `Unable to create owner membership: ${membershipError.message}`,
-      );
-    }
-
-    const storefrontDefaults =
-      getBusinessModeDefaults(preset.value);
-
-    const { error: storefrontError } =
-      await supabaseAdmin
-        .from("business_storefronts")
-        .update({
-          business_type: preset.value,
-          display_name: businessName,
-          allow_pickup:
-            storefrontDefaults.allowPickup,
-          allow_delivery:
-            storefrontDefaults.allowDelivery,
-          allow_dine_in:
-            storefrontDefaults.allowDineIn,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("business_id", createdBusinessId);
-
-    if (storefrontError) {
-      throw new Error(
-        `Unable to configure your store: ${storefrontError.message}`,
-      );
-    }
-
-    const { error: historyError } =
-      await supabaseAdmin
-        .from("subscription_history")
-        .insert({
-          business_id: createdBusinessId,
-          action: "created",
-          months: SELF_REGISTRATION_MONTHS,
-          previous_expiry: null,
-          new_expiry:
-            subscriptionExpiresAt.toISOString(),
-          reason: "Owner self-registration",
-          created_by: createdAuthUserId,
-        });
-
-    if (historyError) {
-      throw new Error(
-        `Unable to create subscription history: ${historyError.message}`,
-      );
-    }
+    cookieStore.delete(PENDING_EMAIL_COOKIE);
 
     return {
       success: true,
-      message: authData.session
-        ? "Your TENH POS store is ready."
-        : "Your store has been created. Check your email to confirm your account, then sign in.",
-      requiresEmailConfirmation: !authData.session,
-      destination: authData.session
-        ? getAppUrl("/dashboard")
-        : null,
+      message: "Your account is created. Sign in to set up your business.",
+      requiresEmailConfirmation: false,
+      destination: getAppUrl("/login?registered=1"),
     };
   } catch (error) {
-    if (createdBusinessId) {
-      await supabaseAdmin
-        .from("businesses")
-        .delete()
-        .eq("id", createdBusinessId);
-    }
-
-    if (createdAuthUserId) {
-      await supabaseAdmin
-        .from("profiles")
-        .delete()
-        .eq("id", createdAuthUserId);
-
-      await supabaseAdmin.auth.admin.deleteUser(
-        createdAuthUserId,
-      );
-
-      try {
-        const supabase = await createClient();
-        await supabase.auth.signOut();
-      } catch {
-        // Cleanup is best effort; the deleted Auth user cannot use the session.
-      }
-    }
-
-    return {
-      success: false,
-      message: cleanupMessage(error),
-    };
+    const message = readableAuthError(error);
+    console.error("[registerAccount] failed:", message);
+    return { success: false, message };
   }
 }

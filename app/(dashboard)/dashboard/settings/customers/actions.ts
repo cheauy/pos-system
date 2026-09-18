@@ -33,7 +33,7 @@ export async function updateCustomerFieldSettings(
 
   await createAuditLog({
     action: "update",
-    entityType: "customer_settings",
+    entityType: "business",
     entityId: business.id,
     description: "Updated customer field settings",
     metadata: {

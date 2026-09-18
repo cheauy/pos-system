@@ -52,23 +52,23 @@ export async function GET(
     );
   }
 
-  const requestTenantSlug = getTenantSlugFromHost(
-    request.headers.get("x-forwarded-host") ??
-      request.headers.get("host"),
+  const { business_id, ...publicOrder } = data;
+
+  const hostTenant = getTenantSlugFromHost(
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host"),
   );
 
-  if (requestTenantSlug) {
-    const { data: tenantBusiness, error: tenantError } =
-      await supabaseAdmin
-        .from("businesses")
-        .select("id")
-        .eq("slug", requestTenantSlug)
-        .maybeSingle();
+  if (hostTenant) {
+    const { data: hostBusiness, error: hostBusinessError } = await supabaseAdmin
+      .from("businesses")
+      .select("id")
+      .ilike("slug", hostTenant)
+      .maybeSingle();
 
     if (
-      tenantError ||
-      !tenantBusiness ||
-      tenantBusiness.id !== data.business_id
+      hostBusinessError ||
+      !hostBusiness ||
+      hostBusiness.id !== business_id
     ) {
       return NextResponse.json(
         { success: false, message: "Order not found." },
@@ -76,8 +76,6 @@ export async function GET(
       );
     }
   }
-
-  const { business_id, ...publicOrder } = data;
 
   const { data: storefront } = await supabaseAdmin
     .from("business_storefronts")

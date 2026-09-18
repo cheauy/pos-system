@@ -239,7 +239,10 @@ export default async function SubscriptionSettingsPage({
   const userLimit = current?.subscription_user_limit ?? plan?.userLimit ?? null;
   const seatPercent = userLimit && userLimit > 0 ? Math.min(100, Math.round((activeMembers / userLimit) * 100)) : 0;
   const teamEnabled = plan?.teamEnabled ?? status === "trialing";
-  const renewalStart = current?.subscription_started_at ?? current?.trial_started_at;
+  const renewalStart =
+    current?.subscription_started_at ??
+    current?.trial_started_at ??
+    null;
   const renewalPercent = renewalProgress(renewalStart, expiry);
   const currentTerm = termLabel(current?.subscription_months ?? null, status);
   const freeChangeText = plan

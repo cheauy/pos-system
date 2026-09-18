@@ -1,11 +1,12 @@
 const DEFAULT_ROOT_DOMAIN = "localhost:3000";
 
 export const APP_SUBDOMAIN = "app";
+export const SELECTED_BUSINESS_COOKIE = "tenh_selected_business_id";
 
 /**
- * System/reserved labels that must never resolve to a public tenant store.
- * Keep this list centralized so registration, store-address changes and
- * hostname routing all enforce the same rule.
+ * TENH/system labels that can never be claimed as a public store slug.
+ * Keep this centralized so creation, changes, routing and availability checks
+ * all enforce the same rule.
  */
 export const RESERVED_SUBDOMAINS = new Set([
   "www",
@@ -46,8 +47,7 @@ function stripProtocol(value: string) {
 
 export function getRootDomain() {
   return stripProtocol(
-    process.env.NEXT_PUBLIC_ROOT_DOMAIN ??
-      DEFAULT_ROOT_DOMAIN,
+    process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? DEFAULT_ROOT_DOMAIN,
   );
 }
 
@@ -57,11 +57,7 @@ export function getRootHostname() {
 
 export function isLocalRootDomain() {
   const hostname = getRootHostname();
-
-  return (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1"
-  );
+  return hostname === "localhost" || hostname === "127.0.0.1";
 }
 
 export function usesSharedSubdomainCookies() {
@@ -69,15 +65,11 @@ export function usesSharedSubdomainCookies() {
 }
 
 export function getRootProtocol() {
-  const configuredSiteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
 
   if (configuredSiteUrl) {
     try {
-      return new URL(configuredSiteUrl).protocol.replace(
-        ":",
-        "",
-      );
+      return new URL(configuredSiteUrl).protocol.replace(":", "");
     } catch {
       // Fall through to the root-domain based default.
     }
@@ -92,15 +84,10 @@ function normalizePath(path: string) {
 }
 
 export function getRootUrl(path = "/") {
-  return `${getRootProtocol()}://${getRootDomain()}${normalizePath(
-    path,
-  )}`;
+  return `${getRootProtocol()}://${getRootDomain()}${normalizePath(path)}`;
 }
 
-export function getSubdomainUrl(
-  subdomain: string,
-  path = "/",
-) {
+export function getSubdomainUrl(subdomain: string, path = "/") {
   const normalized = normalizeTenantSlug(subdomain);
 
   if (!normalized) {
@@ -112,38 +99,40 @@ export function getSubdomainUrl(
   )}`;
 }
 
-/**
- * Canonical URL for the TENH POS application. In local development the
- * application stays on localhost; in production it lives on app.tenh-pos.com.
- */
+/** Canonical TENH POS application URL. */
 export function getAppUrl(path = "/dashboard") {
-  if (!usesSharedSubdomainCookies()) {
-    return normalizePath(path);
+  if (isLocalRootDomain()) {
+    return getRootUrl(path);
   }
 
   return getSubdomainUrl(APP_SUBDOMAIN, path);
 }
 
 /**
- * Backward-compatible helper kept for existing call sites. Tenant subdomains
- * are storefront-only now, so every dashboard destination is canonicalized to
- * the centralized app host instead of {slug}.tenh-pos.com.
+ * Backward-compatible dashboard destination helper.
+ *
+ * Existing callers already know the business slug. Instead of putting admin
+ * pages on that tenant hostname, route through the centralized app host. The
+ * selector endpoint resolves the slug to the permanent business UUID, verifies
+ * membership, stores only that UUID in an app-host cookie, then redirects to
+ * the requested application path.
  */
-export function getTenantDashboardUrl(
-  _slug: string,
-  path = "/dashboard",
-) {
-  return getAppUrl(path);
-}
+export function getTenantDashboardUrl(slug: string, path = "/dashboard") {
+  const normalized = normalizeTenantSlug(slug);
 
-export function getAdminUrl(
-  path = "/super-admin/businesses",
-) {
-  if (!usesSharedSubdomainCookies()) {
-    return normalizePath(path);
+  if (!isValidTenantSlug(normalized)) {
+    return getAppUrl(path);
   }
 
-  return getSubdomainUrl("admin", path);
+  const selector = new URL(getAppUrl("/auth/select-business"));
+  selector.searchParams.set("slug", normalized);
+  selector.searchParams.set("next", normalizePath(path));
+  return selector.toString();
+}
+
+/** Super-admin is also part of the centralized application host. */
+export function getAdminUrl(path = "/super-admin/businesses") {
+  return getAppUrl(path);
 }
 
 export function normalizeTenantSlug(value: string) {
@@ -156,10 +145,12 @@ export function normalizeTenantSlug(value: string) {
 }
 
 export function isValidTenantSlug(value: string) {
-  const candidate = value.toLowerCase().trim();
+  const trimmed = value.trim();
+  const candidate = trimmed.toLowerCase();
   const slug = normalizeTenantSlug(value);
 
   return (
+    trimmed === candidate &&
     candidate === slug &&
     slug.length >= 2 &&
     slug.length <= 63 &&
@@ -168,47 +159,31 @@ export function isValidTenantSlug(value: string) {
   );
 }
 
-export function getSubdomainFromHost(
-  hostHeader: string | null | undefined,
-) {
+export function getSubdomainFromHost(hostHeader: string | null | undefined) {
   if (!hostHeader) return null;
 
-  const rawHost = hostHeader
-    .split(",")[0]
-    ?.trim()
-    .toLowerCase();
-
+  const rawHost = hostHeader.split(",")[0]?.trim().toLowerCase();
   if (!rawHost) return null;
 
   const hostname = rawHost.replace(/:\d+$/, "");
   const rootHostname = getRootHostname();
 
-  if (
-    hostname === rootHostname ||
-    hostname === `www.${rootHostname}`
-  ) {
+  if (hostname === rootHostname || hostname === `www.${rootHostname}`) {
     return hostname.startsWith("www.") ? "www" : null;
   }
 
   const suffix = `.${rootHostname}`;
-
-  if (!hostname.endsWith(suffix)) {
-    return null;
-  }
+  if (!hostname.endsWith(suffix)) return null;
 
   const prefix = hostname.slice(0, -suffix.length);
 
-  // TENH only supports one tenant/system label before the root domain.
-  if (!prefix || prefix.includes(".")) {
-    return null;
-  }
+  // TENH supports one system/tenant label before the root domain.
+  if (!prefix || prefix.includes(".")) return null;
 
   return prefix;
 }
 
-export function isAppHost(
-  hostHeader: string | null | undefined,
-) {
+export function isAppHost(hostHeader: string | null | undefined) {
   return getSubdomainFromHost(hostHeader) === APP_SUBDOMAIN;
 }
 
@@ -217,10 +192,7 @@ export function getTenantSlugFromHost(
 ) {
   const subdomain = getSubdomainFromHost(hostHeader);
 
-  if (
-    !subdomain ||
-    RESERVED_SUBDOMAINS.has(subdomain)
-  ) {
+  if (!subdomain || RESERVED_SUBDOMAINS.has(subdomain)) {
     return null;
   }
 
@@ -229,13 +201,9 @@ export function getTenantSlugFromHost(
     : null;
 }
 
-export function getSharedAuthCookieOptions(
-  currentHostname?: string | null,
-) {
+export function getSharedAuthCookieOptions(currentHostname?: string | null) {
   const rootHostname = getRootHostname();
-  const current = currentHostname
-    ?.toLowerCase()
-    .replace(/:\d+$/, "");
+  const current = currentHostname?.toLowerCase().replace(/:\d+$/, "");
 
   const belongsToRoot =
     !current ||

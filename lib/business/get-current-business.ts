@@ -1,10 +1,14 @@
 import "server-only";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { getRootUrl } from "@/lib/tenancy/domain";
+import {
+  SELECTED_BUSINESS_COOKIE,
+  getAppUrl,
+} from "@/lib/tenancy/domain";
 import { getRequestTenantSlug } from "@/lib/tenancy/request-tenant";
 import type {
   BusinessRole,
@@ -99,7 +103,7 @@ async function loadContext() {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    redirect(getRootUrl("/login"));
+    redirect(getAppUrl("/login"));
   }
 
   let member: BusinessMember | null = null;
@@ -122,7 +126,7 @@ async function loadContext() {
     business = (businessData ?? null) as Business | null;
 
     if (!business) {
-      redirect(getRootUrl("/no-business"));
+      redirect(getAppUrl("/no-business"));
     }
 
     const { data: memberData, error: memberError } =
@@ -143,35 +147,76 @@ async function loadContext() {
     member = (memberData ?? null) as BusinessMember | null;
 
     if (!member) {
-      redirect(getRootUrl("/auth/continue"));
+      redirect(getAppUrl("/auth/continue"));
     }
   } else {
-    const { data: memberData, error: memberError } =
-      await supabase
-        .from("business_members")
-        .select("business_id,role")
-        .eq("user_id", user.id)
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle();
+    // app.tenh-pos.com has no tenant slug in its hostname. Keep the selected
+    // business as the permanent UUID, then verify membership before using it.
+    // This cookie is a locator only and never grants authorization.
+    const cookieStore = await cookies();
+    const selectedBusinessId =
+      cookieStore.get(SELECTED_BUSINESS_COOKIE)?.value?.trim() ?? "";
 
-    if (memberError) {
-      throw new Error(
-        `Unable to load business membership: ${memberError.message}`,
-      );
+    if (selectedBusinessId) {
+      const { data: selectedMember, error: selectedMemberError } =
+        await supabase
+          .from("business_members")
+          .select("business_id,role")
+          .eq("user_id", user.id)
+          .eq("business_id", selectedBusinessId)
+          .eq("is_active", true)
+          .maybeSingle();
+
+      if (selectedMemberError) {
+        throw new Error(
+          `Unable to load selected business membership: ${selectedMemberError.message}`,
+        );
+      }
+
+      if (selectedMember) {
+        const selectedBusiness = await loadBusiness(selectedMember.business_id);
+
+        if (selectedBusiness) {
+          member = selectedMember as BusinessMember;
+          business = selectedBusiness;
+        }
+      }
     }
 
-    member = (memberData ?? null) as BusinessMember | null;
+    // Missing/stale selection falls back to TENH's existing first active
+    // membership behavior so existing accounts remain backward-compatible.
+    if (!member || !business) {
+      const { data: memberData, error: memberError } =
+        await supabase
+          .from("business_members")
+          .select("business_id,role")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle();
 
-    if (!member) {
-      redirect(getRootUrl("/no-business"));
+      if (memberError) {
+        throw new Error(
+          `Unable to load business membership: ${memberError.message}`,
+        );
+      }
+
+      member = (memberData ?? null) as BusinessMember | null;
+
+      if (!member) {
+        redirect(getAppUrl("/no-business"));
+      }
+
+      business = await loadBusiness(member.business_id);
+
+      if (!business) {
+        redirect(getAppUrl("/no-business"));
+      }
     }
+  }
 
-    business = await loadBusiness(member.business_id);
-
-    if (!business) {
-      redirect(getRootUrl("/no-business"));
-    }
+  if (!member || !business) {
+    redirect(getAppUrl("/no-business"));
   }
 
   return { supabase, user, member, business };
