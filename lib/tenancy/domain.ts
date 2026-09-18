@@ -1,16 +1,37 @@
 const DEFAULT_ROOT_DOMAIN = "localhost:3000";
 
+export const APP_SUBDOMAIN = "app";
+
+/**
+ * System/reserved labels that must never resolve to a public tenant store.
+ * Keep this list centralized so registration, store-address changes and
+ * hostname routing all enforce the same rule.
+ */
 export const RESERVED_SUBDOMAINS = new Set([
   "www",
-  "admin",
   "app",
+  "admin",
   "api",
   "auth",
+  "dashboard",
   "login",
-  "register",
+  "signin",
   "signup",
+  "register",
   "support",
   "help",
+  "billing",
+  "checkout",
+  "payment",
+  "payments",
+  "pos",
+  "store",
+  "status",
+  "mail",
+  "smtp",
+  "ftp",
+  "tenh",
+  "tenh-pos",
   "static",
   "assets",
 ]);
@@ -91,15 +112,28 @@ export function getSubdomainUrl(
   )}`;
 }
 
-export function getTenantDashboardUrl(
-  slug: string,
-  path = "/dashboard",
-) {
+/**
+ * Canonical URL for the TENH POS application. In local development the
+ * application stays on localhost; in production it lives on app.tenh-pos.com.
+ */
+export function getAppUrl(path = "/dashboard") {
   if (!usesSharedSubdomainCookies()) {
     return normalizePath(path);
   }
 
-  return getSubdomainUrl(slug, path);
+  return getSubdomainUrl(APP_SUBDOMAIN, path);
+}
+
+/**
+ * Backward-compatible helper kept for existing call sites. Tenant subdomains
+ * are storefront-only now, so every dashboard destination is canonicalized to
+ * the centralized app host instead of {slug}.tenh-pos.com.
+ */
+export function getTenantDashboardUrl(
+  _slug: string,
+  path = "/dashboard",
+) {
+  return getAppUrl(path);
 }
 
 export function getAdminUrl(
@@ -122,9 +156,11 @@ export function normalizeTenantSlug(value: string) {
 }
 
 export function isValidTenantSlug(value: string) {
+  const candidate = value.toLowerCase().trim();
   const slug = normalizeTenantSlug(value);
 
   return (
+    candidate === slug &&
     slug.length >= 2 &&
     slug.length <= 63 &&
     /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(slug) &&
@@ -162,12 +198,18 @@ export function getSubdomainFromHost(
 
   const prefix = hostname.slice(0, -suffix.length);
 
-  // TENH only supports one tenant label before the root domain.
+  // TENH only supports one tenant/system label before the root domain.
   if (!prefix || prefix.includes(".")) {
     return null;
   }
 
   return prefix;
+}
+
+export function isAppHost(
+  hostHeader: string | null | undefined,
+) {
+  return getSubdomainFromHost(hostHeader) === APP_SUBDOMAIN;
 }
 
 export function getTenantSlugFromHost(

@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getTenantSlugFromHost } from "@/lib/tenancy/domain";
 
 type RouteProps = {
   params: Promise<{
@@ -9,7 +10,7 @@ type RouteProps = {
 };
 
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   { params }: RouteProps,
 ) {
   const { token } = await params;
@@ -49,6 +50,31 @@ export async function GET(
       { success: false, message: "Order not found." },
       { status: 404 },
     );
+  }
+
+  const requestTenantSlug = getTenantSlugFromHost(
+    request.headers.get("x-forwarded-host") ??
+      request.headers.get("host"),
+  );
+
+  if (requestTenantSlug) {
+    const { data: tenantBusiness, error: tenantError } =
+      await supabaseAdmin
+        .from("businesses")
+        .select("id")
+        .eq("slug", requestTenantSlug)
+        .maybeSingle();
+
+    if (
+      tenantError ||
+      !tenantBusiness ||
+      tenantBusiness.id !== data.business_id
+    ) {
+      return NextResponse.json(
+        { success: false, message: "Order not found." },
+        { status: 404 },
+      );
+    }
   }
 
   const { business_id, ...publicOrder } = data;

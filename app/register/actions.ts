@@ -6,19 +6,12 @@ import {
 } from "@/lib/business/business-mode-presets";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import {
-  getRootUrl,
-  getTenantDashboardUrl,
-  isValidTenantSlug,
-  normalizeTenantSlug,
-} from "@/lib/tenancy/domain";
-import {
-  checkTrialRegistrationEligibility,
-  recordTrialSignupEvent,
-} from "@/lib/subscriptions/trial-protection";
+import { getAppUrl } from "@/lib/tenancy/domain";
+import { getStoreSlugAvailability } from "@/lib/tenancy/store-slug-availability";
 
 import type { RegisterBusinessState } from "./state";
 
+const SELF_REGISTRATION_MONTHS = 1;
 
 function requiredText(
   formData: FormData,
@@ -96,7 +89,9 @@ export async function registerOwnerBusiness(
       formData,
       "subdomain",
     );
-    const slug = normalizeTenantSlug(requestedSlug);
+    const slugAvailability =
+      await getStoreSlugAvailability(requestedSlug);
+    const slug = slugAvailability.slug;
 
     if (businessName.length < 2 || businessName.length > 100) {
       return {
@@ -119,18 +114,6 @@ export async function registerOwnerBusiness(
       };
     }
 
-    const trialDecision =
-      await checkTrialRegistrationEligibility(email);
-
-    if (!trialDecision.allowed) {
-      return {
-        success: false,
-        message:
-          trialDecision.message ??
-          "This account is not eligible for a free trial.",
-      };
-    }
-
     if (password.length < 8) {
       return {
         success: false,
@@ -146,9 +129,8 @@ export async function registerOwnerBusiness(
     }
 
     if (
-      !isValidTenantSlug(slug) ||
-      slug.length > 40 ||
-      slug !== requestedSlug.toLowerCase()
+      slugAvailability.status === "invalid" ||
+      slugAvailability.status === "reserved"
     ) {
       return {
         success: false,
@@ -157,22 +139,7 @@ export async function registerOwnerBusiness(
       };
     }
 
-    const {
-      data: existingSlug,
-      error: slugError,
-    } = await supabaseAdmin
-      .from("businesses")
-      .select("id")
-      .ilike("slug", slug)
-      .maybeSingle();
-
-    if (slugError) {
-      throw new Error(
-        `Unable to check store address: ${slugError.message}`,
-      );
-    }
-
-    if (existingSlug) {
+    if (slugAvailability.status === "already_taken") {
       return {
         success: false,
         message: "This TENH POS store address is already in use.",
@@ -207,7 +174,7 @@ export async function registerOwnerBusiness(
         email,
         password,
         options: {
-          emailRedirectTo: getRootUrl("/auth/continue"),
+          emailRedirectTo: getAppUrl("/auth/continue"),
           data: {
             full_name: ownerName,
             business_name: businessName,
@@ -238,6 +205,15 @@ export async function registerOwnerBusiness(
 
     createdAuthUserId = authData.user.id;
 
+    const subscriptionStartedAt = new Date();
+    const subscriptionExpiresAt = new Date(
+      subscriptionStartedAt,
+    );
+    subscriptionExpiresAt.setMonth(
+      subscriptionExpiresAt.getMonth() +
+        SELF_REGISTRATION_MONTHS,
+    );
+
     const {
       data: business,
       error: businessError,
@@ -248,15 +224,13 @@ export async function registerOwnerBusiness(
         slug,
         owner_id: createdAuthUserId,
         product_mode: preset.productMode,
-        max_staff: 1,
-        subscription_months: 0,
-        subscription_started_at: null,
-        subscription_expires_at: null,
-        subscription_status: "trial_pending",
-        trial_started_at: null,
-        trial_expires_at: null,
-        trial_signup_fingerprint_hash:
-          trialDecision.fingerprintHash,
+        max_staff: 3,
+        subscription_months:
+          SELF_REGISTRATION_MONTHS,
+        subscription_started_at:
+          subscriptionStartedAt.toISOString(),
+        subscription_expires_at:
+          subscriptionExpiresAt.toISOString(),
         is_active: true,
         disabled_at: null,
         disabled_reason: null,
@@ -265,6 +239,12 @@ export async function registerOwnerBusiness(
       .single();
 
     if (businessError || !business) {
+      if (businessError?.code === "23505") {
+        throw new Error(
+          "This TENH POS store address is already in use.",
+        );
+      }
+
       throw new Error(
         businessError?.message ??
           "Unable to create your business workspace.",
@@ -334,22 +314,34 @@ export async function registerOwnerBusiness(
       );
     }
 
-    await recordTrialSignupEvent({
-      ...trialDecision,
-      businessId: createdBusinessId,
-    });
+    const { error: historyError } =
+      await supabaseAdmin
+        .from("subscription_history")
+        .insert({
+          business_id: createdBusinessId,
+          action: "created",
+          months: SELF_REGISTRATION_MONTHS,
+          previous_expiry: null,
+          new_expiry:
+            subscriptionExpiresAt.toISOString(),
+          reason: "Owner self-registration",
+          created_by: createdAuthUserId,
+        });
+
+    if (historyError) {
+      throw new Error(
+        `Unable to create subscription history: ${historyError.message}`,
+      );
+    }
 
     return {
       success: true,
       message: authData.session
-        ? "Your TENH POS store is ready. Your 7-day free trial starts with this verified sign-in."
-        : "Your store has been created. Confirm your email, then sign in to start your 7-day free trial.",
+        ? "Your TENH POS store is ready."
+        : "Your store has been created. Check your email to confirm your account, then sign in.",
       requiresEmailConfirmation: !authData.session,
       destination: authData.session
-        ? getTenantDashboardUrl(
-            slug,
-            "/dashboard",
-          )
+        ? getAppUrl("/dashboard")
         : null,
     };
   } catch (error) {

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeTenantSlug } from "@/lib/tenancy/domain";
+import {
+  getTenantSlugFromHost,
+  normalizeTenantSlug,
+} from "@/lib/tenancy/domain";
 
 type RouteProps = {
   params: Promise<{
@@ -45,6 +48,21 @@ export async function POST(
     const slug = normalizeTenantSlug(rawSlug);
 
     if (!slug) {
+      return NextResponse.json(
+        { success: false, message: "Store not found." },
+        { status: 404 },
+      );
+    }
+
+    const requestTenantSlug = getTenantSlugFromHost(
+      request.headers.get("x-forwarded-host") ??
+        request.headers.get("host"),
+    );
+
+    // A public tenant hostname may only operate on its own store slug.
+    // The slug locates the business; every database operation still scopes
+    // data by the resolved business UUID/business_id.
+    if (requestTenantSlug && requestTenantSlug !== slug) {
       return NextResponse.json(
         { success: false, message: "Store not found." },
         { status: 404 },

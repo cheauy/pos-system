@@ -3,8 +3,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import {
   getAdminUrl,
-  getRootUrl,
-  getTenantDashboardUrl,
+  getAppUrl,
 } from "@/lib/tenancy/domain";
 
 export async function getAccountDestination(
@@ -28,7 +27,7 @@ export async function getAccountDestination(
   }
 
   if (!profile || profile.is_active !== true) {
-    return getRootUrl("/login");
+    return getAppUrl("/login");
   }
 
   if (profile.role === "super_admin") {
@@ -53,41 +52,10 @@ export async function getAccountDestination(
   }
 
   if (!membership) {
-    return getRootUrl("/no-business");
+    return getAppUrl("/no-business");
   }
 
-  const {
-    data: business,
-    error: businessError,
-  } = await supabase
-    .from("businesses")
-    .select("slug,subscription_expires_at,subscription_status")
-    .eq("id", membership.business_id)
-    .maybeSingle();
-
-  if (businessError) {
-    throw new Error(
-      `Unable to load business destination: ${businessError.message}`,
-    );
-  }
-
-  if (!business?.slug) {
-    return getRootUrl("/no-business");
-  }
-
-  const expiresAt = business.subscription_expires_at
-    ? new Date(business.subscription_expires_at).getTime()
-    : Number.NaN;
-  const subscriptionLocked =
-    business.subscription_status === "trial_blocked" ||
-    (business.subscription_status === "expired" &&
-      (!Number.isFinite(expiresAt) || expiresAt <= Date.now())) ||
-    (Number.isFinite(expiresAt) && expiresAt <= Date.now());
-
-  return getTenantDashboardUrl(
-    business.slug,
-    subscriptionLocked
-      ? "/dashboard/settings/subscription"
-      : "/dashboard",
-  );
+  // The admin application is centralized. The membership's business_id UUID,
+  // not the public store slug, remains the tenant identity for authorization.
+  return getAppUrl("/dashboard");
 }

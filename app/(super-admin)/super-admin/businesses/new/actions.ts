@@ -5,11 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireSuperAdmin } from "@/lib/auth/require-super-admin";
 import type { ProductMode } from "@/lib/business/types";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import {
-  getSubdomainUrl,
-  isValidTenantSlug,
-  normalizeTenantSlug,
-} from "@/lib/tenancy/domain";
+import { getSubdomainUrl } from "@/lib/tenancy/domain";
+import { getStoreSlugAvailability } from "@/lib/tenancy/store-slug-availability";
 
 import type { CreateBusinessState } from "./state";
 
@@ -92,14 +89,13 @@ export async function createCustomerBusiness(
       "subdomain",
     );
 
-    const subdomain = normalizeTenantSlug(
-      requestedSubdomain,
-    );
+    const availability =
+      await getStoreSlugAvailability(requestedSubdomain);
+    const subdomain = availability.slug;
 
     if (
-      !isValidTenantSlug(subdomain) ||
-      subdomain.length > 40 ||
-      subdomain !== requestedSubdomain.toLowerCase()
+      availability.status === "invalid" ||
+      availability.status === "reserved"
     ) {
       return {
         success: false,
@@ -108,26 +104,11 @@ export async function createCustomerBusiness(
       };
     }
 
-    const {
-      data: existingBusinessSlug,
-      error: slugError,
-    } = await supabaseAdmin
-      .from("businesses")
-      .select("id")
-      .ilike("slug", subdomain)
-      .maybeSingle();
-
-    if (slugError) {
-      throw new Error(
-        `Unable to check store address: ${slugError.message}`,
-      );
-    }
-
-    if (existingBusinessSlug) {
+    if (availability.status === "already_taken") {
       return {
         success: false,
         message:
-          "This Tenh POS store address is already in use. Choose another address.",
+          "This TENH POS store address is already in use. Choose another address.",
       };
     }
 
@@ -289,6 +270,12 @@ export async function createCustomerBusiness(
       .single();
 
     if (businessError || !business) {
+      if (businessError?.code === "23505") {
+        throw new Error(
+          "This TENH POS store address is already in use. Choose another address.",
+        );
+      }
+
       throw new Error(
         businessError?.message ??
           "Unable to create the business.",
