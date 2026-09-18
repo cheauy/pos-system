@@ -409,33 +409,17 @@ export default function Home() {
 }
 
 function TenhLogo({ compact = false }: { compact?: boolean }) {
-  const sizeClass = compact ? "h-10 w-10" : "h-12 w-12";
+  const size = compact ? 40 : 48;
 
   return (
-    <div className={`${sizeClass} flex shrink-0 items-center justify-center rounded-[15px] bg-white shadow-lg shadow-blue-100 ring-1 ring-slate-200`}>
-      <svg
-        viewBox="0 0 64 64"
-        aria-hidden="true"
-        className="h-[84%] w-[84%]"
-        fill="none"
-      >
-        <defs>
-          <linearGradient id="tenh-g1" x1="10" y1="8" x2="48" y2="56" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="#20C8FF" />
-            <stop offset="0.35" stopColor="#2563EB" />
-            <stop offset="0.66" stopColor="#7C3AED" />
-            <stop offset="1" stopColor="#F97316" />
-          </linearGradient>
-          <linearGradient id="tenh-g2" x1="12" y1="16" x2="42" y2="52" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="#FDE047" />
-            <stop offset="1" stopColor="#EF4444" />
-          </linearGradient>
-        </defs>
-        <path d="M13 15.5C13 11.91 15.91 9 19.5 9H45.5C49.09 9 52 11.91 52 15.5C52 19.09 49.09 22 45.5 22H36V47.5C36 52.19 32.19 56 27.5 56C22.81 56 19 52.19 19 47.5V22H19.5C15.91 22 13 19.09 13 15.5Z" fill="url(#tenh-g1)" />
-        <path d="M18 16C18 13.79 19.79 12 22 12H45C47.21 12 49 13.79 49 16C49 18.21 47.21 20 45 20H33V47C33 49.76 30.76 52 28 52C25.24 52 23 49.76 23 47V20H22C19.79 20 18 18.21 18 16Z" fill="url(#tenh-g2)" fillOpacity="0.88" />
-        <path d="M14 15.5C14 12.46 16.46 10 19.5 10H44.5" stroke="#0EA5E9" strokeWidth="2.5" strokeLinecap="round" />
-      </svg>
-    </div>
+    <Image
+      src="/tenh-pos-logo.png"
+      alt="TENH POS"
+      width={size}
+      height={size}
+      priority={!compact}
+      className="shrink-0 object-contain"
+    />
   );
 }
 
