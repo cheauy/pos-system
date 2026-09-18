@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -35,11 +34,7 @@ import {
   getRootDomain,
   isLocalRootDomain,
 } from "@/lib/tenancy/domain";
-import {
-  subscriptionPlans,
-  subscriptionTerms,
-  type SubscriptionPlanKey,
-} from "@/lib/subscriptions/plans";
+import PricingSection from "./pricing-section";
 
 const productFeatures = [
   {
@@ -175,12 +170,6 @@ const businessModes = [
   },
 ];
 
-const marketingPlanOrder: SubscriptionPlanKey[] = [
-  "solo",
-  "small_team",
-  "growth",
-  "custom",
-];
 
 export default function Home() {
   const signInUrl = getAppUrl("/login");
@@ -408,123 +397,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="pricing" className="border-y border-slate-200/80 bg-white py-20 lg:py-28">
-        <div className="mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <SectionHeading
-              eyebrow="Simple pricing"
-              title="Choose the plan that fits your team."
-              text="Start small and upgrade as your business grows. Every paid plan keeps your TENH POS admin workspace and public TENH storefront connected to the same business."
-            />
-
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm leading-6 text-slate-600">
-              <div className="font-extrabold text-slate-900">Save on longer terms</div>
-              <div className="mt-1">
-                {subscriptionTerms
-                  .filter((term) => term.discountPercent > 0)
-                  .map((term) => `${term.label}: ${term.discountPercent}% off`)
-                  .join(" · ")}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-12 grid gap-5 lg:grid-cols-2 xl:grid-cols-4">
-            {marketingPlanOrder.map((planKey) => {
-              const plan = subscriptionPlans[planKey];
-              const featured = planKey === "growth";
-              const price =
-                plan.monthlyPrice === null
-                  ? "Custom"
-                  : `$${plan.monthlyPrice}`;
-
-              return (
-                <div
-                  key={plan.key}
-                  className={`relative flex h-full flex-col rounded-[30px] border p-6 shadow-sm ${
-                    featured
-                      ? "border-blue-300 bg-gradient-to-b from-blue-50 to-white shadow-xl shadow-blue-100/70"
-                      : "border-slate-200 bg-white"
-                  }`}
-                >
-                  {plan.badge ? (
-                    <div
-                      className={`absolute right-5 top-5 rounded-full px-3 py-1 text-xs font-extrabold ${
-                        featured
-                          ? "bg-blue-600 text-white"
-                          : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {plan.badge}
-                    </div>
-                  ) : null}
-
-                  <div className="pr-20">
-                    <h3 className="text-xl font-black tracking-tight text-slate-950">
-                      {plan.name}
-                    </h3>
-                    <p className="mt-2 min-h-12 text-sm leading-6 text-slate-500">
-                      {plan.description}
-                    </p>
-                  </div>
-
-                  <div className="mt-7 flex items-end gap-1">
-                    <span className="text-4xl font-black tracking-[-0.04em] text-slate-950">
-                      {price}
-                    </span>
-                    {plan.monthlyPrice !== null ? (
-                      <span className="pb-1 text-sm font-semibold text-slate-500">
-                        / month
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-6 space-y-3 border-t border-slate-100 pt-6 text-sm text-slate-600">
-                    <PricingFeature>
-                      {plan.userLimit === null
-                        ? "11+ users"
-                        : `${plan.userLimit} ${plan.userLimit === 1 ? "user" : "users"}`}
-                    </PricingFeature>
-                    <PricingFeature>
-                      {plan.teamEnabled ? "Team access included" : "Built for one owner"}
-                    </PricingFeature>
-                    <PricingFeature>POS + public online store</PricingFeature>
-                    <PricingFeature>QR ordering and inventory</PricingFeature>
-                    <PricingFeature>All 11 TENH business modes</PricingFeature>
-                    {plan.freeUrlChangesPerMonth > 0 ? (
-                      <PricingFeature>
-                        {plan.freeUrlChangesPerMonth} free Store URL changes / month
-                      </PricingFeature>
-                    ) : null}
-                    {plan.freeBusinessModeChangesPerMonth > 0 ? (
-                      <PricingFeature>
-                        {plan.freeBusinessModeChangesPerMonth} free business-mode changes / month
-                      </PricingFeature>
-                    ) : null}
-                  </div>
-
-                  <Link
-                    href={createStoreUrl}
-                    className={`mt-7 inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-sm font-extrabold transition hover:-translate-y-0.5 ${
-                      featured
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-200 hover:bg-blue-700"
-                        : "border border-slate-300 bg-white text-slate-800 hover:border-blue-300 hover:text-blue-700"
-                    }`}
-                  >
-                    Create store
-                    <ArrowRight size={17} />
-                  </Link>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="mt-8 rounded-[28px] border border-slate-200 bg-slate-50/80 p-6 text-center">
-            <p className="text-sm leading-6 text-slate-600">
-              Plans are billed by the selected subscription term. TENH POS currently supports 1-month, 3-month, 6-month and 12-month terms.
-            </p>
-          </div>
-        </div>
-      </section>
+      <PricingSection createStoreUrl={createStoreUrl} />
 
       <section id="resources" className="border-t border-slate-200 bg-white py-20">
         <div className="mx-auto grid max-w-[1400px] gap-10 px-5 sm:px-8 lg:grid-cols-[1fr_auto] lg:px-12">
@@ -670,17 +543,6 @@ function ModeCard({
       </div>
       <h3 className="mt-5 text-lg font-extrabold text-slate-950">{title}</h3>
       <p className="mt-3 text-sm leading-6 text-slate-600">{text}</p>
-    </div>
-  );
-}
-
-function PricingFeature({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex items-start gap-2.5">
-      <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-        <Check size={13} strokeWidth={3} />
-      </div>
-      <span>{children}</span>
     </div>
   );
 }
