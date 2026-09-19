@@ -322,11 +322,17 @@ export async function updateBusinessMode(formData: FormData) {
   });
 }
 
-export async function submitBusinessChangePaymentReference(formData: FormData) {
+export type BusinessChangePaymentResult = {
+  success: boolean;
+  message: string;
+  field?: "paymentReference" | "paymentNote" | "paymentProof";
+};
+
+export async function submitBusinessChangePaymentReference(formData: FormData): Promise<BusinessChangePaymentResult> {
   const business = await requirePermission("business.update");
 
   if (business.role !== "owner") {
-    throw new Error("Only the business owner can submit payment details.");
+    return { success: false, message: "Only the business owner can submit payment details." };
   }
 
   const orderId = formData.get("orderId");
@@ -337,7 +343,7 @@ export async function submitBusinessChangePaymentReference(formData: FormData) {
     proofValue instanceof File && proofValue.size > 0 ? proofValue : null;
 
   if (typeof orderId !== "string" || !orderId) {
-    throw new Error("Change order is required.");
+    return { success: false, message: "Change order is required." };
   }
 
   if (
@@ -345,7 +351,7 @@ export async function submitBusinessChangePaymentReference(formData: FormData) {
     paymentReference.trim().length < 2 ||
     paymentReference.trim().length > 120
   ) {
-    throw new Error("Enter a valid payment / transaction reference.");
+    return { success: false, field: "paymentReference", message: "Enter a payment / transaction reference between 2 and 120 characters." };
   }
 
   if (
@@ -353,7 +359,7 @@ export async function submitBusinessChangePaymentReference(formData: FormData) {
     paymentNote.trim().length < 2 ||
     paymentNote.trim().length > 1000
   ) {
-    throw new Error("Add a payment note before submitting for review.");
+    return { success: false, field: "paymentNote", message: "Add a payment note between 2 and 1,000 characters before submitting for review." };
   }
 
   const { data: order, error: orderError } = await supabaseAdmin
@@ -364,19 +370,19 @@ export async function submitBusinessChangePaymentReference(formData: FormData) {
     .maybeSingle();
 
   if (orderError) {
-    throw new Error(`Unable to load the change order: ${orderError.message}`);
+    return { success: false, message: "Unable to load the change order. Please try again." };
   }
 
   if (!order) {
-    throw new Error("Change order was not found.");
+    return { success: false, message: "Change order was not found." };
   }
 
   if (!["pending_payment", "payment_submitted"].includes(order.status)) {
-    throw new Error("This change order is no longer waiting for payment.");
+    return { success: false, message: "This change order is no longer waiting for payment." };
   }
 
   if (!proofFile && !order.proof_path) {
-    throw new Error("Upload payment proof before submitting for review.");
+    return { success: false, field: "paymentProof", message: "Upload payment proof before submitting for review." };
   }
 
   let uploadedProofPath: string | null = null;
@@ -386,11 +392,11 @@ export async function submitBusinessChangePaymentReference(formData: FormData) {
 
   if (proofFile) {
     if (!ALLOWED_PROOF_TYPES.has(proofFile.type)) {
-      throw new Error("Payment proof must be a JPG, PNG, WEBP, or PDF file.");
+      return { success: false, field: "paymentProof", message: "Payment proof must be a JPG, PNG, WEBP, or PDF file." };
     }
 
     if (proofFile.size > MAX_PROOF_BYTES) {
-      throw new Error("Payment proof must be 10 MB or smaller.");
+      return { success: false, field: "paymentProof", message: "Payment proof must be 10 MB or smaller." };
     }
 
     uploadedProofFileName = safeProofFileName(proofFile.name);
@@ -413,7 +419,7 @@ export async function submitBusinessChangePaymentReference(formData: FormData) {
       );
 
     if (uploadError) {
-      throw new Error(`Unable to upload payment proof: ${uploadError.message}`);
+      return { success: false, field: "paymentProof", message: "Unable to upload payment proof. Please try again." };
     }
   }
 
@@ -445,7 +451,7 @@ export async function submitBusinessChangePaymentReference(formData: FormData) {
         .from(BUSINESS_CHANGE_PROOF_BUCKET)
         .remove([uploadedProofPath]);
     }
-    throw new Error(`Unable to submit payment details: ${error.message}`);
+    return { success: false, message: "Unable to submit payment details. Please try again." };
   }
 
   if (
@@ -483,4 +489,5 @@ export async function submitBusinessChangePaymentReference(formData: FormData) {
 
   revalidatePath(`/dashboard/settings/business/payment/${order.id}`);
   revalidatePath("/super-admin/manual-payments");
+  return { success: true, message: "Payment details submitted for review. Your business mode will change after payment verification." };
 }

@@ -12,6 +12,7 @@ import ProductList from "@/components/product-list";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
 import { createClient } from "@/lib/supabase/server";
+import AddClothingStyleModal from "./add-clothing-style-modal";
 import ConfigurableProductForm from "./configurable-product-form";
 import StandardProductForm from "./standard-product-form";
 import VariantProductForm from "./variant-product-form";
@@ -132,6 +133,7 @@ export default async function ProductsPage() {
 
   const isFashion = businessType === "fashion";
   const isShoes = businessType === "shoes";
+  const useFashionCreateModal = variantMode && isFashion;
 
   const formMeta = variantMode
     ? {
@@ -163,8 +165,31 @@ export default async function ProductsPage() {
         };
 
   return (
-    <main className="min-w-0">
-      <div className="grid items-start gap-4 xl:grid-cols-[400px_minmax(0,1fr)]">
+    <main className="min-w-0 space-y-5">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950">Products</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Manage products, variants, pricing and inventory.
+          </p>
+        </div>
+
+        {useFashionCreateModal && (
+          <AddClothingStyleModal
+            categories={categories}
+            businessType={businessType}
+          />
+        )}
+      </header>
+
+      <div
+        className={
+          useFashionCreateModal
+            ? "grid items-start gap-4"
+            : "grid items-start gap-4 xl:grid-cols-[400px_minmax(0,1fr)]"
+        }
+      >
+        {!useFashionCreateModal && (
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-4">
             <div className="flex min-w-0 items-start gap-3">
@@ -199,6 +224,7 @@ export default async function ProductsPage() {
             )}
           </div>
         </section>
+        )}
 
         <div className="min-w-0 space-y-4">
           <section className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">

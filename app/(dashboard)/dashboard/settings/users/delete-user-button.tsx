@@ -81,7 +81,7 @@ export default function DeleteUserButton({
         setConfirmation("");
         setMessage("");
         setSuccessMessage(
-          `${userName} was deleted successfully.`,
+          `${userName} was removed from this business.`,
         );
       } catch (error) {
         setMessage(
@@ -101,7 +101,7 @@ export default function DeleteUserButton({
         className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
       >
         <Trash2 size={16} />
-        Delete
+        Remove
       </button>
 {successMessage && (
   <div className="fixed bottom-6 left-1/2 z-[120] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 shadow-lg">
@@ -148,21 +148,18 @@ export default function DeleteUserButton({
             </div>
 
             <h2 className="mt-5 text-xl font-bold text-slate-900">
-              Delete user?
+              Remove user?
             </h2>
 
             <p className="mt-2 text-sm leading-6 text-slate-600">
               This will remove{" "}
               <strong>{userName}</strong>{" "}
-              from this business and disable their Tenh POS login.
-              Historical POS records are kept.
+              from this business immediately. Their TENH account is not destroyed, so it remains safe if they belong to another business. Historical POS records are kept.
             </p>
 
             <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4">
               <p className="text-sm text-red-700">
-                The Auth account is soft-deleted so historical
-                orders and audit records can safely keep their
-                original user reference.
+                This removes only this business membership. If this is their only TENH POS business, their next login will show that access was removed.
               </p>
             </div>
 
@@ -227,8 +224,8 @@ export default function DeleteUserButton({
                 )}
 
                 {isPending
-                  ? "Deleting..."
-                  : "Delete User"}
+                  ? "Removing..."
+                  : "Remove User"}
               </button>
             </div>
           </div>

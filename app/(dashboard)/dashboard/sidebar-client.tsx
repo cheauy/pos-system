@@ -29,6 +29,7 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
+  Megaphone,
   Menu,
   Package,
   PackagePlus,
@@ -101,6 +102,7 @@ const menuGroups: MenuGroup[] = [
       { name: "Online Orders", href: "/dashboard/online-orders", icon: ShoppingBag },
       { name: "Online Store", href: "/dashboard/online-store", icon: Store },
       { name: "Promotions & Loyalty", href: "/dashboard/promotions", icon: BadgePercent },
+      { name: "Marketing", href: "/dashboard/marketing", icon: Megaphone },
       { name: "Returns", href: "/dashboard/returns", icon: RotateCcw },
       { name: "Customers", href: "/dashboard/customers", icon: Users },
     ],
@@ -112,7 +114,6 @@ const menuGroups: MenuGroup[] = [
       { name: "Inventory", href: "/dashboard/inventory", icon: Boxes },
       { name: "Stock Transfers", href: "/dashboard/stock-transfers", icon: ArrowRightLeft },
       { name: "Barcode & Labels", href: "/dashboard/barcodes", icon: Barcode },
-      { name: "Low Stock", href: "/dashboard/low-stock", icon: TriangleAlert },
       { name: "Products", href: "/dashboard/products", icon: Package },
       { name: "Categories", href: "/dashboard/categories", icon: Tags },
     ],
@@ -123,6 +124,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { name: "All Suppliers", href: "/dashboard/suppliers", icon: Truck },
       { name: "Purchase Orders", href: "/dashboard/purchase-orders", icon: PackagePlus },
+      { name: "Low Stock", href: "/dashboard/low-stock", icon: TriangleAlert },
     ],
   },
   {

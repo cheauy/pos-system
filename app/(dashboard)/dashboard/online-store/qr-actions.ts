@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { supportsDineIn } from "@/lib/storefront/profile";
 
 export type TableActionState = {
   success: boolean;
@@ -24,6 +25,11 @@ export async function createBusinessTable(
   try {
     const business = await requirePermission("storefront.update");
     const name = getText(formData, "name");
+    const { data: settings, error: settingsError } = await supabaseAdmin.from("business_storefronts")
+      .select("business_type, allow_dine_in").eq("business_id", business.id).single();
+    if (settingsError || !settings || !supportsDineIn(settings.business_type) || !settings.allow_dine_in) {
+      throw new Error("Table QR codes require a food-service store with dine-in enabled.");
+    }
 
     if (name.length < 1 || name.length > 60) {
       throw new Error("Table name must contain 1–60 characters.");
@@ -54,6 +60,7 @@ export async function createBusinessTable(
     });
 
     revalidatePath("/dashboard/online-store");
+    revalidatePath("/dashboard/online-store/ordering");
 
     return {
       success: true,
@@ -99,6 +106,7 @@ export async function regenerateBusinessTableToken(formData: FormData) {
   });
 
   revalidatePath("/dashboard/online-store");
+    revalidatePath("/dashboard/online-store/ordering");
 }
 
 export async function deleteBusinessTable(formData: FormData) {
@@ -135,4 +143,5 @@ export async function deleteBusinessTable(formData: FormData) {
   });
 
   revalidatePath("/dashboard/online-store");
+    revalidatePath("/dashboard/online-store/ordering");
 }

@@ -147,7 +147,22 @@ async function loadContext() {
     member = (memberData ?? null) as BusinessMember | null;
 
     if (!member) {
-      redirect(getAppUrl("/auth/continue"));
+      const { data: inactiveMember } = await supabaseAdmin
+        .from("business_members")
+        .select("disabled_reason")
+        .eq("user_id", user.id)
+        .eq("business_id", business.id)
+        .eq("is_active", false)
+        .maybeSingle();
+
+      const reason =
+        inactiveMember?.disabled_reason === "removed_by_owner"
+          ? "access_removed"
+          : inactiveMember?.disabled_reason === "subscription_seat_limit"
+            ? "seat_limit"
+            : "access_disabled";
+
+      redirect(getAppUrl(`/business-disabled?reason=${reason}`));
     }
   } else {
     // app.tenh-pos.com has no tenant slug in its hostname. Keep the selected
@@ -204,6 +219,33 @@ async function loadContext() {
       member = (memberData ?? null) as BusinessMember | null;
 
       if (!member) {
+        const { data: inactiveMember, error: inactiveMemberError } =
+          await supabaseAdmin
+            .from("business_members")
+            .select("disabled_reason")
+            .eq("user_id", user.id)
+            .eq("is_active", false)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (inactiveMemberError) {
+          throw new Error(
+            `Unable to check previous business access: ${inactiveMemberError.message}`,
+          );
+        }
+
+        if (inactiveMember) {
+          const reason =
+            inactiveMember.disabled_reason === "removed_by_owner"
+              ? "access_removed"
+              : inactiveMember.disabled_reason === "subscription_seat_limit"
+                ? "seat_limit"
+                : "access_disabled";
+
+          redirect(getAppUrl(`/business-disabled?reason=${reason}`));
+        }
+
         redirect(getAppUrl("/no-business"));
       }
 
@@ -225,11 +267,13 @@ async function loadContext() {
 async function refreshSubscriptionState(
   business: Business,
   role: BusinessRole,
+  options: { startTrial?: boolean } = {},
 ) {
   const supabase = await createClient();
   let current = business;
 
   if (
+    options.startTrial === true &&
     current.subscription_status === "trial_pending" &&
     role === "owner"
   ) {
@@ -360,26 +404,29 @@ function toAccess(
   };
 }
 
-export async function getCurrentBusinessForSubscription(): Promise<CurrentBusinessAccess> {
+export async function getCurrentBusinessForSubscription(
+  options: { startTrial?: boolean } = {},
+): Promise<CurrentBusinessAccess> {
   const { member, business } = await loadContext();
 
   const legacySubscriptionExpiry =
     business.disabled_reason === "subscription_expired";
 
   if (!business.is_active && !legacySubscriptionExpiry) {
-    redirect("/business-disabled");
+    redirect("/business-disabled?reason=business_disabled");
   }
 
   const current = await refreshSubscriptionState(
     business,
     member.role,
+    options,
   );
 
   return toAccess(current, member.role);
 }
 
 export async function getCurrentBusiness(): Promise<CurrentBusiness> {
-  const business = await getCurrentBusinessForSubscription();
+  const business = await getCurrentBusinessForSubscription({ startTrial: false });
 
   if (business.subscriptionLocked) {
     redirect("/dashboard/settings/subscription?locked=1");

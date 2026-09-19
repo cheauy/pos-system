@@ -41,7 +41,7 @@ type RunImageSlot = {
   locked: boolean;
 };
 
-function createRunImageSlot(id: string): RunImageSlot {
+function createRunImageSlot(id = crypto.randomUUID()): RunImageSlot {
   return { id, preview: null, name: "", locked: false };
 }
 
@@ -63,8 +63,8 @@ const fashionSizeRuns = [
 ];
 
 function createVariant(
-  id: string,
   overrides: Partial<Omit<VariantRow, "id">> = {},
+  id = crypto.randomUUID(),
 ): VariantRow {
   return {
     id,
@@ -92,19 +92,19 @@ function skuPart(value: string) {
 export default function VariantProductForm({
   categories,
   businessType = "general",
+  onCreated,
 }: {
   categories: Category[];
   businessType?: string;
+  onCreated?: () => void;
 }) {
   const isShoes = businessType === "shoes";
   const isFashion = businessType === "fashion";
   const isSpecialVariant = isShoes || isFashion;
   const formRef = useRef<HTMLFormElement>(null);
-  const variantCounterRef = useRef(1);
-  const runSlotCounterRef = useRef(1);
   const [state, formAction, pending] = useActionState(createVariantProduct, initialState);
   const [productName, setProductName] = useState("");
-  const [variants, setVariants] = useState<VariantRow[]>(() => [createVariant("variant-0")]);
+  const [variants, setVariants] = useState<VariantRow[]>([createVariant({}, "initial-variant")]);
   const [quickColor, setQuickColor] = useState("Black");
   const [quickSkuPrefix, setQuickSkuPrefix] = useState("");
   const [quickCost, setQuickCost] = useState("0");
@@ -112,22 +112,10 @@ export default function VariantProductForm({
   const [quickStock, setQuickStock] = useState("0");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageName, setImageName] = useState("");
-  const [runImageSlots, setRunImageSlots] = useState<RunImageSlot[]>(() => [createRunImageSlot("run-0")]);
+  const [runImageSlots, setRunImageSlots] = useState<RunImageSlot[]>(() => [createRunImageSlot("initial-run")]);
 
   const activeRunImageSlot =
     runImageSlots.find((slot) => !slot.locked) ?? runImageSlots[runImageSlots.length - 1];
-
-  function nextVariantId() {
-    const id = `variant-${variantCounterRef.current}`;
-    variantCounterRef.current += 1;
-    return id;
-  }
-
-  function nextRunSlot() {
-    const id = `run-${runSlotCounterRef.current}`;
-    runSlotCounterRef.current += 1;
-    return createRunImageSlot(id);
-  }
 
   useEffect(() => {
     return () => {
@@ -141,9 +129,7 @@ export default function VariantProductForm({
       toast.success(state.message);
       formRef.current?.reset();
       setProductName("");
-      variantCounterRef.current = 1;
-      runSlotCounterRef.current = 1;
-      setVariants([createVariant("variant-0")]);
+      setVariants([createVariant()]);
       setQuickColor("Black");
       setQuickSkuPrefix("");
       setQuickCost("0");
@@ -154,11 +140,12 @@ export default function VariantProductForm({
       for (const slot of runImageSlots) {
         if (slot.preview) URL.revokeObjectURL(slot.preview);
       }
-      setRunImageSlots([createRunImageSlot("run-0")]);
+      setRunImageSlots([createRunImageSlot()]);
+      onCreated?.();
     } else {
       toast.error(state.message);
     }
-  }, [state]);
+  }, [state, onCreated]);
 
   const totalStock = useMemo(
     () => variants.reduce((total, variant) => total + Number(variant.stockQuantity || 0), 0),
@@ -205,7 +192,7 @@ export default function VariantProductForm({
     const generated = sizes
       .filter((size) => !existingKeys.has(`${color.toLowerCase()}|${size.toLowerCase()}`))
       .map((size) =>
-        createVariant(nextVariantId(), {
+        createVariant({
           size,
           color,
           sku: `${base}-${colorCode}-${size}`,
@@ -231,7 +218,7 @@ export default function VariantProductForm({
         ...current.map((slot) =>
           slot.id === runImageSlotId ? { ...slot, locked: true } : slot,
         ),
-        nextRunSlot(),
+        createRunImageSlot(),
       ]);
     }
   }
@@ -418,18 +405,24 @@ export default function VariantProductForm({
             <MiniField label="Cost price" value={quickCost} type="number" min="0" step="0.01" onChange={setQuickCost} />
             <MiniField label="Selling price" value={quickPrice} type="number" min="0" step="0.01" onChange={setQuickPrice} />
             <MiniField label="Initial stock per size" value={quickStock} type="number" min="0" onChange={setQuickStock} />
-            <label htmlFor={activeRunImageSlot ? `run-image-${activeRunImageSlot.id}` : undefined} className="block">
-              <span className="mb-1 block text-[10px] font-semibold text-slate-600">Colour image (optional)</span>
+            <label
+              htmlFor={activeRunImageSlot ? `run-image-${activeRunImageSlot.id}` : undefined}
+              className="block min-w-0"
+            >
+              <span className="mb-1 flex items-center gap-1.5 whitespace-nowrap text-[10px] font-semibold text-slate-600">
+                Colour image
+                <span className="font-medium text-slate-400">Optional</span>
+              </span>
               <span className="flex h-9 cursor-pointer items-center gap-2 overflow-hidden rounded-lg border border-blue-200 bg-white px-2 text-[11px] font-semibold text-slate-600 hover:bg-blue-50">
                 {activeRunImageSlot?.preview ? (
                   <>
-                    <img src={activeRunImageSlot.preview} alt="Colour run" className="h-6 w-6 rounded object-cover" />
+                    <img src={activeRunImageSlot.preview} alt="Colour run" className="h-6 w-6 shrink-0 rounded object-cover" />
                     <span className="min-w-0 flex-1 truncate">{activeRunImageSlot.name || "Selected image"}</span>
                   </>
                 ) : (
                   <>
-                    <Upload size={13} className="text-blue-600" />
-                    <span>Image for all sizes in this run</span>
+                    <Upload size={13} className="shrink-0 text-blue-600" />
+                    <span className="min-w-0 flex-1 truncate whitespace-nowrap">Add run image</span>
                   </>
                 )}
               </span>
@@ -476,7 +469,7 @@ export default function VariantProductForm({
             )}
             <button
               type="button"
-              onClick={() => setVariants((current) => [...current, createVariant(nextVariantId())])}
+              onClick={() => setVariants((current) => [...current, createVariant()])}
               className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
             >
               <Plus size={14} /> {isSpecialVariant ? "Add Size" : "Add Variant"}
@@ -491,9 +484,10 @@ export default function VariantProductForm({
         )}
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[670px] text-xs">
+          <table className="w-full min-w-[730px] text-xs">
             <thead className="bg-white text-[10px] uppercase tracking-wide text-slate-400">
               <tr className="border-b border-slate-200">
+                <th className="w-14 px-2 py-2 text-left font-semibold">Image</th>
                 <th className="px-2 py-2 text-left font-semibold">Size</th>
                 <th className="px-2 py-2 text-left font-semibold">Colour</th>
                 <th className="px-2 py-2 text-left font-semibold">SKU</th>
@@ -507,7 +501,7 @@ export default function VariantProductForm({
             <tbody className="divide-y divide-slate-100">
               {variants.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center">
+                  <td colSpan={9} className="px-4 py-8 text-center">
                     <p className="text-xs font-semibold text-slate-600">No sizes or variants added</p>
                     <p className="mt-1 text-[11px] text-slate-400">Use Add Size or a quick size run to add inventory rows.</p>
                   </td>
@@ -518,6 +512,26 @@ export default function VariantProductForm({
                 const duplicate = duplicateCombinations.has(pairKey);
                 return (
                   <tr key={variant.id} className={duplicate ? "bg-amber-50" : "bg-white"}>
+                    <td className="w-14 px-2 py-2">
+                      {(() => {
+                        const runPreview = variant.imageSlot
+                          ? runImageSlots.find((slot) => slot.id === variant.imageSlot)?.preview ?? null
+                          : null;
+                        const preview = runPreview ?? imagePreview;
+
+                        return preview ? (
+                          <img
+                            src={preview}
+                            alt={`${variant.color || "Variant"} ${variant.size || "image"}`}
+                            className="h-8 w-8 rounded-md border border-slate-200 object-cover"
+                          />
+                        ) : (
+                          <span className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-300">
+                            <Shirt size={14} />
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <CellInput value={variant.size} placeholder={isShoes ? "41" : "M"} required={isSpecialVariant} onChange={(value) => updateVariant(variant.id, "size", value)} />
                     <CellInput value={variant.color} placeholder="Black" required={isSpecialVariant} onChange={(value) => updateVariant(variant.id, "color", value)} />
                     <CellInput value={variant.sku} placeholder="TEE01-BLK-M" required onChange={(value) => updateVariant(variant.id, "sku", value)} wide />

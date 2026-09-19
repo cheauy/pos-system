@@ -1,6 +1,168 @@
-import { ArrowRightLeft, PackageCheck } from "lucide-react";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
-import { addTransferItem,createTransfer,receiveTransfer,sendTransfer } from "./actions";
-export default async function StockTransfersPage(){const business=await requirePermission("transfers.manage"); const supabase=await createClient(); const [{data:locations},{data:products},{data:transfers}]=await Promise.all([supabase.from("business_locations").select("id,name").eq("business_id",business.id).eq("is_active",true).order("name"),supabase.from("products").select("id,name,sku,size,color").eq("business_id",business.id).eq("is_active",true).order("name").limit(500),supabase.from("stock_transfers").select("id,transfer_number,status,source_location_id,destination_location_id,note,created_at,stock_transfer_items(product_id,quantity)").eq("business_id",business.id).order("created_at",{ascending:false}).limit(100)]); const names=new Map((locations??[]).map(l=>[l.id,l.name])); const pnames=new Map((products??[]).map(p=>[p.id,[p.name,p.color,p.size].filter(Boolean).join(" · ")])); return <main className="space-y-6"><div><h1 className="text-3xl font-bold">Stock Transfers</h1><p className="mt-1 text-slate-500">Move exact product variants between branches with send/receive control.</p></div><section className="rounded-2xl border bg-white p-6 shadow-sm"><h2 className="flex items-center gap-2 text-xl font-semibold"><ArrowRightLeft/> New Transfer</h2><form action={createTransfer} className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5"><select name="sourceLocationId" required className={input}><option value="">From branch</option>{(locations??[]).map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select><select name="destinationLocationId" required className={input}><option value="">To branch</option>{(locations??[]).map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select><select name="productId" required className={input}><option value="">Product / variant</option>{(products??[]).map(p=><option key={p.id} value={p.id}>{[p.name,p.color,p.size,p.sku].filter(Boolean).join(" · ")}</option>)}</select><input name="quantity" type="number" min="1" step="1" required className={input} placeholder="Qty"/><button className={primary}>Create Draft</button></form></section><section className="space-y-3">{(transfers??[]).map(tr=><div key={tr.id} className="rounded-2xl border bg-white p-5 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="font-semibold">{tr.transfer_number} <span className="ml-2 rounded-full bg-slate-100 px-2 py-1 text-xs uppercase">{tr.status.replace("_"," ")}</span></div><div className="mt-1 text-sm text-slate-500">{names.get(tr.source_location_id)??"Source"} → {names.get(tr.destination_location_id)??"Destination"}</div>{(tr.stock_transfer_items??[]).map((i:any)=><div key={i.product_id} className="mt-2 text-sm">{pnames.get(i.product_id)??i.product_id} × {i.quantity}</div>)}</div><div className="flex flex-col gap-2 sm:flex-row">{tr.status==="draft"&&<form action={addTransferItem} className="flex gap-2"><input type="hidden" name="transferId" value={tr.id}/><select name="productId" required className={input}><option value="">Add product</option>{(products??[]).map(p=><option key={p.id} value={p.id}>{[p.name,p.color,p.size,p.sku].filter(Boolean).join(" · ")}</option>)}</select><input name="quantity" type="number" min="1" defaultValue="1" className="w-20 rounded-xl border border-slate-300 px-2 py-2 text-sm"/><button className={primary}>Add</button></form>}{tr.status==="draft"&&<form action={sendTransfer}><input type="hidden" name="transferId" value={tr.id}/><button className={primary}>Send</button></form>}{tr.status==="in_transit"&&<form action={receiveTransfer}><input type="hidden" name="transferId" value={tr.id}/><button className={primary}><PackageCheck size={16}/> Receive</button></form>}</div></div></div>)}</section></main>}
-const input="rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500"; const primary="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white";
+
+import StockTransfersClient, {
+  type TransferLocation,
+  type TransferLocationStock,
+  type TransferProduct,
+  type TransferRow,
+} from "./stock-transfers-client";
+
+type ProductRow = {
+  id: string;
+  name: string;
+  sku: string | null;
+  size: string | null;
+  color: string | null;
+  image_url: string | null;
+  stock_quantity: number;
+  category_id: string | null;
+};
+
+type CategoryRow = {
+  id: string;
+  name: string;
+};
+
+type TransferDbRow = {
+  id: string;
+  transfer_number: string;
+  status: string;
+  source_location_id: string;
+  destination_location_id: string;
+  note: string | null;
+  created_at: string;
+  created_by: string | null;
+  stock_transfer_items:
+    | { product_id: string; quantity: number }[]
+    | null;
+};
+
+export default async function StockTransfersPage() {
+  const business = await requirePermission("transfers.manage");
+  const supabase = await createClient();
+
+  const [
+    locationsResult,
+    productsResult,
+    categoriesResult,
+    transfersResult,
+    stockResult,
+  ] = await Promise.all([
+    supabase
+      .from("business_locations")
+      .select("id, name")
+      .eq("business_id", business.id)
+      .eq("is_active", true)
+      .order("name", { ascending: true }),
+    supabase
+      .from("products")
+      .select(
+        "id, name, sku, size, color, image_url, stock_quantity, category_id",
+      )
+      .eq("business_id", business.id)
+      .eq("is_active", true)
+      .order("name", { ascending: true })
+      .limit(500),
+    supabase
+      .from("categories")
+      .select("id, name")
+      .eq("business_id", business.id)
+      .order("name", { ascending: true }),
+    supabase
+      .from("stock_transfers")
+      .select(
+        "id, transfer_number, status, source_location_id, destination_location_id, note, created_at, created_by, stock_transfer_items(product_id, quantity)",
+      )
+      .eq("business_id", business.id)
+      .order("created_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("product_location_stock")
+      .select("location_id, product_id, quantity")
+      .eq("business_id", business.id),
+  ]);
+
+  if (locationsResult.error) {
+    throw new Error(
+      `Unable to load branches: ${locationsResult.error.message}`,
+    );
+  }
+
+  if (productsResult.error) {
+    throw new Error(
+      `Unable to load products: ${productsResult.error.message}`,
+    );
+  }
+
+  if (transfersResult.error) {
+    throw new Error(
+      `Unable to load stock transfers: ${transfersResult.error.message}`,
+    );
+  }
+
+  const locations: TransferLocation[] = (locationsResult.data ?? []).map(
+    (location) => ({
+      id: location.id,
+      name: location.name,
+    }),
+  );
+
+  const categoryMap = new Map(
+    ((categoriesResult.data ?? []) as CategoryRow[]).map((category) => [
+      category.id,
+      category.name,
+    ]),
+  );
+
+  const products: TransferProduct[] = (
+    (productsResult.data ?? []) as ProductRow[]
+  ).map((product) => ({
+    id: product.id,
+    name: product.name,
+    sku: product.sku,
+    size: product.size,
+    color: product.color,
+    imageUrl: product.image_url,
+    categoryId: product.category_id,
+    categoryName:
+      (product.category_id
+        ? categoryMap.get(product.category_id)
+        : null) ?? "Uncategorized",
+    businessStock: Number(product.stock_quantity ?? 0),
+  }));
+
+  const transfers: TransferRow[] = (
+    (transfersResult.data ?? []) as TransferDbRow[]
+  ).map((transfer) => ({
+    id: transfer.id,
+    transferNumber: transfer.transfer_number,
+    status: transfer.status,
+    sourceLocationId: transfer.source_location_id,
+    destinationLocationId: transfer.destination_location_id,
+    note: transfer.note,
+    createdAt: transfer.created_at,
+    createdBy: transfer.created_by,
+    items: (transfer.stock_transfer_items ?? []).map((item) => ({
+      productId: item.product_id,
+      quantity: Number(item.quantity ?? 0),
+    })),
+  }));
+
+  const locationStock: TransferLocationStock[] = stockResult.error
+    ? []
+    : (stockResult.data ?? []).map((row) => ({
+        locationId: row.location_id,
+        productId: row.product_id,
+        quantity: Number(row.quantity ?? 0),
+      }));
+
+  return (
+    <StockTransfersClient
+      locations={locations}
+      products={products}
+      locationStock={locationStock}
+      transfers={transfers}
+    />
+  );
+}

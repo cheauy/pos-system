@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
+import { getTenantSlugFromHost } from "@/lib/tenancy/domain";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import OrderStatusClient from "./order-status-client";
@@ -42,6 +44,19 @@ export default async function PublicOrderStatusPage({ params }: PageProps) {
   if (!data) notFound();
 
   const { business_id, ...publicOrder } = data;
+
+  const requestHeaders = await headers();
+  const hostTenant = getTenantSlugFromHost(
+    requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host"),
+  );
+  if (hostTenant) {
+    const { data: hostBusiness, error: hostError } = await supabaseAdmin
+      .from("businesses")
+      .select("id")
+      .eq("slug", hostTenant)
+      .maybeSingle();
+    if (hostError || hostBusiness?.id !== business_id) notFound();
+  }
 
   const { data: storefront } = await supabaseAdmin
     .from("business_storefronts")

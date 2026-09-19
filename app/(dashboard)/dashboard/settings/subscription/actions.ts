@@ -5,12 +5,17 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getCurrentBusinessForSubscription } from "@/lib/business/get-current-business";
+import { getAppUrl } from "@/lib/tenancy/domain";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
   isSubscriptionPlanKey,
   isSubscriptionTermMonths,
 } from "@/lib/subscriptions/plans";
+import {
+  checkTrialRegistrationEligibility,
+  recordTrialSignupEvent,
+} from "@/lib/subscriptions/trial-protection";
 
 const PROOF_BUCKET = "tenh-pos-subscription-payment-proofs";
 const MAX_PROOF_BYTES = 10 * 1024 * 1024;
@@ -47,7 +52,7 @@ function safeFileName(name: string) {
 }
 
 export async function createSubscriptionOrder(formData: FormData) {
-  const business = await getCurrentBusinessForSubscription();
+  const business = await getCurrentBusinessForSubscription({ startTrial: false });
 
   if (business.role !== "owner") {
     throw new Error("Only the business owner can purchase a subscription.");
@@ -113,8 +118,137 @@ export async function createSubscriptionOrder(formData: FormData) {
   redirect(`/dashboard/settings/subscription/payment/${orderId}`);
 }
 
+
+function trialBlockReason(message: string | undefined) {
+  const value = (message ?? "").toLowerCase();
+  if (value.includes("email provider")) return "disposable_email";
+  if (value.includes("already") && value.includes("trial")) return "trial_already_used";
+  if (value.includes("too many")) return "trial_signup_limit";
+  return "trial_ineligible";
+}
+
+export async function continueFreeTrial(_formData: FormData) {
+  const business = await getCurrentBusinessForSubscription({ startTrial: false });
+
+  if (business.role !== "owner") {
+    throw new Error("Only the business owner can start the free trial.");
+  }
+
+  if (business.subscriptionStatus === "trialing" || business.subscriptionStatus === "active") {
+    redirect(getAppUrl("/dashboard"));
+  }
+
+  if (business.subscriptionStatus !== "trial_pending") {
+    redirect(getAppUrl("/dashboard/settings/subscription/plans?onboarding=1&trial=unavailable"));
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user?.email) {
+    throw new Error("Your verified email is required to start the 7-day free trial.");
+  }
+
+  const decision = await checkTrialRegistrationEligibility(user.email);
+
+  await supabaseAdmin
+    .from("businesses")
+    .update({
+      trial_signup_fingerprint_hash: decision.fingerprintHash,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", business.id);
+
+  if (!decision.allowed) {
+    await supabaseAdmin
+      .from("businesses")
+      .update({
+        subscription_status: "trial_blocked",
+        trial_block_reason: trialBlockReason(decision.message),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", business.id)
+      .eq("subscription_status", "trial_pending");
+
+    redirect(getAppUrl("/dashboard/settings/subscription/plans?onboarding=1&trial=unavailable"));
+  }
+
+  await recordTrialSignupEvent({
+    ...decision,
+    businessId: business.id,
+  });
+
+  const { error: trialError } = await supabase.rpc(
+    "ensure_business_trial_started",
+    { p_business_id: business.id },
+  );
+
+  if (trialError) {
+    throw new Error(`Unable to start free trial: ${trialError.message}`);
+  }
+
+  const { data: refreshed, error: refreshedError } = await supabaseAdmin
+    .from("businesses")
+    .select("subscription_status")
+    .eq("id", business.id)
+    .maybeSingle();
+
+  if (refreshedError) {
+    throw new Error(`Unable to verify free trial: ${refreshedError.message}`);
+  }
+
+  if (refreshed?.subscription_status !== "trialing") {
+    redirect(getAppUrl("/dashboard/settings/subscription/plans?onboarding=1&trial=unavailable"));
+  }
+
+  revalidatePath("/dashboard/settings/subscription");
+  redirect(getAppUrl("/dashboard"));
+}
+
+export async function selectSubscriptionPaymentMethod(formData: FormData) {
+  const business = await getCurrentBusinessForSubscription({ startTrial: false });
+
+  if (business.role !== "owner") {
+    throw new Error("Only the business owner can choose a subscription payment method.");
+  }
+
+  const orderId = formData.get("orderId");
+  const method = formData.get("paymentMethod");
+
+  if (typeof orderId !== "string" || !orderId) {
+    throw new Error("Subscription order is required.");
+  }
+
+  if (method !== "aba_khqr" && method !== "manual") {
+    throw new Error("Choose ABA KHQR or Manual payment.");
+  }
+
+  const { data: updatedOrder, error } = await supabaseAdmin
+    .from("subscription_orders")
+    .update({
+      payment_method: method,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", orderId)
+    .eq("business_id", business.id)
+    .eq("status", "pending_payment")
+    .select("id")
+    .maybeSingle();
+
+  if (error || !updatedOrder) {
+    throw new Error(
+      error?.message ?? "This subscription order is no longer waiting for payment.",
+    );
+  }
+
+  revalidatePath(`/dashboard/settings/subscription/payment/${orderId}`);
+  redirect(`/dashboard/settings/subscription/payment/${orderId}`);
+}
+
 export async function submitSubscriptionPayment(formData: FormData) {
-  const business = await getCurrentBusinessForSubscription();
+  const business = await getCurrentBusinessForSubscription({ startTrial: false });
 
   if (business.role !== "owner") {
     throw new Error("Only the business owner can submit subscription payment proof.");
@@ -140,7 +274,7 @@ export async function submitSubscriptionPayment(formData: FormData) {
   const { data: order, error: orderError } = await supabaseAdmin
     .from("subscription_orders")
     .select(
-      "id,status,total_amount,proof_bucket,proof_path,proof_file_name,requested_by_user_id,pricing_locked_until",
+      "id,status,total_amount,payment_method,proof_bucket,proof_path,proof_file_name,requested_by_user_id,pricing_locked_until",
     )
     .eq("id", orderId)
     .eq("business_id", business.id)
@@ -156,6 +290,10 @@ export async function submitSubscriptionPayment(formData: FormData) {
 
   if (order.status !== "pending_payment") {
     throw new Error("This subscription order is not waiting for payment.");
+  }
+
+  if (order.payment_method !== "aba_khqr" && order.payment_method !== "manual") {
+    throw new Error("Choose ABA KHQR or Manual payment before submitting proof.");
   }
 
   if (order.pricing_locked_until) {

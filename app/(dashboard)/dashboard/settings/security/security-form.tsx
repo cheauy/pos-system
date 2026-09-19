@@ -295,7 +295,7 @@ export default function SecurityForm({
   };
 
   const twoFactorEnabled = verifiedFactors.length > 0;
-  const isProtectedOwner = profileRole === "owner" || profileRole === "super_admin";
+  const isProtectedOwner = profileRole === "super_admin";
 
   return (
     <>
@@ -620,7 +620,7 @@ export default function SecurityForm({
               <div>
                 <h2 className="font-bold text-red-700 dark:text-red-300">Danger zone</h2>
                 <p className="mt-1 text-sm text-red-600/80 dark:text-red-300/80">
-                  Account deletion cannot be reversed.
+                  Account deletion cannot be reversed. Your login and personal account data are permanently erased.
                 </p>
               </div>
             </div>
@@ -629,10 +629,21 @@ export default function SecurityForm({
               {isProtectedOwner ? (
                 <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  Owner and Super Admin accounts are protected. Transfer ownership before deleting the account.
+                  Super Admin accounts are protected and cannot be deleted from this page.
                 </div>
               ) : (
                 <>
+                  {profileRole === "owner" ? (
+                    <div className="flex gap-2 rounded-xl border border-red-200 bg-white/70 p-3 text-xs leading-5 text-red-700 dark:border-red-900/60 dark:bg-slate-950/40 dark:text-red-300">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      Deleting an owner account permanently deletes every TENH POS business you own, including its products, orders, inventory, customers, settings and stored media. Team members will immediately lose access to those businesses.
+                    </div>
+                  ) : (
+                    <div className="flex gap-2 rounded-xl border border-red-200 bg-white/70 p-3 text-xs leading-5 text-red-700 dark:border-red-900/60 dark:bg-slate-950/40 dark:text-red-300">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      Your TENH POS login will be permanently deleted and your access to every business will be removed.
+                    </div>
+                  )}
                   <label className="block text-xs font-semibold text-red-700 dark:text-red-300">
                     Type DELETE to confirm
                   </label>
@@ -650,7 +661,7 @@ export default function SecurityForm({
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900 dark:bg-red-950/20 dark:text-red-300"
                   >
                     <Trash2 className="h-4 w-4" />
-                    {deletePending ? "Deleting..." : "Delete account"}
+                    {deletePending ? "Deleting..." : "Delete account & data"}
                   </button>
                 </>
               )}

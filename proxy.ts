@@ -20,6 +20,8 @@ const CENTRAL_AUTH_PATHS = new Set([
   "/reset-password",
 ]);
 
+const INTERNAL_STOREFRONT_PREFIX = "/storefront";
+
 const APP_ONLY_PREFIXES = [
   "/dashboard",
   "/super-admin",
@@ -35,6 +37,13 @@ function isCentralAuthPath(pathname: string) {
     Array.from(CENTRAL_AUTH_PATHS).some(
       (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
     )
+  );
+}
+
+function isInternalStorefrontPath(pathname: string) {
+  return (
+    pathname === INTERNAL_STOREFRONT_PREFIX ||
+    pathname.startsWith(`${INTERNAL_STOREFRONT_PREFIX}/`)
   );
 }
 
@@ -112,14 +121,21 @@ function createResponse(
     }
 
     // Internal storefront implementation paths are never public on app host.
-    if (pathname.startsWith("/_sites/")) {
+    if (
+      pathname.startsWith("/_sites/") ||
+      isInternalStorefrontPath(pathname)
+    ) {
       return notFound();
     }
   }
 
-  // Never expose Next's internal tenant rewrite path directly from a root or
-  // arbitrary/system host.
-  if (!tenantSlug && pathname.startsWith("/_sites/")) {
+  // Never expose TENH's internal storefront route directly from a root or
+  // arbitrary/system host. app/_sites is a Next.js private folder and the
+  // routable /storefront wrapper exists only as an internal rewrite target.
+  if (
+    !tenantSlug &&
+    (pathname.startsWith("/_sites/") || isInternalStorefrontPath(pathname))
+  ) {
     return notFound();
   }
 
@@ -136,6 +152,11 @@ function createResponse(
   }
 
   if (tenantSlug) {
+    // Customers follow this URL immediately after checkout on the same host.
+    if (/^\/order\/[^/]+\/?$/.test(pathname)) {
+      return NextResponse.next({ request: { headers: requestHeaders } });
+    }
+
     // Storefront APIs are the only API surface exposed on tenant hosts.
     if (pathname.startsWith("/api/storefront/")) {
       return NextResponse.next({ request: { headers: requestHeaders } });
@@ -145,13 +166,16 @@ function createResponse(
       return notFound();
     }
 
-    if (pathname.startsWith("/_sites/")) {
+    if (
+      pathname.startsWith("/_sites/") ||
+      isInternalStorefrontPath(pathname)
+    ) {
       return notFound();
     }
 
     if (pathname === "/") {
       const destination = request.nextUrl.clone();
-      destination.pathname = `/_sites/${encodeURIComponent(tenantSlug)}`;
+      destination.pathname = `/storefront/${encodeURIComponent(tenantSlug)}`;
 
       return NextResponse.rewrite(destination, {
         request: { headers: requestHeaders },
@@ -218,6 +242,7 @@ export async function proxy(request: NextRequest) {
   const tenantSlug = getTenantSlugFromHost(host);
 
   const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-tenh-pathname", request.nextUrl.pathname);
 
   if (tenantSlug) {
     requestHeaders.set("x-tenant-slug", normalizeTenantSlug(tenantSlug));

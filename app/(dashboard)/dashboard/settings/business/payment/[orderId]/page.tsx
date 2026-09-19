@@ -6,7 +6,6 @@ import {
   Clock3,
   CreditCard,
   Link2,
-  RefreshCw,
   Store,
   XCircle,
 } from "lucide-react";
@@ -16,7 +15,7 @@ import { getBusinessModePreset } from "@/lib/business/business-mode-presets";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getTenantDashboardUrl } from "@/lib/tenancy/domain";
 
-import { submitBusinessChangePaymentReference } from "../../actions";
+import BusinessChangePaymentForm from "./payment-form";
 
 type ChangeOrder = {
   id: string;
@@ -239,62 +238,14 @@ export default async function BusinessChangePaymentPage({
               </p>
 
               {isPending && (
-                <form action={submitBusinessChangePaymentReference} className="mt-5 space-y-4">
-                  <input type="hidden" name="orderId" value={order.id} />
-
-                  <div>
-                    <label
-                      htmlFor="paymentNote"
-                      className="block text-sm font-semibold text-slate-700 dark:text-slate-300"
-                    >
-                      Note *
-                    </label>
-                    <textarea
-                      id="paymentNote"
-                      name="paymentNote"
-                      required
-                      minLength={2}
-                      maxLength={1000}
-                      rows={4}
-                      defaultValue={order.payment_note ?? ""}
-                      placeholder="Add a note for TENH payment review"
-                      className="mt-2 w-full resize-none rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-blue-950/50"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="paymentProof"
-                      className="block text-sm font-semibold text-slate-700 dark:text-slate-300"
-                    >
-                      Payment proof *
-                    </label>
-                    <input
-                      id="paymentProof"
-                      name="paymentProof"
-                      type="file"
-                      required={!order.proof_path}
-                      accept="image/jpeg,image/png,image/webp,application/pdf"
-                      className="mt-2 block w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-xs file:font-bold file:text-blue-700 hover:file:bg-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
-                    />
-                    <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                      JPG, PNG, WEBP or PDF · maximum 10 MB.
-                      {order.proof_path && order.proof_file_name
-                        ? ` Current proof: ${order.proof_file_name}. Upload another file only if you want to replace it.`
-                        : " Proof is required before TENH can review this payment."}
-                    </p>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
-                  >
-                    <RefreshCw size={16} />
-                    {order.status === "payment_submitted"
-                      ? "Update payment submission"
-                      : "Submit payment for review"}
-                  </button>
-                </form>
+                <BusinessChangePaymentForm
+                  orderId={order.id}
+                  paymentReference={order.payment_reference}
+                  paymentNote={order.payment_note}
+                  hasProof={Boolean(order.proof_path)}
+                  proofFileName={order.proof_file_name}
+                  submitted={order.status === "payment_submitted"}
+                />
               )}
 
               {order.status === "payment_submitted" && (

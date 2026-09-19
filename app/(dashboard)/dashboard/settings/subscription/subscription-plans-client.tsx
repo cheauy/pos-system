@@ -27,7 +27,7 @@ import {
   type SubscriptionPlanKey,
   type SubscriptionTermMonths,
 } from "@/lib/subscriptions/plans";
-import { createSubscriptionOrder } from "./actions";
+import { continueFreeTrial, createSubscriptionOrder } from "./actions";
 
 type Props = {
   businessName: string;
@@ -37,6 +37,9 @@ type Props = {
   canPurchase: boolean;
   flowMode: "choose" | "upgrade" | "reactivate";
   estimatedRemainingCredit: number;
+  onboarding: boolean;
+  subscriptionStatus: string | null;
+  trialUnavailable: boolean;
 };
 
 type FeatureRow = {
@@ -116,6 +119,9 @@ export default function SubscriptionPlansClient({
   canPurchase,
   flowMode,
   estimatedRemainingCredit,
+  onboarding,
+  subscriptionStatus,
+  trialUnavailable,
 }: Props) {
   const initialPlan: SubscriptionPlanKey =
     currentPlanKey && isSubscriptionPlanKey(currentPlanKey) ? currentPlanKey : "solo";
@@ -133,6 +139,11 @@ export default function SubscriptionPlansClient({
 
   const selected = subscriptionPlans[selectedPlan];
   const selectedTerm = subscriptionTerms.find((term) => term.months === termMonths);
+  const hideBackToSubscription =
+    onboarding ||
+    subscriptionStatus === "trial_pending" ||
+    subscriptionStatus === "trialing" ||
+    subscriptionStatus === "trial_blocked";
 
   const price = useMemo(() => {
     if (selectedPlan === "custom") return null;
@@ -190,14 +201,18 @@ export default function SubscriptionPlansClient({
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_530px] lg:items-end">
           <div>
-            <Link
-              href="/dashboard/settings/subscription"
-              className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+            {!hideBackToSubscription ? (
+              <Link
+                href="/dashboard/settings/subscription"
+                className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+              >
+                <ArrowLeft size={18} />
+                Back to Subscription
+              </Link>
+            ) : null}
+            <h1
+              className={`${hideBackToSubscription ? "" : "mt-5 "}text-4xl font-black tracking-tight text-slate-950 sm:text-5xl dark:text-white`}
             >
-              <ArrowLeft size={18} />
-              Back to Subscription
-            </Link>
-            <h1 className="mt-5 text-4xl font-black tracking-tight text-slate-950 sm:text-5xl dark:text-white">
               {heading}
             </h1>
             <p className="mt-3 max-w-3xl text-base leading-7 text-slate-500 sm:text-lg">
@@ -207,28 +222,31 @@ export default function SubscriptionPlansClient({
 
           <div>
             <p className="mb-2 text-sm font-semibold text-slate-500">Billing term</p>
-            <div className="grid grid-cols-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-              {subscriptionTerms.map((term, index) => {
+            <div className="grid w-full grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm sm:grid-cols-4 dark:border-slate-700 dark:bg-slate-900">
+              {subscriptionTerms.map((term) => {
                 const active = termMonths === term.months;
                 return (
                   <button
                     key={term.months}
                     type="button"
                     onClick={() => setTermMonths(term.months)}
-                    className={`min-h-[72px] border-slate-200 px-3 py-3 text-center transition dark:border-slate-700 ${
-                      index > 0 ? "border-l" : ""
-                    } ${
+                    aria-pressed={active}
+                    className={`flex min-h-[68px] w-full flex-col items-center justify-center rounded-xl border px-2 py-2.5 text-center transition ${
                       active
-                        ? "relative z-10 bg-blue-50 text-blue-700 ring-2 ring-inset ring-blue-500 dark:bg-blue-950/30 dark:text-blue-300"
-                        : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                        ? "border-blue-500 bg-blue-50 text-blue-700 shadow-[0_1px_2px_rgba(37,99,235,0.08)] dark:border-blue-500 dark:bg-blue-950/30 dark:text-blue-300"
+                        : "border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50 dark:text-slate-200 dark:hover:border-slate-700 dark:hover:bg-slate-800"
                     }`}
                   >
-                    <span className="block text-sm font-extrabold sm:text-base">{term.label}</span>
-                    {term.discountPercent > 0 ? (
-                      <span className="mt-1 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-extrabold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                        -{term.discountPercent}%
-                      </span>
-                    ) : null}
+                    <span className="text-sm font-extrabold leading-5 sm:text-base">
+                      {term.label}
+                    </span>
+                    <span className="mt-1 flex min-h-[20px] items-center justify-center">
+                      {term.discountPercent > 0 ? (
+                        <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-extrabold leading-4 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                          -{term.discountPercent}%
+                        </span>
+                      ) : null}
+                    </span>
                   </button>
                 );
               })}
@@ -239,6 +257,47 @@ export default function SubscriptionPlansClient({
         {!canPurchase ? (
           <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
             Only the business owner can purchase or change the subscription plan.
+          </div>
+        ) : null}
+
+        {onboarding ? (
+          <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-blue-900 dark:bg-blue-950/20">
+            <div>
+              <p className="text-sm font-extrabold text-slate-950 dark:text-white">
+                Choose a paid plan now, or continue with the 7-day free trial.
+              </p>
+              <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                Your business is already created. Paid checkout does not change your business ID, products, store URL, or settings.
+              </p>
+              {trialUnavailable ? (
+                <p className="mt-2 text-sm font-semibold text-amber-700 dark:text-amber-300">
+                  The free trial is not available for this account. You can continue with any paid plan below.
+                </p>
+              ) : subscriptionStatus === "trialing" ? (
+                <p className="mt-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                  Your 7-day free trial is already active.
+                </p>
+              ) : null}
+            </div>
+            {subscriptionStatus === "trialing" ? (
+              <Link
+                href="/dashboard"
+                className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-300 bg-white px-5 py-3 text-sm font-extrabold text-blue-700 transition hover:bg-blue-50 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-300"
+              >
+                Continue to dashboard
+                <ArrowRight size={18} />
+              </Link>
+            ) : (
+              <button
+                type="submit"
+                formAction={continueFreeTrial}
+                disabled={!canPurchase || trialUnavailable}
+                className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-300 bg-white px-5 py-3 text-sm font-extrabold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-300"
+              >
+                Continue with 7-day free trial
+                <ArrowRight size={18} />
+              </button>
+            )}
           </div>
         ) : null}
 
@@ -256,6 +315,7 @@ export default function SubscriptionPlansClient({
               }
               customUsers={customUsers}
               minimumCustomUsers={minimumCustomUsers}
+              termMonths={termMonths}
               onCustomUsersChange={setCustomUsers}
               onSelect={() => setSelectedPlan(planKey)}
             />
@@ -267,10 +327,10 @@ export default function SubscriptionPlansClient({
             <Info size={22} className="mt-0.5 shrink-0 text-blue-600" />
             <div>
               <p className="font-bold text-blue-950 dark:text-blue-200">
-                Manual payment is verified after ABA QR payment proof is submitted.
+                Choose ABA KHQR or Manual payment after selecting a plan.
               </p>
               <p className="mt-1 text-sm leading-6 text-blue-800/80 dark:text-blue-300/80">
-                After payment, upload your ABA QR proof. TENH verifies the payment before changing access. Active-plan upgrades use a server-calculated remaining-value credit; expired accounts reactivate directly into paid access with no new trial.
+                The selected term shows its discounted monthly rate and full billed total before checkout. After choosing a payment method, upload payment proof for TENH verification. Active-plan upgrades keep the existing remaining-value credit rules.
               </p>
             </div>
           </div>
@@ -328,6 +388,12 @@ export default function SubscriptionPlansClient({
               {price ? (
                 <>
                   <div>
+                    <p className="text-xs font-semibold text-slate-500">Per month</p>
+                    <p className="mt-1 text-lg font-bold text-slate-900 dark:text-white">
+                      ${(price.total / termMonths).toFixed(2)}
+                    </p>
+                  </div>
+                  <div>
                     <p className="text-xs font-semibold text-slate-500">Subtotal</p>
                     <p className="mt-1 text-lg font-bold text-slate-900 dark:text-white">
                       ${price.subtotal.toFixed(2)}
@@ -382,6 +448,7 @@ function PlanCard({
   disabled,
   customUsers,
   minimumCustomUsers,
+  termMonths,
   onCustomUsersChange,
   onSelect,
 }: {
@@ -391,6 +458,7 @@ function PlanCard({
   disabled: boolean;
   customUsers: number;
   minimumCustomUsers: number;
+  termMonths: SubscriptionTermMonths;
   onCustomUsersChange: (value: number) => void;
   onSelect: () => void;
 }) {
@@ -398,6 +466,14 @@ function PlanCard({
   const meta = visualMeta[planKey];
   const Icon = meta.icon;
   const features = meta.features;
+  const termPrice =
+    planKey === "custom"
+      ? null
+      : calculateSubscriptionPrice(planKey, termMonths);
+  const effectiveMonthly = termPrice
+    ? Number((termPrice.total / termMonths).toFixed(2))
+    : null;
+  const selectedTerm = subscriptionTerms.find((term) => term.months === termMonths);
 
   return (
     <article
@@ -442,13 +518,30 @@ function PlanCard({
       <p className="mt-2 min-h-12 text-sm leading-6 text-slate-500">{plan.description}</p>
 
       <div className="mt-5">
-        {plan.monthlyPrice === null ? (
+        {plan.monthlyPrice === null || !termPrice || effectiveMonthly === null ? (
           <p className="text-3xl font-black text-slate-950 dark:text-white">Quote</p>
         ) : (
-          <p className="text-4xl font-black tracking-tight text-slate-950 dark:text-white">
-            ${plan.monthlyPrice}
-            <span className="ml-1 text-base font-semibold text-slate-500">/ month</span>
-          </p>
+          <>
+            <div className="flex items-end gap-2">
+              <p className="text-4xl font-black tracking-tight text-slate-950 dark:text-white">
+                ${effectiveMonthly.toFixed(2)}
+                <span className="ml-1 text-base font-semibold text-slate-500">/ month</span>
+              </p>
+              {termPrice.discountPercent > 0 ? (
+                <span className="mb-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-extrabold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
+                  Save {termPrice.discountPercent}%
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-2 text-sm font-semibold text-slate-500">
+              ${termPrice.total.toFixed(2)} billed {termMonths === 1 ? "monthly" : termMonths === 12 ? "yearly" : `every ${termMonths} months`}
+            </p>
+            {termPrice.discountPercent > 0 ? (
+              <p className="mt-1 text-xs text-slate-400">
+                Regular ${plan.monthlyPrice.toFixed(2)}/month · {selectedTerm?.label}
+              </p>
+            ) : null}
+          </>
         )}
       </div>
 

@@ -1,3 +1,4 @@
+import { PAYMENT_PROOF_BUCKET, validateCheckoutContact } from "@/lib/storefront/checkout-validation";
 import { NextRequest, NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -43,6 +44,7 @@ export async function POST(
   request: NextRequest,
   { params }: RouteProps,
 ) {
+  let uploadedPath: string | null = null;
   try {
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug);
@@ -65,7 +67,10 @@ export async function POST(
       );
     }
 
-    const body = (await request.json()) as CheckoutBody;
+    const multipart = request.headers.get("content-type")?.includes("multipart/form-data");
+    if (Number(request.headers.get("content-length") || 0) > 6 * 1024 * 1024) return NextResponse.json({ success: false, message: "Payment proof must not exceed 5 MB." }, { status: 413 });
+    const form = multipart ? await request.formData() : null;
+    const body = (form ? JSON.parse(String(form.get("checkout") || "{}")) : await request.json()) as CheckoutBody;
     const items = Array.isArray(body.items) ? body.items : [];
 
     if (items.length === 0) {
@@ -117,20 +122,13 @@ export async function POST(
     const customerNote = cleanText(body.customerNote, 1000);
     const tableToken = cleanText(body.tableToken, 80);
     const paymentMethod = cleanText(body.paymentMethod, 20) ?? "cod";
-    const paymentReference = cleanText(body.paymentReference, 120);
+    let paymentReference: string | null = null;
     const deliveryZoneId = cleanText(body.deliveryZoneId, 80);
     const requestedFor = cleanText(body.requestedFor, 80);
     const couponCode = cleanText(body.couponCode, 30);
 
-    if (!fulfillmentType || !guestName || !guestPhone) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Name, phone and fulfillment type are required.",
-        },
-        { status: 400 },
-      );
-    }
+    const contactError = validateCheckoutContact(guestName, guestPhone, fulfillmentType, guestAddress);
+    if (contactError) return NextResponse.json({ success: false, message: contactError }, { status: 400 });
 
     if (!["cod", "khqr"].includes(paymentMethod)) {
       return NextResponse.json(
@@ -144,6 +142,28 @@ export async function POST(
         { success: false, message: "Invalid scheduled order time." },
         { status: 400 },
       );
+    }
+
+    if (paymentMethod === "khqr") {
+      const file = form?.get("paymentProof");
+      if (!(file instanceof File) || !file.size || file.size > 5 * 1024 * 1024) return NextResponse.json({ success: false, message: "Upload payment proof (up to 5 MB) to continue." }, { status: 400 });
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const mime = bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 ? "image/jpeg" : bytes.slice(0,8).join(",") === "137,80,78,71,13,10,26,10" ? "image/png" : new TextDecoder().decode(bytes.slice(0,4)) === "RIFF" && new TextDecoder().decode(bytes.slice(8,12)) === "WEBP" ? "image/webp" : null;
+      if (!mime || mime !== file.type) return NextResponse.json({ success: false, message: "Upload a valid JPG, PNG or WebP payment image." }, { status: 400 });
+      const { data: business } = await supabaseAdmin.from("businesses").select("id").eq("slug", slug).eq("is_active", true).maybeSingle();
+      if (!business) return NextResponse.json({ success: false, message: "Store not found." }, { status: 404 });
+      const { data: store } = await supabaseAdmin.from("business_storefronts").select("is_published,accept_online_orders,accept_khqr").eq("business_id", business.id).maybeSingle();
+      if (!store?.is_published || !store.accept_online_orders || !store.accept_khqr) return NextResponse.json({ success: false, message: "KHQR ordering is unavailable." }, { status: 400 });
+      const { data: bucket } = await supabaseAdmin.storage.getBucket(PAYMENT_PROOF_BUCKET);
+      if (!bucket) {
+        const { error: bucketError } = await supabaseAdmin.storage.createBucket(PAYMENT_PROOF_BUCKET, { public: false, fileSizeLimit: 5 * 1024 * 1024, allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"] });
+        if (bucketError && !/already exists/i.test(bucketError.message)) throw new Error("Unable to prepare payment-proof storage.");
+      } else if (bucket.public) throw new Error("Payment-proof storage must be private.");
+      const path = `${business.id}/${crypto.randomUUID()}.${mime === "image/jpeg" ? "jpg" : mime === "image/png" ? "png" : "webp"}`;
+      const { error: uploadError } = await supabaseAdmin.storage.from(PAYMENT_PROOF_BUCKET).upload(path, bytes, { contentType: mime, upsert: false });
+      if (uploadError) throw new Error("Unable to upload payment proof. Please try again.");
+      uploadedPath = path;
+      paymentReference = `proof:${path}`;
     }
 
     const { data, error } = await supabaseAdmin.rpc(
@@ -166,6 +186,7 @@ export async function POST(
     );
 
     if (error) {
+      if (uploadedPath) { await supabaseAdmin.storage.from(PAYMENT_PROOF_BUCKET).remove([uploadedPath]); uploadedPath = null; }
       console.error("place_online_order error", error);
 
       return NextResponse.json(
@@ -177,11 +198,13 @@ export async function POST(
       );
     }
 
+    uploadedPath = null;
     return NextResponse.json({
       success: true,
       order: data,
     });
   } catch (error) {
+    if (uploadedPath) await supabaseAdmin.storage.from(PAYMENT_PROOF_BUCKET).remove([uploadedPath]);
     console.error("Online checkout failed", error);
 
     return NextResponse.json(

@@ -3,7 +3,7 @@ import {
   LogOut,
 } from "lucide-react";
 
-import { getRootUrl } from "@/lib/tenancy/domain";
+import { getAppUrl } from "@/lib/tenancy/domain";
 
 export default function NoBusinessPage() {
   return (
@@ -14,15 +14,15 @@ export default function NoBusinessPage() {
         </div>
 
         <h1 className="mt-5 text-2xl font-bold text-slate-900">
-          No Business Assigned
+          No active business access
         </h1>
 
         <p className="mt-3 text-sm leading-6 text-slate-500">
-          Your account is not connected to an active business. Please contact the platform owner or administrator.
+          Your account is not connected to an active TENH POS business. The business may have been deleted, your access may have been removed, or no business has been assigned yet.
         </p>
 
         <a
-          href={getRootUrl("/login")}
+          href={getAppUrl("/login")}
           className="mt-6 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
         >
           <LogOut size={18} />

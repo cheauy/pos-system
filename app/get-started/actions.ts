@@ -11,7 +11,6 @@ import { getStoreSlugAvailability } from "@/lib/tenancy/store-slug-availability"
 
 import type { GetStartedState } from "./state";
 
-const SELF_REGISTRATION_MONTHS = 1;
 
 export type GetStartedStoreAddressAvailabilityResult = {
   slug: string;
@@ -219,12 +218,6 @@ export async function createOwnerBusiness(
       };
     }
 
-    const subscriptionStartedAt = new Date();
-    const subscriptionExpiresAt = new Date(subscriptionStartedAt);
-    subscriptionExpiresAt.setMonth(
-      subscriptionExpiresAt.getMonth() + SELF_REGISTRATION_MONTHS,
-    );
-
     const {
       data: business,
       error: businessError,
@@ -236,9 +229,19 @@ export async function createOwnerBusiness(
         owner_id: user.id,
         product_mode: preset.productMode,
         max_staff: 3,
-        subscription_months: SELF_REGISTRATION_MONTHS,
-        subscription_started_at: subscriptionStartedAt.toISOString(),
-        subscription_expires_at: subscriptionExpiresAt.toISOString(),
+        // New owner-created businesses start in a locked onboarding state.
+        // The owner can explicitly start the protected 7-day free trial or
+        // choose a paid plan before entering the normal dashboard.
+        subscription_plan_key: "trial",
+        subscription_months: null,
+        subscription_started_at: null,
+        subscription_expires_at: null,
+        subscription_status: "trial_pending",
+        trial_started_at: null,
+        trial_expires_at: null,
+        expired_at: null,
+        deletion_scheduled_at: null,
+        trial_block_reason: null,
         is_active: true,
         disabled_at: null,
         disabled_reason: null,
@@ -347,28 +350,13 @@ export async function createOwnerBusiness(
       );
     }
 
-    const { error: historyError } = await supabaseAdmin
-      .from("subscription_history")
-      .insert({
-        business_id: createdBusinessId,
-        action: "created",
-        months: SELF_REGISTRATION_MONTHS,
-        previous_expiry: null,
-        new_expiry: subscriptionExpiresAt.toISOString(),
-        reason: "Owner first-login onboarding",
-        created_by: user.id,
-      });
-
-    if (historyError) {
-      throw new Error(
-        `Unable to create subscription history: ${historyError.message}`,
-      );
-    }
-
     return {
       success: true,
-      message: "Your Tenh POS business is ready.",
-      destination: getTenantDashboardUrl(slug, "/dashboard"),
+      message: "Your Tenh POS business is ready. Choose a subscription or continue with the 7-day free trial.",
+      destination: getTenantDashboardUrl(
+        slug,
+        "/dashboard/settings/subscription/plans?onboarding=1",
+      ),
     };
   } catch (error) {
     // Keep the account. Only remove the partially-created business workspace.

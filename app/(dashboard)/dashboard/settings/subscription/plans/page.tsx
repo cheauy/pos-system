@@ -37,8 +37,16 @@ function remainingValueCredit(
   return Number((cycleValue * (remaining / total)).toFixed(2));
 }
 
-export default async function SubscriptionPlansPage() {
-  const business = await getCurrentBusinessForSubscription();
+export default async function SubscriptionPlansPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ onboarding?: string; trial?: string }>;
+}) {
+  const query = searchParams ? await searchParams : {};
+  const requestedOnboarding = query.onboarding === "1";
+  const business = await getCurrentBusinessForSubscription({
+    startTrial: false,
+  });
 
   const [
     { data: subscription, error: subscriptionError },
@@ -68,6 +76,10 @@ export default async function SubscriptionPlansPage() {
 
   const current = (subscription ?? null) as SubscriptionRow | null;
   const status = current?.subscription_status ?? business.subscriptionStatus;
+  const onboarding =
+    requestedOnboarding ||
+    status === "trial_pending" ||
+    status === "trial_blocked";
   const currentPlanKey =
     current?.subscription_plan_key ?? (status === "trialing" ? "trial" : "legacy");
 
@@ -115,6 +127,9 @@ export default async function SubscriptionPlansPage() {
       canPurchase={business.role === "owner"}
       flowMode={flowMode}
       estimatedRemainingCredit={estimatedRemainingCredit}
+      onboarding={onboarding}
+      subscriptionStatus={status}
+      trialUnavailable={query.trial === "unavailable" || status === "trial_blocked"}
     />
   );
 }

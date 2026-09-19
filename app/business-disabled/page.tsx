@@ -1,26 +1,63 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Ban,
-  Clock3,
-  Loader2,
-  LogOut,
-} from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Ban, Loader2, LogOut } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
-import { getRootUrl } from "@/lib/tenancy/domain";
+import { getAppUrl } from "@/lib/tenancy/domain";
+
+const COPY: Record<string, { title: string; body: string; note: string }> = {
+  subscription_expired: {
+    title: "Business subscription expired",
+    body: "Your business subscription is no longer active, so team access is temporarily locked.",
+    note: "Ask the business owner to renew or reactivate the TENH POS subscription. Your account can be used again when access is restored.",
+  },
+  access_removed: {
+    title: "You no longer have access",
+    body: "The business owner removed your account from this TENH POS business.",
+    note: "If you believe this was a mistake, contact the business owner. Your TENH login may still be used for another business you belong to.",
+  },
+  access_disabled: {
+    title: "Your business access is disabled",
+    body: "Your membership is currently disabled for this TENH POS business.",
+    note: "Contact the business owner or administrator if your access should be restored.",
+  },
+  seat_limit: {
+    title: "Your seat is paused",
+    body: "Your access was paused because the business subscription no longer has enough active user seats.",
+    note: "The owner can upgrade the subscription or free another seat, then reactivate your user.",
+  },
+  owner_action_required: {
+    title: "Owner setup required",
+    body: "This business is waiting for the owner to choose a TENH POS subscription or start the 7-day free trial.",
+    note: "Team access will become available only after the owner activates an eligible paid team plan.",
+  },
+  business_unavailable: {
+    title: "Business access unavailable",
+    body: "The business you previously used is no longer available to this account.",
+    note: "The business may have been deleted or your membership may have been removed. Contact the business owner if you need access again.",
+  },
+  business_disabled: {
+    title: "Business account disabled",
+    body: "Access to this TENH POS business has been disabled.",
+    note: "Contact the business owner or TENH POS administrator if the business should be reactivated.",
+  },
+};
 
 export default function BusinessDisabledPage() {
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const [signingOut, setSigningOut] = useState(false);
+  const reason = searchParams.get("reason") ?? "business_disabled";
+  const copy = COPY[reason] ?? COPY.business_disabled;
 
   async function handleSignOut() {
     setSigningOut(true);
 
     try {
       await supabase.auth.signOut();
-      window.location.assign(getRootUrl("/login"));
+      window.location.assign(getAppUrl("/login"));
     } finally {
       setSigningOut(false);
     }
@@ -34,55 +71,27 @@ export default function BusinessDisabledPage() {
         </div>
 
         <h1 className="mt-6 text-2xl font-bold text-slate-900">
-          Business Account Inactive
+          {copy.title}
         </h1>
 
         <p className="mt-3 leading-7 text-slate-600">
-          Access to this TENH POS business is currently disabled. Your store
-          address remains protected while you are inside the reactivation
-          period.
+          {copy.body}
         </p>
 
-        <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left">
-          <div className="flex items-start gap-3">
-            <Clock3 className="mt-0.5 shrink-0 text-amber-700" size={20} />
-            <div>
-              <p className="text-sm font-semibold text-amber-900">
-                60-day store-address protection
-              </p>
-              <p className="mt-1 text-sm leading-6 text-amber-800">
-                If the business stays inactive for 60 days, TENH POS removes
-                it from active access and releases its store address. After
-                release, another customer can register that address.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-xl bg-slate-50 p-4 text-left">
-          <p className="text-sm font-semibold text-slate-800">
-            Want to keep this store address?
+        <div className="mt-6 rounded-xl bg-amber-50 p-4 text-left">
+          <p className="text-sm font-semibold text-amber-800">
+            What you can do
           </p>
-          <p className="mt-1 text-sm leading-6 text-slate-600">
-            Reactivate the business before the 60-day deadline. Reactivation
-            cancels the scheduled release.
+          <p className="mt-1 text-sm leading-6 text-amber-700">
+            {copy.note}
           </p>
         </div>
-
-        <a
-          href="https://t.me/NOC_UY"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-6 flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700"
-        >
-          Contact Administrator
-        </a>
 
         <button
           type="button"
           disabled={signingOut}
           onClick={handleSignOut}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {signingOut ? (
             <>

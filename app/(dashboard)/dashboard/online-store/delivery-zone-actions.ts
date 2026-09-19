@@ -95,6 +95,7 @@ export async function saveDeliveryZone(
     });
 
     revalidatePath("/dashboard/online-store");
+    revalidatePath("/dashboard/online-store/ordering");
     revalidatePath(`/_sites/${business.slug}`);
 
     return {
@@ -146,5 +147,6 @@ export async function deleteDeliveryZone(formData: FormData) {
   });
 
   revalidatePath("/dashboard/online-store");
+    revalidatePath("/dashboard/online-store/ordering");
   revalidatePath(`/_sites/${business.slug}`);
 }

@@ -2,17 +2,22 @@
 
 import {
   Check,
-  ChevronRight,
   Loader2,
   Minus,
-  Package,
   Plus,
   ShoppingBag,
   ShoppingCart,
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import StorefrontHero, { type StorefrontBrand } from "./storefront-hero";
+import { useStorefrontLanguage } from "./storefront-language";
+import { validateCheckoutContact } from "@/lib/storefront/checkout-validation";
+import { toast } from "sonner";
+import ProductGallery from "./product-gallery";
+import StorefrontCatalog from "./storefront-catalog";
+import { restoreCart, type CartItem } from "@/lib/storefront/cart";
 
 import type {
   StorefrontCatalogCategory,
@@ -51,56 +56,51 @@ type StorefrontCheckoutSettings = {
   }>;
 };
 
-type CartItem = {
-  key: string;
-  productId: string;
-  name: string;
-  variantLabel: string | null;
-  optionIds: string[];
-  optionLabels: string[];
-  unitPrice: number;
-  quantity: number;
-  maxStock: number;
-  imageUrl: string | null;
-};
-
 export default function StorefrontShop({
+  brand,
   slug,
   categories,
   products,
   settings,
   tableToken,
 }: {
+  brand: StorefrontBrand;
   slug: string;
   categories: StorefrontCatalogCategory[];
   products: StorefrontCatalogProduct[];
   settings: StorefrontCheckoutSettings;
   tableToken: string | null;
 }) {
+  const { t } = useStorefrontLanguage();
   const storageKey = `tenh-cart:${slug}`;
   const [cart, setCart] = useState<CartItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [selectedProduct, setSelectedProduct] =
     useState<StorefrontCatalogProduct | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
+  const [initialVariantId, setInitialVariantId] = useState<string | undefined>();
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) setCart(parsed as CartItem[]);
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        const raw = window.localStorage.getItem(storageKey);
+        setCart(restoreCart(raw ? JSON.parse(raw) : [], products));
+      } catch {
+        setCart([]);
+      } finally {
+        setHydrated(true);
       }
-    } catch {
-      // Ignore invalid local cart data.
-    } finally {
-      setHydrated(true);
-    }
-  }, [storageKey]);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [storageKey, products]);
 
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(storageKey, JSON.stringify(cart));
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(cart));
+    } catch {
+      // Shopping still works when the browser blocks persistent storage.
+    }
   }, [cart, hydrated, storageKey]);
 
   const cartQuantity = cart.reduce(
@@ -114,25 +114,12 @@ export default function StorefrontShop({
   );
 
   function addConfiguredItem(item: CartItem) {
-    setCart((current) => {
-      const existing = current.find((row) => row.key === item.key);
-      if (!existing) return [...current, item];
-      return current.map((row) =>
-        row.key === item.key
-          ? {
-              ...row,
-              quantity: Math.min(
-                row.maxStock,
-                row.quantity + item.quantity,
-              ),
-            }
-          : row,
-      );
-    });
+    setCart(current => restoreCart([...current, item], products));
     setSelectedProduct(null);
+    toast.success("Added to cart");
   }
 
-  function quickAdd(product: StorefrontCatalogProduct) {
+  function quickAdd(product: StorefrontCatalogProduct, variantId?: string) {
     if (!settings.orderingEnabled || product.totalStock <= 0) return;
 
     if (
@@ -140,6 +127,7 @@ export default function StorefrontShop({
       product.productType === "configurable" ||
       product.optionGroups.length > 0
     ) {
+      setInitialVariantId(variantId);
       setSelectedProduct(product);
       return;
     }
@@ -152,99 +140,21 @@ export default function StorefrontShop({
     );
   }
 
-  const sections = useMemo(() => {
-    const mapped = categories.map((category) => ({
-      id: category.id,
-      name: category.name,
-      products: products.filter(
-        (product) => product.categoryId === category.id,
-      ),
-    }));
-
-    const uncategorized = products.filter(
-      (product) => !product.categoryId,
-    );
-
-    if (uncategorized.length > 0) {
-      mapped.push({
-        id: "other",
-        name: "Other",
-        products: uncategorized,
-      });
-    }
-
-    return mapped.filter((section) => section.products.length > 0);
-  }, [categories, products]);
-
-  if (products.length === 0) {
-    return (
-      <section className="rounded-3xl border border-dashed border-slate-300 bg-white p-12 text-center">
-        <Package size={42} className="mx-auto text-slate-300" />
-        <h2 className="mt-4 text-lg font-bold text-slate-900">
-          No products online yet
-        </h2>
-        <p className="mt-2 text-sm text-slate-500">
-          This store is published, but there are no visible products yet.
-        </p>
-      </section>
-    );
-  }
-
   return (
     <>
-      <div className="mb-8 flex gap-2 overflow-x-auto pb-2">
-        {sections.map((section) => (
-          <a
-            key={section.id}
-            href={`#category-${section.id}`}
-            className="shrink-0 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-          >
-            {section.name}
-          </a>
-        ))}
-      </div>
-
-      <div className="space-y-12">
-        {sections.map((section) => (
-          <section
-            key={section.id}
-            id={`category-${section.id}`}
-            className="scroll-mt-6"
-          >
-            <div className="mb-5">
-              <h2 className="text-2xl font-bold text-slate-950">
-                {section.name}
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                {section.products.length} item
-                {section.products.length === 1 ? "" : "s"}
-              </p>
-            </div>
-
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {section.products.map((product) => (
-                <ProductCard
-                  key={product.key}
-                  product={product}
-                  settings={settings}
-                  onAdd={() => quickAdd(product)}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      <StorefrontHero brand={brand} cartQuantity={cartQuantity} onOpenCart={() => setCartOpen(true)} />
+      <StorefrontCatalog products={products} categories={categories} settings={settings} onAdd={quickAdd} onQuickView={(product, variantId) => { setInitialVariantId(variantId); setSelectedProduct(product); }} />
 
       {settings.orderingEnabled && cartQuantity > 0 && (
         <button
           type="button"
           onClick={() => setCartOpen(true)}
           className="fixed bottom-5 left-1/2 z-40 flex w-[min(92vw,34rem)] -translate-x-1/2 items-center justify-between rounded-2xl px-5 py-4 text-white shadow-2xl"
-          style={{ backgroundColor: settings.primaryColor }}
+          style={{ backgroundColor: "var(--store-primary-surface)", color: "var(--store-on-primary)" }}
         >
           <span className="inline-flex items-center gap-2 font-semibold">
             <ShoppingCart size={20} />
-            {cartQuantity} item{cartQuantity === 1 ? "" : "s"}
+            {cartQuantity} {t(cartQuantity === 1 ? "item" : "items")}
           </span>
           <span className="font-bold">
             {formatMoney(subtotal, settings.currency)}
@@ -254,10 +164,12 @@ export default function StorefrontShop({
 
       {selectedProduct && (
         <ProductConfigurator
+          canOrder={settings.orderingEnabled}
           product={selectedProduct}
+          initialVariantId={initialVariantId}
+          cart={cart}
           businessType={settings.businessType}
           currency={settings.currency}
-          primaryColor={settings.primaryColor}
           onClose={() => setSelectedProduct(null)}
           onAdd={addConfiguredItem}
         />
@@ -277,94 +189,33 @@ export default function StorefrontShop({
   );
 }
 
-function ProductCard({
-  product,
-  settings,
-  onAdd,
-}: {
-  product: StorefrontCatalogProduct;
-  settings: StorefrontCheckoutSettings;
-  onAdd: () => void;
-}) {
-  return (
-    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-      {product.imageUrl ? (
-        <img
-          src={product.imageUrl}
-          alt={product.name}
-          loading="lazy"
-          decoding="async"
-          className="aspect-[4/3] w-full object-cover"
-        />
-      ) : (
-        <div className="flex aspect-[4/3] items-center justify-center bg-slate-100 text-slate-300">
-          <ShoppingBag size={34} />
-        </div>
-      )}
-
-      <div className="p-4">
-        <h3 className="font-bold text-slate-900">{product.name}</h3>
-        {product.description && (
-          <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-500">
-            {product.description}
-          </p>
-        )}
-
-        <div className="mt-4 flex items-end justify-between gap-3">
-          <div>
-            <p className="font-bold" style={{ color: settings.primaryColor }}>
-              {product.productType === "variant" ? "From " : ""}
-              {formatMoney(product.priceFrom, settings.currency)}
-            </p>
-            {(settings.businessType === "shoes" || settings.businessType === "fashion") && product.productType === "variant" && (
-              <p className="mt-1 text-xs font-medium text-slate-500">
-                {new Set(product.variants.map((row) => row.size).filter(Boolean)).size} sizes · {new Set(product.variants.map((row) => row.color).filter(Boolean)).size} colours
-              </p>
-            )}
-            <p className="mt-1 text-xs text-slate-400">
-              {product.totalStock > 0 ? `${product.totalStock} in stock` : "Out of stock"}
-            </p>
-          </div>
-
-          {settings.orderingEnabled && (
-            <button
-              type="button"
-              onClick={onAdd}
-              disabled={product.totalStock <= 0}
-              className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
-              style={{ backgroundColor: settings.primaryColor }}
-            >
-              {product.productType === "variant" || product.optionGroups.length > 0 ? "Choose" : "Add"}
-              <ChevronRight size={15} />
-            </button>
-          )}
-        </div>
-      </div>
-    </article>
-  );
-}
-
 function ProductConfigurator({
+  canOrder,
   product,
+  initialVariantId,
+  cart,
   businessType,
   currency,
-  primaryColor,
   onClose,
   onAdd,
 }: {
+  canOrder: boolean;
   product: StorefrontCatalogProduct;
+  initialVariantId?: string;
+  cart: CartItem[];
   businessType: string;
   currency: string;
-  primaryColor: string;
   onClose: () => void;
   onAdd: (item: CartItem) => void;
 }) {
+  const { t } = useStorefrontLanguage();
   const isShoeProduct =
     (businessType === "shoes" || businessType === "fashion") && product.productType === "variant";
   const isFashionProduct = businessType === "fashion" && product.productType === "variant";
   const isMilkTeaProduct =
     businessType === "milk_tea" && product.productType === "configurable";
   const initialVariant =
+    product.variants.find(variant => variant.id === initialVariantId) ??
     product.variants.find((variant) => variant.stockQuantity > 0) ??
     product.variants[0];
   const [variantId, setVariantId] = useState(initialVariant?.id ?? "");
@@ -382,6 +233,7 @@ function ProductConfigurator({
 
   const variant =
     product.variants.find((row) => row.id === variantId) ?? initialVariant;
+  const remainingStock = Math.max(0, (variant?.stockQuantity ?? 0) - cart.filter(item => item.productId === variant?.id).reduce((sum, item) => sum + item.quantity, 0));
 
   const shoeColors = useMemo(() => {
     if (!isShoeProduct) return [];
@@ -471,14 +323,14 @@ function ProductConfigurator({
   if (!variant) return null;
 
   const variantLabel = isShoeProduct
-    ? [variant.color, variant.size ? `${isFashionProduct ? "Size" : "EU"} ${variant.size}` : null]
+    ? [variant.color, variant.size ? `${isFashionProduct ? t("Size") : "EU"} ${variant.size}` : null]
         .filter(Boolean)
         .join(" / ") || null
     : [variant.color, variant.size].filter(Boolean).join(" / ") || null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+      <div role="dialog" aria-modal="true" aria-label={product.name} className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
         <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-5">
           <div>
             <h2 className="text-xl font-bold text-slate-950">{product.name}</h2>
@@ -492,6 +344,7 @@ function ProductConfigurator({
           </div>
           <button
             type="button"
+            aria-label={t("Close")}
             onClick={onClose}
             className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
           >
@@ -500,20 +353,14 @@ function ProductConfigurator({
         </div>
 
         <div className="space-y-6 p-5">
-          {isShoeProduct && (variant.imageUrl ?? product.imageUrl) && (
-            <img
-              src={variant.imageUrl ?? product.imageUrl ?? ""}
-              alt={`${product.name}${selectedColor ? ` · ${selectedColor}` : ""}`}
-              loading="lazy"
-              className="aspect-[16/10] w-full rounded-2xl border border-slate-200 object-cover"
-            />
-          )}
+          {product.description && <p className="whitespace-pre-line text-sm leading-6 text-slate-600">{product.description}</p>}
+          <ProductGallery key={`${product.key}:${variant.imageUrl ?? product.imageUrl ?? ""}`} name={product.name} images={[...new Set([variant.imageUrl, product.imageUrl, ...(product.images ?? []), ...product.variants.map(row => row.imageUrl)].filter((url): url is string => Boolean(url)))]} />
 
           {product.productType === "variant" && isShoeProduct && (
             <div className="space-y-5">
               <div>
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-slate-800">Colour</p>
+                  <p className="text-sm font-semibold text-slate-800">{t("Colour")}</p>
                   <span className="text-xs text-slate-400">{selectedColor || "Choose"}</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -533,7 +380,7 @@ function ProductConfigurator({
                         onClick={() => chooseShoeColor(color)}
                         className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 ${
                           active
-                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            ? "border-[var(--store-primary)] bg-[var(--store-primary-soft)] text-[var(--store-primary-ink)]"
                             : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                         }`}
                       >
@@ -546,9 +393,9 @@ function ProductConfigurator({
 
               <div>
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-slate-800">Size</p>
+                  <p className="text-sm font-semibold text-slate-800">{t("Size")}</p>
                   <span className="text-xs text-slate-400">
-                    {variant.size ? `${isFashionProduct ? "Size" : "EU"} ${variant.size}` : "Choose"}
+                    {variant.size ? `${isFashionProduct ? t("Size") : "EU"} ${variant.size}` : "Choose"}
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6">
@@ -562,7 +409,7 @@ function ProductConfigurator({
                         onClick={() => chooseVariant(row)}
                         className={`rounded-xl border px-2 py-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-300 ${
                           active
-                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            ? "border-[var(--store-primary)] bg-[var(--store-primary-soft)] text-[var(--store-primary-ink)]"
                             : "border-slate-200 text-slate-800 hover:border-slate-300"
                         }`}
                       >
@@ -572,9 +419,9 @@ function ProductConfigurator({
                   })}
                 </div>
                 <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 text-xs">
-                  <span className="text-slate-500">Selected</span>
+                  <span className="text-slate-500">{t("Selected")}</span>
                   <span className="font-semibold text-slate-800">
-                    {variantLabel} · {variant.stockQuantity} in stock
+                    {variantLabel} · {remainingStock} available to add
                   </span>
                 </div>
               </div>
@@ -583,7 +430,7 @@ function ProductConfigurator({
 
           {product.productType === "variant" && !isShoeProduct && (
             <div>
-              <p className="text-sm font-semibold text-slate-800">Variant</p>
+              <p className="text-sm font-semibold text-slate-800">{t("Variant")}</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {product.variants.map((row) => {
                   const label =
@@ -599,7 +446,7 @@ function ProductConfigurator({
                       onClick={() => chooseVariant(row)}
                       className={`rounded-xl border p-3 text-left text-sm transition disabled:opacity-40 ${
                         active
-                          ? "border-blue-500 bg-blue-50"
+                          ? "border-[var(--store-primary)] bg-[var(--store-primary-soft)]"
                           : "border-slate-200 hover:border-slate-300"
                       }`}
                     >
@@ -641,7 +488,7 @@ function ProductConfigurator({
                       }
                       className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left text-sm transition ${
                         active
-                          ? "border-blue-500 bg-blue-50 ring-1 ring-blue-100"
+                          ? "border-[var(--store-primary)] bg-[var(--store-primary-soft)] ring-1 ring-[var(--store-primary-soft)]"
                           : "border-slate-200 bg-white hover:border-slate-300"
                       } ${isMilkTeaProduct && group.selectionType === "single" ? "min-h-14" : ""}`}
                     >
@@ -671,10 +518,11 @@ function ProductConfigurator({
 
           <div className="flex items-center justify-between rounded-xl bg-slate-50 p-4">
             <div>
-              <p className="text-xs text-slate-500">Quantity</p>
+              <p className="text-xs text-slate-500">{t("Quantity")}</p>
               <div className="mt-1 flex items-center gap-2">
                 <button
                   type="button"
+                  disabled={quantity <= 1}
                   onClick={() => setQuantity((value) => Math.max(1, value - 1))}
                   className="rounded-lg border border-slate-300 bg-white p-2"
                 >
@@ -683,9 +531,10 @@ function ProductConfigurator({
                 <span className="w-8 text-center font-semibold">{quantity}</span>
                 <button
                   type="button"
+                  disabled={quantity >= Math.min(999, remainingStock)}
                   onClick={() =>
                     setQuantity((value) =>
-                      Math.min(variant.stockQuantity, value + 1),
+                      Math.min(999, remainingStock, value + 1),
                     )
                   }
                   className="rounded-lg border border-slate-300 bg-white p-2"
@@ -694,14 +543,14 @@ function ProductConfigurator({
                 </button>
               </div>
             </div>
-            <p className="text-xl font-bold" style={{ color: primaryColor }}>
+            <p className="text-xl font-bold" style={{ color: "var(--store-primary-ink)" }}>
               {formatMoney(unitPrice * quantity, currency)}
             </p>
           </div>
 
           <button
             type="button"
-            disabled={!valid || variant.stockQuantity <= 0}
+            disabled={!canOrder || !valid || remainingStock <= 0 || quantity > remainingStock}
             onClick={() => {
               const optionIds = selectedOptions.map((option) => option.id).sort();
               onAdd({
@@ -717,9 +566,9 @@ function ProductConfigurator({
               });
             }}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ backgroundColor: primaryColor }}
+            style={{ backgroundColor: "var(--store-primary-surface)", color: "var(--store-on-primary)" }}
           >
-            <ShoppingCart size={18} /> Add to Cart
+            <ShoppingCart size={18} /> {t("Add to Order")}
           </button>
         </div>
       </div>
@@ -742,7 +591,13 @@ function CartDrawer({
   tableToken: string | null;
   onClose: () => void;
 }) {
+  const { t } = useStorefrontLanguage();
   const [submitting, setSubmitting] = useState(false);
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setScheduleNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [message, setMessage] = useState<string | null>(null);
 
   const allowed = [
@@ -772,7 +627,10 @@ function CartDrawer({
   const [coupon, setCoupon] = useState<{
     code: string;
     discount: number;
+    subtotal: number;
   } | null>(null);
+  const couponRequest = useRef(0);
+  const latestSubtotal = useRef(0);
   const [couponChecking, setCouponChecking] = useState(false);
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
 
@@ -782,6 +640,7 @@ function CartDrawer({
     (sum, item) => sum + item.unitPrice * item.quantity,
     0,
   );
+  useEffect(() => { latestSubtotal.current = subtotal; }, [subtotal]);
   const deliveryFee =
     fulfillment === "delivery"
       ? selectedZone?.fee ?? settings.deliveryFee
@@ -790,7 +649,9 @@ function CartDrawer({
     fulfillment === "delivery"
       ? Math.max(settings.minimumOrder, selectedZone?.minimumOrder ?? 0)
       : settings.minimumOrder;
-  const couponDiscount = Math.min(subtotal, Math.max(0, coupon?.discount ?? 0));
+  const couponStale = Boolean(coupon && coupon.subtotal !== subtotal);
+  const couponPending = couponChecking || couponStale;
+  const couponDiscount = couponStale ? 0 : Math.min(subtotal, Math.max(0, coupon?.discount ?? 0));
   const total = Math.max(0, subtotal - couponDiscount) + deliveryFee;
   const belowMinimum = subtotal < effectiveMinimum;
   const needsZone =
@@ -798,10 +659,10 @@ function CartDrawer({
   const canSchedule =
     settings.allowScheduledOrders && fulfillment !== "dine_in" && !tableToken;
   const minSchedule = toLocalDateTimeInput(
-    new Date(Date.now() + settings.minScheduleLeadMinutes * 60_000),
+    new Date(scheduleNow + settings.minScheduleLeadMinutes * 60_000),
   );
   const maxSchedule = toLocalDateTimeInput(
-    new Date(Date.now() + settings.maxScheduleDays * 86_400_000),
+    new Date(scheduleNow + settings.maxScheduleDays * 86_400_000),
   );
 
   function updateQuantity(key: string, quantity: number) {
@@ -810,14 +671,17 @@ function CartDrawer({
         item.key === key
           ? {
               ...item,
-              quantity: Math.max(1, Math.min(item.maxStock, quantity)),
+              quantity: Math.max(1, Math.min(999, item.maxStock - current
+                .filter(row => row.productId === item.productId && row.key !== key)
+                .reduce((sum, row) => sum + row.quantity, 0), quantity)),
             }
           : item,
       ),
     );
   }
 
-  async function previewCoupon(codeValue: string, silent = false) {
+  const previewCoupon = useCallback(async (codeValue: string) => {
+    const requestId = ++couponRequest.current;
     const code = codeValue.trim().toUpperCase();
 
     if (!code) {
@@ -826,7 +690,8 @@ function CartDrawer({
       return;
     }
 
-    if (!silent) setCouponChecking(true);
+    setCouponChecking(true);
+    setCouponMessage(null);
 
     try {
       const response = await fetch(
@@ -838,6 +703,11 @@ function CartDrawer({
         },
       );
       const payload = await response.json();
+      if (requestId !== couponRequest.current) return;
+      if (latestSubtotal.current !== subtotal) {
+        setCouponMessage("Cart changed. Apply your coupon again.");
+        return;
+      }
 
       if (!response.ok || !payload.success) {
         throw new Error(payload.message ?? "Coupon is not available.");
@@ -846,6 +716,7 @@ function CartDrawer({
       setCoupon({
         code: payload.coupon.code,
         discount: Number(payload.coupon.discount ?? 0),
+        subtotal,
       });
       setCouponInput(payload.coupon.code);
       setCouponMessage(
@@ -855,28 +726,29 @@ function CartDrawer({
         )}.`,
       );
     } catch (error) {
+      if (requestId !== couponRequest.current) return;
       setCoupon(null);
       setCouponMessage(
         error instanceof Error ? error.message : "Coupon is not available.",
       );
     } finally {
-      if (!silent) setCouponChecking(false);
+      if (requestId === couponRequest.current) setCouponChecking(false);
     }
-  }
+  }, [slug, subtotal, settings.currency]);
 
   useEffect(() => {
-    if (!coupon?.code) return;
+    if (!coupon?.code || coupon.subtotal === subtotal) return;
 
     const timer = window.setTimeout(() => {
-      void previewCoupon(coupon.code, true);
+      void previewCoupon(coupon.code);
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [subtotal, coupon?.code]);
+  }, [previewCoupon, coupon?.code, coupon?.subtotal, subtotal]);
 
   async function submitOrder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (belowMinimum || cart.length === 0) return;
+    if (!settings.orderingEnabled || submitting || couponPending || belowMinimum || cart.length === 0) return;
 
     if (needsZone && !deliveryZoneId) {
       setMessage("Please select a delivery zone.");
@@ -903,12 +775,9 @@ function CartDrawer({
           ? new Date(scheduledAt).toISOString()
           : null;
 
-      const response = await fetch(
-        `/api/storefront/${encodeURIComponent(slug)}/orders`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+      const contactError = validateCheckoutContact(form.get("guestName"), form.get("guestPhone"), fulfillment, form.get("guestAddress"));
+      if (contactError) throw new Error(contactError);
+      const checkout = {
             items: cart.map((item) => ({
               productId: item.productId,
               quantity: item.quantity,
@@ -921,17 +790,22 @@ function CartDrawer({
             customerNote: form.get("customerNote"),
             tableToken: fulfillment === "dine_in" ? tableToken : null,
             paymentMethod,
-            paymentReference:
-              paymentMethod === "khqr" ? form.get("paymentReference") : null,
             deliveryZoneId:
               fulfillment === "delivery" && deliveryZoneId
                 ? deliveryZoneId
                 : null,
             requestedFor,
             couponCode: coupon?.code ?? null,
-          }),
-        },
-      );
+          };
+      const upload = new FormData();
+      upload.set("checkout", JSON.stringify(checkout));
+      if (paymentMethod === "khqr") {
+        const proof = form.get("paymentProof");
+        if (!(proof instanceof File) || !proof.size) throw new Error("Upload payment proof to continue.");
+        if (proof.size > 5 * 1024 * 1024 || !["image/jpeg", "image/png", "image/webp"].includes(proof.type)) throw new Error("Payment proof must be a JPG, PNG or WebP image up to 5 MB.");
+        upload.set("paymentProof", proof);
+      }
+      const response = await fetch(`/api/storefront/${encodeURIComponent(slug)}/orders`, { method: "POST", body: upload });
 
       const payload = await response.json();
       if (!response.ok || !payload.success) {
@@ -939,6 +813,7 @@ function CartDrawer({
       }
 
       setCart([]);
+      try { window.localStorage.removeItem(`tenh-cart:${slug}`); } catch { /* Storage is optional. */ }
       const token = payload.order?.publicToken;
       if (typeof token === "string" && token) {
         window.location.href = `/order/${encodeURIComponent(token)}`;
@@ -960,16 +835,16 @@ function CartDrawer({
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/45 backdrop-blur-sm">
       <button
         type="button"
-        aria-label="Close cart"
+        aria-label={t("Close cart")}
         onClick={onClose}
         className="absolute inset-0"
       />
       <aside className="relative h-full w-full max-w-lg overflow-y-auto bg-white shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white p-5">
           <div>
-            <h2 className="text-xl font-bold text-slate-950">Your Cart</h2>
+            <h2 className="text-xl font-bold text-slate-950">{t("Your Order")}</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Review items and place your order.
+              {t("Review your items, choose delivery or pickup, and place your order.")}
             </p>
           </div>
           <button
@@ -989,7 +864,8 @@ function CartDrawer({
                 className="rounded-xl border border-slate-200 p-4"
               >
                 <div className="flex justify-between gap-3">
-                  <div className="min-w-0">
+                  {item.imageUrl && <img src={item.imageUrl} alt={item.name} className="h-20 w-16 shrink-0 rounded-lg bg-slate-50 object-contain" />}
+                  <div className="min-w-0 flex-1">
                     <p className="font-semibold text-slate-900">{item.name}</p>
                     {item.variantLabel && (
                       <p className="text-xs text-slate-500">{item.variantLabel}</p>
@@ -1001,13 +877,14 @@ function CartDrawer({
                     )}
                     <p
                       className="mt-1 text-sm font-semibold"
-                      style={{ color: settings.primaryColor }}
+                      style={{ color: "var(--store-primary-ink)" }}
                     >
                       {formatMoney(item.unitPrice, settings.currency)} each
                     </p>
                   </div>
                   <button
                     type="button"
+                    aria-label={`Remove ${item.name} from order`}
                     onClick={() =>
                       setCart((current) =>
                         current.filter((row) => row.key !== item.key),
@@ -1023,6 +900,8 @@ function CartDrawer({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
+                      aria-label={`Decrease ${item.name} quantity`}
+                      disabled={item.quantity <= 1}
                       onClick={() => updateQuantity(item.key, item.quantity - 1)}
                       className="rounded-lg border border-slate-300 p-1.5"
                     >
@@ -1033,6 +912,8 @@ function CartDrawer({
                     </span>
                     <button
                       type="button"
+                      aria-label={`Increase ${item.name} quantity`}
+                      disabled={item.quantity >= 999 || cart.filter(row => row.productId === item.productId).reduce((sum, row) => sum + row.quantity, 0) >= item.maxStock}
                       onClick={() => updateQuantity(item.key, item.quantity + 1)}
                       className="rounded-lg border border-slate-300 p-1.5"
                     >
@@ -1052,7 +933,7 @@ function CartDrawer({
 
           <div className="rounded-2xl bg-slate-50 p-4 text-sm">
             <PriceRow
-              label="Subtotal"
+              label={t("Subtotal")}
               value={formatMoney(subtotal, settings.currency)}
             />
             {couponDiscount > 0 && (
@@ -1063,13 +944,13 @@ function CartDrawer({
             )}
             {fulfillment === "delivery" && (
               <PriceRow
-                label={selectedZone ? `Delivery · ${selectedZone.name}` : "Delivery"}
+                label={selectedZone ? `Delivery · ${selectedZone.name}` : t("Delivery")}
                 value={formatMoney(deliveryFee, settings.currency)}
               />
             )}
             <div className="mt-3 border-t border-slate-200 pt-3">
               <PriceRow
-                label="Total"
+                label={t("Total")}
                 value={formatMoney(total, settings.currency)}
                 bold
               />
@@ -1079,12 +960,15 @@ function CartDrawer({
           {settings.couponsEnabled && (
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <p className="text-sm font-semibold text-slate-800">
-                Coupon code
+                {t("Coupon code")}
               </p>
               <div className="mt-2 flex gap-2">
                 <input
                   value={couponInput}
                   onChange={(event) => {
+                    couponRequest.current += 1;
+                    setCouponChecking(false);
+                    setCouponMessage(null);
                     setCouponInput(event.target.value.toUpperCase());
                     if (
                       coupon &&
@@ -1095,23 +979,24 @@ function CartDrawer({
                     }
                   }}
                   maxLength={30}
-                  placeholder="Enter code"
-                  className="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-2.5 uppercase outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  placeholder={t("Enter code")}
+                  className="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-2.5 uppercase outline-none focus:border-[var(--store-primary)] focus:ring-4 focus:ring-[var(--store-primary-soft)]"
                 />
                 <button
                   type="button"
                   onClick={() => void previewCoupon(couponInput)}
                   disabled={couponChecking || !couponInput.trim()}
-                  className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                  className="inline-flex items-center justify-center rounded-xl bg-[var(--store-primary-surface)] px-4 py-2.5 text-sm font-semibold text-[var(--store-on-primary)] disabled:opacity-50"
                 >
                   {couponChecking ? (
                     <Loader2 size={16} className="animate-spin" />
                   ) : (
-                    "Apply"
+                    t("Apply")
                   )}
                 </button>
               </div>
-              {couponMessage && (
+              {couponPending && <p className="mt-2 text-xs text-slate-500" role="status">Checking discount for your current cart…</p>}
+              {!couponPending && couponMessage && (
                 <p
                   className={`mt-2 text-xs ${
                     coupon ? "text-emerald-700" : "text-red-600"
@@ -1139,7 +1024,7 @@ function CartDrawer({
           <form onSubmit={submitOrder} className="space-y-4">
             <div>
               <p className="mb-2 text-sm font-semibold text-slate-800">
-                Fulfillment
+                {t("Fulfillment")}
               </p>
               <div className="grid gap-2 sm:grid-cols-3">
                 {allowed.map((value) => (
@@ -1152,13 +1037,13 @@ function CartDrawer({
                     }}
                     className={`rounded-xl border px-3 py-2.5 text-sm font-semibold ${
                       fulfillment === value
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        ? "border-[var(--store-primary)] bg-[var(--store-primary-soft)] text-[var(--store-primary-ink)]"
                         : "border-slate-200 text-slate-700"
                     }`}
                   >
                     {value === "dine_in"
-                      ? "Dine In"
-                      : value.charAt(0).toUpperCase() + value.slice(1)}
+                      ? t("Dine In")
+                      : t(value === "pickup" ? "Pickup Store" : value.charAt(0).toUpperCase() + value.slice(1))}
                   </button>
                 ))}
               </div>
@@ -1166,12 +1051,12 @@ function CartDrawer({
 
             {fulfillment === "delivery" && settings.deliveryZones.length > 0 && (
               <label className="block text-sm font-medium text-slate-700">
-                Delivery zone
+                {t("Delivery zone")}
                 <select
                   value={deliveryZoneId}
                   onChange={(event) => setDeliveryZoneId(event.target.value)}
                   required
-                  className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-[var(--store-primary)] focus:ring-4 focus:ring-[var(--store-primary-soft)]"
                 >
                   {settings.deliveryZones.map((zone) => (
                     <option key={zone.id} value={zone.id}>
@@ -1190,7 +1075,7 @@ function CartDrawer({
             {canSchedule && (
               <div>
                 <p className="mb-2 text-sm font-semibold text-slate-800">
-                  Order time
+                  {t("Order time")}
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -1198,22 +1083,22 @@ function CartDrawer({
                     onClick={() => setScheduleMode("now")}
                     className={`rounded-xl border px-3 py-2.5 text-sm font-semibold ${
                       scheduleMode === "now"
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        ? "border-[var(--store-primary)] bg-[var(--store-primary-soft)] text-[var(--store-primary-ink)]"
                         : "border-slate-200 text-slate-700"
                     }`}
                   >
-                    As soon as possible
+                    {t("As soon as possible")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setScheduleMode("scheduled")}
                     className={`rounded-xl border px-3 py-2.5 text-sm font-semibold ${
                       scheduleMode === "scheduled"
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        ? "border-[var(--store-primary)] bg-[var(--store-primary-soft)] text-[var(--store-primary-ink)]"
                         : "border-slate-200 text-slate-700"
                     }`}
                   >
-                    Schedule
+                    {t("Schedule")}
                   </button>
                 </div>
                 {scheduleMode === "scheduled" && (
@@ -1224,7 +1109,7 @@ function CartDrawer({
                     min={minSchedule}
                     max={maxSchedule}
                     required
-                    className="mt-3 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    className="mt-3 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[var(--store-primary)] focus:ring-4 focus:ring-[var(--store-primary-soft)]"
                   />
                 )}
               </div>
@@ -1232,7 +1117,7 @@ function CartDrawer({
 
             <div>
               <p className="mb-2 text-sm font-semibold text-slate-800">
-                Payment
+                {t("Payment")}
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {paymentOptions.map((value) => (
@@ -1242,18 +1127,18 @@ function CartDrawer({
                     onClick={() => setPaymentMethod(value)}
                     className={`rounded-xl border px-3 py-2.5 text-sm font-semibold ${
                       paymentMethod === value
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        ? "border-[var(--store-primary)] bg-[var(--store-primary-soft)] text-[var(--store-primary-ink)]"
                         : "border-slate-200 text-slate-700"
                     }`}
                   >
-                    {value === "khqr" ? "KHQR" : "Pay Later / Cash"}
+                    {value === "khqr" ? "KHQR" : t("Pay Later / Cash")}
                   </button>
                 ))}
               </div>
             </div>
 
             {paymentMethod === "khqr" && settings.khqrImageUrl && (
-              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-center">
+              <div className="rounded-2xl border border-[var(--store-primary)] bg-[var(--store-primary-soft)] p-4 text-center">
                 <img
                   src={settings.khqrImageUrl}
                   alt="Store KHQR"
@@ -1273,13 +1158,9 @@ function CartDrawer({
                   </p>
                 )}
                 <label className="mt-4 block text-left text-sm font-medium text-slate-700">
-                  Payment reference
-                  <input
-                    name="paymentReference"
-                    maxLength={120}
-                    placeholder="Optional transaction/reference number"
-                    className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                  />
+                  {t("Payment proof")}
+                  <input type="file" name="paymentProof" accept="image/jpeg,image/png,image/webp" required className="mt-2 block w-full rounded-xl border border-slate-300 bg-white p-3 text-sm" />
+                  <span className="mt-1 block text-xs text-slate-500">JPG, PNG or WebP, up to 5 MB. Required for KHQR payment.</span>
                 </label>
                 <p className="mt-2 text-left text-xs text-amber-700">
                   The shop will verify the KHQR payment before marking it paid.
@@ -1289,37 +1170,37 @@ function CartDrawer({
 
             <CheckoutInput
               name="guestName"
-              label="Name"
+              label={t("Name")}
               required
-              placeholder="Your name"
+              placeholder={t("Your name")}
             />
             <CheckoutInput
               name="guestPhone"
-              label="Phone"
+              label={t("Phone")}
               required
-              placeholder="Phone number"
+              placeholder={t("Phone number")}
             />
             {fulfillment === "delivery" && (
               <CheckoutInput
                 name="guestAddress"
-                label="Delivery address"
+                label={t("Delivery address")}
                 required
-                placeholder="Street, house, area"
+                placeholder={t("Street, house, area")}
               />
             )}
             <label className="block text-sm font-medium text-slate-700">
-              Note
+              {t("Note")}
               <textarea
                 name="customerNote"
                 rows={3}
                 maxLength={1000}
-                placeholder="Optional note for the shop"
-                className="mt-2 w-full resize-none rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                placeholder={t("Optional note for the shop")}
+                className="mt-2 w-full resize-none rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[var(--store-primary)] focus:ring-4 focus:ring-[var(--store-primary-soft)]"
               />
             </label>
 
             {settings.checkoutMessage && (
-              <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-800">
+              <p className="rounded-xl bg-[var(--store-primary-soft)] p-3 text-sm text-[var(--store-primary-ink)]">
                 {settings.checkoutMessage}
               </p>
             )}
@@ -1333,21 +1214,23 @@ function CartDrawer({
             <button
               type="submit"
               disabled={
+                !settings.orderingEnabled ||
                 submitting ||
+                couponPending ||
                 belowMinimum ||
                 cart.length === 0 ||
                 paymentOptions.length === 0
               }
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-              style={{ backgroundColor: settings.primaryColor }}
+              style={{ backgroundColor: "var(--store-primary-surface)", color: "var(--store-on-primary)" }}
             >
               {submitting ? (
                 <>
-                  <Loader2 size={18} className="animate-spin" /> Sending Order...
+                  <Loader2 size={18} className="animate-spin" /> {t("Sending Order...")}
                 </>
               ) : (
                 <>
-                  <ShoppingBag size={18} /> Place Order · {formatMoney(total, settings.currency)}
+                  <ShoppingBag size={18} /> {t("Place Order")} · {formatMoney(total, settings.currency)}
                 </>
               )}
             </button>
@@ -1362,7 +1245,7 @@ function CheckoutInput({ name, label, required, placeholder }: { name: string; l
   return (
     <label className="block text-sm font-medium text-slate-700">
       {label}
-      <input name={name} required={required} placeholder={placeholder} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+      <input name={name} required={required} placeholder={placeholder} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[var(--store-primary)] focus:ring-4 focus:ring-[var(--store-primary-soft)]" />
     </label>
   );
 }

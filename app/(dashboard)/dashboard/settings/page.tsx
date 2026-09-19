@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   ArrowRight,
   Building2,
+  Banknote,
   ChevronRight,
   Languages,
   LockKeyhole,
@@ -121,6 +122,14 @@ export default async function SettingsPage() {
 
   const settingsItems: SettingItem[] = [
     ...baseSettings,
+    {
+      title: "POS Currency",
+      description: "Enable USD / KHR display and configure your store exchange rate.",
+      href: "/dashboard/settings/pos-currency",
+      icon: Banknote,
+      visible: business.role === "owner",
+      details: ["$ / ៛ switch", "Default $1 = 4,000៛", "Saved order rate snapshots"],
+    },
     {
       title: "Receipt",
       description: "Customize 58mm / 80mm receipts, footer and store QR.",

@@ -8,6 +8,7 @@ import {
   RefreshCw,
   XCircle,
 } from "lucide-react";
+import { formatOrderDate, proofPath } from "@/lib/storefront/checkout-validation";
 import { useCallback, useEffect, useState } from "react";
 
 type PublicOrder = {
@@ -37,6 +38,7 @@ export default function OrderStatusClient({
 }) {
   const [order, setOrder] = useState(initialOrder);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -48,7 +50,12 @@ export default function OrderStatusClient({
       const payload = await response.json();
       if (response.ok && payload?.order) {
         setOrder(payload.order as PublicOrder);
+        setRefreshError(null);
+      } else {
+        setRefreshError("Unable to refresh the order. Please try again.");
       }
+    } catch {
+      setRefreshError("Connection lost. Your last order status is shown below.");
     } finally {
       setRefreshing(false);
     }
@@ -66,6 +73,7 @@ export default function OrderStatusClient({
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-xl">
+        {refreshError && <p role="status" className="mb-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{refreshError}</p>}
         <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm sm:p-9">
           <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-2xl ${appearance.iconClass}`}>
             <Icon size={30} />
@@ -95,7 +103,7 @@ export default function OrderStatusClient({
             {order.requested_for && (
               <Row
                 label="Requested for"
-                value={new Date(order.requested_for).toLocaleString()}
+                value={formatOrderDate(order.requested_for)}
               />
             )}
             <Row
@@ -103,7 +111,7 @@ export default function OrderStatusClient({
               value={formatPayment(order.payment_method, order.payment_status)}
             />
             {order.payment_reference && (
-              <Row label="Payment reference" value={order.payment_reference} />
+              <Row label={proofPath(order.payment_reference) ? "Payment proof" : "Payment reference"} value={proofPath(order.payment_reference) ? "Received - awaiting verification" : order.payment_reference} />
             )}
             {order.coupon_code && Number(order.discount) > 0 && (
               <Row
@@ -115,10 +123,10 @@ export default function OrderStatusClient({
             {Number(order.loyalty_points_earned) > 0 && (
               <Row
                 label="Loyalty earned"
-                value={`+${Number(order.loyalty_points_earned).toLocaleString()} points`}
+                value={`+${Number(order.loyalty_points_earned).toLocaleString("en-US")} points`}
               />
             )}
-            <Row label="Placed" value={new Date(order.created_at).toLocaleString()} />
+            <Row label="Placed" value={formatOrderDate(order.created_at)} />
           </dl>
 
           <button
@@ -161,7 +169,7 @@ function formatMoney(value: number, currency: string) {
 function formatFulfillment(value: string | null) {
   if (value === "dine_in") return "Dine In";
   if (value === "delivery") return "Delivery";
-  return "Pickup";
+  return "Pickup Store";
 }
 
 function formatPayment(method: string, status: string) {

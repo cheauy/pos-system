@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { getBusinessModePreset } from "@/lib/business/business-mode-presets";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { parseStoreProfile, supportsDineIn } from "@/lib/storefront/profile";
 import {
   isBusinessType,
 } from "@/lib/storefront/types";
@@ -47,6 +47,33 @@ function getBoolean(
   key: string,
 ) {
   return formData.get(key) === "on";
+}
+
+
+function getOptionalUrl(
+  formData: FormData,
+  key: string,
+  label: string,
+) {
+  const value = getOptionalText(formData, key);
+  if (!value) return null;
+
+  if (value.length > 500) {
+    throw new Error(`${label} link must be 500 characters or fewer.`);
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${label} link must be a complete URL starting with http:// or https://.`);
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`${label} link must use http:// or https://.`);
+  }
+
+  return parsed.toString();
 }
 
 function getImageFile(
@@ -130,21 +157,22 @@ export async function updateStorefrontSettings(
       "storefront.update",
     );
 
-    const businessType = getText(
-      formData,
-      "businessType",
-    );
+    const {
+      data: existing,
+      error: existingError,
+    } = await supabaseAdmin
+      .from("business_storefronts")
+      .select("logo_url, banner_url, khqr_image_url, business_type, social_links")
+      .eq("business_id", business.id)
+      .maybeSingle();
 
-    if (!isBusinessType(businessType)) {
-      throw new Error(
-        "Please select a valid business type.",
-      );
+    if (existingError) {
+      throw new Error(existingError.message);
     }
 
-    const businessPreset = getBusinessModePreset(businessType);
-    if (!businessPreset) {
-      throw new Error("Unable to load the selected business mode.");
-    }
+    // Business Settings owns the mode; never accept it from storefront form data.
+    const businessType = existing?.business_type ?? "general";
+    if (!isBusinessType(businessType)) throw new Error("Unable to load the business mode from Business Settings.");
 
     const displayName = getOptionalText(
       formData,
@@ -263,6 +291,19 @@ export async function updateStorefrontSettings(
       throw new Error("Maximum scheduling window must be between 1 and 90 days.");
     }
 
+
+    const socialLinks = {
+      profile: parseStoreProfile(formData),
+      facebook: getOptionalUrl(formData, "facebookUrl", "Facebook"),
+      instagram: getOptionalUrl(formData, "instagramUrl", "Instagram"),
+      tiktok: getOptionalUrl(formData, "tiktokUrl", "TikTok"),
+      youtube: getOptionalUrl(formData, "youtubeUrl", "YouTube"),
+      telegram: getOptionalUrl(formData, "telegramUrl", "Telegram"),
+      whatsapp: getOptionalUrl(formData, "whatsappUrl", "WhatsApp"),
+      messenger: getOptionalUrl(formData, "messengerUrl", "Messenger"),
+      x: getOptionalUrl(formData, "xUrl", "X"),
+    };
+
     const estimatedMinutesText = getText(
       formData,
       "estimatedMinutes",
@@ -301,7 +342,7 @@ export async function updateStorefrontSettings(
       formData,
       "allowDelivery",
     );
-    const allowDineIn = getBoolean(
+    const allowDineIn = supportsDineIn(businessType) && getBoolean(
       formData,
       "allowDineIn",
     );
@@ -336,30 +377,9 @@ export async function updateStorefrontSettings(
       "khqr",
     );
 
-    const {
-      data: existing,
-      error: existingError,
-    } = await supabaseAdmin
-      .from("business_storefronts")
-      .select("logo_url, banner_url, khqr_image_url, business_type")
-      .eq("business_id", business.id)
-      .maybeSingle();
-
-    if (existingError) {
-      throw new Error(existingError.message);
-    }
-
-    const businessTypeChanged =
-      Boolean(existing?.business_type) && existing?.business_type !== businessType;
-    const productModeChanged = business.product_mode !== businessPreset.productMode;
-
-    if ((businessTypeChanged || productModeChanged) && business.role !== "owner") {
-      throw new Error("Only the business owner can change the business mode.");
-    }
-
-    let logoUrl = existing?.logo_url ?? null;
-    let bannerUrl = existing?.banner_url ?? null;
-    let khqrImageUrl = existing?.khqr_image_url ?? null;
+    let logoUrl = getBoolean(formData, "remove-logo") ? null : existing?.logo_url ?? null;
+    let bannerUrl = getBoolean(formData, "remove-banner") ? null : existing?.banner_url ?? null;
+    let khqrImageUrl = getBoolean(formData, "remove-khqr") ? null : existing?.khqr_image_url ?? null;
 
     if (logoFile) {
       logoUrl = await uploadStorefrontImage({
@@ -393,29 +413,11 @@ export async function updateStorefrontSettings(
 
     const now = new Date().toISOString();
 
-    let productModeUpdated = false;
-    if (productModeChanged) {
-      const { error: productModeError } = await supabaseAdmin
-        .from("businesses")
-        .update({
-          product_mode: businessPreset.productMode,
-          updated_at: now,
-        })
-        .eq("id", business.id);
-
-      if (productModeError) {
-        throw new Error(`Unable to update product mode: ${productModeError.message}`);
-      }
-
-      productModeUpdated = true;
-    }
-
     const { error } = await supabaseAdmin
       .from("business_storefronts")
       .upsert(
         {
           business_id: business.id,
-          business_type: businessType,
           is_published: isPublished,
           accept_online_orders:
             acceptOnlineOrders,
@@ -434,6 +436,7 @@ export async function updateStorefrontSettings(
             "address",
           ),
           currency,
+          social_links: { ...(existing?.social_links ?? {}), ...socialLinks, profile: { ...(existing?.social_links?.profile ?? {}), ...socialLinks.profile } },
           allow_pickup: allowPickup,
           allow_delivery: allowDelivery,
           allow_dine_in: allowDineIn,
@@ -457,16 +460,6 @@ export async function updateStorefrontSettings(
       );
 
     if (error) {
-      if (productModeUpdated) {
-        await supabaseAdmin
-          .from("businesses")
-          .update({
-            product_mode: business.product_mode,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", business.id);
-      }
-
       throw new Error(
         `Unable to save online store: ${error.message}`,
       );
@@ -481,7 +474,7 @@ export async function updateStorefrontSettings(
         old_business_type: existing?.business_type ?? null,
         business_type: businessType,
         old_product_mode: business.product_mode,
-        product_mode: businessPreset.productMode,
+        product_mode: business.product_mode,
         is_published: isPublished,
         accept_online_orders:
           acceptOnlineOrders,
@@ -496,9 +489,11 @@ export async function updateStorefrontSettings(
     });
 
     revalidatePath("/dashboard/online-store");
+    revalidatePath("/dashboard/online-store/ordering");
     revalidatePath("/dashboard/products");
     revalidatePath("/dashboard/settings/business");
     revalidatePath(`/_sites/${business.slug}`);
+    revalidatePath(`/storefront/${business.slug}`);
 
     return {
       success: true,
@@ -512,6 +507,152 @@ export async function updateStorefrontSettings(
         error instanceof Error
           ? error.message
           : "Unable to save online store settings.",
+      submittedAt: Date.now(),
+    };
+  }
+}
+
+
+export async function updateFulfillmentSettings(
+  _previousState: UpdateStorefrontState,
+  formData: FormData,
+): Promise<UpdateStorefrontState> {
+  try {
+    const business = await requirePermission("storefront.update");
+
+    const allowPickup = getBoolean(formData, "allowPickup");
+    const allowDelivery = getBoolean(formData, "allowDelivery");
+    const { data: mode, error: modeError } = await supabaseAdmin.from("business_storefronts")
+      .select("business_type").eq("business_id", business.id).single();
+    if (modeError) throw new Error("Unable to load the store business type.");
+    const allowDineIn = supportsDineIn(mode.business_type) && getBoolean(formData, "allowDineIn");
+
+    const minimumOrder = Number(getText(formData, "minimumOrder") || "0");
+    const deliveryFee = Number(getText(formData, "deliveryFee") || "0");
+    const checkoutMessage = getOptionalText(formData, "checkoutMessage");
+    const estimatedMinutesText = getText(formData, "estimatedMinutes");
+    const estimatedMinutes = estimatedMinutesText ? Number(estimatedMinutesText) : null;
+    const allowScheduledOrders = getBoolean(formData, "allowScheduledOrders");
+    const minScheduleLeadMinutes = Number(
+      getText(formData, "minScheduleLeadMinutes") || "30",
+    );
+    const maxScheduleDays = Number(
+      getText(formData, "maxScheduleDays") || "7",
+    );
+
+    if (!Number.isFinite(minimumOrder) || minimumOrder < 0) {
+      throw new Error("Minimum order must be zero or greater.");
+    }
+
+    if (!Number.isFinite(deliveryFee) || deliveryFee < 0) {
+      throw new Error("Delivery fee must be zero or greater.");
+    }
+
+    if (checkoutMessage && checkoutMessage.length > 300) {
+      throw new Error("Checkout message must be 300 characters or fewer.");
+    }
+
+    if (
+      estimatedMinutes !== null &&
+      (!Number.isInteger(estimatedMinutes) ||
+        estimatedMinutes < 1 ||
+        estimatedMinutes > 1440)
+    ) {
+      throw new Error(
+        "Estimated preparation time must be between 1 and 1440 minutes.",
+      );
+    }
+
+    if (
+      !Number.isInteger(minScheduleLeadMinutes) ||
+      minScheduleLeadMinutes < 0 ||
+      minScheduleLeadMinutes > 10080
+    ) {
+      throw new Error("Schedule lead time must be between 0 and 10080 minutes.");
+    }
+
+    if (
+      !Number.isInteger(maxScheduleDays) ||
+      maxScheduleDays < 1 ||
+      maxScheduleDays > 90
+    ) {
+      throw new Error("Maximum scheduling window must be between 1 and 90 days.");
+    }
+
+    const { data: current, error: currentError } = await supabaseAdmin
+      .from("business_storefronts")
+      .select("accept_online_orders")
+      .eq("business_id", business.id)
+      .maybeSingle();
+
+    if (currentError) {
+      throw new Error(currentError.message);
+    }
+
+    if (
+      current?.accept_online_orders &&
+      !allowPickup &&
+      !allowDelivery &&
+      !allowDineIn
+    ) {
+      throw new Error(
+        "Enable at least one fulfillment option while online orders are active.",
+      );
+    }
+
+    const { error } = await supabaseAdmin
+      .from("business_storefronts")
+      .update({
+        allow_pickup: allowPickup,
+        allow_delivery: allowDelivery,
+        allow_dine_in: allowDineIn,
+        minimum_order: minimumOrder,
+        delivery_fee: deliveryFee,
+        checkout_message: checkoutMessage,
+        allow_scheduled_orders: allowScheduledOrders,
+        min_schedule_lead_minutes: minScheduleLeadMinutes,
+        max_schedule_days: maxScheduleDays,
+        estimated_minutes: estimatedMinutes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("business_id", business.id);
+
+    if (error) {
+      throw new Error(`Unable to save fulfillment settings: ${error.message}`);
+    }
+
+    await createAuditLog({
+      action: "update",
+      entityType: "business",
+      entityId: business.id,
+      description: "Updated online store fulfillment settings",
+      metadata: {
+        allow_pickup: allowPickup,
+        allow_delivery: allowDelivery,
+        allow_dine_in: allowDineIn,
+        minimum_order: minimumOrder,
+        delivery_fee: deliveryFee,
+        allow_scheduled_orders: allowScheduledOrders,
+      },
+    });
+
+    revalidatePath("/dashboard/online-store");
+    revalidatePath("/dashboard/online-store/ordering");
+    revalidatePath(`/_sites/${business.slug}`);
+    revalidatePath(`/storefront/${business.slug}`);
+
+    return {
+      success: true,
+      message: "Ordering & fulfillment settings saved.",
+      submittedAt: Date.now(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unable to save ordering & fulfillment settings.",
       submittedAt: Date.now(),
     };
   }

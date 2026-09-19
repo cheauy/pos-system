@@ -166,6 +166,23 @@ export function getSubdomainFromHost(hostHeader: string | null | undefined) {
   if (!rawHost) return null;
 
   const hostname = rawHost.replace(/:\d+$/, "");
+
+  // Browsers resolve tenant.localhost directly to the local machine. Support
+  // that development hostname even when NEXT_PUBLIC_ROOT_DOMAIN is configured
+  // with the production tenh-pos.com domain.
+  if (hostname === "localhost") {
+    return null;
+  }
+
+  if (hostname.endsWith(".localhost")) {
+    const prefix = hostname.slice(0, -".localhost".length);
+
+    // TENH supports exactly one label before localhost, matching production.
+    if (!prefix || prefix.includes(".")) return null;
+
+    return prefix;
+  }
+
   const rootHostname = getRootHostname();
 
   if (hostname === rootHostname || hostname === `www.${rootHostname}`) {

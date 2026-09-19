@@ -30,7 +30,7 @@ function accountName(user: {
 async function ensureProfile(userId: string) {
   const { data: existing, error: lookupError } = await supabaseAdmin
     .from("profiles")
-    .select("id, role, is_active")
+    .select("id,role,is_active")
     .eq("id", userId)
     .maybeSingle();
 
@@ -60,7 +60,7 @@ async function ensureProfile(userId: string) {
       role: "owner",
       is_active: true,
     })
-    .select("id, role, is_active")
+    .select("id,role,is_active")
     .single();
 
   if (createError || !created) {
@@ -72,6 +72,19 @@ async function ensureProfile(userId: string) {
   }
 
   return created;
+}
+
+function memberAccessReason(reason: string | null | undefined) {
+  switch (reason) {
+    case "removed_by_owner":
+      return "access_removed";
+    case "subscription_seat_limit":
+      return "seat_limit";
+    case "manually_disabled":
+      return "access_disabled";
+    default:
+      return "access_unavailable";
+  }
 }
 
 export async function getAccountDestination(
@@ -90,7 +103,7 @@ export async function getAccountDestination(
 
   const { data: membership, error: membershipError } = await supabase
     .from("business_members")
-    .select("business_id")
+    .select("business_id,role")
     .eq("user_id", userId)
     .eq("is_active", true)
     .limit(1)
@@ -103,12 +116,37 @@ export async function getAccountDestination(
   }
 
   if (!membership) {
-    return getAppUrl("/get-started");
+    const { data: inactiveMembership, error: inactiveError } = await supabaseAdmin
+      .from("business_members")
+      .select("disabled_reason")
+      .eq("user_id", userId)
+      .eq("is_active", false)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (inactiveError) {
+      throw new Error(`Unable to check previous business access: ${inactiveError.message}`);
+    }
+
+    if (inactiveMembership) {
+      return getAppUrl(
+        `/business-disabled?reason=${encodeURIComponent(
+          memberAccessReason(inactiveMembership.disabled_reason),
+        )}`,
+      );
+    }
+
+    // New owner accounts use account-first onboarding. Staff accounts with no
+    // remaining membership were removed from, or lost, their business.
+    return profile.role === "owner"
+      ? getAppUrl("/get-started")
+      : getAppUrl("/business-disabled?reason=business_unavailable");
   }
 
   const { data: business, error: businessError } = await supabase
     .from("businesses")
-    .select("slug")
+    .select("slug,is_active,disabled_reason,subscription_status")
     .eq("id", membership.business_id)
     .maybeSingle();
 
@@ -119,7 +157,18 @@ export async function getAccountDestination(
   }
 
   if (!business?.slug) {
-    return getAppUrl("/no-business");
+    return getAppUrl("/business-disabled?reason=business_unavailable");
+  }
+
+  if (!business.is_active && business.disabled_reason !== "subscription_expired") {
+    return getAppUrl("/business-disabled?reason=business_disabled");
+  }
+
+  if (
+    business.subscription_status === "expired" &&
+    membership.role !== "owner"
+  ) {
+    return getAppUrl("/business-disabled?reason=subscription_expired");
   }
 
   return getTenantDashboardUrl(business.slug, "/dashboard");

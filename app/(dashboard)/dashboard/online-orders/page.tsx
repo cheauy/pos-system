@@ -39,7 +39,8 @@ export default async function OnlineOrdersPage() {
         quantity,
         unit_price,
         variant_label,
-        selected_options
+        selected_options,
+        products (image_url, variant_image_url)
       )
     `)
     .eq("business_id", business.id)
@@ -57,7 +58,7 @@ export default async function OnlineOrdersPage() {
   return (
     <OnlineOrdersClient
       businessId={business.id}
-      initialOrders={(data ?? []) as OnlineOrder[]}
+      initialOrders={(data ?? []).map(order => ({ ...order, order_items: order.order_items.map(item => { const product = Array.isArray(item.products) ? item.products[0] : item.products; return { ...item, image_url: product?.variant_image_url || product?.image_url || null }; }) })) as OnlineOrder[]}
       currency={settings.currency}
     />
   );

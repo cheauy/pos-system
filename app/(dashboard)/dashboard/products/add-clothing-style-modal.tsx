@@ -1,0 +1,113 @@
+"use client";
+
+import { Plus, Shirt, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+import VariantProductForm from "./variant-product-form";
+
+type Category = {
+  id: string;
+  name: string;
+};
+
+export default function AddClothingStyleModal({
+  categories,
+  businessType,
+}: {
+  categories: Category[];
+  businessType: string;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  const handleCreated = useCallback(() => {
+    setOpen(false);
+    router.refresh();
+  }, [router]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+      >
+        <Plus size={17} />
+        Add Clothing Style
+      </button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/35 p-3 backdrop-blur-[2px] sm:p-5"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-clothing-style-title"
+        >
+          <div className="flex max-h-[92vh] w-full max-w-[760px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                  <Shirt size={20} />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2
+                      id="add-clothing-style-title"
+                      className="text-lg font-bold text-slate-950"
+                    >
+                      Add Clothing Style
+                    </h2>
+                    <span className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                      Fashion mode
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs leading-5 text-slate-500">
+                    Create a clothing style with variants and inventory.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
+                aria-label="Close Add Clothing Style"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+              <VariantProductForm
+                categories={categories}
+                businessType={businessType}
+                onCreated={handleCreated}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

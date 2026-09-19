@@ -27,6 +27,10 @@ export type StorefrontCatalogVariant = {
 
 export type StorefrontCatalogProduct = {
   key: string;
+  isNewArrival?: boolean;
+  isFeatured?: boolean;
+  images?: string[];
+  isBestseller?: boolean;
   categoryId: string | null;
   name: string;
   imageUrl: string | null;

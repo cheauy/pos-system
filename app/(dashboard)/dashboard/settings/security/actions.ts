@@ -1,7 +1,10 @@
 "use server";
 
+import { cookies } from "next/headers";
+
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { SELECTED_BUSINESS_COOKIE } from "@/lib/tenancy/domain";
 
 export type ChangePasswordState = {
   success: boolean;
@@ -107,6 +110,71 @@ export async function changePassword(
   };
 }
 
+const ACCOUNT_STORAGE_BUCKETS = [
+  "product-images",
+  "storefront-media",
+  "tenh-pos-subscription-payment-proofs",
+] as const;
+
+function isMissingBucketError(message: string) {
+  return /bucket.*not found|not found.*bucket/i.test(message);
+}
+
+async function collectStorageFiles(
+  bucket: string,
+  prefix: string,
+): Promise<string[]> {
+  const files: string[] = [];
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await supabaseAdmin.storage
+      .from(bucket)
+      .list(prefix, {
+        limit: 100,
+        offset,
+        sortBy: { column: "name", order: "asc" },
+      });
+
+    if (error) {
+      if (isMissingBucketError(error.message)) return [];
+      throw new Error(`Unable to inspect ${bucket}: ${error.message}`);
+    }
+
+    const entries = data ?? [];
+
+    for (const entry of entries) {
+      const childPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+
+      if (entry.id) {
+        files.push(childPath);
+      } else {
+        files.push(...(await collectStorageFiles(bucket, childPath)));
+      }
+    }
+
+    if (entries.length < 100) break;
+    offset += entries.length;
+  }
+
+  return files;
+}
+
+async function eraseBusinessStorage(businessId: string) {
+  for (const bucket of ACCOUNT_STORAGE_BUCKETS) {
+    const files = await collectStorageFiles(bucket, businessId);
+
+    for (let index = 0; index < files.length; index += 100) {
+      const batch = files.slice(index, index + 100);
+      const { error } = await supabaseAdmin.storage.from(bucket).remove(batch);
+
+      if (error && !isMissingBucketError(error.message)) {
+        throw new Error(`Unable to erase ${bucket} files: ${error.message}`);
+      }
+    }
+  }
+}
+
 export async function deleteOwnAccount(
   _previousState: DeleteAccountState,
   formData: FormData,
@@ -116,7 +184,7 @@ export async function deleteOwnAccount(
   if (confirmation !== "DELETE") {
     return {
       success: false,
-      message: 'Type "DELETE" to confirm account deletion.',
+      message: 'Type "DELETE" to confirm permanent account deletion.',
     };
   }
 
@@ -147,65 +215,116 @@ export async function deleteOwnAccount(
     };
   }
 
-  const { data: ownerMemberships, error: ownerError } = await supabaseAdmin
-    .from("business_members")
-    .select("business_id")
-    .eq("user_id", user.id)
-    .eq("role", "owner")
-    .eq("is_active", true);
+  // The Auth user ID is the identity being erased. Businesses keep their own
+  // UUIDs, so deleting an owner account never turns a store slug into an ID.
+  const { data: directlyOwnedBusinesses, error: ownedBusinessError } =
+    await supabaseAdmin
+      .from("businesses")
+      .select("id,name")
+      .eq("owner_id", user.id);
 
-  if (ownerError) {
-    return { success: false, message: ownerError.message };
+  if (ownedBusinessError) {
+    return { success: false, message: ownedBusinessError.message };
   }
 
-  if ((ownerMemberships ?? []).length > 0) {
-    const businessIds = ownerMemberships!.map((membership) => membership.business_id);
-    const { data: businesses } = await supabaseAdmin
-      .from("businesses")
-      .select("name")
-      .in("id", businessIds);
+  const { data: ownerMemberships, error: ownerMembershipError } =
+    await supabaseAdmin
+      .from("business_members")
+      .select("business_id")
+      .eq("user_id", user.id)
+      .eq("role", "owner");
 
-    const names = (businesses ?? [])
-      .map((business) => business.name)
-      .filter(Boolean)
-      .join(", ");
+  if (ownerMembershipError) {
+    return { success: false, message: ownerMembershipError.message };
+  }
 
+  const ownedBusinessIds = new Set<string>(
+    (directlyOwnedBusinesses ?? []).map((business) => business.id),
+  );
+
+  for (const membership of ownerMemberships ?? []) {
+    ownedBusinessIds.add(membership.business_id);
+  }
+
+  try {
+    for (const businessId of ownedBusinessIds) {
+      await eraseBusinessStorage(businessId);
+
+      // Account deletion is an erase request, not a subscription purge. Remove
+      // the business-linked trial safety records too instead of leaving the
+      // business UUID behind as a detached anti-abuse record.
+      for (const table of [
+        "trial_signup_events",
+        "trial_claims",
+        "business_subscription_purge_log",
+      ] as const) {
+        const { error } = await supabaseAdmin
+          .from(table)
+          .delete()
+          .eq("business_id", businessId);
+
+        if (error) {
+          throw new Error(`Unable to erase ${table}: ${error.message}`);
+        }
+      }
+
+      const { error: businessDeleteError } = await supabaseAdmin
+        .from("businesses")
+        .delete()
+        .eq("id", businessId);
+
+      if (businessDeleteError) {
+        throw new Error(
+          businessDeleteError.code === "23503"
+            ? "This business still has related data protected by a database constraint. Nothing else should be deleted until that relationship is corrected."
+            : `Unable to erase owned business data: ${businessDeleteError.message}`,
+        );
+      }
+    }
+
+    // Remove this person from any other TENH businesses without touching those
+    // businesses or their other users.
+    const { error: membershipDeleteError } = await supabaseAdmin
+      .from("business_members")
+      .delete()
+      .eq("user_id", user.id);
+
+    if (membershipDeleteError) {
+      throw new Error(
+        `Unable to remove remaining business access: ${membershipDeleteError.message}`,
+      );
+    }
+
+    // Hard-delete the Supabase Auth identity. Passing false explicitly avoids
+    // the soft-delete/tombstone behavior used by the older implementation.
+    const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(
+      user.id,
+      false,
+    );
+
+    if (authDeleteError) {
+      throw new Error(`Unable to permanently delete Auth account: ${authDeleteError.message}`);
+    }
+
+    // Normally profiles are removed by the auth-user FK cascade. This cleanup
+    // is safe if an older schema left an orphan profile behind.
+    await supabaseAdmin.from("profiles").delete().eq("id", user.id);
+
+    const cookieStore = await cookies();
+    cookieStore.delete(SELECTED_BUSINESS_COOKIE);
+
+    return {
+      success: true,
+      message: "Your TENH POS account and owned business data were permanently deleted.",
+    };
+  } catch (error) {
     return {
       success: false,
       message:
-        `You are the protected owner${names ? ` of ${names}` : " of a business"}. ` +
-        "Transfer ownership through Super Admin before deleting this account.",
+        error instanceof Error
+          ? error.message
+          : "Unable to permanently delete the account.",
     };
   }
-
-  // Soft-delete preserves historical foreign-key references while permanently
-  // disabling this Auth identity. This is safer for POS/audit history.
-  const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(
-    user.id,
-    true,
-  );
-
-  if (deleteError) {
-    return { success: false, message: deleteError.message };
-  }
-
-  await supabaseAdmin
-    .from("business_members")
-    .update({
-      is_active: false,
-      disabled_at: new Date().toISOString(),
-      disabled_reason: "account_deleted",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("user_id", user.id);
-
-  await supabaseAdmin
-    .from("profiles")
-    .update({ is_active: false })
-    .eq("id", user.id);
-
-  return {
-    success: true,
-    message: "Your account has been deleted.",
-  };
 }
+

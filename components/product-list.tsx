@@ -181,6 +181,12 @@ export default function ProductList({
   const [actionMenu, setActionMenu] = useState<ActionMenuState | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [detailGroup, setDetailGroup] = useState<ProductGroup | null>(null);
+  const [collapsedColourGroups, setCollapsedColourGroups] = useState<Set<string>>(new Set());
+
+  const detailVariantGroups = useMemo(
+    () => (detailGroup ? groupVariantRowsByColour(detailGroup.rows) : []),
+    [detailGroup],
+  );
 
   useEffect(() => {
     if (!actionMenu) return;
@@ -192,6 +198,10 @@ export default function ProductList({
       window.removeEventListener("scroll", close, true);
     };
   }, [actionMenu]);
+
+  useEffect(() => {
+    setCollapsedColourGroups(new Set());
+  }, [detailGroup?.key]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -254,6 +264,15 @@ export default function ProductList({
 
   function resetPage() {
     setPage(1);
+  }
+
+  function toggleColourGroup(key: string) {
+    setCollapsedColourGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   function openActionMenu(
@@ -592,49 +611,139 @@ export default function ProductList({
                     </div>
                   </div>
 
-                  <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
-                    <table className="w-full min-w-[650px] text-xs">
-                      <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
-                        <tr className="border-b border-slate-200">
-                          <th className="px-3 py-2.5 text-left font-semibold">Image</th>
-                          <th className="px-3 py-2.5 text-left font-semibold">Size</th>
-                          <th className="px-3 py-2.5 text-left font-semibold">Colour</th>
-                          <th className="px-3 py-2.5 text-left font-semibold">SKU</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">Cost</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">Price</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">Stock</th>
-                          <th className="px-3 py-2.5 text-right font-semibold">Alert</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {[...detailGroup.rows]
-                          .sort((a, b) => compareVariantRows(a, b))
-                          .map((row) => (
-                            <tr key={row.id} className="bg-white">
-                              <td className="px-3 py-2.5">
-                                {(row.variant_image_url ?? row.image_url) ? (
-                                  <img
-                                    src={row.variant_image_url ?? row.image_url ?? ""}
-                                    alt={`${detailGroup.name} ${row.color ?? ""} ${row.size ?? ""}`}
-                                    loading="lazy"
-                                    decoding="async"
-                                    className="h-8 w-8 rounded-md border border-slate-200 object-cover"
-                                  />
-                                ) : (
-                                  <div className="grid h-8 w-8 place-items-center rounded-md bg-slate-100 text-slate-400"><Package size={13} /></div>
-                                )}
-                              </td>
-                              <td className="px-3 py-2.5 font-semibold text-slate-800">{row.size || "—"}</td>
-                              <td className="px-3 py-2.5 text-slate-600">{row.color || "—"}</td>
-                              <td className="max-w-40 truncate px-3 py-2.5 font-mono text-[11px] text-slate-500">{row.sku || "—"}</td>
-                              <td className="px-3 py-2.5 text-right text-slate-600">{formatMoney(Number(row.cost_price || 0))}</td>
-                              <td className="px-3 py-2.5 text-right font-semibold text-slate-800">{formatMoney(Number(row.selling_price || 0))}</td>
-                              <td className="px-3 py-2.5 text-right font-semibold text-slate-800">{row.stock_quantity}</td>
-                              <td className="px-3 py-2.5 text-right text-slate-500">{row.low_stock_quantity}</td>
-                            </tr>
-                          ))}
-                      </tbody>
-                    </table>
+                  <div className="mt-3 space-y-3">
+                    {detailVariantGroups.map((colourGroup) => {
+                      const collapsed = collapsedColourGroups.has(colourGroup.key);
+                      const groupImage = colourGroup.imageUrl ?? detailGroup.imageUrl;
+
+                      return (
+                        <section
+                          key={colourGroup.key}
+                          className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+                        >
+                          <div className="flex items-center border-b border-slate-200 bg-slate-50/80">
+                            <button
+                              type="button"
+                              onClick={() => toggleColourGroup(colourGroup.key)}
+                              className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-3 text-left transition hover:bg-slate-100"
+                              aria-expanded={!collapsed}
+                            >
+                              <ChevronRight
+                                size={15}
+                                className={`shrink-0 text-slate-500 transition-transform ${
+                                  collapsed ? "" : "rotate-90"
+                                }`}
+                              />
+                              <span
+                                className="h-6 w-6 shrink-0 rounded-full border border-slate-200 shadow-sm"
+                                style={{ backgroundColor: getColourSwatchValue(colourGroup.label) }}
+                                aria-hidden="true"
+                              />
+                              <span className="truncate text-sm font-bold text-slate-900">
+                                {colourGroup.label}
+                              </span>
+                              <span className="shrink-0 text-xs font-medium text-slate-400">
+                                · {colourGroup.rows.length} variant{colourGroup.rows.length === 1 ? "" : "s"}
+                              </span>
+                            </button>
+
+                            <Link
+                              href={`/dashboard/products/${detailGroup.representative.id}/edit`}
+                              className="mr-2 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white hover:text-blue-600"
+                              aria-label={`Manage ${colourGroup.label} variants`}
+                              title="Manage variants"
+                            >
+                              <MoreHorizontal size={17} />
+                            </Link>
+                          </div>
+
+                          {!collapsed && (
+                            <div className="overflow-x-auto">
+                              <table className="w-full min-w-[820px] text-xs">
+                                <thead className="bg-white text-[10px] uppercase tracking-wide text-slate-400">
+                                  <tr className="border-b border-slate-100">
+                                    <th className="px-3 py-2 text-left font-semibold">Image</th>
+                                    <th className="px-3 py-2 text-left font-semibold">Size</th>
+                                    <th className="px-3 py-2 text-left font-semibold">Colour</th>
+                                    <th className="px-3 py-2 text-left font-semibold">SKU</th>
+                                    <th className="px-3 py-2 text-right font-semibold">Cost</th>
+                                    <th className="px-3 py-2 text-right font-semibold">Price</th>
+                                    <th className="px-3 py-2 text-left font-semibold">Stock</th>
+                                    <th className="px-3 py-2 text-right font-semibold">Qty</th>
+                                    <th className="px-3 py-2 text-left font-semibold">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {[...colourGroup.rows]
+                                    .sort((a, b) => compareVariantRows(a, b))
+                                    .map((row) => {
+                                      const stockQty = Number(row.stock_quantity || 0);
+                                      const lowStockQty = Number(row.low_stock_quantity || 0);
+                                      const rowImage = row.variant_image_url ?? groupImage ?? row.image_url;
+
+                                      return (
+                                        <tr key={row.id} className="bg-white hover:bg-slate-50/60">
+                                          <td className="px-3 py-2">
+                                            {rowImage ? (
+                                              <img
+                                                src={rowImage}
+                                                alt={`${detailGroup.name} ${colourGroup.label} ${row.size ?? ""}`}
+                                                loading="lazy"
+                                                decoding="async"
+                                                className="h-9 w-9 rounded-lg border border-slate-200 object-cover"
+                                              />
+                                            ) : (
+                                              <div className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-400">
+                                                <Package size={13} />
+                                              </div>
+                                            )}
+                                          </td>
+                                          <td className="px-3 py-2 font-bold text-slate-800">{row.size || "—"}</td>
+                                          <td className="px-3 py-2 text-slate-600">
+                                            <span className="inline-flex items-center gap-1.5">
+                                              <span
+                                                className="h-3 w-3 rounded-full border border-slate-200"
+                                                style={{ backgroundColor: getColourSwatchValue(colourGroup.label) }}
+                                                aria-hidden="true"
+                                              />
+                                              {colourGroup.label}
+                                            </span>
+                                          </td>
+                                          <td className="max-w-40 truncate px-3 py-2 font-mono text-[11px] text-slate-500">
+                                            {row.sku || "—"}
+                                          </td>
+                                          <td className="px-3 py-2 text-right text-slate-600">
+                                            {formatMoney(Number(row.cost_price || 0))}
+                                          </td>
+                                          <td className="px-3 py-2 text-right font-bold text-slate-800">
+                                            {formatMoney(Number(row.selling_price || 0))}
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <VariantStockBadge stock={stockQty} lowStock={lowStockQty} />
+                                          </td>
+                                          <td className="px-3 py-2 text-right font-semibold text-slate-600">
+                                            {stockQty}
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <span className={`inline-flex items-center gap-1.5 font-semibold ${
+                                              row.is_active ? "text-slate-700" : "text-slate-400"
+                                            }`}>
+                                              <span className={`h-2 w-2 rounded-full ${
+                                                row.is_active ? "bg-emerald-500" : "bg-slate-300"
+                                              }`} />
+                                              {row.is_active ? "Active" : "Hidden"}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </section>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -771,6 +880,84 @@ function DetailMetric({ label, value }: { label: string; value: string }) {
       <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
       <p className="mt-1 truncate text-sm font-bold text-slate-900" title={value}>{value}</p>
     </div>
+  );
+}
+
+function groupVariantRowsByColour(rows: Product[]) {
+  const grouped = new Map<string, { label: string; rows: Product[] }>();
+
+  for (const row of rows) {
+    const label = row.color?.trim() || "No colour";
+    const key = label.toLocaleLowerCase();
+    const current = grouped.get(key) ?? { label, rows: [] };
+    current.rows.push(row);
+    grouped.set(key, current);
+  }
+
+  return Array.from(grouped.entries())
+    .map(([key, group]) => ({
+      key,
+      label: group.label,
+      rows: group.rows,
+      imageUrl:
+        group.rows.find((row) => row.variant_image_url)?.variant_image_url ??
+        group.rows.find((row) => row.image_url)?.image_url ??
+        null,
+    }))
+    .sort((a, b) =>
+      a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" }),
+    );
+}
+
+function getColourSwatchValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+  const swatches: Record<string, string> = {
+    black: "#111827",
+    white: "#ffffff",
+    red: "#dc2626",
+    blue: "#2563eb",
+    navy: "#1e3a8a",
+    green: "#16a34a",
+    yellow: "#eab308",
+    orange: "#ea580c",
+    pink: "#ec4899",
+    purple: "#9333ea",
+    violet: "#7c3aed",
+    brown: "#92400e",
+    beige: "#d6c3a1",
+    grey: "#94a3b8",
+    gray: "#94a3b8",
+    silver: "#cbd5e1",
+    gold: "#d4a017",
+    cream: "#fff7d6",
+    "no colour": "#e2e8f0",
+  };
+
+  if (/^#[0-9a-f]{3,8}$/i.test(value.trim())) return value.trim();
+  return swatches[normalized] ?? "#cbd5e1";
+}
+
+function VariantStockBadge({ stock, lowStock }: { stock: number; lowStock: number }) {
+  if (stock <= 0) {
+    return (
+      <span className="inline-flex rounded-full bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700">
+        Out of stock
+      </span>
+    );
+  }
+
+  if (stock <= lowStock) {
+    return (
+      <span className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">
+        Low stock
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+      In stock
+    </span>
   );
 }
 

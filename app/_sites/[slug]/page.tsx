@@ -1,9 +1,9 @@
-import Link from "next/link";
+import { storefrontTheme } from "@/lib/storefront/theme";
+import { StorefrontLanguage } from "./storefront-language";
+import { bestsellerKeys } from "@/lib/storefront/bestsellers";
+import { isNewArrival } from "@/lib/storefront/profile";
 import { notFound } from "next/navigation";
 import {
-  Clock3,
-  MapPin,
-  Phone,
   ShoppingBag,
   Store,
 } from "lucide-react";
@@ -23,6 +23,9 @@ import {
   normalizeTenantSlug,
 } from "@/lib/tenancy/domain";
 import StorefrontShop from "./storefront-shop";
+import StorefrontContact from "./storefront-contact";
+import { supportsDineIn } from "@/lib/storefront/profile";
+import "./storefront.css";
 
 type StorefrontPageProps = {
   params: Promise<{
@@ -39,6 +42,7 @@ type CategoryRow = {
 };
 
 type ProductRow = {
+  created_at: string;
   id: string;
   category_id: string | null;
   name: string;
@@ -121,6 +125,7 @@ export default async function StorefrontPage({
   const subscriptionExpired =
     expiryTime !== null &&
     !Number.isNaN(expiryTime) &&
+    // eslint-disable-next-line react-hooks/purity -- Server-side subscription access is evaluated at request time.
     expiryTime <= Date.now();
 
   if (!business.is_active || subscriptionExpired) {
@@ -149,6 +154,7 @@ export default async function StorefrontPage({
         phone,
         address,
         currency,
+        social_links,
         allow_pickup,
         allow_delivery,
         allow_dine_in,
@@ -214,7 +220,8 @@ export default async function StorefrontPage({
         selling_price,
         stock_quantity,
         product_type,
-        variant_group_id
+        variant_group_id,
+        created_at
       `)
       .eq("business_id", business.id)
       .eq("is_active", true)
@@ -331,12 +338,26 @@ export default async function StorefrontPage({
   const catalogProducts = buildCatalog(
     productRows,
     optionGroupsByProduct,
-  );
+    storefront.social_links?.profile?.newArrivals,
+  ).map(product => ({ ...product, isFeatured: product.variants.some(variant => storefront.social_links?.profile?.featuredProductIds?.includes(variant.id)) }));
 
-  const tableToken = await validateTableToken({
+  const soldQuantities = new Map<string, number>();
+  const since = new Date(); since.setDate(since.getDate() - 30);
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabaseAdmin.from("order_items")
+      .select("id, product_id, quantity, orders!inner(business_id,status,created_at)")
+      .eq("orders.business_id", business.id).eq("orders.status", "completed")
+      .gte("orders.created_at", since.toISOString()).order("id").range(offset, offset + 999);
+    if (error) { soldQuantities.clear(); break; }
+    for (const row of data ?? []) if (row.product_id) soldQuantities.set(row.product_id, (soldQuantities.get(row.product_id) ?? 0) + Number(row.quantity || 0));
+    if (!data || data.length < 1000) break;
+  }
+  const bestsellers = bestsellerKeys(catalogProducts, soldQuantities);
+
+  const tableToken = supportsDineIn(storefront.business_type) ? await validateTableToken({
     businessId: business.id,
     token: tableTokenRaw ?? null,
-  });
+  }) : null;
 
   const displayName =
     storefront.display_name?.trim() || business.name;
@@ -344,107 +365,14 @@ export default async function StorefrontPage({
     storefront.primary_color || "#2563EB";
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            {storefront.logo_url ? (
-              <img
-                src={storefront.logo_url}
-                alt={`${displayName} logo`}
-                className="h-12 w-12 rounded-2xl border border-slate-200 object-cover"
-              />
-            ) : (
-              <div
-                className="flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-sm"
-                style={{ backgroundColor: primaryColor }}
-              >
-                <Store size={22} />
-              </div>
-            )}
-
-            <div className="min-w-0">
-              <p className="truncate font-bold text-slate-950">
-                {displayName}
-              </p>
-              <p className="text-xs text-slate-500">
-                {formatBusinessType(storefront.business_type)}
-              </p>
-            </div>
-          </div>
-
-          <Link
-            href={getRootUrl("/login")}
-            className="shrink-0 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            Owner sign in
-          </Link>
-        </div>
-      </header>
-
-      <section className="relative overflow-hidden border-b border-slate-200 bg-white">
-        {storefront.banner_url ? (
-          <div className="absolute inset-0">
-            <img
-              src={storefront.banner_url}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-            <div className="absolute inset-0 bg-slate-950/55" />
-          </div>
-        ) : (
-          <div
-            className="absolute inset-0 opacity-95"
-            style={{
-              background: `linear-gradient(135deg, ${primaryColor}, #0f172a)`,
-            }}
-          />
-        )}
-
-        <div className="relative mx-auto max-w-7xl px-4 py-14 text-white sm:px-6 sm:py-20 lg:px-8">
-          <span className="inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
-            {tableToken
-              ? "Table QR ordering"
-              : storefront.accept_online_orders
-                ? "Online ordering enabled"
-                : "Browse online"}
-          </span>
-
-          <h1 className="mt-5 max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">
-            {displayName}
-          </h1>
-
-          {storefront.description && (
-            <p className="mt-4 max-w-2xl text-base leading-7 text-white/85">
-              {storefront.description}
-            </p>
-          )}
-
-          <div className="mt-7 flex flex-wrap gap-x-5 gap-y-3 text-sm text-white/90">
-            {storefront.phone && (
-              <span className="inline-flex items-center gap-2">
-                <Phone size={16} /> {storefront.phone}
-              </span>
-            )}
-            {storefront.address && (
-              <span className="inline-flex items-center gap-2">
-                <MapPin size={16} /> {storefront.address}
-              </span>
-            )}
-            {storefront.estimated_minutes && (
-              <span className="inline-flex items-center gap-2">
-                <Clock3 size={16} /> About {storefront.estimated_minutes} min
-              </span>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <div className="mx-auto max-w-7xl px-4 py-8 pb-28 sm:px-6 lg:px-8">
+    <StorefrontLanguage><main className="public-store" id="store-home" style={storefrontTheme(primaryColor)}>
+      <div className="store-shell">
         <StorefrontShop
+          brand={{
+            locationUrl: storefront.social_links?.profile?.locationUrl, address: storefront.address, newArrivalsEnabled: storefront.social_links?.profile?.newArrivals?.enabled !== false, name: displayName, businessType: storefront.business_type, businessTypeLabel: formatBusinessType(storefront.business_type), logoUrl: storefront.logo_url, bannerUrl: storefront.banner_url, description: storefront.description, ownerUrl: getRootUrl("/login"), orderingEnabled: storefront.accept_online_orders, allowDelivery: storefront.allow_delivery, allowPickup: storefront.allow_pickup }}
           slug={slug}
           categories={categories as StorefrontCatalogCategory[]}
-          products={catalogProducts}
+          products={catalogProducts.map(product => ({ ...product, isBestseller: bestsellers.has(product.key) }))}
           tableToken={tableToken}
           settings={{
             businessType: storefront.business_type,
@@ -452,12 +380,13 @@ export default async function StorefrontPage({
             primaryColor,
             orderingEnabled:
               storefront.accept_online_orders &&
+              (storefront.accept_cod || (storefront.accept_khqr && Boolean(storefront.khqr_image_url))) &&
               (storefront.allow_pickup ||
                 storefront.allow_delivery ||
                 (storefront.allow_dine_in && Boolean(tableToken))),
             allowPickup: storefront.allow_pickup,
             allowDelivery: storefront.allow_delivery,
-            allowDineIn: storefront.allow_dine_in,
+            allowDineIn: supportsDineIn(storefront.business_type) && storefront.allow_dine_in,
             minimumOrder: Number(storefront.minimum_order ?? 0),
             deliveryFee: Number(storefront.delivery_fee ?? 0),
             checkoutMessage: storefront.checkout_message,
@@ -481,18 +410,18 @@ export default async function StorefrontPage({
             })),
           }}
         />
+        <StorefrontContact name={displayName} settings={storefront} />
       </div>
-
-      <footer className="border-t border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
-        Powered by TENH POS
-      </footer>
-    </main>
+    </main></StorefrontLanguage>
   );
 }
+
+
 
 function buildCatalog(
   rows: ProductRow[],
   optionGroupsByProduct: Map<string, StorefrontCatalogOptionGroup[]>,
+  newArrivals: import("@/lib/storefront/profile").StoreProfile["newArrivals"],
 ): StorefrontCatalogProduct[] {
   const grouped = new Map<string, ProductRow[]>();
 
@@ -521,12 +450,14 @@ function buildCatalog(
 
     return {
       key,
+      isNewArrival: isNewArrival(groupRows.map(row => row.created_at).filter(Boolean).sort()[0], newArrivals),
       categoryId: first.category_id,
       name: first.name,
       imageUrl:
         groupRows.find((row) => row.image_url)?.image_url ??
         groupRows.find((row) => row.variant_image_url)?.variant_image_url ??
         null,
+      images: [...new Set(groupRows.flatMap(row => [row.image_url, row.variant_image_url]).filter((url): url is string => Boolean(url)))],
       description: first.description,
       productType,
       priceFrom: Math.min(
@@ -600,12 +531,7 @@ function UnavailableStore({
             </div>
           </div>
 
-          <Link
-            href={getRootUrl("/login")}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
-          >
-            Owner sign in
-          </Link>
+
         </header>
 
         <section className="mt-16 rounded-3xl border border-amber-200 bg-amber-50 p-10 text-center">

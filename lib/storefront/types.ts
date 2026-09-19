@@ -1,3 +1,5 @@
+import type { StoreProfile } from "./profile";
+
 export const businessTypes = [
   "general",
   "restaurant",
@@ -15,6 +17,19 @@ export const businessTypes = [
 export type BusinessType =
   (typeof businessTypes)[number];
 
+
+export type StorefrontSocialLinks = {
+  profile?: StoreProfile;
+  facebook?: string | null;
+  instagram?: string | null;
+  tiktok?: string | null;
+  youtube?: string | null;
+  telegram?: string | null;
+  whatsapp?: string | null;
+  messenger?: string | null;
+  x?: string | null;
+};
+
 export type StorefrontSettings = {
   business_id: string;
   business_type: BusinessType;
@@ -29,6 +44,7 @@ export type StorefrontSettings = {
   phone: string | null;
   address: string | null;
   currency: string;
+  social_links: StorefrontSocialLinks;
   allow_pickup: boolean;
   allow_delivery: boolean;
   allow_dine_in: boolean;

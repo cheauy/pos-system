@@ -1,16 +1,125 @@
-import Link from "next/link";
-import { ArrowDown, ArrowUp, History, SlidersHorizontal } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requirePermission } from "@/lib/auth/require-permission";
+import InventoryClient from "./inventory-client";
 
-type Product={id:string;name:string;sku:string|null;stock_quantity:number;low_stock_quantity:number;cost_price:number;size:string|null;color:string|null};
-type Adjustment={id:string;product_id:string;adjustment_type:string;quantity_delta:number;stock_before:number;stock_after:number;reason:string;reference:string|null;created_at:string};
-type Location={id:string;name:string;code:string};
-type LocationStock={location_id:string;product_id:string;quantity:number;low_stock_threshold:number};
-export default async function InventoryPage(){const business=await requirePermission("inventory.view"); const s=await createClient(); const [{data:products,error:pe},{data:adjustments,error:ae},{data:locations},{data:locationStock}]=await Promise.all([
- s.from("products").select("id,name,sku,stock_quantity,low_stock_quantity,cost_price,size,color").eq("business_id",business.id).eq("is_active",true).order("name"),
- s.from("stock_adjustments").select("id,product_id,adjustment_type,quantity_delta,stock_before,stock_after,reason,reference,created_at").eq("business_id",business.id).order("created_at",{ascending:false}).limit(200),
- s.from("business_locations").select("id,name,code").eq("business_id",business.id).eq("is_active",true).order("is_default",{ascending:false}),
- s.from("product_location_stock").select("location_id,product_id,quantity,low_stock_threshold").eq("business_id",business.id)
-]); const ps=(products??[]) as Product[]; const as=(adjustments??[]) as Adjustment[]; const byId=new Map(ps.map(p=>[p.id,p])); const units=ps.reduce((a,p)=>a+Number(p.stock_quantity),0); const value=ps.reduce((a,p)=>a+Number(p.stock_quantity)*Number(p.cost_price),0); const low=ps.filter(p=>Number(p.stock_quantity)<=Number(p.low_stock_quantity)).length; return <main><div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h1 className="text-3xl font-bold">Advanced Inventory</h1><p className="mt-1 text-slate-500">Valuation, low-stock thresholds and an audited stock movement ledger.</p></div><Link href="/dashboard/inventory/adjustments" className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white"><SlidersHorizontal size={18}/>Adjust Stock</Link></div><div className="mb-6 grid gap-4 sm:grid-cols-3"><Summary label="Units on hand" value={units.toLocaleString()}/><Summary label="Inventory value" value={`$${value.toFixed(2)}`}/><Summary label="Low-stock variants" value={low.toString()}/></div>{pe||ae?<div className="rounded-xl bg-red-50 p-4 text-red-600">{pe?.message||ae?.message}</div>:<><section className="overflow-hidden rounded-2xl border bg-white"><div className="border-b p-5"><h2 className="font-semibold">Stock by product / variant</h2></div><div className="overflow-x-auto"><table className="w-full min-w-[820px]"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-4">Product</th><th>Stock</th><th>Low threshold</th><th>Unit cost</th><th>Value</th></tr></thead><tbody className="divide-y">{ps.map(p=><tr key={p.id}><td className="p-4"><p className="font-semibold">{p.name}</p><p className="text-xs text-slate-500">{[p.color,p.size,p.sku].filter(Boolean).join(" · ")}</p></td><td className={p.stock_quantity<=p.low_stock_quantity?"font-bold text-amber-600":"font-semibold"}>{p.stock_quantity}</td><td>{p.low_stock_quantity}</td><td>${Number(p.cost_price).toFixed(2)}</td><td className="font-semibold">${(Number(p.cost_price)*Number(p.stock_quantity)).toFixed(2)}</td></tr>)}</tbody></table></div></section><section className="mt-6 overflow-hidden rounded-2xl border bg-white"><div className="border-b p-5"><h2 className="font-semibold">Branch inventory</h2><p className="mt-1 text-sm text-slate-500">Per-location stock mirror used for transfers and branch reporting. Global stock remains the hard anti-oversell total.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-4">Branch</th><th>Product</th><th>Qty</th><th>Low threshold</th></tr></thead><tbody className="divide-y">{((locationStock??[]) as LocationStock[]).slice(0,500).map(row=>{const loc=((locations??[]) as Location[]).find(l=>l.id===row.location_id); const product=byId.get(row.product_id); return <tr key={`${row.location_id}:${row.product_id}`}><td className="p-4 font-medium">{loc?.name??"Branch"}</td><td>{product?.name??"Product"}<div className="text-xs text-slate-400">{[product?.color,product?.size,product?.sku].filter(Boolean).join(" · ")}</div></td><td className="font-semibold">{row.quantity}</td><td>{row.low_stock_threshold}</td></tr>})}</tbody></table></div></section><section className="mt-6 overflow-hidden rounded-2xl border bg-white"><div className="border-b p-5"><h2 className="flex items-center gap-2 font-semibold"><History size={18}/>Adjustment ledger</h2></div>{as.length===0?<p className="p-8 text-center text-sm text-slate-500">No Phase 6 stock adjustments yet.</p>:<div className="divide-y">{as.map(a=>{const p=byId.get(a.product_id); const inc=a.quantity_delta>0; return <div key={a.id} className="grid gap-3 p-4 sm:grid-cols-[1fr_120px_140px_1fr_170px]"><div><p className="font-medium">{p?.name||"Product"}</p><p className="text-xs text-slate-500">{[p?.color,p?.size,p?.sku].filter(Boolean).join(" · ")}</p></div><span className={inc?"flex items-center gap-1 font-bold text-emerald-600":"flex items-center gap-1 font-bold text-red-600"}>{inc?<ArrowUp size={15}/>:<ArrowDown size={15}/>} {inc?"+":""}{a.quantity_delta}</span><span className="text-sm">{a.stock_before} → {a.stock_after}</span><div><p className="text-sm">{a.reason}</p><p className="text-xs text-slate-400">{a.reference||"No reference"}</p></div><span className="text-xs text-slate-500">{new Date(a.created_at).toLocaleString()}</span></div>})}</div>}</section></>}</main>}
-function Summary({label,value}:{label:string;value:string}){return <div className="rounded-2xl border bg-white p-5"><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold">{value}</p></div>}
+type ProductRow = {
+  id: string;
+  name: string;
+  sku: string | null;
+  barcode: string | null;
+  image_url: string | null;
+  variant_image_url: string | null;
+  category_id: string | null;
+  stock_quantity: number;
+  low_stock_quantity: number;
+  cost_price: number;
+  selling_price: number;
+  size: string | null;
+  color: string | null;
+  is_active: boolean;
+  updated_at: string | null;
+};
+
+type CategoryRow = { id: string; name: string };
+type LocationRow = { id: string; name: string; code: string };
+type LocationStockRow = {
+  location_id: string;
+  product_id: string;
+  quantity: number;
+  low_stock_threshold: number;
+};
+type SoldLine = { product_id: string | null; quantity: number };
+
+export default async function InventoryPage() {
+  const business = await requirePermission("inventory.view");
+  const supabase = await createClient();
+
+  const movementStart = new Date();
+  movementStart.setDate(movementStart.getDate() - 30);
+
+  const [
+    { data: productData, error: productError },
+    { data: categoryData, error: categoryError },
+    { data: locationData, error: locationError },
+    { data: locationStockData, error: locationStockError },
+    { data: soldLineData, error: soldLineError },
+  ] = await Promise.all([
+    supabase
+      .from("products")
+      .select(
+        "id,name,sku,barcode,image_url,variant_image_url,category_id,stock_quantity,low_stock_quantity,cost_price,selling_price,size,color,is_active,updated_at",
+      )
+      .eq("business_id", business.id)
+      .eq("is_active", true)
+      .order("name", { ascending: true })
+      .limit(5000),
+    supabase
+      .from("categories")
+      .select("id,name")
+      .eq("business_id", business.id)
+      .order("name", { ascending: true }),
+    supabase
+      .from("business_locations")
+      .select("id,name,code")
+      .eq("business_id", business.id)
+      .eq("is_active", true)
+      .order("is_default", { ascending: false })
+      .order("name", { ascending: true }),
+    supabase
+      .from("product_location_stock")
+      .select("location_id,product_id,quantity,low_stock_threshold")
+      .eq("business_id", business.id)
+      .limit(10000),
+    supabase
+      .from("order_items")
+      .select("product_id,quantity,orders!inner(business_id,status,created_at)")
+      .eq("orders.business_id", business.id)
+      .eq("orders.status", "completed")
+      .gte("orders.created_at", movementStart.toISOString())
+      .limit(10000),
+  ]);
+
+  const loadError =
+    productError ??
+    categoryError ??
+    locationError ??
+    locationStockError ??
+    soldLineError;
+
+  if (loadError) {
+    return (
+      <main>
+        <h1 className="text-3xl font-bold text-slate-950">Advanced Inventory</h1>
+        <p className="mt-1 text-slate-500">
+          Track stock levels, low-stock alerts and inventory across branches.
+        </p>
+        <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+          Unable to load inventory: {loadError.message}
+        </div>
+      </main>
+    );
+  }
+
+  const soldByProduct = new Map<string, number>();
+  for (const row of (soldLineData ?? []) as unknown as SoldLine[]) {
+    if (!row.product_id) continue;
+    soldByProduct.set(
+      row.product_id,
+      (soldByProduct.get(row.product_id) ?? 0) + Math.max(0, Number(row.quantity || 0)),
+    );
+  }
+
+  const products = ((productData ?? []) as ProductRow[]).map((product) => ({
+    ...product,
+    sold_30d: soldByProduct.get(product.id) ?? 0,
+  }));
+
+  return (
+    <InventoryClient
+      products={products}
+      categories={(categoryData ?? []) as CategoryRow[]}
+      locations={(locationData ?? []) as LocationRow[]}
+      locationStock={(locationStockData ?? []) as LocationStockRow[]}
+    />
+  );
+}

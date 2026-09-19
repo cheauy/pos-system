@@ -1,0 +1,64 @@
+{
+  "name": "TENH POS Point of Sale UI patch",
+  "packaged_on": "2026-09-19",
+  "scope": "Previously supplied project files, byte-for-byte unchanged",
+  "production_verified": false,
+  "requires_database_migration": true,
+  "files": [
+    {
+      "path": "app/(dashboard)/dashboard/pos/page.tsx",
+      "bytes": 747,
+      "sha256": "4fc3a69a8f944a5575cb9388606ae6e284c93363140714e1a97d9efc4ba71524"
+    },
+    {
+      "path": "app/(dashboard)/dashboard/pos/pos-client.tsx",
+      "bytes": 49184,
+      "sha256": "292b4ba4cb8f9f8d9ca9a55bddf63012e4ea9fa93f1b1b0495718ee99d0fe386"
+    },
+    {
+      "path": "app/(dashboard)/dashboard/pos/pos-workspace.module.css",
+      "bytes": 25049,
+      "sha256": "983060f33157255a06850ba1fec2430a1651023998a959f1150122347ad622e8"
+    },
+    {
+      "path": "app/(dashboard)/dashboard/pos/pos-workspace-components.tsx",
+      "bytes": 8112,
+      "sha256": "a8d9edb2b1aea0856faf91c0ef77b3b9aaaf83f87adce897cb9a36fd98d1f28c"
+    },
+    {
+      "path": "app/(dashboard)/dashboard/pos/pos-workspace-actions.ts",
+      "bytes": 7027,
+      "sha256": "a98a95a145e3ebb191af312ea68dde8493c06c101af1da983bcfd7c97e135d45"
+    },
+    {
+      "path": "app/(dashboard)/dashboard/pos/pos-workspace-helpers.ts",
+      "bytes": 11884,
+      "sha256": "6f69392ea063c363f136473c5ca1a5a21db01e030b10ba8d704de267d41afad8"
+    },
+    {
+      "path": "app/(dashboard)/dashboard/pos/pos-workspace-types.ts",
+      "bytes": 4250,
+      "sha256": "748560d751a373202b50911c85ae8400622cbdb4e22d13c62b71f8be411e3638"
+    },
+    {
+      "path": "app/(dashboard)/dashboard/pos/receipt/[id]/page.tsx",
+      "bytes": 1497,
+      "sha256": "a321072b7e933b4c5eb73294336964c9001354ebfb4129010c3ce5cf7a4c17ee"
+    },
+    {
+      "path": "app/(dashboard)/dashboard/register/page.tsx",
+      "bytes": 8132,
+      "sha256": "74dfca3d4b5146ed5327f26e5f848bef39596c7e0a1400329f7fca61828a716b"
+    },
+    {
+      "path": "app/(dashboard)/dashboard/orders/[id]/page.tsx",
+      "bytes": 37324,
+      "sha256": "0332dd7846fd74ccfbaeb366d80a325abcd14ef41908e7b58a06d5dc83fc6a10"
+    },
+    {
+      "path": "supabase/migrations/20260919_pos_workspace_checkout.sql",
+      "bytes": 34178,
+      "sha256": "8a5014db2cdbf6deda0e1b6e2967db841c5d20585e2f69c22d44f1cd82847259"
+    }
+  ]
+}
