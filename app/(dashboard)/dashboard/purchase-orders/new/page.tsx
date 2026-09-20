@@ -1,5 +1,5 @@
 import { requirePermission } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 import PurchaseOrderForm from "./purchase-order-form";
 

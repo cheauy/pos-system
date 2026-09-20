@@ -161,10 +161,10 @@ function groupProducts(products: Product[], variantMode: boolean): ProductGroup[
 
 export default function ProductList({
   products,
-  productMode = "standard",
+  productMode = "standard", branches=[], branchId="",
 }: {
   products: Product[];
-  productMode?: string;
+  productMode?: string; branches?:{id:string;name:string}[];branchId?:string;
 }) {
   const router = useRouter();
   const [actionPending, startActionTransition] = useTransition();
@@ -172,7 +172,6 @@ export default function ProductList({
   const groups = useMemo(() => groupProducts(products, variantMode), [products, variantMode]);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
-  const [status, setStatus] = useState("all");
   const [channel, setChannel] = useState("all");
   const [stock, setStock] = useState("all");
   const [sort, setSort] = useState("newest");
@@ -234,10 +233,6 @@ export default function ProductList({
         );
       if (!matchesSearch) return false;
       if (category !== "all" && group.category !== category) return false;
-      if (status === "active" && (!group.active || group.lowStock || group.outOfStock)) return false;
-      if (status === "low" && !group.lowStock) return false;
-      if (status === "out" && !group.outOfStock) return false;
-      if (status === "inactive" && group.active) return false;
       if (channel === "online" && group.onlineCount === 0) return false;
       if (channel === "hidden" && group.onlineCount > 0) return false;
       if (stock === "in" && group.totalStock <= 0) return false;
@@ -255,7 +250,7 @@ export default function ProductList({
     });
 
     return result;
-  }, [groups, search, category, status, channel, stock, sort]);
+  }, [groups, search, category, channel, stock, sort]);
 
   const pageSize = 15;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -365,13 +360,7 @@ export default function ProductList({
             <option value="all">All Categories</option>
             {categories.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
-          <select value={status} onChange={(event) => { setStatus(event.target.value); resetPage(); }} className={filterInputClass}>
-            <option value="all">All Statuses</option>
-            <option value="active">Active</option>
-            <option value="low">Low Stock</option>
-            <option value="out">Out of Stock</option>
-            <option value="inactive">Inactive</option>
-          </select>
+          <select aria-label="Filter products by branch" value={branchId} onChange={event=>router.push(`/dashboard/products${event.target.value?`?branch=${encodeURIComponent(event.target.value)}`:""}`)} className={filterInputClass}><option value="">All Branches</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>
           <select value={channel} onChange={(event) => { setChannel(event.target.value); resetPage(); }} className={filterInputClass}>
             <option value="all">All Channels</option>
             <option value="online">Online</option>

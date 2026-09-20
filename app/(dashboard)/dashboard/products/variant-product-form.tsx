@@ -90,11 +90,11 @@ function skuPart(value: string) {
 }
 
 export default function VariantProductForm({
-  categories,
+  categories, branches=[],
   businessType = "general",
   onCreated,
 }: {
-  categories: Category[];
+  categories: Category[]; branches?:{id:string;name:string}[];
   businessType?: string;
   onCreated?: () => void;
 }) {
@@ -283,6 +283,7 @@ export default function VariantProductForm({
 
   return (
     <form ref={formRef} action={formAction} className="space-y-4">
+      <label className="block text-sm font-semibold text-slate-700">Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
       <input
         type="hidden"
         name="variants"

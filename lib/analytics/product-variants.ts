@@ -1,0 +1,2 @@
+type Item={product_id?:string|null;product_name:string|null;variant_label?:string|null;products?:{size:string|null;color:string|null}|{size:string|null;color:string|null}[]|null};
+export function soldVariant(item:Item){const product=Array.isArray(item.products)?item.products[0]:item.products;const variant=item.variant_label?.trim()||[product?.color,product?.size].filter(Boolean).join(" / ");const name=item.product_name||"Product";return {key:JSON.stringify([item.product_id||name,variant]),label:variant?`${name} · ${variant}`:name};}

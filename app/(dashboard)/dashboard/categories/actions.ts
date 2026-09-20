@@ -497,3 +497,18 @@ export async function toggleCategoryOnline(formData: FormData) {
 
   return setCategoryOnline(categoryId, !Boolean(data.is_online));
 }
+
+export async function applyCategoryBranches(categoryId: string, branchIds: string[] | null): Promise<CategoryActionResult> {
+  try {
+    const {business,supabase}=await getAuthenticatedContext();
+    if(branchIds!==null && (!Array.isArray(branchIds) || branchIds.length>100 || branchIds.some(id=>typeof id!=="string"))) throw new Error("Invalid branch selection.");
+    if(branchIds?.length){
+      const branches=await supabase.from("business_locations").select("id").eq("business_id",business.id).eq("is_active",true).in("id",branchIds);
+      if(branches.error || branches.data.length!==new Set(branchIds).size) throw new Error("Choose active branches in this business.");
+    }
+    const result=await supabase.from("categories").update({branch_ids:branchIds===null?null:[...new Set(branchIds)]}).eq("id",categoryId).eq("business_id",business.id).select("id").single();
+    if(result.error) throw new Error(result.error.message);
+    revalidateCategoryViews(business.slug);
+    return {ok:true,message:"Category branches saved."};
+  } catch(error) {return {ok:false,message:error instanceof Error?error.message:"Unable to save category branches."};}
+}

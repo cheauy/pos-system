@@ -15,7 +15,7 @@ Customers can cancel the popup without changing their selection, or use the conf
 
 ## Deployment required
 
-Apply `supabase/migrations/20260920_subscription_branch_limits.sql`, then `supabase/migrations/20260920150000_custom_plan_direct_pricing.sql` using a Supabase SQL connection/editor, then deploy/restart the application. The current project environment has REST service credentials only; the migrations have NOT been applied to the live database. Custom checkout and extra branches stay unavailable until they are applied. Existing single-branch store checkout, standard subscription purchases and legacy payment review retain compatible fallback paths while rollout is pending.
+Apply `supabase/migrations/20260920_subscription_branch_limits.sql`, then `supabase/migrations/20260920150000_custom_plan_direct_pricing.sql` using a Supabase SQL connection/editor, then deploy/restart the application. This source handoff does not establish which migrations are installed in any database. Verify the real migration history; no live migration was applied while preparing the continuation patch. Custom checkout and extra branches stay unavailable until they are applied. Existing single-branch store checkout, standard subscription purchases and legacy payment review retain compatible fallback paths while rollout is pending.
 
 The migration expects the existing POS, subscriptions, locations, register, stock-adjustment, and online-ordering database migrations already used by this application. It retains existing data and does not archive/delete excess branches automatically. Existing workspaces over the new limit must deactivate unused branches or purchase capacity. Do not deactivate a default branch without first selecting a replacement.
 
@@ -23,11 +23,11 @@ The migration expects the existing POS, subscriptions, locations, register, stoc
 
 - Custom checkout sends user and branch counts only; SQL calculates prices, discounts and remaining-time credits under a business lock. Payment approval rechecks the subscription snapshot, current usage, proof and pricing before activating limits. Repeated approvals do not extend dates twice. Previously submitted version-2 base-plan orders retain their original pricing; new orders use version 3 direct pricing.
 - Branch activation and user activation are guarded by database triggers and business row locks. New capacity is usable only after payment approval. Mid-term reductions below purchased capacity and reductions below active usage are blocked.
-- Product definitions, categories, prices, suppliers and customer records remain shared at business level. Branches own inventory quantities, registers and sales. The Products page explicitly distinguishes combined stock from selected-branch stock; editing a shared product changes it across branches.
+- Product definitions and prices remain business-wide, with per-branch inventory and category visibility. The later operating-branches migration makes customer records, suppliers, purchases and purchase orders branch-local. Editing a shared product still changes its definition across branches; a selected operating branch determines operational records.
 - POS retains its branch selector and open-register branch lock. Stock allocations and new sales verify the plan and active branch. Orders already has branch filters. Reports now filters sales and branch-assigned expenses together; unassigned business expenses remain in the combined report.
 - Stock Adjustments now selects a branch and commits the global delta, branch quantity and audit branch together. Existing adjustment rows without a branch are labeled legacy business-wide.
 - Transfers validate both branches. Expenses can be business-wide or tied to an active branch. Closing/refunding historical orders remains handled by the existing order workflows.
-- Purchases remain business-wide receipts into the shared inventory pool; allocate stock through the existing POS inventory allocation flow before selling it in a multi-branch workspace. This is not a new per-branch purchasing ledger. The purchasing page explains this distinction.
+- After `20260921100000_operating_branches.sql`, purchases belong to the operating branch and the stock runner applies both the global and branch delta atomically. Do not allocate purchased units a second time using the older shared-pool instructions.
 - Public storefront stock and checkout use the active default branch. Multi-branch checkout checks and deducts branch stock atomically with the existing price/options/coupon order procedure. No other branch's inventory is offered as available online.
 
 ## Verification
@@ -41,3 +41,7 @@ node tests/subscription-branches.integration.cjs
 ```
 
 The fixture reproduces relevant table columns and stubs legacy checkout/payment procedures. It checks new SQL parsing and behavior: price totals, approval/idempotence, branch/user capacity, incompatible downgrade rejection, branch adjustment stock totals, and storefront branch stock deduction. It does not replace a staging test of the existing live procedures, RLS policies, or concurrent transactions. Before production rollout, verify an actual test payment and branch transfer in staging with the full existing schema.
+
+## Operating-branch continuation
+
+The later `20260921110000_operating_branch_completion.sql` and `docs/codex-continuation.md` extend this rollout. They bind open POS/customer requests to their original operating branch, protect uncertain retries, align drawer payment breakdowns, and make online rejection plus stock cancellation atomic. The source archive is not a full fresh-database bootstrap. Pricing and paid subscription capacity are unchanged by this continuation.

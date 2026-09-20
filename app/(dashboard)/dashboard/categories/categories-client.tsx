@@ -1,5 +1,6 @@
 "use client";
 
+import CategoryBranchesDialog from "./category-branches-dialog";
 import { useRouter } from "next/navigation";
 import {
   Box,
@@ -37,6 +38,7 @@ export type CategoryViewModel = {
   index: number;
   productCount: number;
   createdAt: string;
+  branchIds: string[] | null;
 };
 
 type StatusFilter = "all" | "visible" | "hidden";
@@ -92,9 +94,10 @@ function StatCard({
 export default function CategoriesClient({
   categories,
   totalProducts,
-  loadError,
+  loadError, branches,
 }: {
   categories: CategoryViewModel[];
+  branches: {id:string;name:string}[];
   totalProducts: number;
   loadError: string | null;
 }) {
@@ -110,6 +113,7 @@ export default function CategoriesClient({
   const [bulkAction, setBulkAction] = useState<BulkAction>("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [branchCategory,setBranchCategory]=useState<CategoryViewModel|null>(null);
   const [editing, setEditing] = useState<CategoryViewModel | null>(null);
   const [deleting, setDeleting] = useState<CategoryViewModel | null>(null);
   const [message, setMessage] = useState<{
@@ -638,6 +642,7 @@ export default function CategoriesClient({
                                 <Pencil size={16} />
                                 Edit
                               </button>
+                              <button type="button" onClick={()=>{setBranchCategory(category);setOpenMenuId(null);setMenuPosition(null);}} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm hover:bg-slate-50"><Folder size={16}/>Apply to branches</button>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -716,6 +721,7 @@ export default function CategoriesClient({
         </section>
       </div>
 
+      {branchCategory && <CategoryBranchesDialog category={branchCategory} branches={branches} onClose={()=>setBranchCategory(null)}/>}
       {editing ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]">
           <button type="button" className="absolute inset-0" onClick={() => setEditing(null)} aria-label="Close edit dialog" />

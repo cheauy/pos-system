@@ -1,4 +1,7 @@
 "use server";
+import { randomUUID } from "node:crypto";
+import { uploadExpenseReceipt, removeExpenseReceipt } from "@/lib/expenses/receipts";
+import { CATEGORIES } from "./expense-model";
 import { assertBranchOperation } from "@/lib/subscriptions/branch-limits";
 
 import { revalidatePath } from "next/cache";
@@ -46,6 +49,8 @@ export async function createExpense(
     "category",
   );
 
+  if (!CATEGORIES.includes(category)) throw new Error("Choose a valid expense category.");
+
   const description = getRequiredText(
     formData,
     "description",
@@ -56,6 +61,8 @@ export async function createExpense(
     "expenseDate",
   );
 
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(expenseDate) || Number.isNaN(Date.parse(expenseDate)) || new Date(expenseDate).toISOString().slice(0,10) !== expenseDate) throw new Error("Choose a valid expense date.");
+
   const amountValue =
     formData.get("amount");
 
@@ -63,7 +70,7 @@ export async function createExpense(
 
   if (
     !Number.isFinite(amount) ||
-    amount <= 0
+    amount <= 0 || amount > 999999999.99 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.0001
   ) {
     throw new Error(
       "Expense amount must be greater than zero.",
@@ -81,11 +88,16 @@ export async function createExpense(
     redirect("/login");
   }
 
-  const expenseBranch = formData.get("locationId");
-  if (typeof expenseBranch === "string" && expenseBranch.trim()) await assertBranchOperation(business.id, expenseBranch.trim());
+  const expenseBranch = getRequiredText(formData, "locationId");
+  await assertBranchOperation(business.id, expenseBranch);
+  const expenseId = randomUUID();
+  const file = formData.get("receipt");
+  const hasReceipt = file instanceof File && file.size > 0;
+  if (hasReceipt) await uploadExpenseReceipt(business.id, expenseId, file);
   const { error } = await supabase
     .from("expenses")
     .insert({
+      id: expenseId,
       business_id: business.id,
       owner_id: user.id,
       category,
@@ -111,6 +123,7 @@ export async function createExpense(
     });
 
   if (error) {
+    if (hasReceipt) await removeExpenseReceipt(business.id, expenseId);
     throw new Error(
       `Unable to save expense: ${error.message}`,
     );
@@ -121,13 +134,13 @@ export async function createExpense(
     entityType: "expense",
     description: `Recorded expense: ${description}`,
     metadata: { category, amount, expense_date: expenseDate },
-  });
+  }).catch(() => console.error("Expense saved but audit log failed", expenseId));
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/expenses");
   revalidatePath("/dashboard/reports");
 
-  redirect("/dashboard/expenses");
+
 }
 
 export async function deleteExpense(
@@ -175,6 +188,7 @@ export async function deleteExpense(
     );
   }
 
+  await removeExpenseReceipt(business.id, expenseId);
   await createAuditLog({
     action: "delete",
     entityType: "expense",
@@ -186,5 +200,5 @@ export async function deleteExpense(
   revalidatePath("/dashboard/expenses");
   revalidatePath("/dashboard/reports");
 
-  redirect("/dashboard/expenses");
+
 }

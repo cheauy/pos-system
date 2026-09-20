@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requirePermission } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 function text(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -200,7 +200,7 @@ export async function setPurchaseOrderStatus(formData: FormData) {
 }
 
 export async function receivePurchaseOrder(formData: FormData) {
-  await requirePermission("purchases.update");
+  const business = await requirePermission("purchases.update");
   const id = text(formData, "id");
   const raw = text(formData, "receipts");
 
@@ -210,10 +210,10 @@ export async function receivePurchaseOrder(formData: FormData) {
 
   const receipts = JSON.parse(raw);
   const supabase = await createClient();
-  const { error } = await supabase.rpc("receive_purchase_order", {
+  const { error } = await supabase.rpc("tenh_run_branch_stock", {p_business: business.id, p_operation: "receive_purchase_order", p_payload: {
     p_purchase_order_id: id,
     p_receipts: receipts,
-  });
+  }});
 
   if (error) {
     throw new Error(error.message);

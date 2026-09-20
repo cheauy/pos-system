@@ -1,5 +1,5 @@
 const fs=require('fs');const path=require('path');const assert=require('node:assert/strict');
-const {PGlite}=require(path.join(process.env.TEMP,'tenh-branch-sql-check/node_modules/@electric-sql/pglite'));
+const {PGlite}=require('./helpers/pglite.cjs');
 (async()=>{const db=new PGlite();const schema=require('./fixtures/branch-schema.json');
 await db.exec("create schema auth; create role anon; create role authenticated; create role service_role; create function auth.role() returns text language sql as $$ select 'service_role'::text $$;");
 for(const name of ['businesses','business_locations','subscription_orders','business_members','orders','products','product_location_stock','cash_register_shifts','stock_transfers','profiles','subscription_history','stock_adjustments','expenses']){

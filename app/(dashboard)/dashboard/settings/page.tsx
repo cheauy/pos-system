@@ -8,7 +8,7 @@ import {
   LockKeyhole,
   MapPinned,
   Palette,
-  ReceiptText,
+  Printer,
   ShieldCheck,
   Store,
   UserRound,
@@ -131,15 +131,15 @@ export default async function SettingsPage() {
       details: ["$ / ៛ switch", "Default $1 = 4,000៛", "Saved order rate snapshots"],
     },
     {
-      title: "Receipt",
-      description: "Customize 58mm / 80mm receipts, footer and store QR.",
-      href: "/dashboard/settings/receipts",
-      icon: ReceiptText,
+      title: "Printer Settings",
+      description: "Configure receipts, barcode labels and shipping labels with live previews.",
+      href: "/dashboard/settings/printers",
+      icon: Printer,
       visible: canManageReceipt,
       details: [
         "Receipt templates",
-        "Footer text",
-        "QR code settings",
+        "Barcode label settings",
+        "Shipping labels and live previews",
       ],
     },
     {
@@ -163,7 +163,7 @@ export default async function SettingsPage() {
           General
         </h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Manage your business, account, appearance, security, receipt and users.
+          Manage your business, account, appearance, security, printers and users.
         </p>
       </section>
 

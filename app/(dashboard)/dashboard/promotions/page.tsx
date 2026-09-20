@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 
 import { requirePermission } from "@/lib/auth/require-permission";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/branch-server";
 import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
 import {
   createCoupon,
@@ -85,10 +85,11 @@ export default async function PromotionsPage({
 }: PromotionsPageProps) {
   const params = await searchParams;
   const business = await requirePermission("storefront.view");
+  const scopedDb=await createClient();
 
   const [settings, couponResult, orderResult] = await Promise.all([
     getStorefrontSettings(business.id),
-    supabaseAdmin
+    scopedDb
       .from("business_coupons")
       .select(`
         id,
@@ -108,7 +109,7 @@ export default async function PromotionsPage({
       `)
       .eq("business_id", business.id)
       .order("created_at", { ascending: false }),
-    supabaseAdmin
+    scopedDb
       .from("orders")
       .select("customer_id,discount,coupon_code,status,created_at")
       .eq("business_id", business.id)
@@ -588,7 +589,7 @@ export default async function PromotionsPage({
                   <Gift size={19} />
                 </div>
                 <div>
-                  <h2 className="font-bold text-slate-900">Loyalty Program</h2>
+                  <h2 className="font-bold text-slate-900">Online store loyalty settings (shared)</h2>
                   <p className="mt-0.5 text-xs leading-5 text-slate-500">
                     Turn repeat customers into loyal fans.
                   </p>

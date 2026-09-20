@@ -13,10 +13,10 @@ type Category = {
 
 export default function AddClothingStyleModal({
   categories,
-  businessType,
+  businessType, branches,
 }: {
   categories: Category[];
-  businessType: string;
+  businessType: string; branches:{id:string;name:string}[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -54,7 +54,7 @@ export default function AddClothingStyleModal({
         className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
       >
         <Plus size={17} />
-        Add Clothing Style
+        Add Product
       </button>
 
       {open && (
@@ -76,7 +76,7 @@ export default function AddClothingStyleModal({
                       id="add-clothing-style-title"
                       className="text-lg font-bold text-slate-950"
                     >
-                      Add Clothing Style
+                      Add Product
                     </h2>
                     <span className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
                       Fashion mode
@@ -92,14 +92,14 @@ export default function AddClothingStyleModal({
                 type="button"
                 onClick={() => setOpen(false)}
                 className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
-                aria-label="Close Add Clothing Style"
+                aria-label="Close Add Product"
               >
                 <X size={18} />
               </button>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
-              <VariantProductForm
+              <VariantProductForm branches={branches}
                 categories={categories}
                 businessType={businessType}
                 onCreated={handleCreated}

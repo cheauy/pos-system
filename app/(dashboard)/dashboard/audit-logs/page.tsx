@@ -1,3 +1,4 @@
+import { getBranchContext } from "@/lib/branches/context";
 import { createClient } from "@/lib/supabase/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import AuditLogsTable from "./audit-log-table";
@@ -30,6 +31,7 @@ export default async function AuditLogsPage() {
   // profiles.role check here: business membership is the source of truth.
   const business = await requirePermission("audit_logs.view");
   const supabase = await createClient();
+  const {branchId}=await getBranchContext();
 
   const [logsResult, branchesResult] = await Promise.all([
     supabase
@@ -51,6 +53,7 @@ export default async function AuditLogsPage() {
         )
       `)
       .eq("business_id", business.id)
+      .eq("metadata->>branch_id",branchId)
       .order("created_at", { ascending: false })
       .limit(1000),
     supabase
@@ -76,7 +79,7 @@ export default async function AuditLogsPage() {
   return (
     <AuditLogsTable
       logs={(logsResult.data ?? []) as unknown as AuditLog[]}
-      branches={(branchesResult.data ?? []) as unknown as AuditBranch[]}
+      branches={((branchesResult.data ?? []) as unknown as AuditBranch[]).filter(b=>b.id===branchId)}
       branchLoadError={branchesResult.error?.message ?? null}
     />
   );

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requirePermission } from '@/lib/auth/require-permission';
-import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/branch-server';
 import PrintReceiptButton from '@/components/print-button';
 import { ReceiptContent } from '../../pos-workspace-components';
 import { loadReceiptContext } from '@/lib/receipts/load-receipt-context';

@@ -8,9 +8,9 @@ import { initialUserActionState } from "@/app/(dashboard)/dashboard/settings/use
 import { getAssignableRoles } from "@/lib/auth/user-role-options";
 import type { BusinessRole } from "@/lib/business/types";
 
-type Props = { currentRole: BusinessRole };
+type Props = { currentRole: BusinessRole; branches: {id:string;name:string}[] };
 
-export default function CreateBusinessUserForm({ currentRole }: Props) {
+export default function CreateBusinessUserForm({ currentRole, branches }: Props) {
   const [state, formAction, pending] = useActionState(
     createBusinessUser,
     initialUserActionState,
@@ -136,6 +136,7 @@ export default function CreateBusinessUserForm({ currentRole }: Props) {
           </div>
         </FormField>
 
+        <FormField label="Assigned branch" htmlFor="branchId"><select id="branchId" name="branchId" required defaultValue={branches[0]?.id ?? ""} className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></FormField>
         <FormField label="Role" htmlFor="role">
           <select
             id="role"

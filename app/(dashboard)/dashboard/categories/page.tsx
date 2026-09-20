@@ -11,6 +11,7 @@ type CategoryRow = {
   is_online: boolean;
   online_sort_order: number | null;
   created_at: string;
+  branch_ids: string[] | null;
 };
 
 type ProductCategoryRow = {
@@ -26,7 +27,7 @@ export default async function CategoriesPage() {
     supabase
       .from("categories")
       .select(
-        "id, name, description, is_online, online_sort_order, created_at",
+        "id, name, description, is_online, online_sort_order, created_at, branch_ids",
       )
       .eq("business_id", business.id)
       .order("online_sort_order", { ascending: true })
@@ -37,6 +38,8 @@ export default async function CategoriesPage() {
       .eq("business_id", business.id),
   ]);
 
+  const branches=await supabase.from("business_locations").select("id,name").eq("business_id",business.id).eq("is_active",true).order("name");
+  if(branches.error) throw new Error("Unable to load category branches.");
   const categoryRows = (categoryResult.data ?? []) as CategoryRow[];
   const productRows = (productResult.data ?? []) as ProductCategoryRow[];
 
@@ -51,6 +54,7 @@ export default async function CategoriesPage() {
 
   const categories: CategoryViewModel[] = categoryRows.map((category) => ({
     id: category.id,
+    branchIds: category.branch_ids,
     name: category.name,
     description: category.description,
     isOnline: Boolean(category.is_online),
@@ -65,6 +69,7 @@ export default async function CategoriesPage() {
   return (
     <CategoriesClient
       categories={categories}
+      branches={branches.data ?? []}
       totalProducts={productRows.length}
       loadError={errorMessage}
     />

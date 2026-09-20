@@ -97,3 +97,5 @@
 .customerFormFields{border:0;padding:0;margin:0;min-width:0;display:flex;flex-direction:column;gap:14px}
 .customerCreateForm h3{margin:0;font-size:17px}.customerCreateForm .notice{margin:0}
 @media(max-width:520px){.customerPickerFooter{bottom:-15px;margin:0 -15px -15px;padding:12px 15px;gap:10px}.customerPickerFooter>.muted{font-size:10px}.customerAddButton{padding:9px 10px;font-size:11px}.customerPicker .customerResult>small{font-size:10px}.customerPicker .customerResults{max-height:34vh}.customerPicker .customerResult{gap:9px}}
+
+.paperDialog,.paperDialog .modalInner,.paperDialog .modalHeader,.paperDialog .modalBody{background:#fff;color:#111}.paperDialog::backdrop{background:#fff;backdrop-filter:none}.paperDialog{box-shadow:none;border-radius:0}.paperDialog .iconButton{background:#fff;color:#111}

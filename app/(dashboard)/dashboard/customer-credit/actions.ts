@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 function t(fd:FormData,k:string){const v=fd.get(k);return typeof v==="string"?v.trim():""}
 export async function setCreditLimit(fd:FormData){const business=await requirePermission("credit.manage"); const customerId=t(fd,"customerId"); const creditLimit=Number(t(fd,"creditLimit")||"0"); const dueDate=t(fd,"paymentDueDate")||null; if(!customerId||!Number.isFinite(creditLimit)||creditLimit<0) throw new Error("Invalid credit limit."); const supabase=await createClient(); const {error}=await supabase.rpc("set_customer_credit_terms",{p_business_id:business.id,p_customer_id:customerId,p_credit_limit:creditLimit,p_notes:t(fd,"notes")||null,p_payment_due_date:dueDate}); if(error) throw new Error(error.message); await createAuditLog({action:"update",entityType:"customer",entityId:customerId,description:"Updated customer credit terms",metadata:{credit_limit:creditLimit,payment_due_date:dueDate}}); revalidatePath("/dashboard/customer-credit"); revalidatePath("/dashboard/notifications");}

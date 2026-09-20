@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { CalendarDays, Clock3, Filter, Search, ShieldCheck, Users } from "lucide-react";
 
 import type { BusinessRole } from "@/lib/business/types";
+import MemberBranchSelect from "@/components/settings/member-branch-select";
 import UpdateMemberRoleForm from "@/components/settings/update-member-role-form";
 import DeleteUserButton from "./delete-user-button";
 import { ToggleUserStatusButton } from "./user-status-button";
@@ -11,6 +12,7 @@ import { ToggleUserStatusButton } from "./user-status-button";
 export type BusinessUserRow = {
   id: string;
   userId: string;
+  branchId: string;
   role: BusinessRole;
   isActive: boolean;
   createdAt: string;
@@ -25,9 +27,10 @@ type SortMode = "last_active" | "newest" | "oldest";
 
 export default function BusinessUsersTable({
   users,
-  loggedInRole,
+  loggedInRole, branches,
 }: {
   users: BusinessUserRow[];
+  branches: {id:string;name:string}[];
   loggedInRole: BusinessRole;
 }) {
   const [query, setQuery] = useState("");
@@ -119,7 +122,7 @@ export default function BusinessUsersTable({
             <tr className="text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">
               <th className="px-5 py-3.5">User</th>
               <th className="px-5 py-3.5">Role</th>
-              <th className="px-5 py-3.5">Status</th>
+              <th className="px-5 py-3.5">Branch</th><th className="px-5 py-3.5">Status</th>
               <th className="px-5 py-3.5">Created</th>
               <th className="px-5 py-3.5">Last active</th>
               <th className="px-5 py-3.5 text-right">Actions</th>
@@ -156,6 +159,7 @@ export default function BusinessUsersTable({
                     )}
                   </td>
 
+                  <td className="px-5 py-4"><MemberBranchSelect memberId={member.id} branchId={member.branchId} branches={branches} disabled={!(canManage || loggedInRole === "owner")}/></td>
                   <td className="px-5 py-4"><StatusBadge member={member} /></td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
@@ -187,7 +191,7 @@ export default function BusinessUsersTable({
 
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-6 py-16 text-center">
+                <td colSpan={7} className="px-6 py-16 text-center">
                   <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-blue-500 dark:bg-blue-950/40"><Users size={26} /></div>
                   <p className="mt-4 font-semibold text-slate-900 dark:text-white">No users match these filters</p>
                   <p className="mt-1 text-sm text-slate-500">Clear the filters or create another user.</p>

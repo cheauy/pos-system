@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { assertBranchOperation } from "@/lib/subscriptions/branch-limits";
 import { createClient } from "@/lib/supabase/server";
 
 function getText(formData: FormData, key: string) {
@@ -70,6 +71,16 @@ function getDraftItems(formData: FormData): DraftItemInput[] {
   return [];
 }
 
+
+async function assertSourceProducts(businessId: string, sourceId: string, destinationId: string, items: DraftItemInput[]) {
+  await assertBranchOperation(businessId, sourceId);
+  await assertBranchOperation(businessId, destinationId);
+  const db = await createClient();
+  const {data, error} = await db.from("product_location_stock").select("product_id,quantity").eq("business_id",businessId).eq("location_id",sourceId).in("product_id",items.map(i=>i.productId));
+  if(error) throw new Error("Unable to verify stock in the source branch.");
+  const stock = new Map((data ?? []).map(row=>[row.product_id, Number(row.quantity)]));
+  if(items.some(item=>!stock.has(item.productId) || item.quantity > (stock.get(item.productId) ?? 0))) throw new Error("Choose products with enough stock in the source branch.");
+}
 export async function createTransfer(formData: FormData) {
   const business = await requirePermission("transfers.manage");
   const supabase = await createClient();
@@ -98,6 +109,7 @@ export async function createTransfer(formData: FormData) {
     throw new Error("Add at least one product / variant before creating the draft.");
   }
 
+  await assertSourceProducts(business.id, sourceLocationId, destinationLocationId, items);
   const locationIds = [sourceLocationId, destinationLocationId];
   const { data: validLocations, error: locationError } = await supabase
     .from("business_locations")
@@ -250,7 +262,7 @@ export async function addTransferItem(formData: FormData) {
   const supabase = await createClient();
   const { data: transfer } = await supabase
     .from("stock_transfers")
-    .select("id")
+    .select("id,source_location_id,destination_location_id")
     .eq("id", transferId)
     .eq("business_id", business.id)
     .eq("status", "draft")
@@ -260,6 +272,7 @@ export async function addTransferItem(formData: FormData) {
     throw new Error("Draft transfer not found.");
   }
 
+  await assertSourceProducts(business.id, transfer.source_location_id, transfer.destination_location_id, [{productId,quantity}]);
   const { error } = await supabase.from("stock_transfer_items").upsert(
     {
       transfer_id: transferId,
@@ -328,6 +341,7 @@ export async function updateTransferDraft(formData: FormData) {
     throw new Error("Only draft transfers can be edited.");
   }
 
+  await assertSourceProducts(business.id, sourceLocationId, destinationLocationId, items);
   const locationIds = [sourceLocationId, destinationLocationId];
   const { data: validLocations, error: locationError } = await supabase
     .from("business_locations")

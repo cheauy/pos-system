@@ -1,3 +1,4 @@
+import { getBranchContext } from "@/lib/branches/context";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 import BarcodeLabelsClient from "./barcode-labels-client";
@@ -26,6 +27,10 @@ type CategoryRow = {
 export default async function BarcodeLabelsPage() {
   const business = await requirePermission("products.view");
   const supabase = await createClient();
+  const {branchId}=await getBranchContext();
+  const stock = await supabase.from("product_location_stock").select("product_id,quantity").eq("business_id",business.id).eq("location_id",branchId);
+  if(stock.error) throw new Error("Unable to load branch products.");
+  const assigned = new Map((stock.data ?? []).map(row=>[row.product_id,Number(row.quantity)]));
 
   const [productResult, categoryResult, settingsResult] = await Promise.all([
     supabase
@@ -67,7 +72,7 @@ export default async function BarcodeLabelsPage() {
   return (
     <BarcodeLabelsClient
       businessName={business.name}
-      products={(productResult.data ?? []) as ProductRow[]}
+      products={((productResult.data ?? []) as ProductRow[]).filter(p=>assigned.has(p.id)).map(p=>({...p,stock_quantity:assigned.get(p.id) ?? 0}))}
       categories={(categoryResult.data ?? []) as CategoryRow[]}
       settings={settingsResult.data ?? {}}
     />

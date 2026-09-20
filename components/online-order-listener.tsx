@@ -7,9 +7,9 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 
 export default function OnlineOrderListener({
-  businessId,
+  businessId, branchId,
 }: {
-  businessId: string;
+  businessId: string; branchId: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -29,6 +29,7 @@ export default function OnlineOrderListener({
         },
         (payload) => {
           const row = payload.new as Record<string, unknown>;
+          if (row.location_id !== branchId) return;
           if (row.order_source !== "online" && row.order_source !== "qr") {
             return;
           }
@@ -53,7 +54,7 @@ export default function OnlineOrderListener({
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [businessId, pathname, router]);
+  }, [businessId, branchId, pathname, router]);
 
   return null;
 }

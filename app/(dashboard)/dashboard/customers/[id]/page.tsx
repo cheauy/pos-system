@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCustomerFieldSettings } from "@/lib/customers/get-customer-field-settings";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/branch-server";
 import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
 
 type CustomerOrder = {
@@ -34,11 +34,12 @@ type CustomerPageProps = {
 export default async function CustomerDetailsPage({ params }: CustomerPageProps) {
   const { id } = await params;
   const business = await requirePermission("customers.view");
+  const scopedDb=await createClient();
 
   const [settings, fieldSettings, customerResult] = await Promise.all([
     getStorefrontSettings(business.id),
     getCustomerFieldSettings(business.id),
-    supabaseAdmin
+    scopedDb
       .from("customers")
       .select(`
         id,

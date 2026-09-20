@@ -9,7 +9,7 @@ import CancelPurchaseForm from "./cancel-purchase-form";
 import {
   requirePermission,
 } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 type PurchaseDetailsPageProps = {
   params: Promise<{

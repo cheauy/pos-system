@@ -1,5 +1,6 @@
+import { getBranchContext } from "@/lib/branches/context";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 import LowStockClient, {
   type LowStockActivity,
@@ -93,6 +94,7 @@ function statusFor(stock: number, threshold: number): LowStockRow["status"] {
 export default async function LowStockPage() {
   const business = await requirePermission("inventory.view");
   const supabase = await createClient();
+  const {branchId}=await getBranchContext();
 
   const [
     productsResult,
@@ -141,12 +143,12 @@ export default async function LowStockPage() {
       )
       .eq("business_id", business.id)
       .order("created_at", { ascending: false })
-      .limit(12),
+      .eq("location_id",branchId).limit(12),
   ]);
 
   const products = (productsResult.data ?? []) as ProductRow[];
-  const locations = (locationsResult.data ?? []) as LocationRow[];
-  const locationStock = (locationStockResult.data ?? []) as LocationStockRow[];
+  const locations = ((locationsResult.data ?? []) as LocationRow[]).filter(b=>b.id===branchId);
+  const locationStock = ((locationStockResult.data ?? []) as LocationStockRow[]).filter(s=>s.location_id===branchId);
   const suppliers = (suppliersResult.data ?? []) as SupplierRow[];
   const poItems = (poItemsResult.data ?? []) as PurchaseOrderItemRow[];
   const adjustments = (adjustmentsResult.data ?? []) as StockAdjustmentRow[];
@@ -229,43 +231,6 @@ export default async function LowStockPage() {
     });
 
     seenProductLocations.add(`${product.id}:${stock.location_id}`);
-  }
-
-  // Backward-compatible fallback for businesses that have not populated branch stock yet.
-  for (const product of products) {
-    const hasLocationStock = locationStock.some((stock) => stock.product_id === product.id);
-    if (hasLocationStock) continue;
-
-    const currentStock = Number(product.stock_quantity ?? 0);
-    const threshold = Number(product.low_stock_quantity ?? 0);
-    if (currentStock > threshold) continue;
-
-    const defaultLocation = locations.find((location) => location.is_default) ?? locations[0] ?? null;
-    const key = `${product.id}:${defaultLocation?.id ?? "business"}`;
-    if (seenProductLocations.has(key)) continue;
-
-    const supplier = latestSupplierByProduct.get(product.id);
-    const suggestedQuantity = reorderQuantity(currentStock, threshold);
-    const unitCost = supplier?.unitCost ?? Number(product.cost_price ?? 0);
-
-    rows.push({
-      id: key,
-      productId: product.id,
-      productName: product.name,
-      sku: product.sku,
-      imageUrl: product.image_url,
-      branchId: defaultLocation?.id ?? "business",
-      branchName: defaultLocation?.name ?? "Main stock",
-      currentStock,
-      reorderLevel: threshold,
-      suggestedReorder: suggestedQuantity,
-      unitCost,
-      estimatedValue: suggestedQuantity * Math.max(0, unitCost),
-      supplierId: supplier?.id ?? null,
-      supplierName: supplier?.name ?? null,
-      lastRestockedAt: supplier?.lastRestockedAt ?? null,
-      status: statusFor(currentStock, threshold),
-    });
   }
 
   rows.sort((a, b) => {

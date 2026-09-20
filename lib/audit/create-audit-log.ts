@@ -1,3 +1,4 @@
+import { getBranchContext } from "@/lib/branches/context";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
 import { headers } from "next/headers";
@@ -58,6 +59,10 @@ export async function createAuditLog({
   // isolated correctly when one user belongs to multiple businesses.
   const business = await getCurrentBusiness();
 
+  if (["order","purchase","customer","supplier","coupon","register_shift"].includes(entityType)) {
+    const {branchId}=await getBranchContext();
+    metadata={...metadata,branch_id:branchId};
+  }
   const requestHeaders = await headers();
   const forwardedFor = requestHeaders.get("x-forwarded-for");
   const ipAddress = forwardedFor?.split(",")[0]?.trim() ||

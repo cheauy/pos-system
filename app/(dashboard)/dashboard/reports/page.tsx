@@ -1,3 +1,8 @@
+import { getViewingBranchId } from "@/lib/branches/context";
+import ViewBranchSelect from "@/components/view-branch-select";
+import NavigationForm from "@/components/navigation-form";
+import {soldVariant} from "@/lib/analytics/product-variants";
+import {DonutBreakdown} from "@/components/analytics-charts";
 import Link from "next/link";
 import {
   requirePermission,
@@ -26,6 +31,8 @@ type ReportPageProps = {
 };
 
 type OrderItem = {
+  variant_label:string|null;
+  products:{size:string|null;color:string|null}|null;
   product_id: string | null;
   product_name: string;
   quantity: number;
@@ -70,7 +77,7 @@ export default async function ReportsPage({
 }: ReportPageProps) {
   const params = await searchParams;
 
-  const selectedRange = params.range ?? "month";
+  const selectedRange = params.range ?? "yesterday";
   const business = await requirePermission(
     "reports.view",
   );
@@ -86,8 +93,9 @@ export default async function ReportsPage({
 
   const { data: branches, error: branchError } = await supabase.from("business_locations").select("id,name").eq("business_id", business.id).order("name");
   if (branchError) throw new Error("Unable to load report branches.");
-  const branch = branches?.find(item => item.id === params.branch);
-  if (params.branch && !branch) throw new Error("Branch does not belong to this business.");
+  const viewingBranchId = await getViewingBranchId(params.branch);
+  const branch = branches?.find(item => item.id === viewingBranchId);
+  if (viewingBranchId && !branch) throw new Error("Branch does not belong to this business.");
   const ordersQuery = supabase
     .from("orders")
     .select(`
@@ -100,6 +108,8 @@ export default async function ReportsPage({
       credit_amount,
       created_at,
       order_items (
+        variant_label,
+        products(size,color),
         product_id,
         product_name,
         quantity,
@@ -205,11 +215,7 @@ export default async function ReportsPage({
     {},
   );
 
-  const totalCustomerCredit = orders.reduce(
-    (sum, order) => sum + Number(order.credit_amount ?? 0),
-    0,
-  );
-
+  const paymentCounts=orders.reduce<Record<string,number>>((all,order)=>{const method=order.payment_method||"unknown";all[method]=(all[method]||0)+1;return all;},{});
   const dailySales = calculateDailySales(
     orders,
     dateRange.startDate,
@@ -233,13 +239,14 @@ export default async function ReportsPage({
           </p>
         </div>
 
+        <div className="flex flex-wrap items-end gap-3"><ViewBranchSelect branches={branches ?? []} branchId={branch?.id ?? ""}/>
         <Link
           href="/dashboard/expenses"
           className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
         >
           <WalletCards size={18} />
           Manage Expenses
-        </Link>
+        </Link></div>
       </div>
 
       <ReportFilters
@@ -334,24 +341,12 @@ export default async function ReportsPage({
   />
 </div>
 
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900">Payment Breakdown</h2>
-            <p className="mt-1 text-sm text-slate-500">Completed sales by payment method. Customer credit created in this period: {formatCurrency(totalCustomerCredit)}.</p>
-          </div>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {Object.entries(paymentBreakdown).map(([method, amount]) => (
-            <div key={method} className="rounded-xl bg-slate-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{method.replaceAll("_", " ")}</div>
-              <div className="mt-1 text-xl font-bold text-slate-900">{formatCurrency(amount)}</div>
-            </div>
-          ))}
-        </div>
+      <div className="mt-5 grid items-start gap-5 xl:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold text-slate-900">Payment Breakdown</h2><p className="mt-1 text-sm text-slate-500">Sales value by the recorded payment method</p><DonutBreakdown rows={Object.entries(paymentBreakdown).map(([label,value])=>({label:label.replaceAll("_"," "),value}))}/></section>
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold text-slate-900">Sales by Payment Method</h2><p className="mt-1 text-sm text-slate-500">Completed order count by payment method</p><DonutBreakdown count rows={Object.entries(paymentCounts).map(([label,value])=>({label:label.replaceAll("_"," "),value}))}/></section>
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
        
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-6 py-5">
@@ -393,85 +388,6 @@ export default async function ReportsPage({
             </div>
           </div>
         </section>
-      </div>
-
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-5">
-            <h2 className="text-xl font-semibold text-slate-900">
-              Top-Selling Products
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Ranked by quantity sold
-            </p>
-          </div>
-
-          {topProducts.length === 0 ? (
-            <EmptyState message="No product sales found." />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[650px]">
-                <thead className="bg-slate-50">
-                  <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="px-6 py-4">
-                      Product
-                    </th>
-
-                    <th className="px-6 py-4 text-right">
-                      Quantity
-                    </th>
-
-                    <th className="px-6 py-4 text-right">
-                      Revenue
-                    </th>
-
-                    <th className="px-6 py-4 text-right">
-                      Profit
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-200">
-                  {topProducts
-                    .slice(0, 10)
-                    .map((product, index) => (
-                      <tr key={product.productId}>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
-                              {index + 1}
-                            </span>
-
-                            <p className="font-semibold text-slate-900">
-                              {product.name}
-                            </p>
-                          </div>
-                        </td>
-
-                        <td className="px-6 py-4 text-right font-semibold text-slate-700">
-                          {product.quantity}
-                        </td>
-
-                        <td className="px-6 py-4 text-right text-slate-700">
-                          {formatCurrency(
-                            product.revenue,
-                          )}
-                        </td>
-
-                        <td className="px-6 py-4 text-right font-semibold text-emerald-600">
-                          {formatCurrency(
-                            product.profit,
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-6 py-5">
             <h2 className="text-xl font-semibold text-slate-900">
@@ -544,7 +460,7 @@ export default async function ReportsPage({
 }
 
 function ReportFilters({
-  branches, branchId, selectedRange,
+  branchId, selectedRange,
   from,
   to,
 }: {
@@ -584,7 +500,7 @@ function ReportFilters({
           {ranges.map((range) => (
             <Link
               key={range.value}
-              href={`/dashboard/reports?range=${range.value}${branchId ? `&branch=${encodeURIComponent(branchId)}` : ""}`}
+              href={`/dashboard/reports?range=${range.value}${`&branch=${encodeURIComponent(branchId || "all")}`}`}
               className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
                 selectedRange === range.value
                   ? "bg-blue-600 text-white"
@@ -596,8 +512,8 @@ function ReportFilters({
           ))}
         </div>
 
-        <form className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-          <label className="text-sm font-medium text-slate-600">Branch<select name="branch" defaultValue={branchId} className="mt-1 block rounded-xl border border-slate-300 px-3 py-2"><option value="">All branches</option>{branches.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <NavigationForm className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <input type="hidden" name="branch" value={branchId || "all"}/>
           <input
             type="hidden"
             name="range"
@@ -634,7 +550,7 @@ function ReportFilters({
           >
             Apply
           </button>
-        </form>
+        </NavigationForm>
       </div>
     </section>
   );
@@ -747,8 +663,8 @@ function calculateTopProducts(
 
   for (const order of orders) {
     for (const item of order.order_items ?? []) {
-      const productId =
-        item.product_id ?? item.product_name;
+      const variant=soldVariant(item);
+      const productId = variant.key;
 
       const existingProduct =
         groupedProducts.get(productId);
@@ -767,7 +683,7 @@ function calculateTopProducts(
       } else {
         groupedProducts.set(productId, {
           productId,
-          name: item.product_name,
+          name: variant.label,
           quantity,
           revenue,
           cost,
@@ -1047,13 +963,6 @@ function formatShortDate(value: string) {
   }).format(new Date(`${value}T00:00:00Z`));
 }
 
-function formatChartDate(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${value}T00:00:00Z`));
-}
 
 function getLocalDateString(date: Date) {
   const year = date.getFullYear();

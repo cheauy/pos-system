@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { supabaseAdmin } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+
+import { createClient } from "@/lib/supabase/branch-server";
 
 const allowedStatuses = [
   "accepted",
@@ -31,6 +31,7 @@ export async function updateOnlineOrderStatus(
     const business = await requirePermission(
       "orders.update",
     );
+    const scopedDb = await createClient();
 
     if (!allowedStatuses.includes(nextStatus)) {
       return {
@@ -40,7 +41,7 @@ export async function updateOnlineOrderStatus(
     }
 
     const { data: order, error: loadError } =
-      await supabaseAdmin
+      await scopedDb
         .from("orders")
         .select(`
           id,
@@ -62,71 +63,25 @@ export async function updateOnlineOrderStatus(
       throw new Error("Online order not found.");
     }
 
-    if (["completed", "rejected"].includes(order.online_status ?? "")) {
-      throw new Error(
-        "Completed or rejected online orders cannot be changed.",
-      );
-    }
-
-    if (nextStatus === "rejected") {
-      // Use the existing cancellation RPC so stock/inventory is restored
-      // exactly the same way as a cancelled POS order.
-      const supabase = await createClient();
-      const { error: cancelError } = await supabase.rpc(
-        "cancel_order",
-        {
-          p_order_id: orderId,
-          p_reason: "Online order rejected by shop",
-        },
-      );
-
-      if (cancelError) {
-        throw new Error(cancelError.message);
-      }
-    }
-
-    const orderStatus =
-      nextStatus === "completed"
-        ? "completed"
-        : nextStatus === "rejected"
-          ? "cancelled"
-          : "pending";
-
-    let updateQuery = supabaseAdmin
-      .from("orders")
-      .update({
-        online_status: nextStatus,
-        ...(nextStatus === "rejected"
-          ? {}
-          : { status: orderStatus }),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", orderId)
-      .eq("business_id", business.id);
-
-    if (nextStatus !== "rejected") {
-      updateQuery = updateQuery.eq(
-        "online_status",
-        order.online_status,
-      );
-    }
-
-    const { data: updated, error: updateError } =
-      await updateQuery
-        .select("id, order_number, online_status")
-        .maybeSingle();
-
+    const { data: updated, error: updateError } = await scopedDb.rpc(
+      "tenh_update_online_order_status",
+      {
+        p_business: business.id,
+        p_order: orderId,
+        p_status: nextStatus,
+        p_expected_status: order.online_status ?? "new",
+      },
+    );
     if (updateError) {
-      throw new Error(updateError.message);
+      throw new Error(updateError.code === "PGRST202" || updateError.code === "42883"
+        ? "Apply 20260921110000_operating_branch_completion.sql before updating online orders."
+        : updateError.message);
+    }
+    if (!updated || updated.orderId !== orderId || updated.onlineStatus !== nextStatus) {
+      throw new Error("The status result could not be confirmed. Refresh this order before retrying the same status.");
     }
 
-    if (!updated) {
-      throw new Error(
-        "This order changed while you were updating it. Refresh and try again.",
-      );
-    }
-
-    await createAuditLog({
+    if (!updated.alreadyApplied) await createAuditLog({
       action: "update",
       entityType: "order",
       entityId: orderId,
@@ -136,13 +91,15 @@ export async function updateOnlineOrderStatus(
         new_online_status: nextStatus,
         order_source: order.order_source,
       },
-    });
+    }).catch(() => console.error("Order status committed; audit refresh failed."));
 
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/orders");
-    revalidatePath("/dashboard/online-orders");
-    revalidatePath(`/dashboard/orders/${orderId}`);
-    revalidatePath("/dashboard/products");
+    try {
+      revalidatePath("/dashboard");
+      revalidatePath("/dashboard/orders");
+      revalidatePath("/dashboard/online-orders");
+      revalidatePath(`/dashboard/orders/${orderId}`);
+      revalidatePath("/dashboard/products");
+    } catch { console.error("Order status committed; cache refresh failed."); }
 
     return {
       success: true,
@@ -174,6 +131,7 @@ export async function updateOnlinePaymentStatus(
 ): Promise<UpdateOnlineOrderResult> {
   try {
     const business = await requirePermission("orders.update");
+    const scopedDb = await createClient();
 
     if (!allowedPaymentStatuses.includes(nextStatus)) {
       return {
@@ -182,7 +140,7 @@ export async function updateOnlinePaymentStatus(
       };
     }
 
-    const { data: order, error: loadError } = await supabaseAdmin
+    const { data: order, error: loadError } = await scopedDb
       .from("orders")
       .select(`
         id,
@@ -204,7 +162,7 @@ export async function updateOnlinePaymentStatus(
     }
 
     const paid = nextStatus === "paid";
-    const { data: updated, error: updateError } = await supabaseAdmin
+    const { data: updated, error: updateError } = await scopedDb
       .from("orders")
       .update({
         payment_status: nextStatus,

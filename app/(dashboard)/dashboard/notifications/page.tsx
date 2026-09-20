@@ -1,6 +1,6 @@
 import { Bell, CircleAlert, CheckCircle2, Info, TriangleAlert } from "lucide-react";
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 import { saveNotificationRoleSettings } from "./actions";
 import NotificationLink from "./notification-link";
 

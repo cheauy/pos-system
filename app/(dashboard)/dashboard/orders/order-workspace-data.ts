@@ -1,5 +1,5 @@
 import "server-only";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 import type { OrderDetail, OrderRow, PaymentState, WorkspaceData, WorkspaceFilters } from "./order-workspace-types";
 
 type Customer = { id: string; name: string; phone: string | null; email: string | null; address: string | null };

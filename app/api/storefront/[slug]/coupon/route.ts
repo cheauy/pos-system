@@ -80,7 +80,7 @@ export async function POST(
 
     const { data: storefront } = await supabaseAdmin
       .from("business_storefronts")
-      .select("is_published, accept_online_orders, enable_coupons")
+      .select("is_published, accept_online_orders, enable_coupons, fulfillment_location_id")
       .eq("business_id", business.id)
       .maybeSingle();
 
@@ -95,6 +95,10 @@ export async function POST(
       );
     }
 
+    const {data: branches,error: branchError}=await supabaseAdmin.from("business_locations").select("id,is_default").eq("business_id",business.id).eq("is_active",true);
+    if(branchError)throw new Error("Unable to check fulfillment branch.");
+    const fulfillmentBranch=storefront.fulfillment_location_id ? branches?.find(b=>b.id===storefront.fulfillment_location_id) : branches?.find(b=>b.is_default);
+    if(!fulfillmentBranch)return NextResponse.json({success:false,message:"Store fulfillment is unavailable."},{status:400});
     const now = new Date().toISOString();
     const { data: coupon, error: couponError } = await supabaseAdmin
       .from("business_coupons")
@@ -112,6 +116,7 @@ export async function POST(
         is_active
       `)
       .eq("business_id", business.id)
+      .eq("location_id",fulfillmentBranch.id)
       .ilike("code", code)
       .eq("is_active", true)
       .maybeSingle();

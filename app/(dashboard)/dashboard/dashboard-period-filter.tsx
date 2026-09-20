@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart3, CalendarDays, X } from "lucide-react";
+import {useRouter} from "next/navigation";
+import { CalendarDays, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 type DashboardRange =
@@ -16,13 +17,14 @@ export default function DashboardPeriodFilter({
   activeRange,
   selectedFrom,
   selectedTo,
-  canViewReports,
+  branchId,
 }: {
   activeRange: DashboardRange;
   selectedFrom: string;
   selectedTo: string;
-  canViewReports: boolean;
+  canViewReports: boolean; branches:{id:string;name:string;is_active:boolean}[]; branchId:string;
 }) {
+  const router=useRouter();
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
@@ -73,7 +75,7 @@ export default function DashboardPeriodFilter({
           return (
             <Link
               key={item.range}
-              href={`/dashboard?range=${item.range}`}
+              href={`/dashboard?range=${item.range}${`&branch=${encodeURIComponent(branchId || "all")}`}`}
               className={
                 active
                   ? "inline-flex items-center justify-center rounded-xl bg-blue-600 px-3.5 py-2.5 text-xs font-black text-white shadow-sm"
@@ -120,7 +122,7 @@ export default function DashboardPeriodFilter({
                 </button>
               </div>
 
-              <form action="/dashboard" method="get" className="space-y-3">
+              <form onSubmit={event => { event.preventDefault(); const query = new URLSearchParams(new FormData(event.currentTarget) as unknown as Record<string,string>); router.push(`/dashboard?${query}`); setOpen(false); }} className="space-y-3"><input type="hidden" name="branch" value={branchId || "all"}/>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
                     <span className="block text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
@@ -159,15 +161,7 @@ export default function DashboardPeriodFilter({
           ) : null}
         </div>
 
-        {canViewReports ? (
-          <Link
-            href="/dashboard/reports"
-            className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2.5 text-xs font-black text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70"
-          >
-            <BarChart3 size={15} />
-            View Report
-          </Link>
-        ) : null}
+
       </div>
     </div>
   );

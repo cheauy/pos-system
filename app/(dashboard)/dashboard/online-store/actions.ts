@@ -492,6 +492,7 @@ export async function updateStorefrontSettings(
     revalidatePath("/dashboard/online-store/ordering");
     revalidatePath("/dashboard/products");
     revalidatePath("/dashboard/settings/business");
+    revalidatePath("/dashboard/settings/printers");
     revalidatePath(`/_sites/${business.slug}`);
     revalidatePath(`/storefront/${business.slug}`);
 
@@ -656,4 +657,16 @@ export async function updateFulfillmentSettings(
       submittedAt: Date.now(),
     };
   }
+}
+
+export async function saveFulfillmentBranch(branchId: string) {
+  try {
+    const business=await requirePermission("storefront.update");
+    const {assertBranchOperation}=await import("@/lib/subscriptions/branch-limits");
+    await assertBranchOperation(business.id,branchId);
+    const {error}=await supabaseAdmin.from("business_storefronts").update({fulfillment_location_id:branchId}).eq("business_id",business.id).select("business_id").single();
+    if(error)throw new Error(error.message);
+    revalidatePath("/dashboard/online-store");revalidatePath(`/_sites/${business.slug}`);
+    return {success:true,message:"Online fulfilment branch saved."};
+  }catch(error){return {success:false,message:error instanceof Error?error.message:"Unable to save fulfilment branch."};}
 }

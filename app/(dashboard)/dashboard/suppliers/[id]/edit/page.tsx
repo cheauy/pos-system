@@ -6,7 +6,7 @@ import {
   Building2,
 } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 import { updateSupplier } from "@/app/(dashboard)/dashboard/suppliers/actions";
 

@@ -19,6 +19,7 @@ function stockUnits(value: unknown): number {
 }
 export function inventoryFor(product: Product, branchId: string, data: Workspace) {
   const global = stockUnits(product.stock_quantity);
+  if(!branchId)return {global,recorded:global,assigned:global,available:global,unassigned:0,singleLocation:false,mirrorNeedsSync:false,reason:global>0?"available":"sold_out"};
   const rows = data.stock.filter(row => row.product_id === product.id);
   const record = rows.find(row => row.location_id === branchId);
   const recorded = stockUnits(record?.quantity);

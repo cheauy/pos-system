@@ -6,7 +6,7 @@ import { updateCustomer } from "@/app/(dashboard)/dashboard/customers/actions";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCustomerFieldSettings } from "@/lib/customers/get-customer-field-settings";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 type EditCustomerPageProps = {
   params: Promise<{ id: string }>;

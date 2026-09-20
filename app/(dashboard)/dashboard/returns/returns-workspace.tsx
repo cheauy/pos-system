@@ -1,16 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowDownToLine,
   ArrowRightLeft,
-  CalendarDays,
   CheckCircle2,
   Clock3,
   DollarSign,
-  FileDown,
-  FileUp,
   PackageOpen,
   RefreshCw,
   RotateCcw,
@@ -24,7 +20,6 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { exportReturnsCsv, importReturnsCsv } from "./actions";
 
 export type ReturnWorkspaceRecord = {
   id: string;
@@ -62,8 +57,8 @@ type Props = {
 const PAGE_SIZE = 15;
 const pieColors = ["#2563eb", "#60a5fa", "#8b5cf6", "#f97316", "#ef4444", "#94a3b8"];
 
-export default function ReturnsWorkspace({ initialRecords, completedOrderCount, accentColor, canManage }: Props) {
-  const [records, setRecords] = useState(initialRecords);
+export default function ReturnsWorkspace({ initialRecords, completedOrderCount, accentColor }: Props) {
+  const records = initialRecords;
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [reason, setReason] = useState("all");
@@ -72,8 +67,6 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState(initialRecords[0]?.id ?? null);
   const [message, setMessage] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const importInputRef = useRef<HTMLInputElement>(null);
 
   const reasons = useMemo(
     () => [...new Set(records.map((record) => record.reason.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
@@ -131,42 +124,6 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
     setPage(1);
   }
 
-  function downloadTemplate() {
-    downloadText(
-      "tenh-returns-import-template.csv",
-      "order_number,return_type,reason,status,refund_amount,product_name,quantity,returned_at\nORD-1001,refund,Size issue,refunded,25.00,T-Shirt,1,2026-09-17T09:00:00Z\n",
-    );
-  }
-
-  function handleExport() {
-    startTransition(async () => {
-      try {
-        const result = await exportReturnsCsv();
-        downloadText(result.filename, result.content);
-        setMessage("Return records exported successfully.");
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : "Unable to export returns.");
-      }
-    });
-  }
-
-  function handleImport(file: File | undefined) {
-    if (!file) return;
-    startTransition(async () => {
-      try {
-        const formData = new FormData();
-        formData.set("file", file);
-        const result = await importReturnsCsv(formData);
-        setMessage(`${result.imported} return records imported. Refreshing…`);
-        window.location.reload();
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : "Unable to import returns.");
-      } finally {
-        if (importInputRef.current) importInputRef.current.value = "";
-      }
-    });
-  }
-
   return (
     <main className="space-y-4 pb-8">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
@@ -175,20 +132,6 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
           <p className="mt-1 text-sm text-slate-500">Track customer returns, exchanges, refund activity, and return trends.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={downloadTemplate} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-            <FileDown size={16} /> Template
-          </button>
-          {canManage && (
-            <>
-              <input ref={importInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => handleImport(event.target.files?.[0])} />
-              <button disabled={isPending} onClick={() => importInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-                <FileUp size={16} /> Import
-              </button>
-            </>
-          )}
-          <button disabled={isPending} onClick={handleExport} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-            <ArrowDownToLine size={16} /> Export
-          </button>
           <Link href="/dashboard/orders" style={{ backgroundColor: accentColor }} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90">
             <RotateCcw size={16} /> Create Return
           </Link>
@@ -291,7 +234,7 @@ function ReturnDetail({ record, accentColor }: { record: ReturnWorkspaceRecord; 
 function TimelineDot({ color, title, subtitle }: { color: string; title: string; subtitle: string }) { return <div className="flex gap-3"><span className="mt-1 h-3 w-3 rounded-full border-2 border-white shadow ring-1 ring-slate-200" style={{ backgroundColor: color }} /><div><p className="text-sm font-semibold text-slate-800">{title}</p><p className="text-xs text-slate-400">{subtitle}</p></div></div>; }
 function MetricCard({ icon, label, value, helper }: { icon: React.ReactNode; label: string; value: string; helper: string }) { return <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center gap-3"><div className="rounded-xl bg-blue-50 p-2 text-blue-600">{icon}</div><div><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-0.5 text-2xl font-bold text-slate-950">{value}</p></div></div><p className="mt-2 text-xs text-slate-400">{helper}</p></div>; }
 function StatusBadge({ status }: { status: ReturnWorkspaceRecord["status"] }) { const classes = status === "pending" ? "bg-amber-50 text-amber-700" : status === "rejected" ? "bg-red-50 text-red-700" : status === "exchanged" ? "bg-violet-50 text-violet-700" : status === "approved" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"; return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${classes}`}>{status}</span>; }
-function downloadText(filename: string, content: string) { const blob = new Blob([content], { type: "text/csv;charset=utf-8" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = filename; document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url); }
+
 function formatCurrency(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value); }
 function formatDate(value: string) { return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value)); }
 function formatDateTime(value: string) { return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }

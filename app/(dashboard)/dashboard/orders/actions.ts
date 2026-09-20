@@ -6,7 +6,7 @@ import { createAuditLog } from "@/lib/audit/create-audit-log";
 import {
   requirePermission,
 } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 function getRequiredString(
   formData: FormData,
@@ -64,11 +64,11 @@ export async function cancelOrder(
   }
 
   const { error } = await supabase.rpc(
-    "cancel_order",
-    {
+    "tenh_run_branch_stock",
+    {p_business: business.id, p_operation: "cancel_order", p_payload: {
       p_order_id: orderId,
       p_reason: reason || null,
-    },
+    }},
   );
 
   if (error) {

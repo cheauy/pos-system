@@ -53,7 +53,7 @@ function newGroup(): GroupRow {
   };
 }
 
-export default function ConfigurableProductForm({ categories, businessType = "general" }: { categories: Category[]; businessType?: string }) {
+export default function ConfigurableProductForm({ categories, businessType = "general", branches=[] }: { categories: Category[]; branches?:{id:string;name:string}[]; businessType?: string }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(createConfigurableProduct, initialState);
   const isMilkTea = businessType === "milk_tea";
@@ -88,6 +88,7 @@ export default function ConfigurableProductForm({ categories, businessType = "ge
 
   return (
     <form ref={formRef} action={formAction} className="mt-6 space-y-5">
+      <label className="block text-sm font-semibold text-slate-700">Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
       <input
         type="hidden"
         name="optionGroups"

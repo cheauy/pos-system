@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/branch-server";
 
 function text(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -42,6 +42,7 @@ function optionalDate(formData: FormData, key: string) {
 
 export async function createCoupon(formData: FormData) {
   const business = await requirePermission("storefront.update");
+  const scopedDb=await createClient();
 
   const code = text(formData, "code").toUpperCase();
   const name = text(formData, "name") || null;
@@ -96,7 +97,7 @@ export async function createCoupon(formData: FormData) {
     throw new Error("Coupon end time must be after its start time.");
   }
 
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await scopedDb
     .from("business_coupons")
     .insert({
       business_id: business.id,
@@ -138,12 +139,13 @@ export async function createCoupon(formData: FormData) {
 
 export async function setCouponActive(formData: FormData) {
   const business = await requirePermission("storefront.update");
+  const scopedDb=await createClient();
   const couponId = text(formData, "couponId");
   const active = text(formData, "active") === "true";
 
   if (!couponId) throw new Error("Invalid coupon.");
 
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await scopedDb
     .from("business_coupons")
     .update({
       is_active: active,
@@ -169,11 +171,12 @@ export async function setCouponActive(formData: FormData) {
 
 export async function deleteCoupon(formData: FormData) {
   const business = await requirePermission("storefront.update");
+  const scopedDb=await createClient();
   const couponId = text(formData, "couponId");
 
   if (!couponId) throw new Error("Invalid coupon.");
 
-  const { data: coupon, error: loadError } = await supabaseAdmin
+  const { data: coupon, error: loadError } = await scopedDb
     .from("business_coupons")
     .select("id, code, usage_count")
     .eq("id", couponId)
@@ -184,7 +187,7 @@ export async function deleteCoupon(formData: FormData) {
   if (!coupon) throw new Error("Coupon not found.");
 
   if (Number(coupon.usage_count) > 0) {
-    const { error } = await supabaseAdmin
+    const { error } = await scopedDb
       .from("business_coupons")
       .update({
         is_active: false,
@@ -195,7 +198,7 @@ export async function deleteCoupon(formData: FormData) {
 
     if (error) throw new Error(error.message);
   } else {
-    const { error } = await supabaseAdmin
+    const { error } = await scopedDb
       .from("business_coupons")
       .delete()
       .eq("id", couponId)
@@ -219,6 +222,7 @@ export async function deleteCoupon(formData: FormData) {
 
 export async function updateLoyaltySettings(formData: FormData) {
   const business = await requirePermission("storefront.update");
+  const scopedDb=await createClient();
 
   const loyaltyEnabled = formData.get("loyaltyEnabled") === "on";
   const enableCoupons = formData.get("enableCoupons") === "on";
@@ -238,7 +242,7 @@ export async function updateLoyaltySettings(formData: FormData) {
     throw new Error("Loyalty minimum order cannot be negative.");
   }
 
-  const { error } = await supabaseAdmin
+  const { error } = await scopedDb
     .from("business_storefronts")
     .update({
       enable_coupons: enableCoupons,

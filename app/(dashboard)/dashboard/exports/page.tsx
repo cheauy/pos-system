@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, CircleHelp } from "lucide-react";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 import ExportClient from "./export-client";
 
 export default async function ExportsPage() {

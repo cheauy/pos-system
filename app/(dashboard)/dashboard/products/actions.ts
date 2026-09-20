@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { assertBranchOperation } from "@/lib/subscriptions/branch-limits";
 import { redirect } from "next/navigation";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
@@ -129,6 +130,8 @@ export async function createProduct(
     "products.create",
   );
 
+  let initialBranch:string;
+  try { initialBranch=await initialProductBranch(business.id,formData); } catch(error){return {success:false,message:error instanceof Error?error.message:"Choose an active branch."};}
   const currentBusinessMode = await getCurrentBusinessMode({
     businessId: business.id,
     productMode: business.productMode,
@@ -382,6 +385,7 @@ export async function createProduct(
     };
   }
 
+  const assignmentWarning=await assignCreatedProducts(business.id,initialBranch,[product.id]);
   await createAuditLog({
     action: "create",
     entityType: "product",
@@ -403,7 +407,7 @@ export async function createProduct(
 
   return {
     success: true,
-    message: `${product.name} created successfully.`,
+    message: `${product.name} created successfully.` + assignmentWarning,
   };
 }
 
@@ -1463,6 +1467,8 @@ export async function createVariantProduct(
 ): Promise<CreateProductState> {
   const business = await requirePermission("products.create");
 
+  let initialBranch:string;
+  try { initialBranch=await initialProductBranch(business.id,formData); } catch(error){return {success:false,message:error instanceof Error?error.message:"Choose an active branch."};}
   const currentBusinessMode = await getCurrentBusinessMode({
     businessId: business.id,
     productMode: business.productMode,
@@ -1625,6 +1631,7 @@ export async function createVariantProduct(
     return { success: false, message: error?.message ?? "Unable to create variants." };
   }
 
+  const assignmentWarning=await assignCreatedProducts(business.id,initialBranch,created.map(p=>p.id));
   await createAuditLog({
     action: "create",
     entityType: "product",
@@ -1643,7 +1650,7 @@ export async function createVariantProduct(
 
   return {
     success: true,
-    message: `${name} created with ${created.length} variant${created.length === 1 ? "" : "s"}.`,
+    message: `${name} created with ${created.length} variant${created.length === 1 ? "" : "s"}.` + assignmentWarning,
   };
 }
 
@@ -1727,6 +1734,8 @@ export async function createConfigurableProduct(
 ): Promise<CreateProductState> {
   const business = await requirePermission("products.create");
 
+  let initialBranch:string;
+  try { initialBranch=await initialProductBranch(business.id,formData); } catch(error){return {success:false,message:error instanceof Error?error.message:"Choose an active branch."};}
   const currentBusinessMode = await getCurrentBusinessMode({
     businessId: business.id,
     productMode: business.productMode,
@@ -1884,6 +1893,7 @@ export async function createConfigurableProduct(
     };
   }
 
+  const assignmentWarning=await assignCreatedProducts(business.id,initialBranch,[product.id]);
   await createAuditLog({
     action: "create",
     entityType: "product",
@@ -1901,7 +1911,7 @@ export async function createConfigurableProduct(
 
   return {
     success: true,
-    message: `${product.name} created successfully.`,
+    message: `${product.name} created successfully.` + assignmentWarning,
   };
 }
 
@@ -2286,4 +2296,25 @@ export async function updateProductGroup(
     success: true,
     message: `${name} updated successfully.`,
   };
+}
+
+async function initialProductBranch(businessId:string,form:FormData){
+ const requested=getOptionalText(form,"locationId");
+ const {data,error}=await supabaseAdmin.from("business_locations").select("id").eq("business_id",businessId).eq("is_active",true).order("is_default",{ascending:false}).limit(1);
+ if(error)throw new Error("Unable to load product branches.");
+ const id=requested||data?.[0]?.id;
+ if(!id)throw new Error("Create an active branch before adding products.");
+ await assertBranchOperation(businessId,id);return id;
+}
+async function assignCreatedProducts(businessId:string,branchId:string,ids:string[]):Promise<string>{
+ try{
+  const {data,error}=await supabaseAdmin.from("products").select("id,stock_quantity,low_stock_quantity").eq("business_id",businessId).in("id",ids);
+  if(error||!data)throw new Error("Product stock could not be read.");
+  const db=await createClient();
+  const positive=data.filter(p=>Number(p.stock_quantity)>0);
+  if(positive.length){const {error}=await db.rpc("tenh_pos_allocate_stock",{p_business_id:businessId,p_location_id:branchId,p_allocations:positive.map(p=>({productId:p.id,quantity:Number(p.stock_quantity)}))});if(error)throw new Error(error.message);}
+  const empty=data.filter(p=>!Number(p.stock_quantity));
+  if(empty.length){const {error}=await supabaseAdmin.from("product_location_stock").upsert(empty.map(p=>({business_id:businessId,location_id:branchId,product_id:p.id,quantity:0,low_stock_threshold:p.low_stock_quantity})),{onConflict:"location_id,product_id",ignoreDuplicates:true});if(error)throw new Error(error.message);}
+  revalidatePath("/dashboard/inventory");return "";
+ }catch{return " Product saved, but branch stock assignment failed. Use Inventory to assign its existing stock; do not create the product again.";}
 }

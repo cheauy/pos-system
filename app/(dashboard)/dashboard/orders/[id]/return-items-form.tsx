@@ -356,6 +356,12 @@ export default function ReturnItemsForm({
               </div>
 
               <div className="mt-5">
+                <label className="mb-4 block text-sm font-medium text-slate-700">Refund payment method
+                  <select name="refundMethod" required defaultValue="" className="mt-2 w-full rounded-xl border border-slate-300 p-3">
+                    <option value="" disabled>Choose how the refund is paid</option><option value="cash">Cash from register</option><option value="bank_transfer">Bank transfer</option><option value="other">Other non-cash payment</option>
+                  </select>
+                  <span className="mt-1 block text-xs text-slate-500">Cash refunds use the open register at the original sale branch.</span>
+                </label>
                 <label
                   htmlFor="reason"
                   className="mb-2 block text-sm font-medium text-slate-700"

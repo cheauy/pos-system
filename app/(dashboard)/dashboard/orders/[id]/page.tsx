@@ -1,10 +1,11 @@
 import Link from 'next/link';
+import OrderPrintMenu from '@/components/order-print-menu';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { ArrowLeft, CalendarDays, CheckCircle2, Clock, CreditCard, ExternalLink, MapPin, Package, Phone, Printer, ReceiptText, ShoppingCart, Store, UserRound } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCircle2, Clock, CreditCard, ExternalLink, MapPin, Package, Phone, ReceiptText, ShoppingCart, Store, UserRound } from 'lucide-react';
 import { requirePermission } from '@/lib/auth/require-permission';
 import { hasPermission } from '@/lib/auth/permissions';
-import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/branch-server';
 import { loadReceiptContext } from '@/lib/receipts/load-receipt-context';
 import { PosReceipt } from '@/components/receipts/pos-receipt';
 import { ReceiptViewer } from '@/components/receipts/receipt-viewer';
@@ -46,7 +47,7 @@ export default async function OrderDetailsPage({params}:{params:Promise<{id:stri
  if(!events.some((e:{date:string})=>e.date===order.created_at))events.unshift({id:'created',label:'Order created',date:order.created_at});
  return <main className={s.page}>
  <header className={s.header}><div><Link className={s.back} href="/dashboard/orders"><ArrowLeft size={15}/>Back to orders</Link><h1>Order Details</h1><p>View customer, products and payment information.</p></div><div className={s.headerActions}>
- <Link className={s.button} href={receiptHref} target="_blank" rel="noopener noreferrer"><Printer size={16}/>Print receipt</Link>
+ <OrderPrintMenu orderId={id} className={s.button}/>
  <OrderMoreActions id={id} number={order.order_number} businessId={business.id} updatedAt={order.updated_at} status={order.status} source={order.order_source} onlineStatus={order.online_status} canEdit={hasPermission(business.role,'orders.update')} canDelete={canCancel && ['new','pending','cancelled'].includes(order.status)} note={order.customer_note || ''}/>
  {canReturn && <ReturnItemsForm orderId={id} orderNumber={order.order_number} items={returnable}/>}{canCancel && <CancelOrderForm orderId={id} orderNumber={order.order_number}/>}
  </div></header>

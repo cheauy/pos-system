@@ -1,13 +1,16 @@
+import { getViewingBranchId } from "@/lib/branches/context";
+import ViewBranchSelect from "@/components/view-branch-select";
+import {soldVariant} from "@/lib/analytics/product-variants";
+import SalesTrendChart from "./sales-trend-chart";
+import {DonutBreakdown,ProductRankBars} from "@/components/analytics-charts";
 import Link from "next/link";
 import {
-  AlertTriangle,
   ArrowRight,
   Boxes,
   CalendarDays,
   CreditCard,
   Package,
   ReceiptText,
-  ShoppingCart,
   Store,
   TrendingDown,
   TrendingUp,
@@ -23,22 +26,12 @@ import { createClient } from "@/lib/supabase/server";
 type DashboardRange = "today" | "yesterday" | "7d" | "30d" | "365d" | "custom";
 
 type DashboardSearchParams = {
+  branch?: string | string[];
   from?: string | string[];
   to?: string | string[];
   // Legacy query params remain supported for old dashboard links.
   range?: string | string[];
   date?: string | string[];
-};
-
-type Stock = {
-  id: string;
-  name: string;
-  stock_quantity: number;
-  low_stock_quantity: number;
-  cost_price: number;
-  size: string | null;
-  color: string | null;
-  variant_group_id: string | null;
 };
 
 type DashboardOrder = {
@@ -55,6 +48,8 @@ type DashboardOrder = {
 };
 
 type Line = {
+  product_id:string|null;
+  products:{size:string|null;color:string|null}|null;
   product_name: string | null;
   quantity: number;
   variant_label: string | null;
@@ -114,17 +109,20 @@ export default async function DashboardPage({
   const canViewReports = hasPermission(business.role, "reports.view");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  const {data:branches,error:branchError}=await supabase.from("business_locations").select("id,name,is_active").eq("business_id",business.id).order("is_default",{ascending:false});
+  if(branchError)throw new Error("Unable to load dashboard branches.");
+  const branchId=await getViewingBranchId(typeof params.branch==="string"?params.branch:undefined);
+  if(branchId && !branches?.some(b=>b.id===branchId))throw new Error("Choose a branch in this business.");
   const period = resolvePeriod(params);
   const previousPeriod = previousComparablePeriod(period);
 
   const [
     { data: storefront },
     businessMode,
-    { data: stocks },
-    { data: periodOrders },
-    { data: previousOrders },
-    { data: recentOrders },
-    { data: lines },
+    { data: periodOrders, error: periodError },
+    { data: previousOrders, error: previousError },
+    { data: recentOrders, error: recentError },
+    { data: lines, error: linesError },
   ] = await Promise.all([
     supabase
       .from("business_storefronts")
@@ -136,18 +134,12 @@ export default async function DashboardPage({
       productMode: business.productMode,
     }),
     supabase
-      .from("products")
-      .select(
-        "id,name,stock_quantity,low_stock_quantity,cost_price,size,color,variant_group_id",
-      )
-      .eq("business_id", business.id)
-      .eq("is_active", true),
-    supabase
       .from("orders")
       .select(
         "id,order_number,subtotal,discount,delivery_fee,total,status,payment_method,order_source,created_at",
       )
       .eq("business_id", business.id)
+      .match(branchId?{location_id:branchId}:{})
       .gte("created_at", period.startIso)
       .lt("created_at", period.endIso)
       .order("created_at", { ascending: true })
@@ -158,6 +150,7 @@ export default async function DashboardPage({
         "id,order_number,subtotal,discount,delivery_fee,total,status,payment_method,order_source,created_at",
       )
       .eq("business_id", business.id)
+      .match(branchId?{location_id:branchId}:{})
       .eq("status", "completed")
       .gte("created_at", previousPeriod.startIso)
       .lt("created_at", previousPeriod.endIso)
@@ -169,6 +162,7 @@ export default async function DashboardPage({
         "id,order_number,subtotal,discount,delivery_fee,total,status,payment_method,order_source,created_at",
       )
       .eq("business_id", business.id)
+      .match(branchId?{location_id:branchId}:{})
       .gte("created_at", period.startIso)
       .lt("created_at", period.endIso)
       .order("created_at", { ascending: false })
@@ -176,16 +170,17 @@ export default async function DashboardPage({
     supabase
       .from("order_items")
       .select(
-        "product_name,quantity,variant_label,selected_options,orders!inner(status,business_id,created_at,payment_method,order_source)",
+        "product_id,product_name,quantity,variant_label,selected_options,products(size,color),orders!inner(status,business_id,location_id,created_at,payment_method,order_source)",
       )
       .eq("orders.business_id", business.id)
+      .match(branchId?{"orders.location_id":branchId}:{})
       .eq("orders.status", "completed")
       .gte("orders.created_at", period.startIso)
       .lt("orders.created_at", period.endIso)
       .limit(5000),
   ]);
 
-  const stock = (stocks ?? []) as Stock[];
+  if(periodError||previousError||recentError||linesError)throw new Error("Unable to load dashboard analytics. Please retry.");
   const allPeriodOrders = (periodOrders ?? []) as DashboardOrder[];
   const completedOrders = allPeriodOrders.filter(
     (order) => order.status.toLowerCase() === "completed",
@@ -218,24 +213,7 @@ export default async function DashboardPage({
     (sum, order) => sum + Math.max(0, Number(order.discount || 0)),
     0,
   );
-  const completedRate = allPeriodOrders.length
-    ? (completedOrders.length / allPeriodOrders.length) * 100
-    : 0;
-
-  const lowStock = stock.filter(
-    (product) =>
-      Number(product.stock_quantity) <= Number(product.low_stock_quantity),
-  );
-  const inventoryValue = stock.reduce(
-    (sum, product) =>
-      sum + Number(product.stock_quantity) * Number(product.cost_price),
-    0,
-  );
-  const totalStockUnits = stock.reduce(
-    (sum, product) => sum + Math.max(0, Number(product.stock_quantity)),
-    0,
-  );
-
+  const completedRate=allPeriodOrders.length?completedOrders.length/allPeriodOrders.length*100:0;
   const trend = buildTrendBuckets(period, completedOrders);
   const paymentMix = buildBreakdown(
     completedOrders,
@@ -245,10 +223,9 @@ export default async function DashboardPage({
     completedOrders,
     (order) => formatSource(order.order_source),
   );
-  const topProducts = countBy(
-    soldLines,
-    (line) => line.product_name || "Product",
-  ).slice(0, 6);
+  const variantSales=new Map<string,{label:string;value:number}>();
+  for(const line of soldLines){const variant=soldVariant(line);const row=variantSales.get(variant.key)||{label:variant.label,value:0};row.value+=Number(line.quantity)||0;variantSales.set(variant.key,row);}
+  const topProducts=[...variantSales.values()].sort((a,b)=>b.value-a.value).slice(0,10);
 
   const revenueChange = percentChange(revenue, previousRevenue);
   const orderChange = percentChange(
@@ -292,8 +269,10 @@ export default async function DashboardPage({
       </header>
 
       <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-        <div className="flex flex-col gap-5 2xl:flex-row 2xl:items-end 2xl:justify-between">
-          <div className="min-w-0">
+        <div className="flex flex-col gap-5">
+          <div className="relative min-w-0 sm:pr-64">
+            <div className="mb-4 flex flex-col items-end gap-3 sm:absolute sm:right-0 sm:top-0"><ViewBranchSelect branches={branches || []} branchId={branchId}/>
+            {canViewReports&&<Link href={`/dashboard/reports?range=custom&from=${period.selectedFrom}&to=${period.selectedTo}${branchId?`&branch=${branchId}`:""}`} className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-bold text-blue-700">View Report</Link>}</div>
             <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
               <CalendarDays size={14} className="text-blue-600 dark:text-blue-400" />
               <span>{period.label}</span>
@@ -315,12 +294,13 @@ export default async function DashboardPage({
             </p>
           </div>
 
-          <div className="w-full 2xl:w-auto 2xl:min-w-[700px]">
+          <div className="w-full border-t border-slate-100 pt-4">
             <DashboardPeriodFilter
               activeRange={period.range}
               selectedFrom={period.selectedFrom}
               selectedTo={period.selectedTo}
               canViewReports={canViewReports}
+              branches={branches||[]} branchId={branchId}
             />
           </div>
         </div>
@@ -368,7 +348,7 @@ export default async function DashboardPage({
         />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-12">
+      <section className="grid items-start gap-5 xl:grid-cols-12">
         <div className="xl:col-span-8">
           <SalesOverview
             buckets={trend}
@@ -379,45 +359,14 @@ export default async function DashboardPage({
           />
         </div>
         <div className="xl:col-span-4">
-          <OperationalSnapshot
-            totalOrders={allPeriodOrders.length}
-            completedOrders={completedOrders.length}
-            completionRate={completedRate}
-            discount={totalDiscount}
-            lowStockCount={lowStock.length}
-            inventoryValue={inventoryValue}
-            currency={currency}
-          />
+          <TopProducts rows={topProducts}/>
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-12">
-        <div className="xl:col-span-5">
-          <SalesMix
-            paymentMix={paymentMix}
-            channelMix={channelMix}
-            currency={currency}
-          />
-        </div>
-        <div className="xl:col-span-7">
-          <TopProducts rows={topProducts} />
-        </div>
-      </section>
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]"><SalesMix paymentMix={paymentMix} channelMix={channelMix} currency={currency}/><RecentOrders orders={recent} currency={currency}/></div>
 
-      <section className="grid gap-6 xl:grid-cols-12">
-        <div className="xl:col-span-8">
-          <RecentOrders orders={recent} currency={currency} />
-        </div>
-        <div className="xl:col-span-4">
-          <InventoryHealth
-            activeProducts={stock.length}
-            units={totalStockUnits}
-            inventoryValue={inventoryValue}
-            lowStock={lowStock}
-            currency={currency}
-          />
-        </div>
-      </section>
+
+
 
     </main>
   );
@@ -483,7 +432,7 @@ function SalesOverview({
   currency: string;
   periodLabel: string;
 }) {
-  const maxRevenue = Math.max(1, ...buckets.map((bucket) => bucket.revenue));
+
 
   return (
     <section className="h-full rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
@@ -506,133 +455,8 @@ function SalesOverview({
         </div>
       </div>
 
-      <div className="mt-7 grid h-56 items-end gap-2" style={{ gridTemplateColumns: `repeat(${Math.max(1, buckets.length)}, minmax(0, 1fr))` }}>
-        {buckets.map((bucket) => {
-          const height =
-            bucket.revenue <= 0
-              ? 5
-              : Math.max(12, (bucket.revenue / maxRevenue) * 100);
-          return (
-            <div
-              key={bucket.key}
-              className="flex h-full min-w-0 flex-col justify-end"
-            >
-              <div className="flex min-h-0 flex-1 items-end justify-center">
-                <div
-                  className="w-full max-w-16 rounded-t-xl bg-blue-100 transition dark:bg-blue-950/70"
-                  style={{ height: `${height}%` }}
-                  title={`${bucket.label}: ${money(bucket.revenue, currency)} · ${bucket.orders} orders`}
-                >
-                  <div className="h-full w-full rounded-t-xl bg-gradient-to-t from-blue-600 to-blue-400 opacity-90" />
-                </div>
-              </div>
-              <div className="mt-3 min-w-0 text-center">
-                <p className="truncate text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                  {bucket.label}
-                </p>
-                <p className="mt-0.5 text-[10px] font-medium text-slate-400">
-                  {bucket.orders}
-                </p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <SalesTrendChart buckets={buckets} currency={currency}/>
     </section>
-  );
-}
-
-function OperationalSnapshot({
-  totalOrders,
-  completedOrders,
-  completionRate,
-  discount,
-  lowStockCount,
-  inventoryValue,
-  currency,
-}: {
-  totalOrders: number;
-  completedOrders: number;
-  completionRate: number;
-  discount: number;
-  lowStockCount: number;
-  inventoryValue: number;
-  currency: string;
-}) {
-  return (
-    <section className="h-full rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-      <h2 className="text-lg font-black text-slate-950 dark:text-white">
-        Operational snapshot
-      </h2>
-      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        Fast signals that help you spot changes early.
-      </p>
-
-      <div className="mt-5 space-y-3">
-        <InsightRow
-          label="Order completion"
-          value={`${completionRate.toFixed(0)}%`}
-          detail={`${completedOrders} of ${totalOrders} orders completed`}
-          tone={completionRate >= 90 ? "good" : completionRate >= 70 ? "warn" : "bad"}
-        />
-        <InsightRow
-          label="Discount impact"
-          value={money(discount, currency)}
-          detail="Total discount applied in this period"
-          tone="neutral"
-        />
-        <InsightRow
-          label="Low-stock products"
-          value={lowStockCount}
-          detail={lowStockCount ? "Inventory needs attention" : "No low-stock alerts"}
-          tone={lowStockCount ? "warn" : "good"}
-        />
-        <InsightRow
-          label="Inventory value"
-          value={money(inventoryValue, currency)}
-          detail="Current cost value of active stock"
-          tone="neutral"
-        />
-      </div>
-    </section>
-  );
-}
-
-function InsightRow({
-  label,
-  value,
-  detail,
-  tone,
-}: {
-  label: string;
-  value: string | number;
-  detail: string;
-  tone: "good" | "warn" | "bad" | "neutral";
-}) {
-  const dotClass = {
-    good: "bg-emerald-500",
-    warn: "bg-amber-400",
-    bad: "bg-red-500",
-    neutral: "bg-blue-500",
-  }[tone];
-
-  return (
-    <div className="rounded-2xl border border-slate-100 p-4 dark:border-slate-800">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dotClass}`} />
-          <p className="truncate text-sm font-bold text-slate-700 dark:text-slate-200">
-            {label}
-          </p>
-        </div>
-        <p className="shrink-0 text-sm font-black text-slate-950 dark:text-white">
-          {value}
-        </p>
-      </div>
-      <p className="mt-1.5 pl-[18px] text-xs font-medium text-slate-400">
-        {detail}
-      </p>
-    </div>
   );
 }
 
@@ -661,162 +485,7 @@ function SalesMix({
   );
 }
 
-function BreakdownList({
-  title,
-  rows,
-  currency,
-}: {
-  title: string;
-  rows: BreakdownRow[];
-  currency: string;
-}) {
-  const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
-
-  return (
-    <div className="mt-5 first:mt-0">
-      <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-        {title}
-      </p>
-      <div className="mt-3 space-y-3">
-        {rows.length ? (
-          rows.slice(0, 5).map((row) => {
-            const share = totalRevenue > 0 ? (row.revenue / totalRevenue) * 100 : 0;
-            return (
-              <div key={row.label}>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-slate-700 dark:text-slate-200">
-                      {row.label}
-                    </p>
-                    <p className="mt-0.5 text-[11px] font-medium text-slate-400">
-                      {row.orders} {row.orders === 1 ? "order" : "orders"}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-slate-950 dark:text-white">
-                      {money(row.revenue, currency)}
-                    </p>
-                    <p className="text-[10px] font-bold text-slate-400">
-                      {share.toFixed(0)}%
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                  <div
-                    className="h-full rounded-full bg-blue-600"
-                    style={{ width: `${Math.max(4, share)}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })
-        ) : (
-          <p className="rounded-xl bg-slate-50 px-3 py-4 text-sm font-semibold text-slate-400 dark:bg-slate-950/60">
-            No completed sales in this period.
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function InventoryHealth({
-  activeProducts,
-  units,
-  inventoryValue,
-  lowStock,
-  currency,
-}: {
-  activeProducts: number;
-  units: number;
-  inventoryValue: number;
-  lowStock: Stock[];
-  currency: string;
-}) {
-  return (
-    <section className="h-full rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-black text-slate-950 dark:text-white">
-            Inventory health
-          </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Current stock position.
-          </p>
-        </div>
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-          <Boxes size={19} />
-        </span>
-      </div>
-
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <MiniStat label="Active products" value={activeProducts} />
-        <MiniStat label="Units on hand" value={units} />
-        <div className="col-span-2 rounded-2xl bg-slate-50 p-4 dark:bg-slate-950/60">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
-            Stock value
-          </p>
-          <p className="mt-1.5 text-xl font-black text-slate-950 dark:text-white">
-            {money(inventoryValue, currency)}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-5 border-t border-slate-100 pt-4 dark:border-slate-800">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <AlertTriangle
-              size={16}
-              className={lowStock.length ? "text-amber-500" : "text-emerald-500"}
-            />
-            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
-              Low-stock alerts
-            </p>
-          </div>
-          <Link
-            href="/dashboard/low-stock"
-            className="text-xs font-bold text-blue-600 hover:text-blue-700"
-          >
-            View all
-          </Link>
-        </div>
-
-        <div className="mt-3 space-y-2">
-          {lowStock.length ? (
-            lowStock.slice(0, 4).map((product) => (
-              <div
-                key={product.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-2.5 dark:border-amber-900/50 dark:bg-amber-950/20"
-              >
-                <span className="truncate text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  {product.name}
-                </span>
-                <span className="shrink-0 rounded-lg bg-white px-2 py-1 text-xs font-black text-amber-700 shadow-sm dark:bg-slate-900 dark:text-amber-300">
-                  {Number(product.stock_quantity)} left
-                </span>
-              </div>
-            ))
-          ) : (
-            <div className="rounded-xl bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
-              No low-stock alerts right now.
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="rounded-2xl border border-slate-100 p-4 dark:border-slate-800">
-      <p className="text-xs font-semibold text-slate-400">{label}</p>
-      <p className="mt-1 text-xl font-black text-slate-950 dark:text-white">
-        {value}
-      </p>
-    </div>
-  );
-}
+function BreakdownList({title,rows,currency}:{title:string;rows:BreakdownRow[];currency:string}){return <div className="mt-4"><h3 className="text-sm font-semibold text-slate-600 dark:text-slate-300">{title}</h3><DonutBreakdown rows={rows.map(r=>({label:r.label,value:r.revenue}))} currency={currency}/></div>;}
 
 function RecentOrders({
   orders,
@@ -907,82 +576,8 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function TopProducts({ rows }: { rows: { label: string; value: number }[] }) {
-  const max = Math.max(1, ...rows.map((row) => row.value));
+function TopProducts({rows}:{rows:{label:string;value:number}[]}){return <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"><h2 className="text-lg font-black text-slate-950 dark:text-white">Top-Selling Products</h2><p className="mb-5 mt-1 text-sm text-slate-500">Products ranked by quantity sold</p><ProductRankBars rows={rows}/></section>;}
 
-  return (
-    <section className="h-full rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-black text-slate-950 dark:text-white">
-            Top-selling items
-          </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Products ranked by units sold in the selected period.
-          </p>
-        </div>
-        <ShoppingCart size={20} className="text-blue-600" />
-      </div>
-
-      <div className="mt-5 space-y-3">
-        {rows.length ? (
-          rows.map((row, index) => (
-            <div
-              key={`${row.label}-${index}`}
-              className="rounded-2xl border border-slate-100 p-3.5 dark:border-slate-800"
-            >
-              <div className="flex items-center gap-3">
-                <RankBadge rank={index + 1} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="truncate text-sm font-black text-slate-800 dark:text-white">
-                      {row.label}
-                    </p>
-                    <span className="shrink-0 text-xs font-black text-slate-500">
-                      {row.value} sold
-                    </span>
-                  </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                    <div
-                      className="h-full rounded-full bg-blue-600"
-                      style={{
-                        width: `${Math.max(8, (row.value / max) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="rounded-xl bg-slate-50 px-3 py-6 text-center text-sm font-semibold text-slate-400 dark:bg-slate-950/60">
-            No completed product sales in this period.
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function RankBadge({ rank }: { rank: number }) {
-  const rankClass =
-    rank === 1
-      ? "bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-900"
-      : rank === 2
-        ? "bg-slate-200 text-slate-700 ring-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:ring-slate-600"
-        : rank === 3
-          ? "bg-[#E8D2BE] text-[#7A4A27] ring-[#D4B494] dark:bg-[#5A3926] dark:text-[#F0D2B4] dark:ring-[#7A4A27]"
-          : "bg-blue-50 text-blue-700 ring-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:ring-blue-900";
-
-  return (
-    <span
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-black ring-1 ${rankClass}`}
-      aria-label={`Rank ${rank}`}
-    >
-      {rank}
-    </span>
-  );
-}
 
 function buildBreakdown(
   orders: DashboardOrder[],
@@ -1068,19 +663,6 @@ function buildTrendBuckets(period: Period, orders: DashboardOrder[]) {
   return buckets;
 }
 
-function countBy(lines: Line[], pick: (line: Line) => string | null) {
-  const map = new Map<string, number>();
-
-  for (const line of lines) {
-    const value = pick(line);
-    if (!value) continue;
-    map.set(value, (map.get(value) || 0) + Number(line.quantity || 0));
-  }
-
-  return [...map]
-    .map(([label, value]) => ({ label, value }))
-    .sort((a, b) => b.value - a.value);
-}
 
 function resolvePeriod(params: DashboardSearchParams): Period {
   const today = localDateKey(new Date());
@@ -1118,7 +700,7 @@ function resolvePeriod(params: DashboardSearchParams): Period {
   const rawRange = firstParam(params.range);
   const range: DashboardRange = isDashboardRange(rawRange)
     ? rawRange
-    : "today";
+    : "yesterday";
   const requestedDate = firstParam(params.date);
   const selectedDate = isDateKey(requestedDate) ? requestedDate : today;
 

@@ -1,14 +1,17 @@
 'use server';
+import { getBranchContext, assertOperatingBranch } from '@/lib/branches/context';
 import { assertBranchOperation } from '@/lib/subscriptions/branch-limits';
 
 import { revalidatePath } from 'next/cache';
+import { isConfirmedRollback } from '@/lib/operations/rpc-outcome';
 import { requirePermission } from '@/lib/auth/require-permission';
-import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/branch-server';
 import { uuid, validateCheckout } from './pos-workspace-helpers';
 import { loadReceiptContext } from '@/lib/receipts/load-receipt-context';
 import type { ActionResult, CartDraft, CheckoutInput, SaleReceipt, Workspace } from './pos-workspace-types';
 
 function errorMessage(error: unknown): string {
+  if (/tenh_pos_checkout_registered/.test(String((error as {message?:string})?.message))) return "Apply 20260921090000_register_pos_accounting.sql before checkout. Register accounting is not ready.";
   const e = error as { code?: string; message?: string } | null;
   if (e?.code === '23502' && /owner_id/.test(e.message || '') && /order_items/.test(e.message || '')) {
     return 'Checkout needs the order-item ownership repair. Apply 20260919_pos_order_item_owner_repair.sql, then refresh POS and review the sale again.';
@@ -27,10 +30,15 @@ function refreshRoutes(): void {
   try { for (const path of ['/dashboard/pos', '/dashboard/orders', '/dashboard/products', '/dashboard/register', '/dashboard/customers']) revalidatePath(path); }
   catch (error) { console.error('POS post-commit refresh failed', error); }
 }
-export async function loadPosWorkspace(expectedBusinessId?: string): Promise<ActionResult<Workspace>> {
+export async function loadPosWorkspace(expectedBusinessId?: string, expectedBranchId?: string): Promise<ActionResult<Workspace>> {
   const business = await requirePermission('pos.access');
   if (expectedBusinessId && expectedBusinessId !== business.id) return activeBusinessError();
   try {
+    const { branchId, business: operatingBusiness } = await getBranchContext();
+    if (operatingBusiness.id !== business.id) return activeBusinessError();
+    if (expectedBranchId !== undefined && (!uuid(expectedBranchId) || expectedBranchId !== branchId)) {
+      return { success: false, message: 'The operating branch changed in another tab. Copy your unsaved cart details before reloading; no sale has been submitted.' };
+    }
     const db = await createClient();
     const { data, error } = await db.rpc('tenh_pos_catalog', { p_business_id: business.id });
     if (error) return { success: false, message: errorMessage(error) };
@@ -38,6 +46,24 @@ export async function loadPosWorkspace(expectedBusinessId?: string): Promise<Act
     if (data.inventoryVersion !== 2) return { success:false,message:'Apply 20260919_pos_stock_variants_continue_checkout.sql in Supabase before using this POS update.' };
     const ready = await db.rpc('tenh_pos_receipt_update_ready', { p_business_id: business.id });
     if (ready.error || ready.data !== true) return { success: false, message: 'Apply 20260919_pos_receipt_customer_delivery_update.sql, then refresh POS. This prevents using the old delivery status logic.' };
+    const [customers, categories, openShifts] = await Promise.all([
+      db.from('customers').select('id,name,phone,address,loyalty_points').eq('business_id',business.id).order('name'),
+      db.from('categories').select('id,name,branch_ids').eq('business_id',business.id),
+      // The drawer belongs to the operating branch, not whichever branch this
+      // cashier last opened. Another authorized cashier may have opened it.
+      db.from('cash_register_shifts').select('id,location_id').eq('business_id',business.id)
+        .eq('location_id',branchId).eq('status','open').limit(2),
+    ]);
+    if(customers.error || categories.error || openShifts.error) throw new Error('Unable to load branch customers, categories or register.');
+    if ((openShifts.data?.length ?? 0) > 1) throw new Error('This branch has multiple open registers. Review them before checkout; do not delete cash history.');
+    data.shift = openShifts.data?.[0] ?? null;
+    data.defaultBranchId = branchId;
+    data.customers = customers.data;
+    data.holds = (data.holds ?? []).filter((h: {draft: CartDraft}) => h.draft.branchId === branchId);
+    data.categories = (categories.data ?? []).filter(c => c.branch_ids === null || c.branch_ids.includes(branchId));
+    const visibleCategories = new Set(data.categories.map((c: {id:string}) => c.id));
+    const assigned = new Set((data.stock ?? []).filter((s: {location_id:string}) => s.location_id === branchId).map((s: {product_id:string}) => s.product_id));
+    data.products = data.products.filter((p: {id:string;category_id:string|null}) => assigned.has(p.id) && (!p.category_id || visibleCategories.has(p.category_id)));
     const receiptContext = await loadReceiptContext(business.id, business.name);
     return { success: true, data: { ...data, receiptContext } as Workspace };
   } catch (error) { return { success: false, message: errorMessage(error) }; }
@@ -47,15 +73,15 @@ export async function completePosSale(businessId: string, input: CheckoutInput):
   if (business.id !== businessId) return activeBusinessError();
   const invalid = validateCheckout(input);
   if (invalid) return { success: false, uncertain: true, message: invalid };
-  try { await assertBranchOperation(business.id, input.branchId); } catch (error) { return { success: false, message: errorMessage(error) }; }
+  try { await assertOperatingBranch(input.branchId); await assertBranchOperation(business.id, input.branchId); } catch (error) { return { success: false, uncertain: true, message: `${errorMessage(error)} Keep this sale request and use Check sale before starting another.` }; }
   const db = await createClient();
   // Deliberately do not catch transport failures here. The client keeps the exact
   // idempotent request in recovery mode until the server confirms its outcome.
-  const { data, error } = await db.rpc('tenh_pos_checkout', { p_business_id: business.id, p_input: input });
+  const { data, error } = await db.rpc('tenh_pos_checkout_registered', { p_business_id: business.id, p_input: input });
   if (error) {
-    // A SQL exception is a known rollback. A gateway/network error is ambiguous.
-    if (!error.code || ['PGRST000', 'PGRST001', 'PGRST002', 'PGRST003', 'PGRST100'].includes(error.code)) throw new Error('The checkout result could not be confirmed. Retry the same sale.');
-    return { success: false, uncertain: ['42501','42883','42703','PGRST202','PGRST204','42P01'].includes(error.code) || /already used with different data/i.test(error.message), message: errorMessage(error) };
+    // Never label a gateway/connection failure as a rollback. Preserve the exact
+    // pending request so Check sale / Retry same sale cannot create a second sale.
+    return { success: false, uncertain: !isConfirmedRollback(error) || /already used with different data/i.test(error.message), message: errorMessage(error) };
   }
   if (!data?.orderId) throw new Error('Checkout result not confirmed. Check the sale before retrying.');
   refreshRoutes();
@@ -79,6 +105,7 @@ export async function savePosHold(businessId: string, id: string, version: numbe
   }
   try {
     const db = await createClient();
+    await assertOperatingBranch(draft.branchId);
     await assertBranchOperation(business.id, draft.branchId);
     const { data, error } = await db.rpc('tenh_pos_hold', { p_business_id: business.id, p_action: 'save', p_id: id, p_version: version, p_label: label.trim(), p_draft: draft });
     return error ? { success: false, message: errorMessage(error) } : { success: true, data };
@@ -117,6 +144,7 @@ export async function allocatePosStock(businessId: string, branchId: string, all
   if (!uuid(branchId) || !Array.isArray(allocations) || !allocations.length || allocations.length > 100 || allocations.some(row => !row || !uuid(row.productId) || !Number.isSafeInteger(row.quantity) || row.quantity <= 0) || new Set(allocations.map(row => row.productId)).size !== allocations.length) return {success:false,message:'Review the branch and stock quantities again.'};
   try {
     const db = await createClient();
+    await assertOperatingBranch(branchId);
     await assertBranchOperation(business.id, branchId);
     const {error} = await db.rpc('tenh_pos_allocate_stock', {p_business_id:business.id,p_location_id:branchId,p_allocations:allocations});
     if (error) return {success:false,message:errorMessage(error)};

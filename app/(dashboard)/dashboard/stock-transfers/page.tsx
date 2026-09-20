@@ -101,6 +101,7 @@ export default async function StockTransfersPage() {
     );
   }
 
+  if (stockResult.error) throw new Error("Unable to load source branch stock.");
   const locations: TransferLocation[] = (locationsResult.data ?? []).map(
     (location) => ({
       id: location.id,

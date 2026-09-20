@@ -2,7 +2,7 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { hasPermission } from "@/lib/auth/permissions";
 import { getCustomerFieldSettings } from "@/lib/customers/get-customer-field-settings";
 import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 import { CustomersWorkspace } from "./customers-workspace";
 
 type CustomerRow = {

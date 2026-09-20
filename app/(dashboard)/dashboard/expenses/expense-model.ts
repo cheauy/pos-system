@@ -1,0 +1,9 @@
+export const CATEGORIES = ["Rent", "Utilities", "Staff / Payroll", "Marketing & Advertising", "Delivery & Transport", "Office Supplies", "Packaging", "Repairs & Maintenance", "Software & Subscriptions", "Bank & Payment Fees", "Taxes & Government Fees", "Professional Services", "Phone & Communication", "Travel", "Meals & Entertainment", "Cleaning & Supplies", "Equipment", "Miscellaneous / Other"];
+export const COLORS = ["#2563eb", "#f59e0b", "#8b5cf6", "#06b6d4", "#f97316", "#14b8a6", "#ec4899", "#6366f1", "#84cc16", "#0ea5e9", "#a855f7", "#d97706", "#10b981", "#e11d48", "#0891b2", "#64748b", "#9333ea", "#94a3b8"];
+export type Expense = { has_receipt?:boolean; id:string; category:string; description:string; amount:number; expense_date:string; created_at:string; payee:string|null; payment_method:string|null; reference:string|null; location_id:string|null };
+export type Branch = {id:string;name:string;is_active:boolean};
+const legacy:Record<string,string> = {Salary:"Staff / Payroll",Transport:"Delivery & Transport",Marketing:"Marketing & Advertising",Maintenance:"Repairs & Maintenance",Supplies:"Office Supplies",Tax:"Taxes & Government Fees",Other:"Miscellaneous / Other"};
+export const categoryName = (value:string) => legacy[value] || value;
+export const money = (value:number) => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
+export const sum = (rows:Expense[]) => rows.reduce((n,row)=>n+Math.round(Number(row.amount)*100),0)/100;
+export function categoryTotals(rows:Expense[]) { const totals=new Map<string,number>(); for(const row of rows){const name=categoryName(row.category);totals.set(name,(totals.get(name)||0)+Math.round(Number(row.amount)*100));} return [...totals].map(([name,cents])=>({name,value:cents/100,color:COLORS[Math.max(0,CATEGORIES.indexOf(name))%COLORS.length]})).sort((a,b)=>b.value-a.value); }

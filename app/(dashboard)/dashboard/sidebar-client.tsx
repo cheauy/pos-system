@@ -24,12 +24,10 @@ import {
   CreditCard,
   Download,
   FileSearch,
-  HandCoins,
   Landmark,
   LayoutDashboard,
   Loader2,
   LogOut,
-  Megaphone,
   Menu,
   Package,
   PackagePlus,
@@ -102,7 +100,6 @@ const menuGroups: MenuGroup[] = [
       { name: "Online Orders", href: "/dashboard/online-orders", icon: ShoppingBag },
       { name: "Online Store", href: "/dashboard/online-store", icon: Store },
       { name: "Promotions & Loyalty", href: "/dashboard/promotions", icon: BadgePercent },
-      { name: "Marketing", href: "/dashboard/marketing", icon: Megaphone },
       { name: "Returns", href: "/dashboard/returns", icon: RotateCcw },
       { name: "Customers", href: "/dashboard/customers", icon: Users },
     ],
@@ -113,9 +110,9 @@ const menuGroups: MenuGroup[] = [
     items: [
       { name: "Inventory", href: "/dashboard/inventory", icon: Boxes },
       { name: "Stock Transfers", href: "/dashboard/stock-transfers", icon: ArrowRightLeft },
-      { name: "Barcode & Labels", href: "/dashboard/barcodes", icon: Barcode },
       { name: "Products", href: "/dashboard/products", icon: Package },
       { name: "Categories", href: "/dashboard/categories", icon: Tags },
+      { name: "Barcode & Labels", href: "/dashboard/barcodes", icon: Barcode },
     ],
   },
   {
@@ -131,10 +128,9 @@ const menuGroups: MenuGroup[] = [
     title: "Finance",
     icon: WalletCards,
     items: [
+      { name: "Reports", href: "/dashboard/reports", icon: BarChart3 },
       { name: "Expenses", href: "/dashboard/expenses", icon: WalletCards },
       { name: "Cash Register", href: "/dashboard/register", icon: Landmark },
-      { name: "Customer Credit", href: "/dashboard/customer-credit", icon: HandCoins },
-      { name: "Reports", href: "/dashboard/reports", icon: BarChart3 },
     ],
   },
   {
@@ -162,10 +158,9 @@ const searchScopes = [
   "Suppliers",
   "Purchase Orders",
   "Stock Transfers",
-  "Customer Credit",
 ];
 
-export default function SidebarClient({ businessId }: { businessId: string }) {
+export default function SidebarClient({ businessId, branchId }: { businessId: string; branchId: string }) {
   const pathname = usePathname();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
@@ -209,7 +204,7 @@ export default function SidebarClient({ businessId }: { businessId: string }) {
 
             <SidebarShell
               pathname={pathname}
-              businessId={businessId}
+              businessId={businessId} branchId={branchId}
               onNavigate={() => setIsMobileOpen(false)}
               mobile
             />
@@ -218,7 +213,7 @@ export default function SidebarClient({ businessId }: { businessId: string }) {
       )}
 
       <div className="fixed inset-y-0 left-0 z-50 hidden lg:block">
-        <SidebarShell pathname={pathname} businessId={businessId} />
+        <SidebarShell key={branchId} pathname={pathname} businessId={businessId} branchId={branchId} />
       </div>
     </>
   );
@@ -226,12 +221,12 @@ export default function SidebarClient({ businessId }: { businessId: string }) {
 
 function SidebarShell({
   pathname,
-  businessId,
+  businessId, branchId,
   onNavigate,
   mobile = false,
 }: {
   pathname: string;
-  businessId: string;
+  businessId: string; branchId: string;
   onNavigate?: () => void;
   mobile?: boolean;
 }) {
@@ -250,7 +245,7 @@ function SidebarShell({
         : null,
   );
   const [query, setQuery] = useState("");
-  const notifications = useBusinessNotifications(businessId);
+  const notifications = useBusinessNotifications(businessId, branchId);
 
   useEffect(() => {
     if (!mobile) return;
@@ -1039,7 +1034,7 @@ function NavigationLink({
   );
 }
 
-function useBusinessNotifications(businessId: string) {
+function useBusinessNotifications(businessId: string, branchId: string) {
   const [items, setItems] = useState<NotificationRow[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [prefs, setPrefs] = useState<NotificationPrefs>({
@@ -1065,15 +1060,7 @@ function useBusinessNotifications(businessId: string) {
         { data: reads },
         { data: prefData },
       ] = await Promise.all([
-        supabase
-          .from("business_notifications")
-          .select(
-            "id,notification_type,severity,title,message,href,occurred_at",
-          )
-          .eq("business_id", businessId)
-          .eq("is_active", true)
-          .order("occurred_at", { ascending: false })
-          .limit(20),
+        supabase.rpc("tenh_branch_notifications", {p_business:businessId,p_branch:branchId}),
         supabase.from("business_notification_reads").select("notification_id"),
         supabase
           .from("business_notification_preferences")
@@ -1131,7 +1118,7 @@ function useBusinessNotifications(businessId: string) {
 
       previousUnread.current = unread;
     },
-    [businessId, supabase],
+    [businessId, branchId, supabase],
   );
 
   useEffect(() => {
@@ -1362,6 +1349,7 @@ function isItemActive(pathname: string, href: string) {
       pathname.startsWith("/dashboard/settings/system") ||
       pathname.startsWith("/dashboard/settings/security") ||
       pathname.startsWith("/dashboard/settings/receipts") ||
+      pathname.startsWith("/dashboard/settings/printers") ||
       pathname.startsWith("/dashboard/settings/users") ||
       pathname.startsWith("/dashboard/settings/business")
     );

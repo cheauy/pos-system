@@ -6,7 +6,7 @@ import { createAuditLog } from "@/lib/audit/create-audit-log";
 import {
   requirePermission,
 } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 export type CreateReturnState = {
   success: boolean;
@@ -56,6 +56,8 @@ export async function createOrderReturn(
   const orderIdValue = formData.get("orderId");
   const reasonValue = formData.get("reason");
   const itemsValue = formData.get("items");
+  const refundMethod = formData.get("refundMethod");
+  if(typeof refundMethod!=="string" || !["cash","bank_transfer","other"].includes(refundMethod)) return {success:false,message:"Choose how the refund is paid."};
 
   if (
     typeof orderIdValue !== "string" ||
@@ -186,18 +188,19 @@ export async function createOrderReturn(
 
   const { data: returnResult, error } =
     await supabase.rpc(
-      "create_order_return",
-      {
+      "tenh_run_branch_stock",
+      {p_business: business.id, p_operation: "return_order", p_payload: {
         p_order_id: orderId,
         p_reason: reasonValue.trim(),
         p_items: cleanedItems,
-      },
+        p_refund_method: refundMethod,
+      }},
     );
 
   if (error) {
     return {
       success: false,
-      message: error.message,
+      message: error.code === "PGRST202" ? "Apply the register accounting and operating branch migrations before recording refunds." : error.message,
     };
   }
 
@@ -223,8 +226,9 @@ export async function createOrderReturn(
       reason: reasonValue.trim(),
       items: cleanedItems,
     },
-  });
+  }).catch(() => console.error('Return committed; audit refresh failed. Do not repeat the refund.'));
 
+  try {
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/orders");
   revalidatePath(
@@ -233,8 +237,10 @@ export async function createOrderReturn(
   revalidatePath("/dashboard/products");
   revalidatePath("/dashboard/inventory");
   revalidatePath("/dashboard/returns");
+  revalidatePath("/dashboard/register");
   revalidatePath("/dashboard/reports");
   revalidatePath("/dashboard/low-stock");
+  } catch { console.error("Return committed; cache refresh failed. Do not repeat the refund."); }
 
   return {
     success: true,

@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import OnlineOrderListener from "@/components/online-order-listener";
 import { getCurrentBusinessForSubscription } from "@/lib/business/get-current-business";
 import { createClient } from "@/lib/supabase/server";
+import { getBranchContext } from "@/lib/branches/context";
+import BranchSwitcher from "./branch-switcher";
 import SidebarClient from "./sidebar-client";
 
 const SUBSCRIPTION_PATH = "/dashboard/settings/subscription";
@@ -86,13 +88,14 @@ export default async function DashboardLayout({
     );
   }
 
+  const branchContext = await getBranchContext();
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <SidebarClient businessId={business.id} />
-      <OnlineOrderListener businessId={business.id} />
+      <SidebarClient businessId={business.id} branchId={branchContext.branchId} />
+      <OnlineOrderListener businessId={business.id} branchId={branchContext.branchId} />
 
       <div className="lg:pl-16">
-        <main className="p-4 sm:p-6">{children}</main>
+        <main className="p-4 sm:p-6"><BranchSwitcher branches={branchContext.branches} branchId={branchContext.branchId}/><div key={branchContext.branchId}>{children}</div></main>
       </div>
     </div>
   );

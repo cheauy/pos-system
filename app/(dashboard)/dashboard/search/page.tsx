@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
 import { hasPermission } from "@/lib/auth/permissions";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 type Result={kind:string;title:string;subtitle:string;href:string};
 function escapeLike(v:string){return v.replace(/[%_,()]/g," ").trim();}

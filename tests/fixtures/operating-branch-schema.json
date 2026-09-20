@@ -1,0 +1,1015 @@
+{
+  "definitions": {
+    "customers": {
+      "required": [
+        "id",
+        "owner_id",
+        "name",
+        "created_at",
+        "updated_at",
+        "business_id",
+        "loyalty_points",
+        "lifetime_loyalty_points"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "owner_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "name": {
+          "format": "text",
+          "type": "string"
+        },
+        "phone": {
+          "format": "text",
+          "type": "string"
+        },
+        "email": {
+          "format": "text",
+          "type": "string"
+        },
+        "address": {
+          "format": "text",
+          "type": "string"
+        },
+        "note": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "business_id": {
+          "description": "Note:\nThis is a Foreign Key to `businesses.id`.<fk table='businesses' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "loyalty_points": {
+          "default": 0,
+          "format": "integer",
+          "type": "integer"
+        },
+        "lifetime_loyalty_points": {
+          "default": 0,
+          "format": "integer",
+          "type": "integer"
+        },
+        "birthday": {
+          "description": "Optional customer birthday. Display is controlled by business_customer_settings.",
+          "format": "date",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "suppliers": {
+      "required": [
+        "id",
+        "owner_id",
+        "name",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "owner_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "name": {
+          "format": "text",
+          "type": "string"
+        },
+        "contact_person": {
+          "format": "text",
+          "type": "string"
+        },
+        "phone": {
+          "format": "text",
+          "type": "string"
+        },
+        "email": {
+          "format": "text",
+          "type": "string"
+        },
+        "address": {
+          "format": "text",
+          "type": "string"
+        },
+        "notes": {
+          "format": "text",
+          "type": "string"
+        },
+        "is_active": {
+          "default": true,
+          "format": "boolean",
+          "type": "boolean"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "business_id": {
+          "description": "Note:\nThis is a Foreign Key to `businesses.id`.<fk table='businesses' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "purchases": {
+      "required": [
+        "id",
+        "owner_id",
+        "purchase_number",
+        "purchase_date",
+        "status",
+        "subtotal",
+        "total",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "owner_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "supplier_id": {
+          "description": "Note:\nThis is a Foreign Key to `suppliers.id`.<fk table='suppliers' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "purchase_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "supplier_name": {
+          "format": "text",
+          "type": "string"
+        },
+        "reference_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "purchase_date": {
+          "default": "CURRENT_DATE",
+          "format": "date",
+          "type": "string"
+        },
+        "status": {
+          "default": "received",
+          "format": "text",
+          "type": "string"
+        },
+        "subtotal": {
+          "default": 0,
+          "format": "numeric",
+          "type": "number"
+        },
+        "total": {
+          "default": 0,
+          "format": "numeric",
+          "type": "number"
+        },
+        "notes": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "cancellation_reason": {
+          "format": "text",
+          "type": "string"
+        },
+        "cancelled_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "business_id": {
+          "description": "Note:\nThis is a Foreign Key to `businesses.id`.<fk table='businesses' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "purchase_items": {
+      "required": [
+        "id",
+        "owner_id",
+        "purchase_id",
+        "product_id",
+        "product_name",
+        "quantity",
+        "unit_cost",
+        "subtotal",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "owner_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "purchase_id": {
+          "description": "Note:\nThis is a Foreign Key to `purchases.id`.<fk table='purchases' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "product_id": {
+          "description": "Note:\nThis is a Foreign Key to `products.id`.<fk table='products' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "product_name": {
+          "format": "text",
+          "type": "string"
+        },
+        "quantity": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "unit_cost": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "subtotal": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "purchase_orders": {
+      "required": [
+        "id",
+        "business_id",
+        "po_number",
+        "status",
+        "order_date",
+        "subtotal",
+        "total",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "business_id": {
+          "description": "Note:\nThis is a Foreign Key to `businesses.id`.<fk table='businesses' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "supplier_id": {
+          "description": "Note:\nThis is a Foreign Key to `suppliers.id`.<fk table='suppliers' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "po_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "supplier_name": {
+          "format": "text",
+          "type": "string"
+        },
+        "reference_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "status": {
+          "default": "draft",
+          "format": "text",
+          "type": "string"
+        },
+        "order_date": {
+          "default": "CURRENT_DATE",
+          "format": "date",
+          "type": "string"
+        },
+        "expected_date": {
+          "format": "date",
+          "type": "string"
+        },
+        "notes": {
+          "format": "text",
+          "type": "string"
+        },
+        "subtotal": {
+          "default": 0,
+          "format": "numeric",
+          "type": "number"
+        },
+        "total": {
+          "default": 0,
+          "format": "numeric",
+          "type": "number"
+        },
+        "created_by": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "purchase_order_items": {
+      "required": [
+        "id",
+        "business_id",
+        "purchase_order_id",
+        "product_id",
+        "product_name",
+        "ordered_quantity",
+        "received_quantity",
+        "unit_cost",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "business_id": {
+          "description": "Note:\nThis is a Foreign Key to `businesses.id`.<fk table='businesses' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "purchase_order_id": {
+          "description": "Note:\nThis is a Foreign Key to `purchase_orders.id`.<fk table='purchase_orders' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "product_id": {
+          "description": "Note:\nThis is a Foreign Key to `products.id`.<fk table='products' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "product_name": {
+          "format": "text",
+          "type": "string"
+        },
+        "sku": {
+          "format": "text",
+          "type": "string"
+        },
+        "ordered_quantity": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "received_quantity": {
+          "default": 0,
+          "format": "integer",
+          "type": "integer"
+        },
+        "unit_cost": {
+          "default": 0,
+          "format": "numeric",
+          "type": "number"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "returns": {
+      "required": [
+        "id",
+        "owner_id",
+        "order_id",
+        "return_number",
+        "reason",
+        "refund_amount",
+        "created_at",
+        "status",
+        "return_type",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "owner_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "order_id": {
+          "description": "Note:\nThis is a Foreign Key to `orders.id`.<fk table='orders' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "return_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "reason": {
+          "format": "text",
+          "type": "string"
+        },
+        "refund_amount": {
+          "default": 0,
+          "format": "numeric",
+          "type": "number"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "business_id": {
+          "description": "Note:\nThis is a Foreign Key to `businesses.id`.<fk table='businesses' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "status": {
+          "default": "refunded",
+          "format": "text",
+          "type": "string"
+        },
+        "return_type": {
+          "default": "refund",
+          "format": "text",
+          "type": "string"
+        },
+        "source": {
+          "default": "system",
+          "format": "text",
+          "type": "string"
+        },
+        "refund_method": {
+          "format": "text",
+          "type": "string"
+        },
+        "restock_status": {
+          "format": "text",
+          "type": "string"
+        },
+        "import_product_name": {
+          "format": "text",
+          "type": "string"
+        },
+        "import_quantity": {
+          "format": "integer",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "return_items": {
+      "required": [
+        "id",
+        "owner_id",
+        "return_id",
+        "order_item_id",
+        "product_id",
+        "product_name",
+        "quantity",
+        "unit_price",
+        "subtotal",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "owner_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "return_id": {
+          "description": "Note:\nThis is a Foreign Key to `returns.id`.<fk table='returns' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "order_item_id": {
+          "description": "Note:\nThis is a Foreign Key to `order_items.id`.<fk table='order_items' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "product_id": {
+          "description": "Note:\nThis is a Foreign Key to `products.id`.<fk table='products' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "product_name": {
+          "format": "text",
+          "type": "string"
+        },
+        "quantity": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "unit_price": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "subtotal": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "cash_movements": {
+      "required": [
+        "id",
+        "business_id",
+        "shift_id",
+        "location_id",
+        "created_by",
+        "movement_type",
+        "amount",
+        "reason",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "business_id": {
+          "description": "Note:\nThis is a Foreign Key to `businesses.id`.<fk table='businesses' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "shift_id": {
+          "description": "Note:\nThis is a Foreign Key to `cash_register_shifts.id`.<fk table='cash_register_shifts' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "location_id": {
+          "description": "Note:\nThis is a Foreign Key to `business_locations.id`.<fk table='business_locations' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "created_by": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "movement_type": {
+          "format": "text",
+          "type": "string"
+        },
+        "amount": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "reason": {
+          "format": "text",
+          "type": "string"
+        },
+        "reference": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "customer_credit_accounts": {
+      "required": [
+        "business_id",
+        "customer_id",
+        "credit_limit",
+        "balance",
+        "updated_at"
+      ],
+      "properties": {
+        "business_id": {
+          "description": "Note:\nThis is a Primary Key.<pk/>\nThis is a Foreign Key to `businesses.id`.<fk table='businesses' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "customer_id": {
+          "description": "Note:\nThis is a Primary Key.<pk/>\nThis is a Foreign Key to `customers.id`.<fk table='customers' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "credit_limit": {
+          "default": 0,
+          "format": "numeric",
+          "type": "number"
+        },
+        "balance": {
+          "default": 0,
+          "format": "numeric",
+          "type": "number"
+        },
+        "notes": {
+          "format": "text",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "payment_due_date": {
+          "format": "date",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "business_coupons": {
+      "required": [
+        "id",
+        "business_id",
+        "code",
+        "discount_type",
+        "discount_value",
+        "minimum_order",
+        "usage_count",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "business_id": {
+          "description": "Note:\nThis is a Foreign Key to `businesses.id`.<fk table='businesses' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "code": {
+          "format": "text",
+          "type": "string"
+        },
+        "name": {
+          "format": "text",
+          "type": "string"
+        },
+        "discount_type": {
+          "format": "text",
+          "type": "string"
+        },
+        "discount_value": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "minimum_order": {
+          "default": 0,
+          "format": "numeric",
+          "type": "number"
+        },
+        "max_discount": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "starts_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "ends_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "usage_limit": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "per_customer_limit": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "usage_count": {
+          "default": 0,
+          "format": "integer",
+          "type": "integer"
+        },
+        "is_active": {
+          "default": true,
+          "format": "boolean",
+          "type": "boolean"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "business_notifications": {
+      "required": [
+        "id",
+        "business_id",
+        "notification_key",
+        "notification_type",
+        "severity",
+        "title",
+        "message",
+        "target_roles",
+        "occurred_at",
+        "is_active",
+        "metadata",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "business_id": {
+          "description": "Note:\nThis is a Foreign Key to `businesses.id`.<fk table='businesses' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "notification_key": {
+          "format": "text",
+          "type": "string"
+        },
+        "notification_type": {
+          "format": "text",
+          "type": "string"
+        },
+        "severity": {
+          "default": "info",
+          "format": "text",
+          "type": "string"
+        },
+        "title": {
+          "format": "text",
+          "type": "string"
+        },
+        "message": {
+          "format": "text",
+          "type": "string"
+        },
+        "href": {
+          "format": "text",
+          "type": "string"
+        },
+        "target_roles": {
+          "format": "text[]",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "source_table": {
+          "format": "text",
+          "type": "string"
+        },
+        "source_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "occurred_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "is_active": {
+          "default": true,
+          "format": "boolean",
+          "type": "boolean"
+        },
+        "metadata": {
+          "format": "jsonb"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "target_user_id": {
+          "description": "Optional exact recipient. When set, only this user can read the notification in addition to normal business/role checks.",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "customer_credit_ledger": {
+      "required": [
+        "id",
+        "business_id",
+        "customer_id",
+        "entry_type",
+        "amount",
+        "balance_after",
+        "created_by",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "business_id": {
+          "description": "Note:\nThis is a Foreign Key to `businesses.id`.<fk table='businesses' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "customer_id": {
+          "description": "Note:\nThis is a Foreign Key to `customers.id`.<fk table='customers' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "order_id": {
+          "description": "Note:\nThis is a Foreign Key to `orders.id`.<fk table='orders' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "entry_type": {
+          "format": "text",
+          "type": "string"
+        },
+        "amount": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "balance_after": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "note": {
+          "format": "text",
+          "type": "string"
+        },
+        "reference": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_by": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "tenh_pos_holds": {
+      "required": [
+        "id",
+        "business_id",
+        "created_by",
+        "label",
+        "draft",
+        "version",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "business_id": {
+          "description": "Note:\nThis is a Foreign Key to `businesses.id`.<fk table='businesses' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "created_by": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "label": {
+          "format": "text",
+          "type": "string"
+        },
+        "draft": {
+          "format": "jsonb"
+        },
+        "version": {
+          "default": 1,
+          "format": "integer",
+          "type": "integer"
+        },
+        "order_id": {
+          "description": "Note:\nThis is a Foreign Key to `orders.id`.<fk table='orders' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  }
+}

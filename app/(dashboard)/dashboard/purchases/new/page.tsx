@@ -7,7 +7,7 @@ import CreatePurchaseForm from "./purchase-form";
 import {
   requirePermission,
 } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 type Supplier = {
   id: string;

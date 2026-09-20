@@ -346,7 +346,7 @@ export default async function SubscriptionSettingsPage({
                   icon={<Store size={16} />}
                   label="Store locations"
                   value={`${activeLocations} active`}
-                  detail={`${branchEntitlement.used} of ${branchEntitlement.limit} active branches. Custom Plan costs $5/user and $20/branch per month.`}
+                  detail={`${branchEntitlement.used} of ${branchEntitlement.limit} active branches · ${Math.max(0, branchEntitlement.limit - branchEntitlement.used)} available. Custom Plan costs $5/user and $20/branch per month.`}
                 />
               </div>
 

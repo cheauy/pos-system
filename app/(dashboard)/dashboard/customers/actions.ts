@@ -7,7 +7,7 @@ import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCustomerFieldSettings } from "@/lib/customers/get-customer-field-settings";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 const CUSTOMER_IMPORT_HEADERS = ["name", "phone", "address", "email", "birthday"] as const;
 const MAX_IMPORT_ROWS = 1000;
@@ -489,6 +489,9 @@ export async function adjustCustomerLoyalty(formData: FormData) {
       ? noteValue.trim().slice(0, 300)
       : "Manual loyalty adjustment";
 
+  const scopedDb=await createClient();
+  const customer=await scopedDb.from("customers").select("id").eq("business_id",business.id).eq("id",customerId).single();
+  if(customer.error) throw new Error("Customer not found in this branch.");
   const { data, error } = await supabaseAdmin.rpc("adjust_customer_loyalty_points", {
     p_business_id: business.id,
     p_customer_id: customerId,

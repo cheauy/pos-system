@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check:launch": "node scripts/prelaunch-check.mjs"
+    "check:launch": "node scripts/prelaunch-check.mjs",
+    "check:source": "node scripts/check-source.mjs",
+    "test": "node scripts/test-project.mjs",
+    "test:continuation": "node scripts/test-project.mjs --continuation",
+    "test:sql": "node scripts/test-project.mjs --sql"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

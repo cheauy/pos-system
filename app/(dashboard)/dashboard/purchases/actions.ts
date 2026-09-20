@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import {
   requirePermission,
 } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 type RawPurchaseItem = {
   productId: string;
@@ -343,15 +343,15 @@ export async function createPurchase(
     data: purchaseResult,
     error: purchaseError,
   } = await supabase.rpc(
-    "create_received_purchase",
-    {
+    "tenh_run_branch_stock",
+    {p_business: business.id, p_operation: "create_purchase", p_payload: {
       p_supplier_id: supplierId,
       p_reference_number:
         referenceNumber,
       p_purchase_date: purchaseDate,
       p_notes: notes,
       p_items: purchaseItems,
-    },
+    }},
   );
 
   if (purchaseError) {
@@ -467,13 +467,13 @@ export async function cancelPurchase(
 
   const { error } =
     await supabase.rpc(
-      "cancel_purchase",
-      {
+      "tenh_run_branch_stock",
+      {p_business: business.id, p_operation: "cancel_purchase", p_payload: {
         p_purchase_id:
           purchaseId,
         p_reason:
           reason,
-      },
+      }},
     );
 
   if (error) {

@@ -2,23 +2,29 @@
 import { revalidatePath } from 'next/cache';
 import { requirePermission } from '@/lib/auth/require-permission';
 import { createClient } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { receiptSettingsIssue, type ReceiptAppearance } from '@/lib/receipts/receipt-model';
 
 async function persistAppearance(businessId:string, a:ReceiptAppearance):Promise<void> {
  const invalid=receiptSettingsIssue(a); if(invalid) throw new Error(invalid);
  const db=await createClient();
- const {error}=await db.from('business_receipt_settings').upsert({
-  business_id:businessId,receipt_template:a.template,paper_size:a.paperSize,receipt_logo_url:a.logoUrl,
+ const values = {
+  business_id:businessId,receipt_template:a.template,paper_size:a.paperSize,receipt_logo_url:a.logoUrl,receipt_qr_url:a.qrUrl,show_receipt_qr:a.showQr,
   header_text:a.header.trim(),footer_text:a.footer.trim(),return_policy:a.returnPolicy.trim(),
   show_logo:a.showLogo,show_phone:a.showPhone,show_address:a.showAddress,show_customer:a.showCustomer,
   show_discount:a.showDiscount,show_payment:a.showPayment,show_fulfillment:a.showFulfillment,show_notes:a.showNotes,
   show_order_number:a.showOrderNumber,show_loyalty:a.showLoyalty,show_cashier:a.showCashier,updated_at:new Date().toISOString(),
- },{onConflict:'business_id'});
- if(error) throw new Error(['42703','PGRST204'].includes(error.code)?'Apply 20260919_pos_receipt_customer_delivery_update.sql first.':error.message);
+ };
+ let {error}=await db.from('business_receipt_settings').upsert(values,{onConflict:'business_id'});
+ if(error && ['42703','PGRST204'].includes(error.code) && /receipt_qr_url|show_receipt_qr/.test(error.message) && !a.qrUrl) {
+  const legacyValues:Record<string,unknown>={...values};delete legacyValues.receipt_qr_url;delete legacyValues.show_receipt_qr;
+  ({error}=await db.from('business_receipt_settings').upsert(legacyValues,{onConflict:'business_id'}));
+ }
+ if(error) throw new Error(['42703','PGRST204'].includes(error.code)?'Apply the printer paper and receipt QR migration first.':error.message);
  // Receipt save has committed: cache/audit failure must not claim the save failed.
  try {await createAuditLog({action:'update',entityType:'business',entityId:businessId,description:'Updated receipt appearance',metadata:{template:a.template,paperSize:a.paperSize}});}catch(e){console.error('Receipt audit',e);}
- try {revalidatePath('/dashboard/settings/receipts');revalidatePath('/dashboard/pos');revalidatePath('/dashboard/orders','layout');}catch(e){console.error('Receipt cache refresh',e);}
+ try {revalidatePath('/dashboard/settings/receipts');revalidatePath('/dashboard/settings/printers');revalidatePath('/dashboard/pos');revalidatePath('/dashboard/orders','layout');}catch(e){console.error('Receipt cache refresh',e);}
 }
 export async function saveReceiptAppearance(expectedBusinessId:string, a:ReceiptAppearance) {
  const business=await requirePermission('business.update');
@@ -39,6 +45,12 @@ export async function saveReceiptSettings(formData:FormData):Promise<void> {
  await persistAppearance(business.id,a);
 }
 export async function uploadReceiptLogo(expectedBusinessId:string, form:FormData) {
+ return uploadReceiptImage(expectedBusinessId,form);
+}
+export async function uploadReceiptQr(expectedBusinessId:string, form:FormData) {
+ return uploadReceiptImage(expectedBusinessId,form);
+}
+async function uploadReceiptImage(expectedBusinessId:string, form:FormData) {
  const business=await requirePermission('business.update');
  if(expectedBusinessId!==business.id)return {success:false as const,message:'The selected business changed. Reload Settings.'};
  const file=form.get('logo');
@@ -50,9 +62,9 @@ export async function uploadReceiptLogo(expectedBusinessId:string, form:FormData
   const webp=bytes.length>12 && String.fromCharCode(...bytes.slice(0,4))==='RIFF' && String.fromCharCode(...bytes.slice(8,12))==='WEBP';
   if(!png && !jpg && !webp)return {success:false as const,message:'The file is not a supported image. SVG and HTML are not accepted.'};
   const ext=png?'png':jpg?'jpg':'webp';const contentType=png?'image/png':jpg?'image/jpeg':'image/webp';
-  const db=await createClient();const path=`${business.id}/${crypto.randomUUID()}.${ext}`;
+  const db=supabaseAdmin;const path=`${business.id}/${crypto.randomUUID()}.${ext}`;
   const {error}=await db.storage.from('tenh-receipt-logos').upload(path,bytes,{contentType,upsert:false,cacheControl:'31536000'});
-  if(error) throw new Error('Logo upload failed. Apply the receipt migration and check your upload permissions.');
+  if(error) throw new Error(`Image upload failed: ${error.message}`);
   const {data}=db.storage.from('tenh-receipt-logos').getPublicUrl(path);
   return {success:true as const,url:data.publicUrl};
  }catch(e){return {success:false as const,message:e instanceof Error?e.message:'Logo upload failed.'};}
@@ -63,10 +75,6 @@ export async function uploadReceiptLogo(expectedBusinessId:string, form:FormData
 // receipt action when updating the receipt settings page.
 function labelChecked(formData: FormData, key: string): boolean {
   return formData.get(key) === 'on';
-}
-
-function labelText(formData: FormData, key: string, max = 500): string {
-  return String(formData.get(key) ?? '').trim().slice(0, max);
 }
 
 async function upsertLabelSettings(values: Record<string, unknown>): Promise<void> {
@@ -85,35 +93,41 @@ async function upsertLabelSettings(values: Record<string, unknown>): Promise<voi
 
   if (error) throw new Error(error.message);
 
-  revalidatePath('/dashboard/settings/receipts');
+  revalidatePath('/dashboard/settings/receipts');revalidatePath('/dashboard/settings/printers');
   revalidatePath('/dashboard/barcodes');
   revalidatePath('/dashboard/shipping-labels');
 }
 
 export async function saveShippingLabelSettings(formData: FormData): Promise<void> {
   const requestedSize = String(formData.get('shippingLabelSize'));
-  const size = ['100x150', '105x148', '148x210'].includes(requestedSize)
+  const size = ['80x50', '100x100', '100x150'].includes(requestedSize)
     ? requestedSize
     : '100x150';
 
-  await upsertLabelSettings({
-    shipping_label_size: size,
-    shipping_show_sender: labelChecked(formData, 'shippingShowSender'),
-    shipping_show_phone: labelChecked(formData, 'shippingShowPhone'),
-    shipping_show_order_number: labelChecked(formData, 'shippingShowOrderNumber'),
-    shipping_show_cod: labelChecked(formData, 'shippingShowCod'),
-    shipping_show_item_count: labelChecked(formData, 'shippingShowItemCount'),
-    shipping_show_barcode: labelChecked(formData, 'shippingShowBarcode'),
+  const business=await requirePermission('business.update');
+  const {persistShippingSettings}=await import('@/lib/receipts/shipping-design-store');
+  await persistShippingSettings(business.id,{
+    shipping_label_size:size,
+    shipping_show_store_name:labelChecked(formData,'shippingShowStoreName'),
+    shipping_show_store_address:labelChecked(formData,'shippingShowStoreAddress'),
+    shipping_show_store_phone:labelChecked(formData,'shippingShowStorePhone'),
+    shipping_show_phone:labelChecked(formData,'shippingShowPhone'),
+    shipping_show_order_number:labelChecked(formData,'shippingShowOrderNumber'),
+    shipping_show_cod:labelChecked(formData,'shippingShowCod'),
+    shipping_show_item_count:labelChecked(formData,'shippingShowItemCount'),
+    shipping_show_barcode:labelChecked(formData,'shippingShowBarcode'),
   });
+  revalidatePath('/dashboard/settings/printers');
+  revalidatePath('/dashboard/shipping-labels');
 }
 
 export async function saveBarcodeLabelSettings(formData: FormData): Promise<void> {
   const requestedSize = String(formData.get('barcodeLabelSize'));
-  const size = ['40x20', '40x30', '50x30', '50x40'].includes(requestedSize)
+  const size = ['40x20', '40x30', '50x30', '60x40', '80x50'].includes(requestedSize)
     ? requestedSize
-    : '40x30';
+    : '50x30';
   const requestedTemplate = String(formData.get('barcodeTemplate'));
-  const template = ['product', 'price', 'shelf', 'compact'].includes(requestedTemplate)
+  const template = ['product', 'price'].includes(requestedTemplate)
     ? requestedTemplate
     : 'product';
 
@@ -129,7 +143,7 @@ export async function saveBarcodeLabelSettings(formData: FormData): Promise<void
     barcode_show_barcode: labelChecked(formData, 'barcodeShowBarcode'),
     barcode_show_image: labelChecked(formData, 'barcodeShowImage'),
     barcode_show_store_name: labelChecked(formData, 'barcodeShowStoreName'),
-    barcode_show_custom_text: labelChecked(formData, 'barcodeShowCustomText'),
-    barcode_custom_text: labelText(formData, 'barcodeCustomText', 80),
+    barcode_show_custom_text: false,
+    barcode_custom_text: '',
   });
 }

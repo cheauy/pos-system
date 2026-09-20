@@ -186,12 +186,8 @@ export async function POST(
         p_requested_for: requestedFor || null,
         p_coupon_code: couponCode ? couponCode.toUpperCase() : null,
     };
-    let { data, error } = await supabaseAdmin.rpc("place_branch_online_order", { p_business_slug: slug, p_checkout: branchCheckout });
-    if (error?.code === "PGRST202") {
-      const { data: business } = await supabaseAdmin.from("businesses").select("id").eq("slug", slug).maybeSingle();
-      const { data: locations, error: locationError } = business ? await supabaseAdmin.from("business_locations").select("id,is_active").eq("business_id", business.id) : { data: null, error: true };
-      if (!locationError && locations?.length === 1 && locations[0].is_active) ({ data, error } = await supabaseAdmin.rpc("place_online_order", { p_business_slug: slug, ...branchCheckout }));
-    }
+    const { data, error } = await supabaseAdmin.rpc("place_branch_online_order", { p_business_slug: slug, p_checkout: branchCheckout });
+
 
     if (error) {
       if (uploadedPath) { await supabaseAdmin.storage.from(PAYMENT_PROOF_BUCKET).remove([uploadedPath]); uploadedPath = null; }

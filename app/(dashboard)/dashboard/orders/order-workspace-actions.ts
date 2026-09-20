@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 import { loadOrderDetail } from "./order-workspace-data";
 import type { ActionResult, EditOrderInput, OrderDetail } from "./order-workspace-types";
 

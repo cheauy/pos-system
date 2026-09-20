@@ -17,7 +17,7 @@ function newCustomerId(): string {
 }
 
 type Props = {
-  businessId:string; userId:string; customerId:string; shippingMethod:ShippingMethod;
+  businessId:string; branchId:string; userId:string; customerId:string; shippingMethod:ShippingMethod;
   canCreate:boolean; onWalkIn:()=>void; onPickup:()=>void;
   onSelect:(customer:PickerCustomer)=>void; onCreated:(customer:PickerCustomer)=>void;
   onBusyChange:(busy:boolean)=>void;
@@ -58,7 +58,7 @@ export function PosCustomerPicker(p:Props) {
     const request=++serial.current;
     setLoading(true);setError('');fetching.current=true;
     const timer=setTimeout(()=>{
-      void fetchPosCustomers(p.businessId,search,0).then(result=>{
+      void fetchPosCustomers(p.businessId,search,0,p.branchId).then(result=>{
         if(request!==serial.current)return;
         if(!result.success){setError(result.message);setRows([]);setHasMore(false);return;}
         setRows(mergeCustomerPage([],result.data.items));setHasMore(result.data.hasMore);
@@ -67,13 +67,13 @@ export function PosCustomerPicker(p:Props) {
         .finally(()=>{if(request===serial.current){setLoading(false);fetching.current=false;}});
     },search?200:0);
     return ()=>{clearTimeout(timer);serial.current++;};
-  },[p.businessId,search,refresh,showForm]);
+  },[p.businessId,p.branchId,search,refresh,showForm]);
 
   async function more() {
     if(fetching.current || !hasMore)return;
     const request=serial.current;fetching.current=true;setLoading(true);setError('');
     try {
-      const result=await fetchPosCustomers(p.businessId,search,offset);
+      const result=await fetchPosCustomers(p.businessId,search,offset,p.branchId);
       if(request!==serial.current)return;
       if(!result.success){setError(result.message);return;}
       setRows(old=>mergeCustomerPage(old,result.data.items));setHasMore(result.data.hasMore);setOffset(result.data.nextOffset);
@@ -84,7 +84,11 @@ export function PosCustomerPicker(p:Props) {
   async function save() {
     if(savingRef.current)return;
     if(!fields){setFormError('Customer settings are still loading. Please retry.');return;}
-    const input=pending || {id:newCustomerId(),name:form.name.trim(),phone:form.phone.trim(),address:form.address.trim(),email:fields.emailEnabled?form.email.trim():'',birthday:fields.birthdayEnabled?form.birthday:''};
+    const input=pending || {id:newCustomerId(),branchId:p.branchId,name:form.name.trim(),phone:form.phone.trim(),address:form.address.trim(),email:fields.emailEnabled?form.email.trim():'',birthday:fields.birthdayEnabled?form.birthday:''};
+    if (!input.branchId || input.branchId !== p.branchId) {
+      setFormError('This unconfirmed customer request belongs to another or an older branch context. Check Customers at the original branch before creating a new request. The saved request has not been discarded.');
+      return;
+    }
     const invalid=customerInputIssue(input,fields);
     if(invalid){setFormError(invalid);return;}
     // Persist before sending so a network failure never creates a second request ID.

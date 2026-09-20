@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { switchOperatingBranch } from "../branch-actions";
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Barcode, Banknote, Check, ChevronDown, Clock, CreditCard, Gift, Grid2X2, Heart, List, Minus, Package, Plus, Printer, RefreshCw, Search, Settings2, ShoppingCart, SlidersHorizontal, Store, Trash2, UserRound, X } from 'lucide-react';
 import { allocatePosStock, checkPosSale, completePosSale, deletePosHold, loadPosWorkspace, savePosHold, savePosSettings } from './pos-workspace-actions';
@@ -94,7 +95,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   const colors = Array.from(new Set(data.products.map(p => p.color).filter((v): v is string => Boolean(v)))).sort();
   const sizes = Array.from(new Set(data.products.map(p => p.size).filter((v): v is string => Boolean(v)))).sort((a,b) => a.localeCompare(b, undefined, { numeric: true }));
   const activeFilters = Object.entries(filters).filter(([k,v]) => k !== 'sort' && k !== 'search' && (k === 'favoritesOnly' ? v : v !== 'all'));
-  const branchName = data.branches.find(b => b.id === branch)?.name || 'Choose branch';
+  const branchName = data.branches.find(b => b.id === branch)?.name || 'All branches';
   const timezone = data.branches.find(b => b.id === branch)?.timezone || 'Asia/Phnom_Penh';
   let dateLabel = '', timeLabel = '';
   try { dateLabel = new Date(clock).toLocaleDateString('en-GB', { timeZone: timezone, day: '2-digit', month: 'short', year: 'numeric' }); timeLabel = new Date(clock).toLocaleTimeString('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit' }); } catch { dateLabel = new Date(clock).toISOString().slice(0,10); timeLabel = 'UTC'; }
@@ -201,18 +202,22 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   async function refresh(silent = false) {
     if (!silent && inFlight.current) return;
     if (!silent) setBusy('refresh');
-    try { const result = await loadPosWorkspace(data.businessId); if (result.success) { setData(result.data); if (!silent) setNotice({ kind: 'success', text: 'Products, stock and held orders refreshed.' }); } else setNotice({ kind: 'error', text: result.message }); }
+    try { const result = await loadPosWorkspace(data.businessId, branch); if (result.success) { setData(result.data); if (!silent) setNotice({ kind: 'success', text: 'Products, stock and held orders refreshed.' }); } else setNotice({ kind: 'error', text: result.message }); }
     catch (e) { setNotice({ kind: 'error', text: messageOf(e) }); }
     finally { if (!silent) setBusy(''); }
   }
-  function changeBranch(next: string) {
+  async function changeBranch(next: string) {
     if (next === branch) return;
     if (lines.length) { setNotice({ kind: 'info', text: 'Hold or clear the current order before changing branch. Stock must be checked for one branch at a time.' }); return; }
-    if (data.shift && data.shift.location_id !== next) { setNotice({ kind: 'error', text: 'Your open register fixes the sale branch. Close the shift before changing it.' }); return; }
-    setBranch(next); setHold(null); holdIdRef.current = null; setNotice(null);
+    if (frozen) return;
+    setBusy('branch');
+    try { const result = await switchOperatingBranch(next); if (!result.success) { setNotice({kind:'error',text:result.message}); return; } window.location.reload(); }
+    catch { setNotice({kind:'error',text:'Unable to switch branch. Please retry.'}); }
+    finally { setBusy(''); }
   }
   function addProduct(product: Product, ids: string[] = []): boolean {
     if (frozen) return false;
+    if(!branch){setNotice({kind:"info",text:"Choose a branch before adding products to an order."});return false;}
     try {
       const line = configuredLine(product, ids, data);
       const existing = lines.find(l => l.key === line.key);
@@ -269,7 +274,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     if (lines.length) { setModalError('Hold or clear the current cart before resuming another order.'); return; }
     inFlight.current = true; setBusy('resume');
     try {
-      const result = await loadPosWorkspace(data.businessId);
+      const result = await loadPosWorkspace(data.businessId, branch);
       if (!result.success) throw new Error(result.message);
       const latest = result.data.holds.find(h => h.id === saved.id);
       if (!latest) throw new Error('This hold was deleted or completed elsewhere. Refresh Held Orders.');
@@ -302,9 +307,10 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     if (!lines.length || issue) { setNotice({kind:'error',text:issue || 'Add products first.'}); return; }
     inFlight.current = true; setBusy('review');
     try {
-      const result = await loadPosWorkspace(data.businessId);
+      const result = await loadPosWorkspace(data.businessId, branch);
       if (!result.success) throw new Error(result.message);
       if(result.data.checkoutVersion !== 3) throw new Error('Apply 20260919_pos_customer_delivery_currency.sql, then refresh POS.');
+      if (!result.data.shift || result.data.shift.location_id !== branch) throw new Error('Open the register for this branch before taking payment. Your cart has not been submitted.');
       setData(result.data);
       const error = cartIssue(lines,branch,result.data);
       if (error) throw new Error(error);
@@ -400,7 +406,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
             <CurrencySwitch quote={quote} onChange={selectCurrency} disabled={frozen}/>
           </div>
           <button className={`${s.miniStat} ${s.warningStat}`} onClick={() => changeFilter('stock', filters.stock === 'low' ? 'all' : 'low')} aria-pressed={filters.stock === 'low'}><span><AlertTriangle size={19} /></span><div><strong>{lowStockCount}</strong><small>Low stock SKUs</small></div></button>
-          <label className={s.branchStat}><Store size={19} /><span><small>Branch</small><select aria-label="Sale branch" value={branch} onChange={e => changeBranch(e.target.value)} disabled={frozen || Boolean(data.shift)}>{!data.branches.length && <option value="">No active branch</option>}{data.branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></span></label>
+          <label className={s.branchStat}><Store size={19} /><span><small>Branch</small><select aria-label="Sale branch" value={branch} onChange={e => changeBranch(e.target.value)} disabled={frozen}>{data.branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></span></label>
         </div>
       </header>
       {notice && <div role={notice.kind === 'error' ? 'alert' : 'status'} className={`${s.notice} ${notice.kind === 'error' ? s.error : notice.kind === 'success' ? s.success : ''}`}><span>{notice.text}</span><button className={s.iconButton} aria-label="Dismiss message" onClick={() => setNotice(null)}><X size={16} /></button></div>}
@@ -473,6 +479,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
       {dialog === 'options' && optionProduct && <div className={s.stack}><div className={s.productDialogHeading}><ProductImage src={optionProduct.image_url} alt={optionProduct.name}/><div><h3>{optionProduct.name}</h3><p>Base price {cash(Number(optionProduct.selling_price))}</p></div></div>{data.groups.filter(g => g.product_id === optionProduct.id).map(g => <fieldset className={s.optionFieldset} key={g.id}><legend>{g.name} <small>{g.is_required ? 'Required' : 'Optional'} · {g.selection_type === 'single' ? 'Choose one' : `Choose up to ${g.max_selections}`}</small></legend>{data.options.filter(o => o.group_id === g.id && o.is_active).map(o => <label className={s.optionChoice} key={o.id}><input type={g.selection_type === 'single' ? 'radio' : 'checkbox'} name={g.id} checked={optionIds.includes(o.id)} onChange={e => setOptionIds(old => g.selection_type === 'single' ? [...old.filter(id => !data.options.some(p => p.id === id && p.group_id === g.id)), o.id] : e.target.checked ? [...old,o.id] : old.filter(id => id !== o.id))}/><span>{o.name}</span><strong>{Number(o.price_adjustment) >= 0 ? '+' : ''}{cash(Number(o.price_adjustment))}</strong></label>)}{!g.is_required && <button className={s.textButton} onClick={() => setOptionIds(old => old.filter(id => !data.options.some(o => o.id === id && o.group_id === g.id)))}>Clear {g.name}</button>}</fieldset>)}<button className={s.primary} onClick={() => addProduct(optionProduct, optionIds)}><ShoppingCart size={17}/>Add configured item</button></div>}
       {dialog === 'customer' && <PosCustomerPicker
         businessId={data.businessId}
+        branchId={branch}
         userId={data.userId}
         customerId={customerId}
         shippingMethod={shipping.method}

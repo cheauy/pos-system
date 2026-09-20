@@ -22,6 +22,7 @@ import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { assertBranchOperation } from "@/lib/subscriptions/branch-limits";
 import { getAppUrl } from "@/lib/tenancy/domain";
 import {
   createAuditLog,
@@ -164,6 +165,8 @@ export async function createBusinessUser(
     const password = getRequiredText(formData, "password");
     const confirmPassword = getRequiredText(formData, "confirmPassword");
     const roleValue = getRequiredText(formData, "role");
+    const branchId = getRequiredText(formData, "branchId");
+    await assertBranchOperation(business.id, branchId);
     const sendInviteEmail = formData.get("sendInviteEmail") === "on";
     const requirePasswordChange =
       sendInviteEmail || formData.get("requirePasswordChange") === "on";
@@ -266,6 +269,7 @@ export async function createBusinessUser(
         business_id: business.id,
         user_id: newUserId,
         role: roleValue,
+        default_location_id: branchId,
         is_active: true,
       });
 
@@ -734,4 +738,18 @@ if (error) {
       ? "User enabled successfully."
       : "User disabled successfully.",
   };
+}
+
+export async function assignMemberBranch(memberId: string, branchId: string) {
+  try {
+    const business = await requirePermission("users.update_role");
+    await assertBranchOperation(business.id, branchId);
+    const { data: member, error } = await supabaseAdmin.from("business_members").select("id,role").eq("business_id", business.id).eq("id", memberId).single();
+    if (error || !member) throw new Error("Business member not found.");
+    if (business.role !== "owner" && !(business.role === "admin" && ["manager", "cashier"].includes(member.role))) throw new Error("You cannot change this user's branch.");
+    const result = await supabaseAdmin.from("business_members").update({default_location_id: branchId, updated_at: new Date().toISOString()}).eq("business_id", business.id).eq("id", memberId);
+    if (result.error) throw new Error(result.error.message);
+    revalidatePath("/dashboard/settings/users");
+    return {success: true, message: "Assigned branch saved."};
+  } catch (error) { return {success: false, message: error instanceof Error ? error.message : "Unable to assign branch."}; }
 }

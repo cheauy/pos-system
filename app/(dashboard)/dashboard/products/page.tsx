@@ -111,7 +111,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
     const { count: locationCount, error: countError } = await supabase.from("business_locations").select("id", { count: "exact", head: true }).eq("business_id", business.id);
     if (countError) throw new Error("Unable to verify branch inventory.");
     const byProduct = new Map((stock ?? []).map(row => [row.product_id, row]));
-    products = products.map(product => ({ ...product, stock_quantity: locationCount === 1 ? product.stock_quantity : Math.min(product.stock_quantity, byProduct.get(product.id)?.quantity ?? 0), low_stock_quantity: byProduct.get(product.id)?.low_stock_threshold ?? product.low_stock_quantity }));
+    products = products.filter(product=>locationCount===1||byProduct.has(product.id)).map(product => ({ ...product, stock_quantity: locationCount === 1 ? product.stock_quantity : Math.min(product.stock_quantity, byProduct.get(product.id)?.quantity ?? 0), low_stock_quantity: byProduct.get(product.id)?.low_stock_threshold ?? product.low_stock_quantity }));
   }
   const businessType = currentMode.value;
   const productMode = currentMode.productMode;
@@ -151,7 +151,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   const formMeta = variantMode
     ? {
         title: isFashion
-          ? "Add Clothing Style"
+          ? "Add Product"
           : isShoes
             ? "Add Shoe Style"
             : "Add Variant Product",
@@ -179,7 +179,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
 
   return (
     <main className="min-w-0 space-y-5">
-      <section className="rounded-xl border border-slate-200 bg-white p-4"><form className="flex flex-wrap items-end gap-3"><label className="text-sm font-semibold">Inventory branch<select name="branch" defaultValue={branch?.id ?? ""} className="ml-3 rounded-lg border p-2"><option value="">All branches (combined stock)</option>{branches?.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><button className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white" type="submit">View branch</button><a className="text-sm text-blue-600" href="/dashboard/inventory">Manage branch stock</a></form><p className="mt-2 text-xs text-slate-500">Product names, variants and prices are shared across the business. Stock shown here belongs to {branch?.name ?? "all branches combined"}. Product edits apply across all branches; use Inventory to adjust branch quantities.</p></section>
+
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Products</h1>
@@ -192,6 +192,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
           <AddClothingStyleModal
             categories={categories}
             businessType={businessType}
+            branches={branches||[]}
           />
         )}
       </header>
@@ -230,11 +231,11 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
             )}
 
             {variantMode ? (
-              <VariantProductForm categories={categories} businessType={businessType} />
+              <VariantProductForm categories={categories} businessType={businessType} branches={branches||[]} />
             ) : productMode === "configurable" ? (
-              <ConfigurableProductForm categories={categories} businessType={businessType} />
+              <ConfigurableProductForm categories={categories} businessType={businessType} branches={branches||[]} />
             ) : (
-              <StandardProductForm categories={categories} />
+              <StandardProductForm categories={categories} branches={branches||[]} />
             )}
           </div>
         </section>
@@ -277,7 +278,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
               {productError.message}
             </section>
           ) : (
-            <ProductList products={products} productMode={productMode} />
+            <ProductList products={products} productMode={productMode} branches={branches||[]} branchId={branch?.id||""} />
           )}
         </div>
       </div>

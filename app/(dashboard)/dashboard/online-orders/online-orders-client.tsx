@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import OrderPrintMenu from "@/components/order-print-menu";
 import { useRouter } from "next/navigation";
 import {
   Bell,
@@ -20,7 +21,6 @@ import {
   Loader2,
   MoreHorizontal,
   PackageCheck,
-  Printer,
   RefreshCw,
   Search,
   ShoppingBag,
@@ -100,11 +100,12 @@ type ViewMode = "split" | "grid";
 const ACTIVE_STATUSES = new Set(["new", "accepted", "preparing", "ready"]);
 
 export default function OnlineOrdersClient({
-  businessId,
+  businessId, branchId,
   initialOrders,
   currency,
 }: {
   businessId: string;
+  branchId: string;
   initialOrders: OnlineOrder[];
   currency: string;
 }) {
@@ -261,6 +262,7 @@ export default function OnlineOrdersClient({
           filter: `business_id=eq.${businessId}`,
         },
         (payload) => {
+          if ((payload.new as Record<string,unknown>).location_id !== branchId) return;
           const row = payload.new as Record<string, unknown>;
           if (
             payload.eventType === "INSERT" &&
@@ -287,7 +289,7 @@ export default function OnlineOrdersClient({
       if (poll) window.clearInterval(poll);
       void supabase.removeChannel(channel);
     };
-  }, [businessId, router, alertsEnabled, soundEnabled, autoRefresh]);
+  }, [businessId, branchId, router, alertsEnabled, soundEnabled, autoRefresh]);
 
   useEffect(() => {
     const newestId = initialOrders[0]?.id ?? null;
@@ -1141,9 +1143,7 @@ function OrderDetails({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-white p-3">
-        <button type="button" onClick={() => window.print()} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-          <Printer size={14} /> Print
-        </button>
+        <OrderPrintMenu orderId={order.id} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"/>
         <Link href={`/dashboard/orders/${order.id}`} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">
           <ExternalLink size={14} /> Full Order
         </Link>

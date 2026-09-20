@@ -622,10 +622,9 @@ export default function StockTransfersClient({
   }, [locationStock]);
 
   function stockForProduct(product: TransferProduct) {
-    if (!sourceLocationId) return Number(product.businessStock ?? 0);
+    if (!sourceLocationId) return 0;
     return (
-      locationStockMap.get(`${sourceLocationId}:${product.id}`) ??
-      Number(product.businessStock ?? 0)
+      locationStockMap.get(`${sourceLocationId}:${product.id}`) ?? 0
     );
   }
 
@@ -1054,7 +1053,7 @@ export default function StockTransfersClient({
                 <div className="space-y-1.5">
                   <span className="text-xs font-semibold text-slate-700">Product / Variant</span>
                   <ProductVariantPicker
-                    products={products}
+                    products={products.filter(product => sourceLocationId && locationStockMap.has(`${sourceLocationId}:${product.id}`))}
                     value={productId}
                     onChange={(nextProductId) => {
                       setProductId(nextProductId);

@@ -37,6 +37,7 @@ type StorefrontPageProps = {
 };
 
 type CategoryRow = {
+  branch_ids: string[] | null;
   id: string;
   name: string;
 };
@@ -143,6 +144,7 @@ export default async function StorefrontPage({
       .select(`
         business_id,
         business_type,
+        fulfillment_location_id,
         is_published,
         accept_online_orders,
         template_key,
@@ -200,7 +202,7 @@ export default async function StorefrontPage({
   const [categoryResult, productResult, zoneResult] = await Promise.all([
     supabaseAdmin
       .from("categories")
-      .select("id, name")
+      .select("id, name, branch_ids")
       .eq("business_id", business.id)
       .eq("is_online", true)
       .order("online_sort_order", { ascending: true })
@@ -257,7 +259,7 @@ export default async function StorefrontPage({
 
   const deliveryZones = (zoneResult.data ?? []) as DeliveryZoneRow[];
 
-  const categories = (categoryResult.data ?? []) as CategoryRow[];
+  let categories = (categoryResult.data ?? []) as CategoryRow[];
   const categoryIds = new Set(categories.map((category) => category.id));
   let productRows = ((productResult.data ?? []) as ProductRow[]).filter(
     (product) => !product.category_id || categoryIds.has(product.category_id),
@@ -265,15 +267,16 @@ export default async function StorefrontPage({
 
   const { data: inventoryBranches, error: inventoryBranchError } = await supabaseAdmin.from("business_locations").select("id,is_default,is_active").eq("business_id", business.id);
   if (inventoryBranchError) throw new Error("Unable to load fulfillment branch.");
-  if ((inventoryBranches?.length ?? 0) > 1) {
-    const fulfillmentBranch = inventoryBranches?.find(branch => branch.is_default && branch.is_active);
-    if (!fulfillmentBranch) productRows = productRows.map(product => ({ ...product, stock_quantity: 0 }));
-    else {
-      const { data: branchStock, error: branchStockError } = await supabaseAdmin.from("product_location_stock").select("product_id,quantity").eq("business_id", business.id).eq("location_id", fulfillmentBranch.id);
-      if (branchStockError) throw new Error("Unable to load fulfillment stock.");
-      const stockByProduct = new Map((branchStock ?? []).map(row => [row.product_id, row.quantity]));
-      productRows = productRows.map(product => ({ ...product, stock_quantity: Math.min(product.stock_quantity, stockByProduct.get(product.id) ?? 0) }));
-    }
+  const fulfillmentBranch = inventoryBranches?.find(branch => branch.id === storefrontData?.fulfillment_location_id && branch.is_active)
+    ?? (!storefrontData?.fulfillment_location_id ? inventoryBranches?.find(branch => branch.is_default && branch.is_active) : undefined);
+  if (!fulfillmentBranch) { productRows=[]; categories=[]; }
+  else {
+    categories=categories.filter(c=>c.branch_ids===null || c.branch_ids.includes(fulfillmentBranch.id));
+    const visibleCategories=new Set(categories.map(c=>c.id));
+    const {data: branchStock,error:branchStockError}=await supabaseAdmin.from("product_location_stock").select("product_id,quantity").eq("business_id",business.id).eq("location_id",fulfillmentBranch.id);
+    if(branchStockError) throw new Error("Unable to load fulfillment stock.");
+    const stockByProduct=new Map((branchStock ?? []).map(r=>[r.product_id,Number(r.quantity)]));
+    productRows=productRows.filter(p=>stockByProduct.has(p.id) && (!p.category_id || visibleCategories.has(p.category_id))).map(p=>({...p,stock_quantity:Math.min(p.stock_quantity,stockByProduct.get(p.id) ?? 0)}));
   }
   const configurableProductIds = productRows
     .filter((product) => product.product_type === "configurable")

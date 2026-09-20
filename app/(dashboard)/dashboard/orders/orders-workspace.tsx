@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import OrderPrintMenu from "@/components/order-print-menu";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
@@ -186,8 +187,8 @@ export default function OrdersWorkspace({ businessId, businessName, data, filter
     {menu && <RowMenu menu={menu} permissions={permissions} onClose={() => setMenu(null)} onAction={openAction} onView={() => { selectRow(menu.row); setMenu(null); }} />}
     {dialog && <ManageOrderDialog action={dialog} businessId={businessId} permissions={permissions} onClose={() => setDialog(null)} onSuccess={actionSuccess} />}
     {queueOpen && <Modal title={`Print Queue (${selected.length})`} onClose={() => setQueueOpen(false)}>
-      <p className={styles.modalHelp}>Open each order’s existing receipt page, then use its Print Receipt button. This keeps your configured receipt layout.</p>
-      <div className={styles.printQueue}>{selected.map((item) => <div key={item.id}><span>{item.number}</span><a className={styles.button} href={receiptHref(item.id)} target="_blank" rel="noopener noreferrer"><Printer size={14} />Open receipt</a><button className={styles.iconButton} type="button" aria-label={`Remove ${item.number} from print queue`} onClick={() => setSelected((items) => items.filter((entry) => entry.id !== item.id))}><X size={14} /></button></div>)}</div>
+      <p className={styles.modalHelp}>Choose a receipt or shipping label for each order, review the preview, then print using your saved settings.</p>
+      <div className={styles.printQueue}>{selected.map((item) => <div key={item.id}><span>{item.number}</span><OrderPrintMenu orderId={item.id} className={styles.button}/><button className={styles.iconButton} type="button" aria-label={`Remove ${item.number} from print queue`} onClick={() => setSelected((items) => items.filter((entry) => entry.id !== item.id))}><X size={14} /></button></div>)}</div>
       {!selected.length && <p className={styles.modalHelp}>The queue is empty. Select orders using the table checkboxes.</p>}
     </Modal>}
   </div>;
@@ -224,7 +225,7 @@ function DetailPanel({ detail, loading, error, currency, timezone, permissions, 
     <div className={styles.detailHeading}><div><h2>Order {order.orderNumber}</h2><div><Badge value={order.status} /><small>{dateText(order.createdAt, timezone)} at {dateText(order.createdAt, timezone, true)}</small></div></div><button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close order details"><X size={16} /></button></div>
     <div className={styles.detailActions}>
       <Link className={styles.miniButton} href={orderHref(order.id)}><Eye size={13} />View</Link>
-      <a className={styles.miniButton} href={receiptHref(order.id)} target="_blank" rel="noopener noreferrer"><Printer size={13} />Print</a>
+      <OrderPrintMenu orderId={order.id} className={styles.miniButton}/>
       {permissions.refund && !["cancelled", "refunded"].includes(order.status) && <Link className={styles.miniButton} href={orderHref(order.id)} title="Open the order’s existing return/refund form"><RotateCcw size={13} />Refund / Return</Link>}
     </div>
     <div className={styles.manageActions}>
@@ -277,6 +278,7 @@ function RowMenu({ menu, permissions, onClose, onAction, onView }: {
   return createPortal(<div ref={element} role="menu" aria-label={`Order ${menu.row.orderNumber} actions`} className={styles.rowMenu} style={{ top, left }}>
     <div className={styles.menuLabel}>{menu.row.orderNumber}</div>
     <button role="menuitem" type="button" onClick={onView}><Eye size={15} />View details</button>
+    <a role="menuitem" href={`/dashboard/orders/${encodeURIComponent(menu.row.id)}/shipping-label`} target="_blank" rel="noopener noreferrer" onClick={onClose}><Printer size={15} />Print shipping label</a>
     <a role="menuitem" href={receiptHref(menu.row.id)} target="_blank" rel="noopener noreferrer" onClick={onClose}><Printer size={15} />Print receipt</a>
     <button role="menuitem" type="button" disabled={!permissions.edit || !nextStatuses(menu.row, permissions.cancel).length} onClick={() => onAction("status", menu.row)}><ArrowUpDown size={15} />Change status</button>
     <button role="menuitem" type="button" disabled={!permissions.edit} onClick={() => onAction("edit", menu.row)}><Pencil size={15} />Edit</button>

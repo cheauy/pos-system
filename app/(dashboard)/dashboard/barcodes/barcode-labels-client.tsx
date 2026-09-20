@@ -2,7 +2,6 @@
 
 import {
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
@@ -11,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   FileDown,
-  FileUp,
   Filter,
   ImageIcon,
   Minus,
@@ -19,12 +17,9 @@ import {
   Plus,
   Printer,
   Search,
-  Settings,
-  Tag,
 } from "lucide-react";
 
 import { code39Bars } from "@/lib/barcode/code39";
-import { saveBarcodeLabelSettings } from "@/app/(dashboard)/dashboard/settings/receipts/actions";
 
 type Product = {
   id: string;
@@ -47,9 +42,8 @@ type Category = {
   name: string;
 };
 
-type TemplateId = "product" | "price" | "shelf" | "compact";
+type TemplateId = "product" | "price";
 type PreviewTab = "label" | "pdf";
-type QuantityMode = "selected" | "custom";
 
 type LabelElements = {
   name: boolean;
@@ -70,66 +64,8 @@ type TemplateDefinition = {
 };
 
 const templates: TemplateDefinition[] = [
-  {
-    id: "product",
-    name: "Product Label (Default)",
-    description: "Balanced product, variant, barcode, SKU and price label.",
-    elements: {
-      name: true,
-      variant: true,
-      barcode: true,
-      sku: true,
-      price: true,
-      image: false,
-      storeName: false,
-      customText: false,
-    },
-  },
-  {
-    id: "price",
-    name: "Price Label",
-    description: "Large price with compact product and barcode details.",
-    elements: {
-      name: true,
-      variant: false,
-      barcode: true,
-      sku: false,
-      price: true,
-      image: false,
-      storeName: false,
-      customText: false,
-    },
-  },
-  {
-    id: "shelf",
-    name: "Shelf Label",
-    description: "Product, variant, price and store name for shelf display.",
-    elements: {
-      name: true,
-      variant: true,
-      barcode: false,
-      sku: true,
-      price: true,
-      image: false,
-      storeName: true,
-      customText: false,
-    },
-  },
-  {
-    id: "compact",
-    name: "Compact Barcode Label",
-    description: "Small barcode-first label for dense label rolls.",
-    elements: {
-      name: false,
-      variant: false,
-      barcode: true,
-      sku: true,
-      price: false,
-      image: false,
-      storeName: false,
-      customText: false,
-    },
-  },
+  { id: "product", name: "Centered label", description: "Centered shop name, product, variant, SKU, barcode and bold price.", elements: { name:true,variant:true,barcode:true,sku:true,price:true,image:false,storeName:true,customText:false } },
+  { id: "price", name: "Split-price label", description: "Product details on the left, large price on the right, barcode below.", elements: { name:true,variant:true,barcode:true,sku:true,price:true,image:false,storeName:true,customText:false } },
 ];
 
 const sizeRank = new Map(
@@ -182,7 +118,7 @@ function money(value: number) {
   return `$${Number(value || 0).toFixed(2)}`;
 }
 
-function getTemplate(id: TemplateId) {
+export function getTemplate(id: TemplateId) {
   return templates.find((template) => template.id === id) ?? templates[0];
 }
 
@@ -205,30 +141,20 @@ export default function BarcodeLabelsClient({
   const [priceFilter, setPriceFilter] = useState("all");
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [templateId, setTemplateId] = useState<TemplateId>(
-    (settings.barcode_template as TemplateId | undefined) ?? "product",
-  );
-  const [labelSize, setLabelSize] = useState(
-    String(settings.barcode_label_size ?? "40x30"),
-  );
+  const templateId: TemplateId = settings.barcode_template === "price" ? "price" : "product";
+  const labelSize = ["40x20", "40x30", "50x30", "60x40", "80x50"].includes(String(settings.barcode_label_size)) ? String(settings.barcode_label_size) : "50x30";
   const [previewTab, setPreviewTab] = useState<PreviewTab>("label");
   const [previewIndex, setPreviewIndex] = useState(0);
-  const [quantityMode, setQuantityMode] = useState<QuantityMode>("selected");
-  const [customQuantity, setCustomQuantity] = useState(1);
-  const [customText, setCustomText] = useState(
-    String(settings.barcode_custom_text ?? ""),
-  );
-  const [showElements, setShowElements] = useState<LabelElements>(() => ({
+  const showElements: LabelElements = {
     name: settings.barcode_show_name !== false,
     variant: settings.barcode_show_variant !== false,
     barcode: settings.barcode_show_barcode !== false,
     sku: settings.barcode_show_sku !== false,
     price: settings.barcode_show_price !== false,
     image: Boolean(settings.barcode_show_image),
-    storeName: Boolean(settings.barcode_show_store_name),
-    customText: Boolean(settings.barcode_show_custom_text),
-  }));
-  const importRef = useRef<HTMLInputElement>(null);
+    storeName: settings.barcode_show_store_name !== false,
+    customText: false,
+  };
 
   const categoryName = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
@@ -294,7 +220,6 @@ export default function BarcodeLabelsClient({
       ? selectedProducts[Math.min(previewIndex, selectedProducts.length - 1)]
       : filtered[0] ?? products[0] ?? null;
 
-  const template = getTemplate(templateId);
 
   function toggleSelected(id: string) {
     setSelected((current) =>
@@ -327,11 +252,6 @@ export default function BarcodeLabelsClient({
     setQuantities((current) => ({ ...current, [id]: safe }));
   }
 
-  function applyTemplate(next: TemplateId) {
-    const definition = getTemplate(next);
-    setTemplateId(next);
-    setShowElements(definition.elements);
-  }
 
   function resetFilters() {
     setQuery("");
@@ -346,29 +266,8 @@ export default function BarcodeLabelsClient({
     window.print();
   }
 
-  async function handleImport(file: File | null) {
-    if (!file) return;
-    const text = await file.text();
-    const tokens = text
-      .split(/[\r\n,;\t]+/)
-      .map((value) => value.trim().toLowerCase())
-      .filter(Boolean);
-    if (!tokens.length) return;
-
-    const matches = products
-      .filter((product) =>
-        [product.sku, product.barcode]
-          .filter(Boolean)
-          .some((value) => tokens.includes(String(value).trim().toLowerCase())),
-      )
-      .map((product) => product.id);
-
-    setSelected(Array.from(new Set(matches)));
-    setPreviewIndex(0);
-  }
-
   const printedLabels = selectedProducts.flatMap((product) => {
-    const count = quantityMode === "custom" ? customQuantity : quantities[product.id] ?? 1;
+    const count = quantities[product.id] ?? 1;
     return Array.from({ length: Math.max(1, count) }, (_, index) => ({
       product,
       key: `${product.id}-${index}`,
@@ -388,50 +287,6 @@ export default function BarcodeLabelsClient({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <input
-            ref={importRef}
-            type="file"
-            accept=".csv,.txt"
-            className="sr-only"
-            onChange={(event) => {
-              void handleImport(event.target.files?.[0] ?? null);
-              event.currentTarget.value = "";
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => importRef.current?.click()}
-            className={secondaryButton}
-          >
-            <FileUp size={17} />
-            Import List (CSV)
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              document.getElementById("label-template")?.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-              })
-            }
-            className={secondaryButton}
-          >
-            <Tag size={17} />
-            Label Templates
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              document.getElementById("label-settings")?.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-              })
-            }
-            className={secondaryButton}
-          >
-            <Settings size={17} />
-            Settings
-          </button>
           <button
             type="button"
             disabled={!selectedProducts.length}
@@ -781,26 +636,7 @@ export default function BarcodeLabelsClient({
           </div>
 
           <div className="space-y-5 p-4">
-            <section id="label-template">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="font-bold text-slate-900">Label Template</h2>
-                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600">
-                  4 templates
-                </span>
-              </div>
-              <select
-                value={templateId}
-                onChange={(event) => applyTemplate(event.target.value as TemplateId)}
-                className={`${inputClass} mt-2`}
-              >
-                {templates.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-2 text-xs leading-5 text-slate-500">{template.description}</p>
-            </section>
+
 
             <div className="rounded-xl bg-slate-50 p-4">
               {previewTab === "label" ? (
@@ -813,7 +649,7 @@ export default function BarcodeLabelsClient({
                         size={labelSize}
                         templateId={templateId}
                         elements={showElements}
-                        customText={customText}
+                        customText=""
                       />
                     ) : (
                       <p className="text-sm text-slate-500">No product available for preview.</p>
@@ -870,7 +706,7 @@ export default function BarcodeLabelsClient({
                             size={labelSize}
                             templateId={templateId}
                             elements={showElements}
-                            customText={customText}
+                            customText=""
                           />
                         </div>
                       ))}
@@ -879,179 +715,7 @@ export default function BarcodeLabelsClient({
               )}
             </div>
 
-            <form
-              action={saveBarcodeLabelSettings}
-              id="label-settings"
-              className="space-y-4 border-t border-slate-200 pt-4"
-            >
-              <input type="hidden" name="barcodeTemplate" value={templateId} />
-              <input type="hidden" name="barcodeShowName" value={showElements.name ? "on" : ""} />
-              <input
-                type="hidden"
-                name="barcodeShowVariant"
-                value={showElements.variant ? "on" : ""}
-              />
-              <input type="hidden" name="barcodeShowSku" value={showElements.sku ? "on" : ""} />
-              <input
-                type="hidden"
-                name="barcodeShowBarcode"
-                value={showElements.barcode ? "on" : ""}
-              />
-              <input type="hidden" name="barcodeShowPrice" value={showElements.price ? "on" : ""} />
-              <input
-                type="hidden"
-                name="barcodeShowImage"
-                value={showElements.image ? "on" : ""}
-              />
-              <input
-                type="hidden"
-                name="barcodeShowStoreName"
-                value={showElements.storeName ? "on" : ""}
-              />
-              <input
-                type="hidden"
-                name="barcodeShowCustomText"
-                value={showElements.customText ? "on" : ""}
-              />
-              <input type="hidden" name="barcodeCustomText" value={customText} />
 
-              <h2 className="font-bold text-slate-900">Label Settings</h2>
-
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Label Size
-                </span>
-                <select
-                  name="barcodeLabelSize"
-                  value={labelSize}
-                  onChange={(event) => setLabelSize(event.target.value)}
-                  className={inputClass}
-                >
-                  <option value="40x20">40 × 20 mm · Compact</option>
-                  <option value="40x30">40 × 30 mm · Standard</option>
-                  <option value="50x30">50 × 30 mm · Wide</option>
-                  <option value="50x40">50 × 40 mm · Large</option>
-                </select>
-              </label>
-
-              <div>
-                <p className="mb-2 text-sm font-semibold text-slate-700">Show Elements</p>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <ElementToggle
-                    label="Product Name"
-                    checked={showElements.name}
-                    onChange={(value) =>
-                      setShowElements((current) => ({ ...current, name: value }))
-                    }
-                  />
-                  <ElementToggle
-                    label="Product Image"
-                    checked={showElements.image}
-                    onChange={(value) =>
-                      setShowElements((current) => ({ ...current, image: value }))
-                    }
-                  />
-                  <ElementToggle
-                    label="Variant (Size / Colour)"
-                    checked={showElements.variant}
-                    onChange={(value) =>
-                      setShowElements((current) => ({ ...current, variant: value }))
-                    }
-                  />
-                  <ElementToggle
-                    label="Store Name"
-                    checked={showElements.storeName}
-                    onChange={(value) =>
-                      setShowElements((current) => ({ ...current, storeName: value }))
-                    }
-                  />
-                  <ElementToggle
-                    label="Barcode"
-                    checked={showElements.barcode}
-                    onChange={(value) =>
-                      setShowElements((current) => ({ ...current, barcode: value }))
-                    }
-                  />
-                  <ElementToggle
-                    label="SKU"
-                    checked={showElements.sku}
-                    onChange={(value) =>
-                      setShowElements((current) => ({ ...current, sku: value }))
-                    }
-                  />
-                  <ElementToggle
-                    label="Price"
-                    checked={showElements.price}
-                    onChange={(value) =>
-                      setShowElements((current) => ({ ...current, price: value }))
-                    }
-                  />
-                  <ElementToggle
-                    label="Custom Text"
-                    checked={showElements.customText}
-                    onChange={(value) =>
-                      setShowElements((current) => ({ ...current, customText: value }))
-                    }
-                  />
-                </div>
-              </div>
-
-              {showElements.customText && (
-                <label className="block">
-                  <span className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    Custom text
-                  </span>
-                  <input
-                    value={customText}
-                    onChange={(event) => setCustomText(event.target.value.slice(0, 80))}
-                    placeholder="Optional label note"
-                    className={inputClass}
-                  />
-                </label>
-              )}
-
-              <div>
-                <p className="mb-2 text-sm font-semibold text-slate-700">Label Quantity</p>
-                <label className="flex items-center gap-2 py-1.5 text-sm">
-                  <input
-                    type="radio"
-                    checked={quantityMode === "selected"}
-                    onChange={() => setQuantityMode("selected")}
-                    className="accent-blue-600"
-                  />
-                  Same as selected quantity
-                </label>
-                <label className="flex items-center gap-2 py-1.5 text-sm">
-                  <input
-                    type="radio"
-                    checked={quantityMode === "custom"}
-                    onChange={() => setQuantityMode("custom")}
-                    className="accent-blue-600"
-                  />
-                  Custom quantity
-                  <input
-                    type="number"
-                    min={1}
-                    max={999}
-                    disabled={quantityMode !== "custom"}
-                    value={customQuantity}
-                    onChange={(event) =>
-                      setCustomQuantity(
-                        Math.max(1, Math.min(999, Number(event.target.value) || 1)),
-                      )
-                    }
-                    className="ml-auto w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-center disabled:bg-slate-100"
-                  />
-                </label>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
-              >
-                Save Barcode & Label Settings
-              </button>
-            </form>
 
             <button
               type="button"
@@ -1084,7 +748,7 @@ export default function BarcodeLabelsClient({
             size={labelSize}
             templateId={templateId}
             elements={showElements}
-            customText={customText}
+            customText=""
           />
         ))}
       </div>
@@ -1151,29 +815,7 @@ function ColorTab({
   );
 }
 
-function ElementToggle({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <label className="flex min-h-9 items-center gap-2 rounded-lg px-1 text-slate-700">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="h-4 w-4 accent-blue-600"
-      />
-      <span>{label}</span>
-    </label>
-  );
-}
-
-function LabelCard({
+export function LabelCard({
   product,
   businessName,
   size,
@@ -1192,79 +834,25 @@ function LabelCard({
   const data = code39Bars(value);
   const [width, height] = size.split("x").map(Number);
   const image = product.variant_image_url ?? product.image_url;
-  const compact = templateId === "compact";
-  const priceOnly = templateId === "price";
-
-  return (
-    <div
-      className="barcode-label overflow-hidden border border-slate-300 bg-white p-2 text-center text-black shadow-sm"
-      style={{ width: `${width}mm`, minHeight: `${height}mm` }}
-    >
-      {elements.storeName && (
-        <div className="truncate text-[7px] font-semibold uppercase tracking-wide text-slate-600">
-          {businessName}
-        </div>
-      )}
-
-      <div className={`flex items-center ${elements.image && image ? "gap-2 text-left" : "justify-center"}`}>
-        {elements.image && image && (
-          <img src={image} alt="" className="h-10 w-10 shrink-0 rounded object-cover" />
-        )}
-        <div className="min-w-0 flex-1">
-          {elements.name && (
-            <div className={`${priceOnly ? "text-[11px]" : "text-[10px]"} truncate font-black`}>
-              {product.name}
-            </div>
-          )}
-          {elements.variant && (
-            <div className="text-[8px]">
-              {[product.color, product.size].filter(Boolean).join(" / ") || "Variant"}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {elements.price && priceOnly && (
-        <div className="my-1 text-[17px] font-black">{money(product.selling_price)}</div>
-      )}
-
-      {elements.barcode && (
-        <svg
-          viewBox={`0 0 ${data.width} 44`}
-          className={`${compact ? "h-10" : "h-8"} mt-1 w-full`}
-          preserveAspectRatio="none"
-          aria-label={`Barcode ${data.text}`}
-        >
-          {data.bars.map((bar, index) => (
-            <rect
-              key={index}
-              x={bar.x}
-              y="0"
-              width={bar.width}
-              height="44"
-              fill="black"
-            />
-          ))}
-        </svg>
-      )}
-
-      {elements.sku && (
-        <div className="truncate text-[8px] tracking-wider">{product.sku || data.text}</div>
-      )}
-
-      {elements.price && !priceOnly && (
-        <div className="text-[11px] font-black">{money(product.selling_price)}</div>
-      )}
-
-      {elements.customText && customText && (
-        <div className="truncate text-[7px] text-slate-600">{customText}</div>
-      )}
+  const split = templateId === "price";
+  const scale = Math.min(width / 50, height / 30) * (elements.image && image ? 0.8 : elements.customText && customText ? 0.9 : 1);
+  const details = <div style={{minWidth:0,flex:1}}>
+    {elements.storeName && <div style={{fontSize:9*scale,lineHeight:1.1,fontWeight:700,marginBottom:2*scale,overflowWrap:"anywhere"}}>{businessName}</div>}
+    {elements.image && image && <img src={image} alt="" style={{width:20*scale,height:20*scale,objectFit:"contain",margin:"0 auto"}}/>}
+    {elements.name && <div style={{fontSize:12*scale,fontWeight:800,lineHeight:1.05,overflowWrap:"anywhere"}}>{product.name}</div>}
+    {elements.variant && <div style={{fontSize:9*scale,lineHeight:1.2}}>{[product.color,product.size].filter(Boolean).join(" / ")}</div>}
+    {elements.sku && <div style={{fontSize:8*scale,lineHeight:1.3,overflowWrap:"anywhere"}}>SKU: {product.sku || data.text}</div>}
+  </div>;
+  return <div className="barcode-label border border-slate-200 bg-white text-black" style={{width:`${width}mm`,height:`${height}mm`,boxSizing:"border-box",padding:`${1.5*scale}mm`,display:"flex",flexDirection:"column",justifyContent:"space-between",gap:2*scale,overflow:"hidden",textAlign:split?"left":"center",fontFamily:"Arial, sans-serif"}}>
+    <div style={{display:"flex",gap:5*scale,alignItems:"center"}}>
+      {details}
+      {split && elements.price && <div style={{borderLeft:"1px solid black",paddingLeft:5*scale,flexShrink:0}}><div style={{fontSize:7*scale,letterSpacing:1}}>PRICE</div><div style={{fontSize:20*scale,fontWeight:900,lineHeight:1.2}}>{money(product.selling_price)}</div></div>}
     </div>
-  );
+    {elements.barcode && <div style={{textAlign:"center",padding:"0 2mm"}}><svg viewBox={`0 0 ${data.width} 44`} style={{width:"100%",height:`${(split?8:6)*scale}mm`,display:"block"}} preserveAspectRatio="none" aria-label={`Barcode ${data.text}`}>{data.bars.map((bar,index)=><rect key={index} x={bar.x} y="0" width={bar.width} height="44" fill="black"/>)}</svg><div style={{fontSize:8*scale,letterSpacing:1,lineHeight:1.1}}>{data.text}</div></div>}
+    {!split && elements.price && <div style={{fontSize:19*scale,fontWeight:900,lineHeight:1}}>{money(product.selling_price)}</div>}
+
+  </div>;
 }
 
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100";
-
-const secondaryButton =
-  "inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50";

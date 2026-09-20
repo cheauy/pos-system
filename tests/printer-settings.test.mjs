@@ -1,0 +1,80 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import ts from "typescript";
+import { DEFAULT_RECEIPT } from "../lib/receipts/receipt-model.ts";
+import * as receiptModel from "../lib/receipts/receipt-model.ts";
+
+const require = createRequire(import.meta.url);
+function actions({ missingQr = false } = {}) {
+  const writes = [];
+  const uploads = [];
+  const db = { from: () => ({ upsert: async values => {
+    writes.push(values);
+    return { error: missingQr && "receipt_qr_url" in values ? { code: "PGRST204", message: "Missing receipt_qr_url column" } : null };
+  } }) };
+  const bucket = {
+    upload: async (path, bytes) => { uploads.push({ path, bytes }); return { error: null }; },
+    getPublicUrl: path => ({ data: { publicUrl: `https://example.com/${path}` } }),
+  };
+  const deps = {
+    "next/cache": { revalidatePath() {} },
+    "@/lib/auth/require-permission": { requirePermission: async permission => {
+      assert.equal(permission, "business.update"); return { id: "authorized-business" };
+    } },
+    "@/lib/supabase/server": { createClient: async () => db },
+    "@/lib/supabase/admin": { supabaseAdmin: { storage: { from: name => { assert.equal(name, "tenh-receipt-logos"); return bucket; } } } },
+    "@/lib/audit/create-audit-log": { createAuditLog: async () => {} },
+    "@/lib/receipts/receipt-model": receiptModel,
+  };
+  const file = new URL("../app/(dashboard)/dashboard/settings/receipts/actions.ts", import.meta.url);
+  const { outputText } = ts.transpileModule(readFileSync(file, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } });
+  const module = { exports: {} };
+  new Function("require", "module", "exports", outputText)(id => deps[id] ?? require(id), module, module.exports);
+  return { api: module.exports, writes, uploads };
+}
+
+test("receipt logo saves survive missing optional QR columns without changing label settings", async () => {
+  const { api, writes } = actions({ missingQr: true });
+  const appearance = { ...DEFAULT_RECEIPT, logoUrl: "https://example.com/logo.png", header: "Shop header" };
+  assert.equal((await api.saveReceiptAppearance("authorized-business", appearance)).success, true);
+  assert.equal(writes.length, 2);
+  assert.equal(writes[1].receipt_logo_url, appearance.logoUrl);
+  assert.equal(writes[1].header_text, "Shop header");
+  assert.ok(!("receipt_qr_url" in writes[1]));
+  assert.ok(!("barcode_template" in writes[1]));
+  assert.equal(receiptModel.receiptAppearance(writes[1]).logoUrl, appearance.logoUrl);
+});
+
+test("QR data is never silently dropped when its migration is missing", async () => {
+  const { api, writes } = actions({ missingQr: true });
+  const result = await api.saveReceiptAppearance("authorized-business", { ...DEFAULT_RECEIPT, qrUrl: "https://example.com/qr.png" });
+  assert.equal(result.success, false);
+  assert.equal(writes.length, 1);
+  assert.match(result.message, /migration/);
+});
+
+test("receipt uploads check business identity before using server storage", async () => {
+  const { api, uploads } = actions();
+  const form = new FormData();
+  form.set("logo", new File([new Uint8Array([137,80,78,71,13,10,26,10,0])], "logo.png", { type: "image/png" }));
+  assert.equal((await api.uploadReceiptLogo("another-business", form)).success, false);
+  assert.equal(uploads.length, 0);
+  assert.equal((await api.uploadReceiptLogo("authorized-business", form)).success, true);
+  assert.match(uploads[0].path, /^authorized-business\/.+\.png$/);
+});
+
+test("barcode save persists the chosen new layout, size and fields only", async () => {
+  const { api, writes } = actions();
+  const form = new FormData();
+  form.set("barcodeTemplate", "price");
+  form.set("barcodeLabelSize", "50x30");
+  form.set("barcodeShowStoreName", "on");
+  form.set("barcodeShowBarcode", "on");
+  await api.saveBarcodeLabelSettings(form);
+  assert.equal(writes[0].barcode_template, "price");
+  assert.equal(writes[0].barcode_label_size, "50x30");
+  assert.equal(writes[0].barcode_show_store_name, true);
+  assert.ok(!("receipt_logo_url" in writes[0]));
+});

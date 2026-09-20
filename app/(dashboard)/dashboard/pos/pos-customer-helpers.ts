@@ -3,7 +3,7 @@ import type { Customer, PaymentMethod } from './pos-workspace-types';
 export type PickerCustomer = Customer & { created_at: string | null };
 export type CustomerFieldFlags = { emailEnabled:boolean; birthdayEnabled:boolean };
 export type CustomerPage = { items: PickerCustomer[]; hasMore: boolean; nextOffset: number; canCreate: boolean; fieldSettings?: CustomerFieldFlags };
-export type CustomerInput = { id: string; name: string; phone: string; address: string; email?:string; birthday?:string };
+export type CustomerInput = { branchId?: string; id: string; name: string; phone: string; address: string; email?:string; birthday?:string };
 
 /** These are hidden only for an anonymous in-store sale, not Pickup or Delivery. */
 export function paymentHiddenForWalkIn(method: PaymentMethod, isWalkIn: boolean): boolean {
@@ -12,6 +12,7 @@ export function paymentHiddenForWalkIn(method: PaymentMethod, isWalkIn: boolean)
 
 export function customerInputIssue(value: CustomerInput, fields:CustomerFieldFlags={emailEnabled:true,birthdayEnabled:true}): string | null {
   if (!value || typeof value !== 'object' || typeof value.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.id)) return 'Invalid customer request. Reopen Add customer.';
+  if (value.branchId !== undefined && (typeof value.branchId !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.branchId))) return 'Invalid customer branch.';
   if (typeof value.name !== 'string' || value.name.trim().length < 2 || value.name.trim().length > 120) return 'Customer name must contain 2–120 characters.';
   if (typeof value.phone !== 'string' || !/^[+0-9() .-]{5,40}$/.test(value.phone.trim()) || value.phone.replace(/\D/g,'').length < 5 || value.phone.replace(/\D/g,'').length > 20) return 'Enter a phone number with 5–20 digits.';
   if (typeof value.address !== 'string' || value.address.trim().length > 500) return 'Address must be 500 characters or fewer.';

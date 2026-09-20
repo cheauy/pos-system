@@ -8,7 +8,7 @@ import CreateBusinessUserForm from "@/components/settings/create-user-form";
 import BackToSettingsLink from "@/components/settings/back-to-settings-link";
 import BusinessUsersTable, { type BusinessUserRow } from "./business-users-table";
 
-type Membership = { id: string; user_id: string; role: BusinessRole; is_active: boolean; disabled_reason: string | null; created_at: string };
+type Membership = { default_location_id: string | null; id: string; user_id: string; role: BusinessRole; is_active: boolean; disabled_reason: string | null; created_at: string };
 type Profile = { id: string; full_name: string | null; email: string | null };
 type AuthInfo = { email: string | null; lastSignInAt: string | null; pendingInvite: boolean };
 
@@ -27,11 +27,13 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
 
   const { data: membershipData, error: membershipError } = await supabaseAdmin
     .from("business_members")
-    .select("id,user_id,role,is_active,disabled_reason,created_at")
+    .select("id,user_id,role,is_active,disabled_reason,created_at,default_location_id")
     .eq("business_id", business.id)
     .order("created_at", { ascending: true });
   if (membershipError) throw new Error(membershipError.message);
 
+  const {data: branches, error: branchesError} = await supabaseAdmin.from("business_locations").select("id,name").eq("business_id",business.id).eq("is_active",true).order("is_default",{ascending:false}).order("name");
+  if (branchesError) throw new Error("Unable to load branches.");
   const memberships = ((membershipData ?? []) as Membership[]).filter(
     (membership) => membership.disabled_reason !== "removed_by_owner",
   );
@@ -66,6 +68,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
     const auth = authMap.get(membership.user_id);
     return {
       id: membership.id,
+      branchId: membership.default_location_id ?? branches?.[0]?.id ?? "",
       userId: membership.user_id,
       role: membership.role,
       isActive: membership.is_active,
@@ -127,7 +130,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
 
       <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
         {canCreateTeamMember ? (
-          <CreateBusinessUserForm currentRole={business.role} />
+          <CreateBusinessUserForm currentRole={business.role} branches={branches ?? []} />
         ) : (
           <section className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <h2 className="font-bold text-slate-950 dark:text-white">Team access</h2>
@@ -140,7 +143,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
             </p>
           </section>
         )}
-        <BusinessUsersTable users={users} loggedInRole={business.role} />
+        <BusinessUsersTable branches={branches ?? []} users={users} loggedInRole={business.role} />
       </div>
     </main>
   );

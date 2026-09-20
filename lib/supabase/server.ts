@@ -3,7 +3,7 @@ import { cookies, headers } from "next/headers";
 
 import { getSharedAuthCookieOptions } from "@/lib/tenancy/domain";
 
-export async function createClient() {
+export async function createClient(branchHeaders?: Record<string, string>) {
   const cookieStore = await cookies();
   const requestHeaders = await headers();
 
@@ -21,6 +21,7 @@ export async function createClient() {
   );
 
   return createServerClient(supabaseUrl, supabaseKey, {
+    global: branchHeaders ? { headers: branchHeaders } : undefined,
     cookieOptions,
     cookies: {
       getAll() {
