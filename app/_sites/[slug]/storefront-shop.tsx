@@ -11,9 +11,11 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { KhqrPreview } from "./image-viewer";
+import { rememberOrder } from "@/lib/storefront/order-tracking";
 import StorefrontHero, { type StorefrontBrand } from "./storefront-hero";
 import { useStorefrontLanguage } from "./storefront-language";
-import { validateCheckoutContact } from "@/lib/storefront/checkout-validation";
+import { validateCheckoutContact, validateCheckoutEmail } from "@/lib/storefront/checkout-validation";
 import { toast } from "sonner";
 import ProductGallery from "./product-gallery";
 import StorefrontCatalog from "./storefront-catalog";
@@ -142,7 +144,7 @@ export default function StorefrontShop({
 
   return (
     <>
-      <StorefrontHero brand={brand} cartQuantity={cartQuantity} onOpenCart={() => setCartOpen(true)} />
+      <StorefrontHero slug={slug} brand={brand} cartQuantity={cartQuantity} onOpenCart={() => setCartOpen(true)} />
       <StorefrontCatalog products={products} categories={categories} settings={settings} onAdd={quickAdd} onQuickView={(product, variantId) => { setInitialVariantId(variantId); setSelectedProduct(product); }} />
 
       {settings.orderingEnabled && cartQuantity > 0 && (
@@ -334,6 +336,7 @@ function ProductConfigurator({
         <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-5">
           <div>
             <h2 className="text-xl font-bold text-slate-950">{product.name}</h2>
+            {product.preorderVariantIds?.includes(variant.id) && <span className="mt-2 inline-flex rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">{t("Pre-order")}</span>}
             <p className="mt-1 text-sm text-slate-500">
               {isShoeProduct
                 ? "Choose colour and size. Stock is checked for the exact pair."
@@ -777,6 +780,8 @@ function CartDrawer({
 
       const contactError = validateCheckoutContact(form.get("guestName"), form.get("guestPhone"), fulfillment, form.get("guestAddress"));
       if (contactError) throw new Error(contactError);
+      const emailError = validateCheckoutEmail(form.get("guestEmail"));
+      if (emailError) throw new Error(emailError);
       const checkout = {
             items: cart.map((item) => ({
               productId: item.productId,
@@ -786,6 +791,7 @@ function CartDrawer({
             fulfillmentType: fulfillment,
             guestName: form.get("guestName"),
             guestPhone: form.get("guestPhone"),
+            guestEmail: form.get("guestEmail"),
             guestAddress: form.get("guestAddress"),
             customerNote: form.get("customerNote"),
             tableToken: fulfillment === "dine_in" ? tableToken : null,
@@ -816,7 +822,8 @@ function CartDrawer({
       try { window.localStorage.removeItem(`tenh-cart:${slug}`); } catch { /* Storage is optional. */ }
       const token = payload.order?.publicToken;
       if (typeof token === "string" && token) {
-        window.location.href = `/order/${encodeURIComponent(token)}`;
+        rememberOrder(slug, token, payload.order?.orderNumber ?? "Order");
+        window.location.href = `/order/${encodeURIComponent(token)}?email=${payload.emailStatus === "sent" ? "sent" : "unavailable"}`;
         return;
       }
       setMessage(
@@ -1131,7 +1138,7 @@ function CartDrawer({
                         : "border-slate-200 text-slate-700"
                     }`}
                   >
-                    {value === "khqr" ? "KHQR" : t("Pay Later / Cash")}
+                    {value === "khqr" ? "KHQR" : t("Cash on Delivery (COD)")}
                   </button>
                 ))}
               </div>
@@ -1139,11 +1146,7 @@ function CartDrawer({
 
             {paymentMethod === "khqr" && settings.khqrImageUrl && (
               <div className="rounded-2xl border border-[var(--store-primary)] bg-[var(--store-primary-soft)] p-4 text-center">
-                <img
-                  src={settings.khqrImageUrl}
-                  alt="Store KHQR"
-                  className="mx-auto aspect-square w-full max-w-[230px] rounded-2xl border border-white bg-white object-contain p-2 shadow-sm"
-                />
+                <KhqrPreview src={settings.khqrImageUrl} />
                 {settings.khqrAccountName && (
                   <p className="mt-3 font-semibold text-slate-900">
                     {settings.khqrAccountName}
@@ -1180,6 +1183,7 @@ function CartDrawer({
               required
               placeholder={t("Phone number")}
             />
+            <CheckoutInput name="guestEmail" label={t("Email")} required placeholder="you@example.com" />
             {fulfillment === "delivery" && (
               <CheckoutInput
                 name="guestAddress"
@@ -1244,8 +1248,8 @@ function CartDrawer({
 function CheckoutInput({ name, label, required, placeholder }: { name: string; label: string; required?: boolean; placeholder?: string }) {
   return (
     <label className="block text-sm font-medium text-slate-700">
-      {label}
-      <input name={name} required={required} placeholder={placeholder} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[var(--store-primary)] focus:ring-4 focus:ring-[var(--store-primary-soft)]" />
+      {label}{required && <span className="ml-1 text-red-600" aria-hidden="true">*</span>}
+      <input type={name === "guestEmail" ? "email" : name === "guestPhone" ? "tel" : "text"} autoComplete={name === "guestEmail" ? "email" : name === "guestPhone" ? "tel" : name === "guestName" ? "name" : "street-address"} maxLength={name === "guestEmail" ? 254 : undefined} name={name} required={required} placeholder={placeholder} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[var(--store-primary)] focus:ring-4 focus:ring-[var(--store-primary-soft)]" />
     </label>
   );
 }

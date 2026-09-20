@@ -162,7 +162,7 @@ export default function PricingSection({
                       Custom
                     </div>
                     <p className="mt-2 text-sm font-semibold text-slate-500">
-                      Pricing for teams with 11+ users
+                      $5/user + $20/branch per month
                     </p>
                   </div>
                 ) : (
@@ -198,7 +198,7 @@ export default function PricingSection({
                 <div className="mt-6 space-y-3 border-t border-slate-100 pt-6 text-sm text-slate-600">
                   <PricingFeature>
                     {plan.userLimit === null
-                      ? "11+ users"
+                      ? "Choose your user allowance"
                       : `${plan.userLimit} ${plan.userLimit === 1 ? "user" : "users"}`}
                   </PricingFeature>
                   <PricingFeature>
@@ -206,6 +206,7 @@ export default function PricingSection({
                       ? "Team access included"
                       : "Built for one owner"}
                   </PricingFeature>
+                  <PricingFeature>{isCustom ? "Choose your users and branches" : "1 branch included"}</PricingFeature>
                   <PricingFeature>POS + public online store</PricingFeature>
                   <PricingFeature>QR ordering and inventory</PricingFeature>
                   <PricingFeature>All 11 TENH business modes</PricingFeature>

@@ -1,0 +1,909 @@
+{
+  "definitions": {
+    "businesses": {
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "format": "uuid"
+        },
+        "name": {
+          "format": "text"
+        },
+        "slug": {
+          "format": "text"
+        },
+        "owner_id": {
+          "format": "uuid"
+        },
+        "phone": {
+          "format": "text"
+        },
+        "email": {
+          "format": "text"
+        },
+        "address": {
+          "format": "text"
+        },
+        "logo_url": {
+          "format": "text"
+        },
+        "product_mode": {
+          "default": "standard",
+          "format": "text"
+        },
+        "is_active": {
+          "default": true,
+          "format": "boolean"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "disabled_at": {
+          "format": "timestamp with time zone"
+        },
+        "scheduled_deletion_at": {
+          "format": "timestamp with time zone"
+        },
+        "max_staff": {
+          "default": 3,
+          "format": "integer"
+        },
+        "subscription_started_at": {
+          "format": "timestamp with time zone"
+        },
+        "subscription_expires_at": {
+          "format": "timestamp with time zone"
+        },
+        "subscription_months": {
+          "format": "integer"
+        },
+        "disabled_reason": {
+          "format": "text"
+        },
+        "business_code": {
+          "format": "text"
+        },
+        "last_extension_months": {
+          "format": "integer"
+        },
+        "subscription_logs": {
+          "format": "jsonb"
+        },
+        "archived_at": {
+          "format": "timestamp with time zone"
+        },
+        "released_slug": {
+          "format": "text"
+        },
+        "subscription_status": {
+          "default": "active",
+          "format": "text"
+        },
+        "trial_started_at": {
+          "format": "timestamp with time zone"
+        },
+        "trial_expires_at": {
+          "format": "timestamp with time zone"
+        },
+        "expired_at": {
+          "format": "timestamp with time zone"
+        },
+        "deletion_scheduled_at": {
+          "format": "timestamp with time zone"
+        },
+        "trial_block_reason": {
+          "format": "text"
+        },
+        "trial_signup_fingerprint_hash": {
+          "format": "text"
+        },
+        "subscription_plan_key": {
+          "default": "legacy",
+          "format": "text"
+        },
+        "subscription_user_limit": {
+          "format": "integer"
+        },
+        "subscription_team_enabled": {
+          "default": true,
+          "format": "boolean"
+        },
+        "free_url_changes_per_month": {
+          "default": 0,
+          "format": "integer"
+        },
+        "free_business_mode_changes_per_month": {
+          "default": 0,
+          "format": "integer"
+        },
+        "subscription_monthly_price": {
+          "format": "numeric"
+        },
+        "subscription_discount_percent": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "subscription_cycle_value": {
+          "format": "numeric"
+        }
+      }
+    },
+    "business_locations": {
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "format": "uuid"
+        },
+        "business_id": {
+          "format": "uuid"
+        },
+        "name": {
+          "format": "text"
+        },
+        "code": {
+          "format": "text"
+        },
+        "address": {
+          "format": "text"
+        },
+        "phone": {
+          "format": "text"
+        },
+        "is_default": {
+          "default": false,
+          "format": "boolean"
+        },
+        "is_active": {
+          "default": true,
+          "format": "boolean"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "city": {
+          "format": "text"
+        },
+        "state_region": {
+          "format": "text"
+        },
+        "timezone": {
+          "default": "Asia/Phnom_Penh",
+          "format": "text"
+        },
+        "opening_hours": {
+          "format": "text"
+        },
+        "notes": {
+          "format": "text"
+        },
+        "manager_user_id": {
+          "format": "uuid"
+        }
+      }
+    },
+    "subscription_orders": {
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "format": "uuid"
+        },
+        "business_id": {
+          "format": "uuid"
+        },
+        "requested_by_user_id": {
+          "format": "uuid"
+        },
+        "plan_key": {
+          "format": "text"
+        },
+        "requested_user_limit": {
+          "format": "integer"
+        },
+        "term_months": {
+          "format": "integer"
+        },
+        "monthly_price": {
+          "format": "numeric"
+        },
+        "discount_percent": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "subtotal_amount": {
+          "format": "numeric"
+        },
+        "total_amount": {
+          "format": "numeric"
+        },
+        "currency": {
+          "default": "USD",
+          "format": "text"
+        },
+        "status": {
+          "default": "pending_payment",
+          "format": "text"
+        },
+        "payment_method": {
+          "default": "aba_qr_manual",
+          "format": "text"
+        },
+        "payment_note": {
+          "format": "text"
+        },
+        "proof_bucket": {
+          "format": "text"
+        },
+        "proof_path": {
+          "format": "text"
+        },
+        "proof_file_name": {
+          "format": "text"
+        },
+        "proof_mime_type": {
+          "format": "text"
+        },
+        "proof_size_bytes": {
+          "format": "bigint"
+        },
+        "proof_uploaded_at": {
+          "format": "timestamp with time zone"
+        },
+        "quoted_at": {
+          "format": "timestamp with time zone"
+        },
+        "quoted_by_user_id": {
+          "format": "uuid"
+        },
+        "quoted_by_email": {
+          "format": "text"
+        },
+        "reviewed_at": {
+          "format": "timestamp with time zone"
+        },
+        "reviewed_by_user_id": {
+          "format": "uuid"
+        },
+        "reviewed_by_email": {
+          "format": "text"
+        },
+        "review_note": {
+          "format": "text"
+        },
+        "approved_at": {
+          "format": "timestamp with time zone"
+        },
+        "rejected_at": {
+          "format": "timestamp with time zone"
+        },
+        "cancelled_at": {
+          "format": "timestamp with time zone"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "order_kind": {
+          "default": "activation",
+          "format": "text"
+        },
+        "current_plan_key": {
+          "format": "text"
+        },
+        "current_user_limit": {
+          "format": "integer"
+        },
+        "current_subscription_started_at": {
+          "format": "timestamp with time zone"
+        },
+        "current_subscription_expires_at": {
+          "format": "timestamp with time zone"
+        },
+        "current_cycle_value": {
+          "format": "numeric"
+        },
+        "remaining_credit_amount": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "term_price_amount": {
+          "format": "numeric"
+        },
+        "pricing_locked_until": {
+          "format": "timestamp with time zone"
+        }
+      }
+    },
+    "business_members": {
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "format": "uuid"
+        },
+        "business_id": {
+          "format": "uuid"
+        },
+        "user_id": {
+          "format": "uuid"
+        },
+        "role": {
+          "default": "staff",
+          "format": "text"
+        },
+        "is_active": {
+          "default": true,
+          "format": "boolean"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "disabled_at": {
+          "format": "timestamp with time zone"
+        },
+        "disabled_reason": {
+          "format": "text"
+        },
+        "default_location_id": {
+          "format": "uuid"
+        }
+      }
+    },
+    "orders": {
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "format": "uuid"
+        },
+        "owner_id": {
+          "format": "uuid"
+        },
+        "order_number": {
+          "format": "text"
+        },
+        "subtotal": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "discount": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "total": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "payment_method": {
+          "default": "cash",
+          "format": "text"
+        },
+        "amount_paid": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "change_amount": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "status": {
+          "default": "new",
+          "format": "text"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "customer_id": {
+          "format": "uuid"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "remaining_balance": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "delivery_fee": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "business_id": {
+          "format": "uuid"
+        },
+        "order_source": {
+          "default": "pos",
+          "format": "text"
+        },
+        "fulfillment_type": {
+          "format": "text"
+        },
+        "online_status": {
+          "format": "text"
+        },
+        "guest_name": {
+          "format": "text"
+        },
+        "guest_phone": {
+          "format": "text"
+        },
+        "guest_address": {
+          "format": "text"
+        },
+        "customer_note": {
+          "format": "text"
+        },
+        "table_id": {
+          "format": "uuid"
+        },
+        "table_name": {
+          "format": "text"
+        },
+        "public_order_token": {
+          "format": "uuid"
+        },
+        "payment_status": {
+          "format": "text"
+        },
+        "payment_reference": {
+          "format": "text"
+        },
+        "delivery_zone_id": {
+          "format": "uuid"
+        },
+        "delivery_zone_name": {
+          "format": "text"
+        },
+        "requested_for": {
+          "format": "timestamp with time zone"
+        },
+        "coupon_id": {
+          "format": "uuid"
+        },
+        "coupon_code": {
+          "format": "text"
+        },
+        "coupon_discount": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "loyalty_points_earned": {
+          "default": 0,
+          "format": "integer"
+        },
+        "location_id": {
+          "format": "uuid"
+        },
+        "register_shift_id": {
+          "format": "uuid"
+        },
+        "credit_amount": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "archived_at": {
+          "format": "timestamp with time zone"
+        },
+        "archived_by": {
+          "format": "uuid"
+        },
+        "pos_request_id": {
+          "format": "uuid"
+        },
+        "pos_request_hash": {
+          "format": "text"
+        },
+        "pos_checkout": {
+          "format": "jsonb"
+        }
+      }
+    },
+    "products": {
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "format": "uuid"
+        },
+        "owner_id": {
+          "format": "uuid"
+        },
+        "category_id": {
+          "format": "uuid"
+        },
+        "name": {
+          "format": "text"
+        },
+        "sku": {
+          "format": "text"
+        },
+        "description": {
+          "format": "text"
+        },
+        "image_url": {
+          "format": "text"
+        },
+        "cost_price": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "selling_price": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "stock_quantity": {
+          "default": 0,
+          "format": "integer"
+        },
+        "low_stock_quantity": {
+          "default": 5,
+          "format": "integer"
+        },
+        "is_active": {
+          "default": true,
+          "format": "boolean"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "size": {
+          "format": "text"
+        },
+        "color": {
+          "format": "text"
+        },
+        "business_id": {
+          "format": "uuid"
+        },
+        "product_type": {
+          "default": "standard",
+          "format": "text"
+        },
+        "is_online": {
+          "default": true,
+          "format": "boolean"
+        },
+        "online_sort_order": {
+          "default": 0,
+          "format": "integer"
+        },
+        "variant_group_id": {
+          "format": "uuid"
+        },
+        "barcode": {
+          "format": "text"
+        },
+        "style_name": {
+          "format": "text"
+        },
+        "brand_name": {
+          "format": "text"
+        },
+        "low_stock_threshold": {
+          "default": 5,
+          "format": "integer"
+        },
+        "variant_image_url": {
+          "format": "text"
+        }
+      }
+    },
+    "product_location_stock": {
+      "properties": {
+        "business_id": {
+          "format": "uuid"
+        },
+        "location_id": {
+          "format": "uuid"
+        },
+        "product_id": {
+          "format": "uuid"
+        },
+        "quantity": {
+          "default": 0,
+          "format": "integer"
+        },
+        "low_stock_threshold": {
+          "default": 0,
+          "format": "integer"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        }
+      }
+    },
+    "cash_register_shifts": {
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "format": "uuid"
+        },
+        "business_id": {
+          "format": "uuid"
+        },
+        "location_id": {
+          "format": "uuid"
+        },
+        "opened_by": {
+          "format": "uuid"
+        },
+        "closed_by": {
+          "format": "uuid"
+        },
+        "status": {
+          "default": "open",
+          "format": "text"
+        },
+        "opening_cash": {
+          "default": 0,
+          "format": "numeric"
+        },
+        "closing_cash": {
+          "format": "numeric"
+        },
+        "expected_cash": {
+          "format": "numeric"
+        },
+        "variance": {
+          "format": "numeric"
+        },
+        "opening_note": {
+          "format": "text"
+        },
+        "closing_note": {
+          "format": "text"
+        },
+        "opened_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "closed_at": {
+          "format": "timestamp with time zone"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        }
+      }
+    },
+    "stock_transfers": {
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "format": "uuid"
+        },
+        "business_id": {
+          "format": "uuid"
+        },
+        "transfer_number": {
+          "format": "text"
+        },
+        "source_location_id": {
+          "format": "uuid"
+        },
+        "destination_location_id": {
+          "format": "uuid"
+        },
+        "status": {
+          "default": "draft",
+          "format": "text"
+        },
+        "note": {
+          "format": "text"
+        },
+        "created_by": {
+          "format": "uuid"
+        },
+        "sent_by": {
+          "format": "uuid"
+        },
+        "received_by": {
+          "format": "uuid"
+        },
+        "sent_at": {
+          "format": "timestamp with time zone"
+        },
+        "received_at": {
+          "format": "timestamp with time zone"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        }
+      }
+    },
+    "profiles": {
+      "properties": {
+        "id": {
+          "format": "uuid"
+        },
+        "full_name": {
+          "format": "text"
+        },
+        "role": {
+          "default": "owner",
+          "format": "text"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "is_active": {
+          "default": true,
+          "format": "boolean"
+        },
+        "email": {
+          "format": "text"
+        },
+        "is_super_admin": {
+          "default": false,
+          "format": "boolean"
+        }
+      }
+    },
+    "subscription_history": {
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "format": "uuid"
+        },
+        "business_id": {
+          "format": "uuid"
+        },
+        "action": {
+          "format": "text"
+        },
+        "months": {
+          "format": "integer"
+        },
+        "previous_expiry": {
+          "format": "timestamp with time zone"
+        },
+        "new_expiry": {
+          "format": "timestamp with time zone"
+        },
+        "reason": {
+          "format": "text"
+        },
+        "created_by": {
+          "format": "uuid"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "corrected_from_id": {
+          "format": "uuid"
+        },
+        "months_added": {
+          "format": "integer"
+        }
+      }
+    },
+    "stock_adjustments": {
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "format": "uuid"
+        },
+        "business_id": {
+          "format": "uuid"
+        },
+        "product_id": {
+          "format": "uuid"
+        },
+        "adjustment_type": {
+          "format": "text"
+        },
+        "quantity_delta": {
+          "format": "integer"
+        },
+        "stock_before": {
+          "format": "integer"
+        },
+        "stock_after": {
+          "format": "integer"
+        },
+        "reason": {
+          "format": "text"
+        },
+        "reference": {
+          "format": "text"
+        },
+        "created_by": {
+          "format": "uuid"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        }
+      }
+    },
+    "expenses": {
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "format": "uuid"
+        },
+        "owner_id": {
+          "format": "uuid"
+        },
+        "category": {
+          "format": "text"
+        },
+        "description": {
+          "format": "text"
+        },
+        "amount": {
+          "format": "numeric"
+        },
+        "expense_date": {
+          "default": "CURRENT_DATE",
+          "format": "date"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone"
+        },
+        "business_id": {
+          "format": "uuid"
+        },
+        "location_id": {
+          "format": "uuid"
+        },
+        "payee": {
+          "format": "text"
+        },
+        "payment_method": {
+          "format": "text"
+        },
+        "reference": {
+          "format": "text"
+        },
+        "metadata": {
+          "format": "jsonb"
+        },
+        "recurrence_rule": {
+          "format": "text"
+        },
+        "next_due_date": {
+          "format": "date"
+        }
+      }
+    }
+  }
+}

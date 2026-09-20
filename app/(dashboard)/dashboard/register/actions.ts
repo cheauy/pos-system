@@ -1,4 +1,5 @@
 "use server";
+import { assertBranchOperation } from "@/lib/subscriptions/branch-limits";
 
 import { revalidatePath } from "next/cache";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
@@ -22,6 +23,7 @@ export async function openRegisterShift(formData: FormData) {
 
   const { data: location } = await supabase.from("business_locations").select("id").eq("id", locationId).eq("business_id", business.id).eq("is_active", true).maybeSingle();
   if (!location) throw new Error("Branch not found.");
+  await assertBranchOperation(business.id, locationId);
 
   const { data, error } = await supabase.from("cash_register_shifts").insert({
     business_id: business.id,

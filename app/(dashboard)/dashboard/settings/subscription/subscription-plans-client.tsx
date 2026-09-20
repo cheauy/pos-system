@@ -21,12 +21,14 @@ import {
 
 import {
   calculateSubscriptionPrice,
+  calculateCustomSubscriptionPrice,
   isSubscriptionPlanKey,
   subscriptionPlans,
   subscriptionTerms,
   type SubscriptionPlanKey,
   type SubscriptionTermMonths,
 } from "@/lib/subscriptions/plans";
+import CustomPlanDialog from "./custom-plan-dialog";
 import { continueFreeTrial, createSubscriptionOrder } from "./actions";
 
 type Props = {
@@ -34,6 +36,8 @@ type Props = {
   currentPlanKey: string | null;
   currentUserLimit: number | null;
   activeSeatCount: number;
+  currentBranchLimit?: number;
+  activeBranchCount?: number;
   canPurchase: boolean;
   flowMode: "choose" | "upgrade" | "reactivate";
   estimatedRemainingCredit: number;
@@ -61,7 +65,7 @@ const visualMeta: Record<
     features: [
       { icon: UserRound, label: "1 user (owner)" },
       { icon: UsersRound, label: "No team access" },
-      { icon: Store, label: "Single business workspace" },
+      { icon: Store, label: "1 branch included" },
       { icon: RefreshCw, label: "URL changes use normal $5 pricing" },
       { icon: RefreshCw, label: "Business Mode switches use normal $5 pricing" },
     ],
@@ -73,6 +77,7 @@ const visualMeta: Record<
     features: [
       { icon: UserRound, label: "Up to 5 users" },
       { icon: UsersRound, label: "Team access unlocked" },
+      { icon: Store, label: "1 branch included" },
       { icon: ShieldCheck, label: "Role-based staff access" },
       { icon: RefreshCw, label: "URL changes use normal $5 pricing" },
       { icon: RefreshCw, label: "Business Mode switches use normal $5 pricing" },
@@ -85,6 +90,7 @@ const visualMeta: Record<
     features: [
       { icon: UserRound, label: "Up to 10 users" },
       { icon: UsersRound, label: "Team access unlocked" },
+      { icon: Store, label: "1 branch included" },
       { icon: ShieldCheck, label: "Role-based staff access" },
       { icon: RefreshCw, label: "2 free URL changes / month" },
       { icon: RefreshCw, label: "2 free Business Mode switches / month" },
@@ -92,11 +98,11 @@ const visualMeta: Record<
   },
   custom: {
     icon: Building2,
-    badge: "11+ users",
+    badge: "Flexible",
     badgeClass: "bg-violet-100 text-violet-700",
     features: [
-      { icon: UserRound, label: "11+ users" },
-      { icon: UsersRound, label: "Advanced team access" },
+      { icon: UserRound, label: "$5 per user / month" },
+      { icon: Store, label: "$20 per branch / month" },
       { icon: ShieldCheck, label: "Role-based staff access" },
       { icon: RefreshCw, label: "2 free URL changes / month" },
       { icon: RefreshCw, label: "2 free Business Mode switches / month" },
@@ -115,7 +121,7 @@ export default function SubscriptionPlansClient({
   businessName,
   currentPlanKey,
   currentUserLimit,
-  activeSeatCount,
+  activeSeatCount, currentBranchLimit = 1, activeBranchCount = 1,
   canPurchase,
   flowMode,
   estimatedRemainingCredit,
@@ -128,14 +134,12 @@ export default function SubscriptionPlansClient({
 
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlanKey>(initialPlan);
   const [termMonths, setTermMonths] = useState<SubscriptionTermMonths>(1);
-  const minimumCustomUsers =
-    flowMode === "upgrade" && currentPlanKey === "custom"
-      ? Math.max(11, currentUserLimit ?? 11)
-      : 11;
-
-  const [customUsers, setCustomUsers] = useState(
-    Math.max(minimumCustomUsers, currentUserLimit ?? 11),
-  );
+  const [customDialogOpen, setCustomDialogOpen] = useState(false);
+  const minimumCustomUsers = Math.max(1, flowMode === "upgrade" ? currentUserLimit ?? 1 : 1, activeSeatCount);
+  const minimumCustomBranches = Math.max(1, activeBranchCount, flowMode === "upgrade" ? currentBranchLimit : 1);
+  const [customUsers, setCustomUsers] = useState(minimumCustomUsers);
+  const [customBranches, setCustomBranches] = useState(minimumCustomBranches);
+  const effectiveUsers = Math.max(customUsers, minimumCustomUsers);
 
   const selected = subscriptionPlans[selectedPlan];
   const selectedTerm = subscriptionTerms.find((term) => term.months === termMonths);
@@ -146,13 +150,13 @@ export default function SubscriptionPlansClient({
     subscriptionStatus === "trial_blocked";
 
   const price = useMemo(() => {
-    if (selectedPlan === "custom") return null;
+    if (selectedPlan === "custom") return calculateCustomSubscriptionPrice(effectiveUsers, customBranches, termMonths);
     return calculateSubscriptionPrice(selectedPlan, termMonths);
-  }, [selectedPlan, termMonths]);
+  }, [selectedPlan, termMonths, effectiveUsers, customBranches]);
 
   const currentPaidPlan =
     currentPlanKey && isSubscriptionPlanKey(currentPlanKey) ? currentPlanKey : null;
-  const selectedSeatLimit = selectedPlan === "custom" ? customUsers : selected.userLimit;
+  const selectedSeatLimit = selectedPlan === "custom" ? effectiveUsers : selected.userLimit;
   const isSeatDowngrade =
     selectedSeatLimit !== null && activeSeatCount > selectedSeatLimit;
   const isPlanDowngrade =
@@ -163,7 +167,7 @@ export default function SubscriptionPlansClient({
     flowMode === "upgrade" &&
     currentPaidPlan === "custom" &&
     selectedPlan === "custom" &&
-    customUsers < Math.max(11, currentUserLimit ?? 11);
+    effectiveUsers < (currentUserLimit ?? 1);
 
   const creditApplied =
     flowMode === "upgrade" && price
@@ -193,10 +197,11 @@ export default function SubscriptionPlansClient({
   return (
     <main className="mx-auto w-full max-w-[1600px] pb-6">
       <form action={createSubscriptionOrder}>
+        <input type="hidden" name="branchLimit" value={selectedPlan === "custom" ? customBranches : 1} />
         <input type="hidden" name="plan" value={selectedPlan} />
         <input type="hidden" name="termMonths" value={termMonths} />
         {selectedPlan === "custom" ? (
-          <input type="hidden" name="userLimit" value={customUsers} />
+          <input type="hidden" name="userLimit" value={effectiveUsers} />
         ) : null}
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_530px] lg:items-end">
@@ -264,7 +269,7 @@ export default function SubscriptionPlansClient({
           <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-blue-900 dark:bg-blue-950/20">
             <div>
               <p className="text-sm font-extrabold text-slate-950 dark:text-white">
-                Choose a paid plan now, or continue with the 7-day free trial.
+                Standard plans and the 7-day free trial include 1 branch.
               </p>
               <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
                 Your business is already created. Paid checkout does not change your business ID, products, store URL, or settings.
@@ -313,15 +318,39 @@ export default function SubscriptionPlansClient({
                 currentPaidPlan !== null &&
                 planRank[planKey] < planRank[currentPaidPlan]
               }
-              customUsers={customUsers}
-              minimumCustomUsers={minimumCustomUsers}
               termMonths={termMonths}
-              onCustomUsersChange={setCustomUsers}
-              onSelect={() => setSelectedPlan(planKey)}
+              onSelect={() => planKey === "custom" ? setCustomDialogOpen(true) : setSelectedPlan(planKey)}
             />
           ))}
         </div>
 
+        {selectedPlan === "custom" && (
+          <section className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-violet-200 bg-violet-50 p-5 text-slate-900 dark:border-violet-800 dark:bg-violet-950/20 dark:text-slate-100">
+            <div>
+              <h2 className="font-bold">Your Custom Plan</h2>
+              <p className="mt-1 text-sm">{effectiveUsers} {effectiveUsers === 1 ? "user" : "users"} × $5 + {customBranches} {customBranches === 1 ? "branch" : "branches"} × $20 = <strong>${price.monthlyPrice.toFixed(2)}/month</strong></p>
+            </div>
+            <button type="button" onClick={() => setCustomDialogOpen(true)} className="rounded-xl border border-violet-300 px-4 py-2 font-semibold text-violet-700 dark:text-violet-300">Edit users and branches</button>
+          </section>
+        )}
+        {customDialogOpen && (
+          <CustomPlanDialog
+            users={effectiveUsers}
+            branches={customBranches}
+            months={termMonths}
+            minimumUsers={minimumCustomUsers}
+            minimumBranches={minimumCustomBranches}
+            onClose={() => setCustomDialogOpen(false)}
+            onApply={(users, branches, months) => {
+              setCustomUsers(users);
+              setCustomBranches(branches);
+              setTermMonths(months);
+              setSelectedPlan("custom");
+              setCustomDialogOpen(false);
+            }}
+          />
+        )}
+        {selectedPlan !== "custom" && activeBranchCount > 1 && <p role="alert" className="mt-4 text-red-600">You have {activeBranchCount} active branches. Choose Custom Plan or deactivate unused branches before checkout.</p>}
         <section className="mt-5 rounded-2xl border border-blue-200 bg-blue-50/80 px-5 py-4 dark:border-blue-900 dark:bg-blue-950/20">
           <div className="flex items-start gap-3">
             <Info size={22} className="mt-0.5 shrink-0 text-blue-600" />
@@ -357,15 +386,9 @@ export default function SubscriptionPlansClient({
                 <div className="mt-2 flex items-start gap-2 text-sm font-medium text-orange-600 dark:text-orange-300">
                   <AlertTriangle size={17} className="mt-0.5 shrink-0" />
                   <span>
-                    This plan has fewer seats than your current team ({activeSeatCount} active). Extra staff accounts may be disabled after approval, but the owner account will remain active.
+                    This plan has fewer seats than your current team ({activeSeatCount} active). Disable unused staff accounts or choose enough seats before checkout.
                   </span>
                 </div>
-              ) : selectedPlan === "custom" ? (
-                <p className="mt-2 text-sm text-slate-500">
-                  Custom Team uses a manual quote. {flowMode === "upgrade" && estimatedRemainingCredit > 0
-                    ? `Your estimated remaining-value credit of $${estimatedRemainingCredit.toFixed(2)} will be applied to the approved quote.`
-                    : "Request the quote first; payment becomes available after the quote is approved."}
-                </p>
               ) : selectionCoveredByCredit ? (
                 <div className="mt-2 flex items-start gap-2 text-sm font-medium text-amber-700 dark:text-amber-300">
                   <AlertTriangle size={17} className="mt-0.5 shrink-0" />
@@ -426,12 +449,12 @@ export default function SubscriptionPlansClient({
 
             <PurchaseButton
               disabled={
-                !canPurchase ||
+                !canPurchase || isSeatDowngrade || (selectedPlan !== "custom" && activeBranchCount > 1) ||
                 isPlanDowngrade ||
                 isCustomSeatDowngrade ||
                 selectionCoveredByCredit
               }
-              custom={selectedPlan === "custom"}
+              custom={false}
               flowMode={flowMode}
             />
           </div>
@@ -446,20 +469,14 @@ function PlanCard({
   selected,
   current,
   disabled,
-  customUsers,
-  minimumCustomUsers,
   termMonths,
-  onCustomUsersChange,
   onSelect,
 }: {
   planKey: SubscriptionPlanKey;
   selected: boolean;
   current: boolean;
   disabled: boolean;
-  customUsers: number;
-  minimumCustomUsers: number;
   termMonths: SubscriptionTermMonths;
-  onCustomUsersChange: (value: number) => void;
   onSelect: () => void;
 }) {
   const plan = subscriptionPlans[planKey];
@@ -519,7 +536,7 @@ function PlanCard({
 
       <div className="mt-5">
         {plan.monthlyPrice === null || !termPrice || effectiveMonthly === null ? (
-          <p className="text-3xl font-black text-slate-950 dark:text-white">Quote</p>
+          <p className="text-xl font-black text-slate-950 dark:text-white">Choose users & branches</p>
         ) : (
           <>
             <div className="flex items-end gap-2">
@@ -556,37 +573,6 @@ function PlanCard({
         ))}
       </div>
 
-      {planKey === "custom" && selected ? (
-        <div
-          className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-900 dark:bg-violet-950/20"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <label htmlFor="customUserLimit" className="text-xs font-extrabold uppercase tracking-wide text-violet-700 dark:text-violet-300">
-            Users needed
-          </label>
-          <div className="mt-2 flex items-center gap-3">
-            <input
-              id="customUserLimit"
-              type="number"
-              min={minimumCustomUsers}
-              max={500}
-              value={customUsers}
-              onChange={(event) =>
-                onCustomUsersChange(
-                  Math.max(
-                    minimumCustomUsers,
-                    Math.min(500, Number(event.target.value) || minimumCustomUsers),
-                  ),
-                )
-              }
-              className="w-28 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-extrabold text-slate-900 outline-none focus:border-violet-500 dark:border-violet-800 dark:bg-slate-900 dark:text-white"
-            />
-            <span className="text-xs font-semibold text-violet-700 dark:text-violet-300">
-              {minimumCustomUsers}–500 users
-            </span>
-          </div>
-        </div>
-      ) : null}
 
       <button
         type="button"
@@ -602,7 +588,7 @@ function PlanCard({
         }`}
       >
         {selected ? <CircleDot size={21} /> : <Circle size={21} />}
-        {disabled ? "Available after expiry" : planKey === "custom" ? "Contact sales" : "Select plan"}
+        {disabled ? "Available after expiry" : planKey === "custom" ? "Customize plan" : "Select plan"}
       </button>
     </article>
   );

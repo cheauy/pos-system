@@ -62,6 +62,7 @@ export default async function PurchasesPage() {
 
   return (
     <main>
+      <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm">Purchases receive stock into the shared business inventory. For multiple branches, allocate available stock to a branch in <Link className="font-semibold text-blue-700" href="/dashboard/pos">POS inventory allocation</Link> before selling it there.</div>
       <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">

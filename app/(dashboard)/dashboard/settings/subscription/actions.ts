@@ -1,5 +1,6 @@
 "use server";
 
+import { getBranchEntitlement } from "@/lib/subscriptions/branch-limits";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -9,6 +10,8 @@ import { getAppUrl } from "@/lib/tenancy/domain";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
+  calculateCustomSubscriptionPrice,
+  subscriptionPlans,
   isSubscriptionPlanKey,
   isSubscriptionTermMonths,
 } from "@/lib/subscriptions/plans";
@@ -65,6 +68,7 @@ export async function createSubscriptionOrder(formData: FormData) {
   const plan = typeof planValue === "string" ? planValue : "";
   const termMonths = Number(termValue);
   const requestedUserLimit = Number(userLimitValue);
+  const requestedBranchLimit = Number(formData.get("branchLimit") ?? 1);
 
   if (!isSubscriptionPlanKey(plan)) {
     throw new Error("Choose a valid subscription plan.");
@@ -75,9 +79,7 @@ export async function createSubscriptionOrder(formData: FormData) {
   }
 
   if (plan === "custom") {
-    if (!Number.isInteger(requestedUserLimit) || requestedUserLimit < 11 || requestedUserLimit > 500) {
-      throw new Error("Custom Team requires between 11 and 500 users.");
-    }
+    calculateCustomSubscriptionPrice(requestedUserLimit, requestedBranchLimit, termMonths);
   }
 
   const supabase = await createClient();
@@ -89,15 +91,26 @@ export async function createSubscriptionOrder(formData: FormData) {
     throw new Error("Your session expired. Please sign in again.");
   }
 
-  const { data, error } = await supabaseAdmin.rpc("create_subscription_order", {
+  let { data, error } = await supabaseAdmin.rpc("create_branch_subscription_order", {
     p_business_id: business.id,
     p_requesting_user_id: user.id,
     p_plan_key: plan,
     p_term_months: termMonths,
-    p_requested_user_limit: plan === "custom" ? requestedUserLimit : null,
+    p_requested_user_limit: plan === "custom" ? requestedUserLimit : subscriptionPlans[plan].userLimit,
+    p_base_plan_key: plan === "custom" ? null : plan,
+    p_requested_branch_limit: plan === "custom" ? requestedBranchLimit : 1,
   });
 
+  if (error?.code === "PGRST202" && plan !== "custom") {
+    const branches = await getBranchEntitlement(business.id);
+    if (branches.used > 1) throw new Error("This plan includes one branch. Deactivate unused branches before continuing.");
+    const { count: activeUsers, error: memberError } = await supabaseAdmin.from("business_members").select("id", { count: "exact", head: true }).eq("business_id", business.id).eq("is_active", true);
+    if (memberError) throw new Error("Unable to verify current user usage.");
+    if ((activeUsers ?? 0) > (subscriptionPlans[plan].userLimit ?? 1)) throw new Error("This plan does not cover your active users. Deactivate unused users or select a larger plan.");
+    ({ data, error } = await supabaseAdmin.rpc("create_subscription_order", { p_business_id: business.id, p_requesting_user_id: user.id, p_plan_key: plan, p_term_months: termMonths, p_requested_user_limit: subscriptionPlans[plan].userLimit }));
+  }
   if (error) {
+    if (error.code === "PGRST202") throw new Error("Branch subscription checkout is not deployed yet. Apply 20260920_subscription_branch_limits.sql, then try again.");
     throw new Error(error.message);
   }
 

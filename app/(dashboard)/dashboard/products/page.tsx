@@ -55,7 +55,8 @@ function groupKey(product: Product, variantMode: boolean) {
   return product.id;
 }
 
-export default async function ProductsPage() {
+export default async function ProductsPage({ searchParams }: { searchParams: Promise<{ branch?: string }> }) {
+  const { branch: selectedBranch } = await searchParams;
   const supabase = await createClient();
   const business = await requirePermission("products.view");
 
@@ -99,7 +100,19 @@ export default async function ProductsPage() {
     .order("created_at", { ascending: false });
 
   const categories = (categoryData ?? []) as Category[];
-  const products = (productData ?? []) as Product[];
+  const { data: branches, error: branchError } = await supabase.from("business_locations").select("id,name").eq("business_id", business.id).eq("is_active", true).order("is_default", { ascending: false }).order("name");
+  if (branchError) throw new Error("Unable to load product branches.");
+  const branch = branches?.find(row => row.id === selectedBranch);
+  if (selectedBranch && !branch) throw new Error("Branch not found in this business.");
+  let products = (productData ?? []) as Product[];
+  if (branch) {
+    const { data: stock, error: stockError } = await supabase.from("product_location_stock").select("product_id,quantity,low_stock_threshold").eq("business_id", business.id).eq("location_id", branch.id);
+    if (stockError) throw new Error("Unable to load branch inventory.");
+    const { count: locationCount, error: countError } = await supabase.from("business_locations").select("id", { count: "exact", head: true }).eq("business_id", business.id);
+    if (countError) throw new Error("Unable to verify branch inventory.");
+    const byProduct = new Map((stock ?? []).map(row => [row.product_id, row]));
+    products = products.map(product => ({ ...product, stock_quantity: locationCount === 1 ? product.stock_quantity : Math.min(product.stock_quantity, byProduct.get(product.id)?.quantity ?? 0), low_stock_quantity: byProduct.get(product.id)?.low_stock_threshold ?? product.low_stock_quantity }));
+  }
   const businessType = currentMode.value;
   const productMode = currentMode.productMode;
   const variantMode = productMode === "variant";
@@ -166,6 +179,7 @@ export default async function ProductsPage() {
 
   return (
     <main className="min-w-0 space-y-5">
+      <section className="rounded-xl border border-slate-200 bg-white p-4"><form className="flex flex-wrap items-end gap-3"><label className="text-sm font-semibold">Inventory branch<select name="branch" defaultValue={branch?.id ?? ""} className="ml-3 rounded-lg border p-2"><option value="">All branches (combined stock)</option>{branches?.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><button className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white" type="submit">View branch</button><a className="text-sm text-blue-600" href="/dashboard/inventory">Manage branch stock</a></form><p className="mt-2 text-xs text-slate-500">Product names, variants and prices are shared across the business. Stock shown here belongs to {branch?.name ?? "all branches combined"}. Product edits apply across all branches; use Inventory to adjust branch quantities.</p></section>
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Products</h1>

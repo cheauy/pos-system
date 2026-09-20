@@ -14,3 +14,7 @@ export function formatOrderDate(value: string) {
   if (!Number.isFinite(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Phnom_Penh", year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
 }
+
+export function validateCheckoutEmail(value: unknown) {
+  return typeof value === "string" && value.trim().length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) ? null : "Enter a valid email address.";
+}

@@ -29,6 +29,7 @@ type CategoryRow = {
 };
 
 type AdjustmentRow = {
+  location_id?: string | null;
   id: string;
   product_id: string;
   adjustment_type: string;
@@ -41,11 +42,13 @@ type AdjustmentRow = {
 };
 
 type LocationRow = {
+  id: string;
   name: string;
   is_default: boolean;
 };
 
-export default async function StockAdjustmentPage() {
+export default async function StockAdjustmentPage({ searchParams }: { searchParams: Promise<{ branch?: string }> }) {
+  const { branch: selectedBranch } = await searchParams;
   const business = await requirePermission("products.stock_adjust");
   const supabase = await createClient();
 
@@ -61,14 +64,14 @@ export default async function StockAdjustmentPage() {
     supabase
       .from("stock_adjustments")
       .select(
-        "id,product_id,adjustment_type,quantity_delta,stock_before,stock_after,reason,reference,created_at",
+        "*",
       )
       .eq("business_id", business.id)
       .order("created_at", { ascending: false })
       .limit(200),
     supabase
       .from("business_locations")
-      .select("name,is_default")
+      .select("id,name,is_default")
       .eq("business_id", business.id)
       .eq("is_active", true)
       .order("is_default", { ascending: false })
@@ -92,12 +95,19 @@ export default async function StockAdjustmentPage() {
     throw new Error(`Unable to load categories: ${categoriesResult.error.message}`);
   }
 
-  const products = (productsResult.data ?? []) as ProductRow[];
+  let products = (productsResult.data ?? []) as ProductRow[];
   const adjustments = (adjustmentsResult.data ?? []) as AdjustmentRow[];
   const locations = (locationsResult.data ?? []) as LocationRow[];
   const categories = (categoriesResult.data ?? []) as CategoryRow[];
   const categoryMap = new Map(categories.map((category) => [category.id, category.name]));
 
+  const branch = locations.find(item => item.id === selectedBranch) ?? (!selectedBranch ? locations[0] : undefined);
+  if (!branch) throw new Error("Choose an active branch in this business.");
+  const { data: branchStock, error: stockError } = await supabase.from("product_location_stock").select("product_id,quantity").eq("business_id", business.id).eq("location_id", branch.id);
+  const { count: locationCount } = await supabase.from("business_locations").select("id", { count: "exact", head: true }).eq("business_id", business.id);
+  if (stockError) throw new Error("Unable to load branch stock.");
+  const stockMap = new Map((branchStock ?? []).map(item => [item.product_id, item.quantity]));
+  if (locationCount !== 1) products = products.map(product => ({ ...product, stock_quantity: stockMap.get(product.id) ?? 0 }));
   const productMap = new Map(products.map((product) => [product.id, product]));
 
   const productViews: AdjustmentProduct[] = products.map((product) => ({
@@ -119,7 +129,7 @@ export default async function StockAdjustmentPage() {
       : "Uncategorized",
   }));
 
-  const recentAdjustments: RecentAdjustment[] = adjustments.map((adjustment) => {
+  const recentAdjustments: RecentAdjustment[] = adjustments.filter(adjustment => adjustment.location_id === branch.id || (!adjustment.location_id && branch.is_default)).map((adjustment) => {
     const product = productMap.get(adjustment.product_id);
     return {
       id: adjustment.id,
@@ -133,17 +143,19 @@ export default async function StockAdjustmentPage() {
       quantityDelta: Number(adjustment.quantity_delta ?? 0),
       stockBefore: Number(adjustment.stock_before ?? 0),
       stockAfter: Number(adjustment.stock_after ?? 0),
-      reason: adjustment.reason,
+      reason: adjustment.location_id ? adjustment.reason : `[Legacy business-wide] ${adjustment.reason}`,
       reference: adjustment.reference,
       createdAt: adjustment.created_at,
     };
   });
 
   return (
-    <StockAdjustmentClient
+    <><form className="mb-4 flex items-center gap-3 rounded-xl border bg-white p-4"><label>Branch<select name="branch" defaultValue={branch.id} className="ml-3 rounded-lg border p-2">{locations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><button className="rounded-lg bg-blue-600 px-4 py-2 text-white">View branch</button></form><StockAdjustmentClient
       products={productViews}
       recentAdjustments={recentAdjustments}
-      branchName={locations[0]?.name ?? "Business-wide stock"}
-    />
+      branchName={branch.name}
+      branchId={branch.id}
+      key={branch.id}
+    /></>
   );
 }

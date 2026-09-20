@@ -13,7 +13,6 @@ import {
   ChevronRight,
   CircleDollarSign,
   Clock3,
-  Download,
   ExternalLink,
   Filter,
   Grid2X2,
@@ -28,8 +27,6 @@ import {
   Store,
   Truck,
   Utensils,
-  Volume2,
-  VolumeX,
   X,
 } from "lucide-react";
 import {
@@ -373,15 +370,6 @@ export default function OnlineOrdersClient({
     toast.success("Desktop alerts turned off");
   }
 
-  function toggleSound() {
-    const next = !soundEnabled;
-    setSoundEnabled(next);
-    window.localStorage.setItem("tenh-order-sound", next ? "1" : "0");
-    if (next) {
-      window.setTimeout(() => beep(), 0);
-    }
-  }
-
   function toggleAutoRefresh() {
     const next = !autoRefresh;
     setAutoRefresh(next);
@@ -427,49 +415,6 @@ export default function OnlineOrdersClient({
     });
   }
 
-  function exportOrders() {
-    const rows = filteredOrders.map((order) => ({
-      order: order.order_number,
-      customer: order.guest_name ?? "Guest",
-      phone: order.guest_phone ?? "",
-      source: order.order_source === "qr" ? "Table QR" : "Public Store",
-      fulfillment: formatFulfillment(order),
-      status: displayStatus(order.online_status),
-      payment: formatPaymentStatus(order.payment_status),
-      total: Number(order.total).toFixed(2),
-      created_at: order.created_at,
-    }));
-
-    const headers = Object.keys(
-      rows[0] ?? {
-        order: "",
-        customer: "",
-        phone: "",
-        source: "",
-        fulfillment: "",
-        status: "",
-        payment: "",
-        total: "",
-        created_at: "",
-      },
-    );
-    const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-    const csv = [
-      headers.join(","),
-      ...rows.map((row) =>
-        headers.map((header) => escape(row[header as keyof typeof row])).join(","),
-      ),
-    ].join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `tenh-online-orders-${new Date().toISOString().slice(0, 10)}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }
-
   function showDelayedOrder() {
     const order = delayedOrders[0];
     if (!order) return;
@@ -505,13 +450,6 @@ export default function OnlineOrdersClient({
           </button>
 
           <ToggleButton
-            active={soundEnabled}
-            onClick={toggleSound}
-            icon={soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
-            label="Sound"
-          />
-
-          <ToggleButton
             active={autoRefresh}
             onClick={toggleAutoRefresh}
             label="Auto Refresh"
@@ -526,13 +464,7 @@ export default function OnlineOrdersClient({
             <RefreshCw size={16} /> Refresh
           </button>
 
-          <button
-            type="button"
-            onClick={exportOrders}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-          >
-            <Download size={16} /> Export <ChevronDown size={14} />
-          </button>
+
         </div>
       </header>
 

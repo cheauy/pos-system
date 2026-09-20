@@ -1,18 +1,20 @@
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
-import { getTenantSlugFromHost } from "@/lib/tenancy/domain";
+import { getTenantSlugFromHost, getSubdomainUrl } from "@/lib/tenancy/domain";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import OrderStatusClient from "./order-status-client";
 
 type PageProps = {
+  searchParams: Promise<{ email?: string }>;
   params: Promise<{
     token: string;
   }>;
 };
 
-export default async function PublicOrderStatusPage({ params }: PageProps) {
+export default async function PublicOrderStatusPage({ params, searchParams }: PageProps) {
   const { token } = await params;
+  const { email } = await searchParams;
 
   const { data, error } = await supabaseAdmin
     .from("orders")
@@ -60,13 +62,26 @@ export default async function PublicOrderStatusPage({ params }: PageProps) {
 
   const { data: storefront } = await supabaseAdmin
     .from("business_storefronts")
-    .select("currency")
+    .select("currency, social_links, phone")
     .eq("business_id", business_id)
     .maybeSingle();
+
+  const { data: business } = await supabaseAdmin.from("businesses").select("slug").eq("id", business_id).maybeSingle();
+  const social = storefront?.social_links as Record<string, unknown> | null;
+  const helpLinks = ["telegram", "facebook", "messenger", "instagram", "whatsapp", "tiktok", "youtube", "x"].flatMap(name => {
+    const href = social?.[name];
+    if (typeof href !== "string" || !/^https?:\/\//i.test(href)) return [];
+    return [{ name: name.charAt(0).toUpperCase() + name.slice(1), href }];
+  });
 
   return (
     <OrderStatusClient
       token={token}
+      emailStatus={email === "sent" || email === "unavailable" ? email : undefined}
+      storeSlug={business?.slug ?? ""}
+      storeUrl={business?.slug ? getSubdomainUrl(business.slug) : "/"}
+      helpLinks={helpLinks}
+      phone={storefront?.phone ?? null}
       initialOrder={{
         ...publicOrder,
         currency: storefront?.currency ?? "USD",

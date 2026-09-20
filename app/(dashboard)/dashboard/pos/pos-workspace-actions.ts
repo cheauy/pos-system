@@ -1,4 +1,5 @@
 'use server';
+import { assertBranchOperation } from '@/lib/subscriptions/branch-limits';
 
 import { revalidatePath } from 'next/cache';
 import { requirePermission } from '@/lib/auth/require-permission';
@@ -46,6 +47,7 @@ export async function completePosSale(businessId: string, input: CheckoutInput):
   if (business.id !== businessId) return activeBusinessError();
   const invalid = validateCheckout(input);
   if (invalid) return { success: false, uncertain: true, message: invalid };
+  try { await assertBranchOperation(business.id, input.branchId); } catch (error) { return { success: false, message: errorMessage(error) }; }
   const db = await createClient();
   // Deliberately do not catch transport failures here. The client keeps the exact
   // idempotent request in recovery mode until the server confirms its outcome.
@@ -77,6 +79,7 @@ export async function savePosHold(businessId: string, id: string, version: numbe
   }
   try {
     const db = await createClient();
+    await assertBranchOperation(business.id, draft.branchId);
     const { data, error } = await db.rpc('tenh_pos_hold', { p_business_id: business.id, p_action: 'save', p_id: id, p_version: version, p_label: label.trim(), p_draft: draft });
     return error ? { success: false, message: errorMessage(error) } : { success: true, data };
   } catch (error) { return { success: false, message: errorMessage(error) }; }
@@ -114,6 +117,7 @@ export async function allocatePosStock(businessId: string, branchId: string, all
   if (!uuid(branchId) || !Array.isArray(allocations) || !allocations.length || allocations.length > 100 || allocations.some(row => !row || !uuid(row.productId) || !Number.isSafeInteger(row.quantity) || row.quantity <= 0) || new Set(allocations.map(row => row.productId)).size !== allocations.length) return {success:false,message:'Review the branch and stock quantities again.'};
   try {
     const db = await createClient();
+    await assertBranchOperation(business.id, branchId);
     const {error} = await db.rpc('tenh_pos_allocate_stock', {p_business_id:business.id,p_location_id:branchId,p_allocations:allocations});
     if (error) return {success:false,message:errorMessage(error)};
     refreshRoutes(); return {success:true,data:null};

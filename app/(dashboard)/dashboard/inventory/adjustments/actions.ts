@@ -1,5 +1,6 @@
 "use server";
 
+import { assertBranchOperation } from "@/lib/subscriptions/branch-limits";
 import { revalidatePath } from "next/cache";
 
 import { requirePermission } from "@/lib/auth/require-permission";
@@ -22,6 +23,8 @@ export async function submitStockAdjustment(
   try {
     const business = await requirePermission("products.stock_adjust");
 
+    const locationId = textField(formData, "locationId");
+    await assertBranchOperation(business.id, locationId);
     const productId = textField(formData, "productId");
     const mode = textField(formData, "mode");
     const reason = textField(formData, "reason");
@@ -114,7 +117,9 @@ export async function submitStockAdjustment(
 
     const auditReason = notes ? `${reason} — ${notes}` : reason;
 
-    const { error } = await supabase.rpc("adjust_product_stock", {
+    let { error } = await supabase.rpc("adjust_branch_product_stock", {
+      p_business_id: business.id,
+      p_location_id: locationId,
       p_product_id: productId,
       p_mode: mode,
       p_quantity: quantity,
@@ -122,6 +127,10 @@ export async function submitStockAdjustment(
       p_reference: reference,
     });
 
+    if (error?.code === "PGRST202") {
+      const { count, error: countError } = await supabase.from("business_locations").select("id", { count: "exact", head: true }).eq("business_id", business.id);
+      if (!countError && count === 1) ({ error } = await supabase.rpc("adjust_product_stock", { p_product_id: productId, p_mode: mode, p_quantity: quantity, p_reason: auditReason, p_reference: reference }));
+    }
     if (error) {
       return {
         success: false,

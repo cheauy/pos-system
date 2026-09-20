@@ -1,4 +1,5 @@
 "use client";
+import { ImageViewer } from "./image-viewer";
 
 import { Eye, Sparkles, Award, ChevronDown, Grid2X2, List, Package, Search, ShoppingCart, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -60,7 +61,7 @@ export default function StorefrontCatalog({ categories, products, settings, onAd
   return <section id="store-products" className="scroll-mt-5" aria-label="Shop products">
     <div className="catalog-toolbar">
       <label className="catalog-search"><Search size={19} /><input type="search" aria-label={t("Search products")} placeholder={t("Search for products, categories, or styles…")} value={query} onChange={event => { setQuery(event.target.value); setLimit(24); }} /></label>
-      <label className="catalog-sort"><span>{t("Sort by")}</span><select aria-label="Sort products" value={sort} onChange={event => setSort(event.target.value)}><option value="featured">{t("Featured")}</option><option value="price-low">{t("Price: low to high")}</option><option value="price-high">{t("Price: high to low")}</option><option value="name">{t("Name: A–Z")}</option></select></label>
+      <label className="catalog-sort"><span>{t("Sort by")}</span><select aria-label="Sort products" value={sort} onChange={event => setSort(event.target.value)}><option value="featured">{t("Pre-order first")}</option><option value="price-low">{t("Price: low to high")}</option><option value="price-high">{t("Price: high to low")}</option><option value="name">{t("Name: A–Z")}</option></select></label>
       <button type="button" className="catalog-tool-button" aria-expanded={filterOpen} aria-controls="catalog-filters" onClick={() => setFilterOpen(!filterOpen)}><SlidersHorizontal size={17} />{t("Filter")}</button>
       <label className="stock-filter"><input type="checkbox" checked={inStock} onChange={event => setInStock(event.target.checked)} />{t("In stock only")}</label>
       <div className="catalog-view" role="group" aria-label="Product layout"><button type="button" className="catalog-tool-button" aria-label="Grid view" aria-pressed={view === "grid"} onClick={() => setView("grid")}><Grid2X2 size={17} /></button><button type="button" className="catalog-tool-button" aria-label="List view" aria-pressed={view === "list"} onClick={() => setView("list")}><List size={18} /></button></div>
@@ -93,20 +94,27 @@ function CatalogCard({ product, categoryName, settings, onAdd, onQuickView }: {
   });
   const matches = product.variants.filter(row => (!selectedColor || row.color?.trim() === selectedColor) && (!selectedSize || row.size?.trim() === selectedSize));
   const variant = matches.find(row => row.stockQuantity > 0) ?? matches[0];
+  const [imageOpen, setImageOpen] = useState(false);
   const image = variant?.imageUrl || product.imageUrl;
   const price = matches.length ? Math.min(...matches.map(row => row.sellingPrice)) : product.priceFrom;
+  const preorder = Boolean(
+    (selectedColor || selectedSize) &&
+    matches.length === 1 &&
+    product.preorderVariantIds?.includes(matches[0].id),
+  );
   const stock = matches.reduce((sum, row) => sum + Math.max(0, row.stockQuantity), 0);
   return <article className="store-product-card">
-    <div className="product-photo"><div className="product-badges">{product.isBestseller && <span className="product-bestseller-badge"><Award size={12} />{t("Bestseller")}</span>}{product.isNewArrival && <span className="product-new-badge">{t("New arrival")}</span>}</div>{image ? <img src={image} alt={product.name} loading="lazy" decoding="async" /> : <div className="product-photo-placeholder"><ShoppingCart size={32} /></div>}
+    <div className="product-photo"><div className="product-badges">{product.isBestseller && <span className="product-bestseller-badge"><Award size={12} />{t("Bestseller")}</span>}{product.isNewArrival && <span className="product-new-badge">{t("New arrival")}</span>}</div>{image ? <button type="button" className="product-photo-open" aria-label={`${t("View full screen")} ${product.name}`} onClick={() => setImageOpen(true)}><img src={image} alt={product.name} loading="lazy" decoding="async" /></button> : <div className="product-photo-placeholder"><ShoppingCart size={32} /></div>}
 
     </div>
     <div className="product-card-body"><h3 title={product.name}>{product.name}</h3><p className="product-category">{categoryName}</p>
-      <div className="product-price-row"><p className="product-price">{new Intl.NumberFormat("en-US", { style: "currency", currency: settings.currency }).format(price)}{matches.some(row => row.sellingPrice !== price) && <small className="ml-1 text-[9px] font-normal">{t("from")}</small>}</p><span className={`product-stock ${stock <= 0 ? "sold-out" : stock <= 3 ? "low" : ""}`}><i />{stock <= 0 ? t("Sold out") : stock <= 3 ? `${t("Only")} ${stock} ${t("left")}` : t("In stock")}</span></div>
+      <div className="product-price-row"><p className="product-price">{new Intl.NumberFormat("en-US", { style: "currency", currency: settings.currency }).format(price)}{matches.some(row => row.sellingPrice !== price) && <small className="ml-1 text-[9px] font-normal">{t("from")}</small>}</p><span className={`product-stock ${preorder ? "preorder" : stock <= 0 ? "sold-out" : stock <= 3 ? "low" : ""}`}><i />{preorder ? t("Pre-order") : stock <= 0 ? t("Sold out") : stock <= 3 ? `${t("Only")} ${stock} ${t("left")}` : t("In stock")}</span></div>
       <div className="product-swatches">{colors.map(color => <button key={color} type="button" title={color} aria-label={`${product.name}: ${color}`} aria-pressed={selectedColor === color} onClick={() => { setSelectedColor(selectedColor === color ? null : color); setSelectedSize(null); }} style={{ background: swatchColor(color) }} />)}{!colors.length && <small>{product.productType === "configurable" ? t("Customize your selection") : t("Ready to order")}</small>}</div>
       {sizes.length > 0 && <div className="product-sizes" role="group" aria-label={`${product.name} sizes`}><span>{t("Size")}</span>{sizes.map(size => {
         const available = product.variants.some(row => row.size?.trim() === size && (!selectedColor || row.color?.trim() === selectedColor) && row.stockQuantity > 0);
         return <button key={size} type="button" disabled={!available} aria-label={`${product.name}: size ${size}${available ? "" : " sold out"}`} aria-pressed={selectedSize === size} title={available ? size : `${size} - sold out`} onClick={() => setSelectedSize(selectedSize === size ? null : size)}>{size}</button>;
       })}</div>}
+      {imageOpen && image && <ImageViewer images={[...new Set([image, ...(product.images ?? [])])]} name={product.name} onClose={() => setImageOpen(false)} />}
       <div className="product-card-actions"><button type="button" className="product-add" onClick={() => onAdd(variant?.id)} disabled={!settings.orderingEnabled || stock <= 0}><ShoppingCart size={14} />{!settings.orderingEnabled ? t("Ordering paused") : stock <= 0 ? t("Sold out") : t("Add to cart")}</button><button type="button" className="product-quick-view" onClick={() => onQuickView(variant?.id)}><Eye size={14} />{t("Quick view")}</button></div>
     </div>
   </article>;

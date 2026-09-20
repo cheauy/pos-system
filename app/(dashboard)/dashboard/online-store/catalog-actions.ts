@@ -44,10 +44,12 @@ export async function updateCatalogProducts(ids: string[], field: "visibility" |
     const { data: store, error: readError } = await supabaseAdmin.from("business_storefronts").select("social_links").eq("business_id", business.id).single();
     if (readError) return { success: false, message: "Unable to load store settings." };
     const links = store.social_links ?? {};
+    // Keep the legacy featuredProductIds storage key for existing storefront settings.
+    // This flag now marks pre-order variants in the storefront.
     const featured = new Set<string>(Array.isArray(links.profile?.featuredProductIds) ? links.profile.featuredProductIds : []);
     for (const id of uniqueIds) { if (enabled) featured.add(id); else featured.delete(id); }
     const { error } = await supabaseAdmin.from("business_storefronts").update({ social_links: { ...links, profile: { ...links.profile, featuredProductIds: [...featured] } } }).eq("business_id", business.id);
-    if (error) return { success: false, message: "Unable to update featured products." };
+    if (error) return { success: false, message: "Unable to update pre-order products." };
   }
   await createAuditLog({ action: "update", entityType: "storefront", entityId: business.id, description: "Updated storefront products", metadata: { product_ids: uniqueIds, field, enabled } });
   revalidatePath("/dashboard/online-store");

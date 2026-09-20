@@ -1,8 +1,10 @@
-import { PAYMENT_PROOF_BUCKET, validateCheckoutContact } from "@/lib/storefront/checkout-validation";
+import { sendOrderEmail } from "@/lib/storefront/order-email";
+import { PAYMENT_PROOF_BUCKET, validateCheckoutEmail, validateCheckoutContact } from "@/lib/storefront/checkout-validation";
 import { NextRequest, NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
+  getSubdomainUrl,
   getTenantSlugFromHost,
   normalizeTenantSlug,
 } from "@/lib/tenancy/domain";
@@ -24,6 +26,7 @@ type CheckoutBody = {
   fulfillmentType?: string;
   guestName?: string;
   guestPhone?: string;
+  guestEmail?: string;
   guestAddress?: string | null;
   customerNote?: string | null;
   tableToken?: string | null;
@@ -71,6 +74,9 @@ export async function POST(
     if (Number(request.headers.get("content-length") || 0) > 6 * 1024 * 1024) return NextResponse.json({ success: false, message: "Payment proof must not exceed 5 MB." }, { status: 413 });
     const form = multipart ? await request.formData() : null;
     const body = (form ? JSON.parse(String(form.get("checkout") || "{}")) : await request.json()) as CheckoutBody;
+    const emailError = validateCheckoutEmail(body.guestEmail);
+    if (emailError) return NextResponse.json({ success: false, message: emailError }, { status: 400 });
+    const guestEmail = body.guestEmail!.trim().toLowerCase();
     const items = Array.isArray(body.items) ? body.items : [];
 
     if (items.length === 0) {
@@ -166,10 +172,7 @@ export async function POST(
       paymentReference = `proof:${path}`;
     }
 
-    const { data, error } = await supabaseAdmin.rpc(
-      "place_online_order",
-      {
-        p_business_slug: slug,
+    const branchCheckout = {
         p_items: normalizedItems,
         p_fulfillment_type: fulfillmentType,
         p_guest_name: guestName,
@@ -182,8 +185,13 @@ export async function POST(
         p_delivery_zone_id: deliveryZoneId || null,
         p_requested_for: requestedFor || null,
         p_coupon_code: couponCode ? couponCode.toUpperCase() : null,
-      },
-    );
+    };
+    let { data, error } = await supabaseAdmin.rpc("place_branch_online_order", { p_business_slug: slug, p_checkout: branchCheckout });
+    if (error?.code === "PGRST202") {
+      const { data: business } = await supabaseAdmin.from("businesses").select("id").eq("slug", slug).maybeSingle();
+      const { data: locations, error: locationError } = business ? await supabaseAdmin.from("business_locations").select("id,is_active").eq("business_id", business.id) : { data: null, error: true };
+      if (!locationError && locations?.length === 1 && locations[0].is_active) ({ data, error } = await supabaseAdmin.rpc("place_online_order", { p_business_slug: slug, ...branchCheckout }));
+    }
 
     if (error) {
       if (uploadedPath) { await supabaseAdmin.storage.from(PAYMENT_PROOF_BUCKET).remove([uploadedPath]); uploadedPath = null; }
@@ -199,7 +207,10 @@ export async function POST(
     }
 
     uploadedPath = null;
+    let emailStatus: "sent" | "unavailable" = "unavailable";
+    try { emailStatus = await sendOrderEmail(guestEmail, data, getSubdomainUrl(slug)); } catch { console.error("Order receipt could not be sent"); }
     return NextResponse.json({
+      emailStatus,
       success: true,
       order: data,
     });

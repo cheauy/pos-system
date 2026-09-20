@@ -1,3 +1,4 @@
+import { getBranchEntitlement } from "@/lib/subscriptions/branch-limits";
 import { getCurrentBusinessForSubscription } from "@/lib/business/get-current-business";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -74,6 +75,7 @@ export default async function SubscriptionPlansPage({
     throw new Error(`Unable to load team usage: ${seatError.message}`);
   }
 
+  const branches = await getBranchEntitlement(business.id);
   const current = (subscription ?? null) as SubscriptionRow | null;
   const status = current?.subscription_status ?? business.subscriptionStatus;
   const onboarding =
@@ -122,6 +124,8 @@ export default async function SubscriptionPlansPage({
     <SubscriptionPlansClient
       businessName={business.name}
       currentPlanKey={currentPlanKey}
+      currentBranchLimit={branches.limit}
+      activeBranchCount={branches.used}
       currentUserLimit={current?.subscription_user_limit ?? null}
       activeSeatCount={activeSeatCount ?? 1}
       canPurchase={business.role === "owner"}

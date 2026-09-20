@@ -29,6 +29,7 @@ export type StorefrontCatalogProduct = {
   key: string;
   isNewArrival?: boolean;
   isFeatured?: boolean;
+  preorderVariantIds?: string[];
   images?: string[];
   isBestseller?: boolean;
   categoryId: string | null;

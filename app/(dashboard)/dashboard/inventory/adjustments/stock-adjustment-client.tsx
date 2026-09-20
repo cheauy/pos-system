@@ -71,6 +71,7 @@ type Props = {
   products: AdjustmentProduct[];
   recentAdjustments: RecentAdjustment[];
   branchName: string;
+  branchId: string;
 };
 
 type Mode = "increase" | "decrease" | "set";
@@ -483,7 +484,7 @@ function ProductVariantPicker({
 export default function StockAdjustmentClient({
   products,
   recentAdjustments,
-  branchName,
+  branchName, branchId,
 }: Props) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(
@@ -607,6 +608,7 @@ export default function StockAdjustmentClient({
             action={formAction}
             className="space-y-5 p-5"
           >
+            <input type="hidden" name="locationId" value={branchId} />
             <input type="hidden" name="mode" value={mode} />
 
             <div className="grid gap-4 lg:grid-cols-2">

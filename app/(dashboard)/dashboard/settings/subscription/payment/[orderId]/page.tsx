@@ -26,6 +26,8 @@ type SubscriptionOrder = {
   order_kind: string;
   plan_key: string;
   requested_user_limit: number;
+  requested_branch_limit?: number;
+  base_plan_key?: string;
   term_months: number;
   monthly_price: number | string | null;
   discount_percent: number | string;
@@ -95,9 +97,7 @@ export default async function SubscriptionPaymentPage({
 
   const { data, error } = await supabaseAdmin
     .from("subscription_orders")
-    .select(
-      "id,order_kind,plan_key,requested_user_limit,term_months,monthly_price,discount_percent,subtotal_amount,term_price_amount,remaining_credit_amount,total_amount,currency,status,payment_method,payment_note,proof_file_name,review_note,pricing_locked_until,created_at",
-    )
+    .select("*")
     .eq("id", orderId)
     .eq("business_id", business.id)
     .maybeSingle();
@@ -159,7 +159,7 @@ export default async function SubscriptionPaymentPage({
           <p className="mt-2 text-sm text-slate-500">
             {orderKindLabel(order.order_kind)} · Order #
             {order.id.slice(0, 8).toUpperCase()} · {order.requested_user_limit}{" "}
-            users · {order.term_months === 12 ? "1 year" : `${order.term_months} months`}
+            users · {order.requested_branch_limit ?? 1} branches · {order.term_months === 12 ? "1 year" : `${order.term_months} months`}
           </p>
         </div>
         <span

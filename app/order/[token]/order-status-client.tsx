@@ -2,12 +2,16 @@
 
 import {
   CheckCircle2,
-  ChefHat,
+  Package,
   Clock3,
+  Truck,
+  PhoneCall,
   PackageCheck,
   RefreshCw,
   XCircle,
 } from "lucide-react";
+import { FaFacebook, FaTelegram, FaTiktok, FaInstagram, FaWhatsapp, FaFacebookMessenger, FaXTwitter, FaYoutube } from "react-icons/fa6";
+import { rememberOrder } from "@/lib/storefront/order-tracking";
 import { formatOrderDate, proofPath } from "@/lib/storefront/checkout-validation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -31,11 +35,18 @@ type PublicOrder = {
 
 export default function OrderStatusClient({
   token,
-  initialOrder,
+  initialOrder, storeSlug, storeUrl, helpLinks, phone, emailStatus,
 }: {
   token: string;
+  emailStatus?: string;
   initialOrder: PublicOrder;
+  storeSlug: string; storeUrl: string; helpLinks: { name: string; href: string }[]; phone: string | null;
 }) {
+  const [copyMessage, setCopyMessage] = useState("");
+  useEffect(() => { if (storeSlug) rememberOrder(storeSlug, token, initialOrder.order_number); }, [storeSlug, token, initialOrder.order_number]);
+  async function copyTracking() {
+    try { await navigator.clipboard.writeText(initialOrder.order_number); setCopyMessage("Tracking ID copied. Send it to the store for faster confirmation."); } catch { setCopyMessage(`Copy this tracking ID: ${initialOrder.order_number}`); }
+  }
   const [order, setOrder] = useState(initialOrder);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -67,7 +78,7 @@ export default function OrderStatusClient({
   }, [refresh]);
 
   const status = order.online_status ?? "new";
-  const appearance = getStatusAppearance(status);
+  const appearance = getStatusAppearance(status, order.fulfillment_type);
   const Icon = appearance.icon;
 
   return (
@@ -93,6 +104,8 @@ export default function OrderStatusClient({
           <p className="mx-auto mt-4 max-w-md text-center text-sm leading-6 text-slate-500">
             {appearance.description}
           </p>
+
+          <OrderProgress status={status} fulfillment={order.fulfillment_type} />
 
           <dl className="mt-8 divide-y divide-slate-100 rounded-2xl border border-slate-200 px-5">
             <Row label="Fulfillment" value={formatFulfillment(order.fulfillment_type)} />
@@ -129,6 +142,15 @@ export default function OrderStatusClient({
             <Row label="Placed" value={formatOrderDate(order.created_at)} />
           </dl>
 
+          {emailStatus && <p role="status" className="mt-5 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{emailStatus === "sent" ? "Your confirmation email has been sent. Check your inbox or spam folder." : "Your order succeeded, but we could not send the confirmation email. Please save your tracking ID below."}</p>}
+          <section className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+            <h2 className="font-bold text-slate-900">Track your order anytime</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">You can leave this page. Return to Track My Order and enter your tracking ID, shown above, on any device.</p>
+            <button type="button" onClick={copyTracking} className="mt-3 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white">Copy tracking ID</button>
+            {copyMessage && <p role="status" className="mt-2 break-all text-sm">{copyMessage}</p>}
+            {(helpLinks.length > 0 || phone) && <><h3 className="mt-5 font-semibold">Want faster confirmation? Contact us below.</h3><p className="mt-1 text-sm leading-6 text-slate-600">Copy your tracking ID and send it to the store so they can find your order quickly.</p><div className="mt-3 flex flex-wrap gap-2">{helpLinks.map(link => <a key={link.name} href={link.href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><ContactLogo name={link.name} />{link.name}</a>)}{phone && <a className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" href={`tel:${phone.replace(/[^+\d]/g, "")}`}><PhoneCall size={20} />{phone}</a>}</div></>}
+            <a className="mt-4 block text-sm font-semibold text-blue-700" href={storeUrl}>Continue shopping →</a>
+          </section>
           <button
             type="button"
             onClick={refresh}
@@ -176,32 +198,32 @@ function formatPayment(method: string, status: string) {
   if (method === "khqr") {
     return status === "paid" ? "KHQR · Paid" : "KHQR · Pending verification";
   }
-  return "Pay Later / Cash";
+  return "Cash on Delivery (COD)";
 }
 
-function getStatusAppearance(status: string) {
+function getStatusAppearance(status: string, fulfillment: string | null) {
   switch (status) {
     case "accepted":
       return {
         icon: CheckCircle2,
         label: "Accepted",
-        description: "The shop accepted your order and will start preparing it soon.",
+        description: "Staff confirmed your order and the store accepted it. Packing is next.",
         iconClass: "bg-blue-50 text-blue-600",
         badgeClass: "bg-blue-50 text-blue-700",
       };
     case "preparing":
       return {
-        icon: ChefHat,
-        label: "Preparing",
-        description: "Your order is being prepared now.",
+        icon: Package,
+        label: "Packing",
+        description: "The store is packing your items. We will update this page when your order is ready.",
         iconClass: "bg-amber-50 text-amber-600",
         badgeClass: "bg-amber-50 text-amber-700",
       };
     case "ready":
       return {
-        icon: PackageCheck,
-        label: "Ready",
-        description: "Your order is ready for pickup, delivery, or service at your table.",
+        icon: fulfillment === "delivery" ? Truck : PackageCheck,
+        label: fulfillment === "delivery" ? "Delivery" : "Ready for pickup",
+        description: fulfillment === "delivery" ? "Your order is packed and ready for delivery. Contact the store for dispatch details." : fulfillment === "dine_in" ? "Your order is ready to be served." : "Your order is packed and ready to collect at the store.",
         iconClass: "bg-violet-50 text-violet-600",
         badgeClass: "bg-violet-50 text-violet-700",
       };
@@ -213,6 +235,8 @@ function getStatusAppearance(status: string) {
         iconClass: "bg-emerald-50 text-emerald-600",
         badgeClass: "bg-emerald-50 text-emerald-700",
       };
+    case "cancelled":
+      return { icon: XCircle, label: "Cancelled", description: "This order was cancelled. Contact the store if you need help.", iconClass: "bg-red-50 text-red-600", badgeClass: "bg-red-50 text-red-700" };
     case "rejected":
       return {
         icon: XCircle,
@@ -224,10 +248,32 @@ function getStatusAppearance(status: string) {
     default:
       return {
         icon: Clock3,
-        label: "Waiting for confirmation",
-        description: "Your order was sent to the shop. Keep this page open for live status updates.",
-        iconClass: "bg-slate-100 text-slate-600",
-        badgeClass: "bg-slate-100 text-slate-700",
+        label: "Awaiting confirmation",
+        description: "Your order has been received. Please wait for the store to call and confirm your order. You do not need to keep this page open.",
+        iconClass: "bg-emerald-50 text-emerald-600",
+        badgeClass: "bg-emerald-50 text-emerald-700",
       };
   }
+}
+
+function ContactLogo({ name }: { name: string }) {
+  const icons = { telegram: FaTelegram, facebook: FaFacebook, tiktok: FaTiktok, instagram: FaInstagram, whatsapp: FaWhatsapp, messenger: FaFacebookMessenger, x: FaXTwitter, youtube: FaYoutube };
+  const Icon = icons[name.toLowerCase() as keyof typeof icons];
+  return Icon ? <Icon size={22} aria-hidden="true" /> : null;
+}
+
+function OrderProgress({ status, fulfillment }: { status: string; fulfillment: string | null }) {
+  if (status === "cancelled" || status === "rejected") return null;
+  const steps = ["Awaiting confirmation", "Staff confirms", "Accepted", "Packing", fulfillment === "delivery" ? "Delivery" : fulfillment === "dine_in" ? "Ready to serve" : "Pickup Store"];
+  // Staff confirmation is the action that moves an order from new to accepted.
+  const active = status === "completed" ? 5 : status === "ready" ? 4 : status === "preparing" ? 3 : status === "accepted" ? 2 : 0;
+  return <ol aria-label="Order progress" className="mt-7 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-5 sm:gap-2" aria-live="polite">
+    {steps.map((label, index) => {
+      const done = index < active; const current = index === active;
+      return <li key={label} aria-current={current ? "step" : undefined} className={`flex items-center gap-3 sm:flex-col sm:text-center ${current ? "font-semibold text-blue-700" : done ? "text-emerald-700" : "text-slate-500"}`}>
+        <span aria-hidden="true" className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs ${current ? "border-blue-600 bg-blue-600 text-white ring-4 ring-blue-100" : done ? "border-emerald-200 bg-emerald-100" : "border-slate-200 bg-white"}`}>{done ? <CheckCircle2 size={18} /> : index + 1}</span>
+        <span className="text-xs leading-5">{label}<span className="sr-only">{done ? ", completed" : current ? ", current step" : ", upcoming"}</span></span>
+      </li>;
+    })}
+  </ol>;
 }

@@ -259,10 +259,22 @@ export default async function StorefrontPage({
 
   const categories = (categoryResult.data ?? []) as CategoryRow[];
   const categoryIds = new Set(categories.map((category) => category.id));
-  const productRows = ((productResult.data ?? []) as ProductRow[]).filter(
+  let productRows = ((productResult.data ?? []) as ProductRow[]).filter(
     (product) => !product.category_id || categoryIds.has(product.category_id),
   );
 
+  const { data: inventoryBranches, error: inventoryBranchError } = await supabaseAdmin.from("business_locations").select("id,is_default,is_active").eq("business_id", business.id);
+  if (inventoryBranchError) throw new Error("Unable to load fulfillment branch.");
+  if ((inventoryBranches?.length ?? 0) > 1) {
+    const fulfillmentBranch = inventoryBranches?.find(branch => branch.is_default && branch.is_active);
+    if (!fulfillmentBranch) productRows = productRows.map(product => ({ ...product, stock_quantity: 0 }));
+    else {
+      const { data: branchStock, error: branchStockError } = await supabaseAdmin.from("product_location_stock").select("product_id,quantity").eq("business_id", business.id).eq("location_id", fulfillmentBranch.id);
+      if (branchStockError) throw new Error("Unable to load fulfillment stock.");
+      const stockByProduct = new Map((branchStock ?? []).map(row => [row.product_id, row.quantity]));
+      productRows = productRows.map(product => ({ ...product, stock_quantity: Math.min(product.stock_quantity, stockByProduct.get(product.id) ?? 0) }));
+    }
+  }
   const configurableProductIds = productRows
     .filter((product) => product.product_type === "configurable")
     .map((product) => product.id);
@@ -339,7 +351,7 @@ export default async function StorefrontPage({
     productRows,
     optionGroupsByProduct,
     storefront.social_links?.profile?.newArrivals,
-  ).map(product => ({ ...product, isFeatured: product.variants.some(variant => storefront.social_links?.profile?.featuredProductIds?.includes(variant.id)) }));
+  ).map(product => ({ ...product, preorderVariantIds: product.variants.filter(variant => storefront.social_links?.profile?.featuredProductIds?.includes(variant.id)).map(variant => variant.id), isFeatured: product.variants.some(variant => storefront.social_links?.profile?.featuredProductIds?.includes(variant.id)) }));
 
   const soldQuantities = new Map<string, number>();
   const since = new Date(); since.setDate(since.getDate() - 30);

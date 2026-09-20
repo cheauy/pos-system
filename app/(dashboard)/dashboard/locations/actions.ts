@@ -1,5 +1,6 @@
 "use server";
 
+import { assertBranchCapacity } from "@/lib/subscriptions/branch-limits";
 import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit/create-audit-log";
@@ -81,6 +82,7 @@ export async function createLocation(
     }
 
     const makeDefault = text(formData, "makeDefault") === "true";
+    await assertBranchCapacity(business.id);
 
     const { data, error } = await supabase
       .from("business_locations")
@@ -268,6 +270,11 @@ export async function toggleLocation(
 
     const supabase = await createClient();
 
+    if (active) {
+      const { data: existing } = await supabase.from("business_locations").select("is_active").eq("business_id", business.id).eq("id", id).maybeSingle();
+      if (!existing) return { ok: false, message: "Branch not found." };
+      if (!existing.is_active) await assertBranchCapacity(business.id);
+    }
     if (!active) {
       const { data: branch } = await supabase
         .from("business_locations")

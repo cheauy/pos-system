@@ -11,6 +11,7 @@ type Order = {
   requested_by_user_id: string;
   plan_key: string;
   requested_user_limit: number;
+  requested_branch_limit?: number;
   term_months: number;
   monthly_price: number | string | null;
   discount_percent: number | string;
@@ -34,9 +35,7 @@ export default async function SubscriptionPaymentsAdminPage() {
 
   const { data, error } = await supabaseAdmin
     .from("subscription_orders")
-    .select(
-      "id,business_id,requested_by_user_id,plan_key,requested_user_limit,term_months,monthly_price,discount_percent,total_amount,status,payment_note,proof_bucket,proof_path,proof_file_name,created_at",
-    )
+    .select("*")
     .in("status", ["quote_requested", "pending_payment", "payment_submitted", "approved", "rejected"])
     .order("created_at", { ascending: false })
     .limit(100);
@@ -83,7 +82,7 @@ export default async function SubscriptionPaymentsAdminPage() {
               <tr>
                 <th className="px-5 py-3">Business</th>
                 <th className="px-5 py-3">Plan</th>
-                <th className="px-5 py-3">Users</th>
+                <th className="px-5 py-3">Users / Branches</th>
                 <th className="px-5 py-3">Term</th>
                 <th className="px-5 py-3">Amount</th>
                 <th className="px-5 py-3">Status</th>
@@ -101,7 +100,7 @@ export default async function SubscriptionPaymentsAdminPage() {
                       <p className="mt-1 text-xs text-slate-400">{business?.slug ?? order.business_id}</p>
                     </td>
                     <td className="px-5 py-4 text-sm font-semibold">{getSubscriptionPlanLabel(order.plan_key)}</td>
-                    <td className="px-5 py-4 text-sm"><span className="inline-flex items-center gap-1.5"><UsersRound size={15} />{order.requested_user_limit}</span></td>
+                    <td className="px-5 py-4 text-sm"><span className="inline-flex items-center gap-1.5"><UsersRound size={15} />{order.requested_user_limit} users / {order.requested_branch_limit ?? 1} branches</span></td>
                     <td className="px-5 py-4 text-sm">{order.term_months === 12 ? "1 year" : `${order.term_months} months`}</td>
                     <td className="px-5 py-4 text-sm font-black">{order.total_amount === null ? "Quote" : `$${Number(order.total_amount).toFixed(2)}`}</td>
                     <td className="px-5 py-4"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{order.status.replace(/_/g, " ")}</span></td>

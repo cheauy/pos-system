@@ -1,3 +1,4 @@
+import { getBranchEntitlement } from "@/lib/subscriptions/branch-limits";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import {
@@ -178,6 +179,7 @@ export default async function SubscriptionSettingsPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const business = await getCurrentBusinessForSubscription();
+  const branchEntitlement = await getBranchEntitlement(business.id);
   const params = searchParams ? await searchParams : {};
 
   const [
@@ -344,7 +346,7 @@ export default async function SubscriptionSettingsPage({
                   icon={<Store size={16} />}
                   label="Store locations"
                   value={`${activeLocations} active`}
-                  detail="Manage branches and inventory locations from TENH POS."
+                  detail={`${branchEntitlement.used} of ${branchEntitlement.limit} active branches. Custom Plan costs $5/user and $20/branch per month.`}
                 />
               </div>
 

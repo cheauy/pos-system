@@ -1,4 +1,5 @@
 "use server";
+import { assertBranchOperation } from "@/lib/subscriptions/branch-limits";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -80,6 +81,8 @@ export async function createExpense(
     redirect("/login");
   }
 
+  const expenseBranch = formData.get("locationId");
+  if (typeof expenseBranch === "string" && expenseBranch.trim()) await assertBranchOperation(business.id, expenseBranch.trim());
   const { error } = await supabase
     .from("expenses")
     .insert({

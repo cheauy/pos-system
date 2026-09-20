@@ -1,5 +1,6 @@
 "use client";
 
+import OrderTracking from "./order-tracking";
 import { ArrowRight, ShoppingCart, Store, MapPin, Globe2, Grid2X2, Sparkles, Home, Share2 } from "lucide-react";
 
 import { useStorefrontLanguage } from "./storefront-language";
@@ -11,8 +12,8 @@ export type StorefrontBrand = {
   newArrivalsEnabled?: boolean; ownerUrl: string; orderingEnabled: boolean; allowDelivery: boolean; allowPickup: boolean;
 };
 
-export default function StorefrontHero({ brand, cartQuantity, onOpenCart }: {
-  brand: StorefrontBrand; cartQuantity: number; onOpenCart: () => void;
+export default function StorefrontHero({ slug, brand, cartQuantity, onOpenCart }: {
+  slug: string; brand: StorefrontBrand; cartQuantity: number; onOpenCart: () => void;
 }) {
   const { language, setLanguage, t } = useStorefrontLanguage();
   const [active, setActive] = useState("#store-home");
@@ -32,7 +33,7 @@ export default function StorefrontHero({ brand, cartQuantity, onOpenCart }: {
         {brand.logoUrl ? <img src={brand.logoUrl} alt={`${brand.name} logo`} /> : <span className="shop-logo-fallback"><Store size={23} /></span>}
         <div><p>{brand.name}</p><span>{t(brand.businessTypeLabel)}</span></div>
       </div>
-      <nav className="store-header-menu" aria-label="Store navigation"><a href="#store-home" aria-current={active === "#store-home" ? "page" : undefined}><Home size={15} />{t("Home")}</a><a href="#store-products" aria-current={active === "#store-products" ? "page" : undefined}><Grid2X2 size={15} />{t("All products")}</a>{brand.newArrivalsEnabled !== false && <a href="#new-arrivals" aria-current={active === "#new-arrivals" ? "page" : undefined}><Sparkles size={15} />{t("New arrivals")}</a>}<a href="#contact-us" aria-current={active === "#contact-us" ? "page" : undefined}><Share2 size={15} />{t("Social")}</a></nav>
+      <nav className="store-header-menu" aria-label="Store navigation"><a href="#store-home" aria-current={active === "#store-home" ? "page" : undefined}><Home size={15} />{t("Home")}</a><a href="#store-products" aria-current={active === "#store-products" ? "page" : undefined}><Grid2X2 size={15} />{t("All products")}</a>{brand.newArrivalsEnabled !== false && <a href="#new-arrivals" aria-current={active === "#new-arrivals" ? "page" : undefined}><Sparkles size={15} />{t("New arrivals")}</a>}<a href="#contact-us" aria-current={active === "#contact-us" ? "page" : undefined}><Share2 size={15} />{t("Social")}</a><OrderTracking slug={slug} /></nav>
       <div className="store-header-actions">
         <button type="button" onClick={onOpenCart} className="header-cart" aria-label={`Open cart, ${cartQuantity} items`}><ShoppingCart size={23} /><span>{cartQuantity}</span></button>
       </div>

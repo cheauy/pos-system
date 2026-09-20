@@ -18,6 +18,7 @@ import { createClient } from "@/lib/supabase/server";
 
 type ReportPageProps = {
   searchParams: Promise<{
+    branch?: string;
     range?: string;
     from?: string;
     to?: string;
@@ -83,6 +84,10 @@ export default async function ReportsPage({
 
   const supabase = await createClient();
 
+  const { data: branches, error: branchError } = await supabase.from("business_locations").select("id,name").eq("business_id", business.id).order("name");
+  if (branchError) throw new Error("Unable to load report branches.");
+  const branch = branches?.find(item => item.id === params.branch);
+  if (params.branch && !branch) throw new Error("Branch does not belong to this business.");
   const ordersQuery = supabase
     .from("orders")
     .select(`
@@ -127,6 +132,7 @@ export default async function ReportsPage({
       ascending: false,
     });
 
+  if (branch) { ordersQuery.eq("location_id", branch.id); expensesQuery.eq("location_id", branch.id); }
   const [
     { data: orderData, error: orderError },
     { data: expenseData, error: expenseError },
@@ -237,6 +243,8 @@ export default async function ReportsPage({
       </div>
 
       <ReportFilters
+        branches={branches ?? []}
+        branchId={branch?.id ?? ""}
         selectedRange={selectedRange}
         from={dateRange.startDate}
         to={dateRange.endDate}
@@ -536,10 +544,12 @@ export default async function ReportsPage({
 }
 
 function ReportFilters({
-  selectedRange,
+  branches, branchId, selectedRange,
   from,
   to,
 }: {
+  branches: { id: string; name: string }[];
+  branchId: string;
   selectedRange: string;
   from: string;
   to: string;
@@ -574,7 +584,7 @@ function ReportFilters({
           {ranges.map((range) => (
             <Link
               key={range.value}
-              href={`/dashboard/reports?range=${range.value}`}
+              href={`/dashboard/reports?range=${range.value}${branchId ? `&branch=${encodeURIComponent(branchId)}` : ""}`}
               className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
                 selectedRange === range.value
                   ? "bg-blue-600 text-white"
@@ -586,7 +596,8 @@ function ReportFilters({
           ))}
         </div>
 
-        <form className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <form className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <label className="text-sm font-medium text-slate-600">Branch<select name="branch" defaultValue={branchId} className="mt-1 block rounded-xl border border-slate-300 px-3 py-2"><option value="">All branches</option>{branches.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <input
             type="hidden"
             name="range"

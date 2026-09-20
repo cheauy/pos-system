@@ -87,7 +87,7 @@ export async function reviewSubscriptionPayment(formData: FormData) {
   const { data: order, error: orderError } = await supabaseAdmin
     .from("subscription_orders")
     .select(
-      "id,business_id,requested_by_user_id,status,order_kind,plan_key,term_months,requested_user_limit,total_amount,currency,payment_note,proof_bucket,proof_path",
+      "*",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -104,13 +104,15 @@ export async function reviewSubscriptionPayment(formData: FormData) {
     throw new Error("Payment note and proof are required before approval.");
   }
 
-  const { data: result, error } = await supabaseAdmin.rpc("review_subscription_order", {
+  const reviewArgs = {
     p_order_id: order.id,
     p_decision: decision,
     p_admin_user_id: admin.id,
     p_admin_email: admin.email,
     p_review_note: reviewNote || null,
-  });
+  };
+  let { data: result, error } = await supabaseAdmin.rpc("review_branch_subscription_order", reviewArgs);
+  if (error?.code === "PGRST202" && ![2, 3].includes(order.pricing_version)) ({ data: result, error } = await supabaseAdmin.rpc("review_subscription_order", reviewArgs));
 
   if (error) throw new Error(error.message);
 
