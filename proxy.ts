@@ -18,6 +18,7 @@ const CENTRAL_AUTH_PATHS = new Set([
   "/register",
   "/forgot-password",
   "/reset-password",
+  "/team-setup",
 ]);
 
 const INTERNAL_STOREFRONT_PREFIX = "/storefront";
@@ -104,6 +105,18 @@ function createResponse(
     }
 
     return NextResponse.redirect(getAppUrl(pathWithSearch));
+  }
+
+  // Keep the plan picker on the stable Subscription route. This also
+  // recovers old /subscription/plans bookmarks if a stale dev route manifest
+  // or an older deployment no longer exposes that nested page.
+  if (!tenantSlug && pathname === "/dashboard/settings/subscription/plans") {
+    const destination = new URL(getAppUrl("/dashboard/settings/subscription"));
+    for (const [key, value] of request.nextUrl.searchParams.entries()) {
+      destination.searchParams.append(key, value);
+    }
+    destination.searchParams.set("view", "plans");
+    return NextResponse.redirect(destination);
   }
 
   // Marketing/root-host application routes belong on the app domain.

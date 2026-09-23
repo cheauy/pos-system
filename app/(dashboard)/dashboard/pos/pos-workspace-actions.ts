@@ -5,9 +5,11 @@ import { assertBranchOperation } from '@/lib/subscriptions/branch-limits';
 import { revalidatePath } from 'next/cache';
 import { isConfirmedRollback } from '@/lib/operations/rpc-outcome';
 import { requirePermission } from '@/lib/auth/require-permission';
+import { businessHasPermission } from '@/lib/auth/effective-permissions';
 import { createClient } from '@/lib/supabase/branch-server';
 import { uuid, validateCheckout } from './pos-workspace-helpers';
 import { loadReceiptContext } from '@/lib/receipts/load-receipt-context';
+import { currencyFormat, validCurrencyFormat, type CurrencyFormat } from '@/lib/currency-format';
 import type { ActionResult, CartDraft, CheckoutInput, SaleReceipt, Workspace } from './pos-workspace-types';
 
 function errorMessage(error: unknown): string {
@@ -40,9 +42,12 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
       return { success: false, message: 'The operating branch changed in another tab. Copy your unsaved cart details before reloading; no sale has been submitted.' };
     }
     const db = await createClient();
-    const { data, error } = await db.rpc('tenh_pos_catalog', { p_business_id: business.id });
+    const { data, error } = await db.rpc('tenh_pos_catalog_scoped', { p_business_id: business.id });
     if (error) return { success: false, message: errorMessage(error) };
     if (!data || data.businessId !== business.id || !Array.isArray(data.products)) return { success: false, message: 'The POS catalog returned incomplete data. Please refresh.' };
+    const formatting = await db.from('business_storefronts').select('currency_format').eq('business_id',business.id).maybeSingle();
+    if (formatting.error) return {success:false,message:'Unable to load currency settings. Please refresh.'};
+    data.settings.currencyFormat = currencyFormat(formatting.data?.currency_format, data.settings.currency);
     if (data.inventoryVersion !== 2) return { success:false,message:'Apply 20260919_pos_stock_variants_continue_checkout.sql in Supabase before using this POS update.' };
     const ready = await db.rpc('tenh_pos_receipt_update_ready', { p_business_id: business.id });
     if (ready.error || ready.data !== true) return { success: false, message: 'Apply 20260919_pos_receipt_customer_delivery_update.sql, then refresh POS. This prevents using the old delivery status logic.' };
@@ -70,6 +75,7 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
 }
 export async function completePosSale(businessId: string, input: CheckoutInput): Promise<ActionResult<SaleReceipt>> {
   const business = await requirePermission('pos.access');
+  if (!(await businessHasPermission(business, 'orders.create'))) return { success: false, message: 'You do not have permission to create sales orders.' };
   if (business.id !== businessId) return activeBusinessError();
   const invalid = validateCheckout(input);
   if (invalid) return { success: false, uncertain: true, message: invalid };
@@ -165,4 +171,19 @@ export async function savePosCurrencySettings(businessId: string, enabled: boole
     try {revalidatePath('/dashboard/settings/pos-currency');} catch { /* Saved already. */ }
     return {success:true,data:null};
   } catch(error){return {success:false,message:errorMessage(error)};}
+}
+
+export async function saveStoreCurrencySettings(businessId: string, currency: string, rate: number, format: CurrencyFormat): Promise<ActionResult<null>> {
+  const business = await requirePermission('pos.access');
+  if (business.id !== businessId) return activeBusinessError();
+  if (business.role !== 'owner') return {success:false,message:'Only the owner can change currency settings.'};
+  if (!['USD','KHR'].includes(currency) || !validCurrencyFormat(format) || !Number.isFinite(rate) || rate < 1 || rate > 1000000 || Math.abs(rate*10000-Math.round(rate*10000))>0.00001) return {success:false,message:'Review the currency format and exchange rate.'};
+  try {
+    const db=await createClient();
+    const {error}=await db.rpc('tenh_save_currency_format',{p_business_id:business.id,p_currency:currency,p_rate:rate,p_format:format});
+    if(error) return {success:false,message:errorMessage(error)};
+    refreshRoutes();
+    revalidatePath('/dashboard/settings/pos-currency');
+    return {success:true,data:null};
+  } catch(error) {return {success:false,message:errorMessage(error)};}
 }

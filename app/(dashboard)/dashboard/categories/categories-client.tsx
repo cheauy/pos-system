@@ -22,7 +22,6 @@ import {
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
-  bulkCategoryAction,
   createCategory,
   deleteCategoryById,
   repairCategoryIndexes,
@@ -42,7 +41,6 @@ export type CategoryViewModel = {
 };
 
 type StatusFilter = "all" | "visible" | "hidden";
-type BulkAction = "" | "show" | "hide" | "delete";
 
 const PAGE_SIZE = 10;
 
@@ -109,8 +107,6 @@ export default function CategoriesClient({
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [page, setPage] = useState(1);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [bulkAction, setBulkAction] = useState<BulkAction>("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [branchCategory,setBranchCategory]=useState<CategoryViewModel|null>(null);
@@ -151,9 +147,6 @@ export default function CategoriesClient({
   const currentPage = Math.min(page, pageCount);
   const pageStart = (currentPage - 1) * PAGE_SIZE;
   const paginated = filtered.slice(pageStart, pageStart + PAGE_SIZE);
-  const pageIds = paginated.map((category) => category.id);
-  const allPageSelected =
-    pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
 
   const nextIndex =
     categories.reduce((highest, category) => Math.max(highest, category.index), 0) + 1;
@@ -294,33 +287,6 @@ export default function CategoriesClient({
     });
   }
 
-  function handleBulkApply() {
-    if (!bulkAction) {
-      setMessage({ type: "error", text: "Choose a bulk action first." });
-      return;
-    }
-    if (!selectedIds.length) {
-      setMessage({ type: "error", text: "Select at least one category." });
-      return;
-    }
-    if (
-      bulkAction === "delete" &&
-      !window.confirm(
-        `Delete ${selectedIds.length} selected categories? Products will be kept as uncategorized.`,
-      )
-    ) {
-      return;
-    }
-
-    runAction(async () => {
-      const result = await bulkCategoryAction(selectedIds, bulkAction);
-      if (result.ok) {
-        setSelectedIds([]);
-        setBulkAction("");
-      }
-      return result;
-    });
-  }
 
 
 
@@ -513,50 +479,13 @@ export default function CategoriesClient({
               <h2 className="text-lg font-bold text-slate-950">Category List</h2>
               <p className="mt-0.5 text-sm text-slate-500">Manage, edit, and organize your product categories.</p>
             </div>
-            <div className="flex items-center gap-2">
-              <label className="relative">
-                <select
-                  value={bulkAction}
-                  onChange={(event) => setBulkAction(event.target.value as BulkAction)}
-                  className="h-10 appearance-none rounded-xl border border-slate-200 bg-white py-0 pl-3 pr-9 text-sm font-semibold text-slate-700 outline-none"
-                >
-                  <option value="">Bulk Actions</option>
-                  <option value="show">Show Online</option>
-                  <option value="hide">Hide Online</option>
-                  <option value="delete">Delete</option>
-                </select>
-                <ChevronDown size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              </label>
-              <button
-                type="button"
-                onClick={handleBulkApply}
-                disabled={isPending || !selectedIds.length}
-                className="h-10 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-200"
-              >
-                Apply
-              </button>
-            </div>
+
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[780px] border-collapse text-left">
               <thead className="bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr className="border-b border-slate-200">
-                  <th className="w-12 px-4 py-3.5">
-                    <input
-                      type="checkbox"
-                      checked={allPageSelected}
-                      onChange={(event) => {
-                        if (event.target.checked) {
-                          setSelectedIds((current) => Array.from(new Set([...current, ...pageIds])));
-                        } else {
-                          setSelectedIds((current) => current.filter((id) => !pageIds.includes(id)));
-                        }
-                      }}
-                      className="size-4 rounded border-slate-300 accent-blue-600"
-                      aria-label="Select current page"
-                    />
-                  </th>
                   <th className="w-20 px-3 py-3.5">Index</th>
                   <th className="px-3 py-3.5">Category Name</th>
                   <th className="px-3 py-3.5">Description</th>
@@ -570,21 +499,6 @@ export default function CategoriesClient({
                 {paginated.length ? (
                   paginated.map((category) => (
                     <tr key={category.id} className="text-sm text-slate-700 transition hover:bg-slate-50/70">
-                      <td className="px-4 py-4">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.includes(category.id)}
-                          onChange={(event) => {
-                            setSelectedIds((current) =>
-                              event.target.checked
-                                ? Array.from(new Set([...current, category.id]))
-                                : current.filter((id) => id !== category.id),
-                            );
-                          }}
-                          className="size-4 rounded border-slate-300 accent-blue-600"
-                          aria-label={`Select ${category.name}`}
-                        />
-                      </td>
                       <td className="px-3 py-4 font-semibold text-slate-600">{category.index}</td>
                       <td className="px-3 py-4">
                         <div className="font-semibold text-slate-950">{category.name}</div>
@@ -676,7 +590,7 @@ export default function CategoriesClient({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={8} className="px-6 py-16 text-center">
+                    <td colSpan={7} className="px-6 py-16 text-center">
                       <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-slate-100 text-slate-500">
                         <Package size={22} />
                       </div>

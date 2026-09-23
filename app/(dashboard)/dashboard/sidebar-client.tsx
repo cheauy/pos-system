@@ -31,6 +31,7 @@ import {
   Menu,
   Package,
   PackagePlus,
+  Printer,
   ReceiptText,
   RotateCcw,
   Search,
@@ -52,11 +53,13 @@ import {
 
 import { createClient } from "@/lib/supabase/client";
 import { getRootUrl } from "@/lib/tenancy/domain";
+import type { Permission } from "@/lib/auth/permissions";
 
 type MenuItem = {
   name: string;
   href: string;
   icon: ElementType;
+  permission?: Permission;
 };
 
 type MenuGroup = {
@@ -64,6 +67,7 @@ type MenuGroup = {
   icon: ElementType;
   items: MenuItem[];
   href?: string;
+  permission?: Permission;
 };
 
 type SpecialPanel = "search" | "notifications" | null;
@@ -95,58 +99,63 @@ const menuGroups: MenuGroup[] = [
     title: "Sales",
     icon: ShoppingCart,
     items: [
-      { name: "POS", href: "/dashboard/pos", icon: ShoppingCart },
-      { name: "Orders", href: "/dashboard/orders", icon: ReceiptText },
-      { name: "Online Orders", href: "/dashboard/online-orders", icon: ShoppingBag },
-      { name: "Online Store", href: "/dashboard/online-store", icon: Store },
-      { name: "Promotions & Loyalty", href: "/dashboard/promotions", icon: BadgePercent },
-      { name: "Returns", href: "/dashboard/returns", icon: RotateCcw },
-      { name: "Customers", href: "/dashboard/customers", icon: Users },
+      { name: "POS", href: "/dashboard/pos", permission: "pos.access", icon: ShoppingCart },
+      { name: "Orders", href: "/dashboard/orders", permission: "orders.view", icon: ReceiptText },
+      { name: "Online Orders", href: "/dashboard/online-orders", permission: "orders.view", icon: ShoppingBag },
+      { name: "Online Store", href: "/dashboard/online-store", permission: "storefront.view", icon: Store },
+      { name: "Promotions & Loyalty", href: "/dashboard/promotions", permission: "business.view", icon: BadgePercent },
+      { name: "Returns", href: "/dashboard/returns", permission: "orders.return", icon: RotateCcw },
+      { name: "Customers", href: "/dashboard/customers", permission: "customers.view", icon: Users },
     ],
   },
   {
     title: "Inventory",
     icon: Boxes,
     items: [
-      { name: "Inventory", href: "/dashboard/inventory", icon: Boxes },
-      { name: "Stock Transfers", href: "/dashboard/stock-transfers", icon: ArrowRightLeft },
-      { name: "Products", href: "/dashboard/products", icon: Package },
-      { name: "Categories", href: "/dashboard/categories", icon: Tags },
-      { name: "Barcode & Labels", href: "/dashboard/barcodes", icon: Barcode },
+      { name: "Inventory", href: "/dashboard/inventory", permission: "inventory.view", icon: Boxes },
+      { name: "Bundle Items", href: "/dashboard/bundles", permission: "products.view", icon: PackagePlus },
+      { name: "Stock Transfers", href: "/dashboard/stock-transfers", permission: "transfers.manage", icon: ArrowRightLeft },
+      { name: "Products", href: "/dashboard/products", permission: "products.view", icon: Package },
+      { name: "Categories", href: "/dashboard/categories", permission: "categories.manage", icon: Tags },
+      { name: "Barcode & Labels", href: "/dashboard/barcodes", permission: "inventory.view", icon: Barcode },
     ],
   },
   {
     title: "Supplier",
     icon: Truck,
     items: [
-      { name: "All Suppliers", href: "/dashboard/suppliers", icon: Truck },
-      { name: "Purchase Orders", href: "/dashboard/purchase-orders", icon: PackagePlus },
-      { name: "Low Stock", href: "/dashboard/low-stock", icon: TriangleAlert },
+      { name: "All Suppliers", href: "/dashboard/suppliers", permission: "suppliers.manage", icon: Truck },
+      { name: "Purchase Orders", href: "/dashboard/purchase-orders", permission: "purchases.view", icon: PackagePlus },
+      { name: "Low Stock", href: "/dashboard/low-stock", permission: "inventory.view", icon: TriangleAlert },
     ],
   },
   {
     title: "Finance",
     icon: WalletCards,
     items: [
-      { name: "Reports", href: "/dashboard/reports", icon: BarChart3 },
-      { name: "Expenses", href: "/dashboard/expenses", icon: WalletCards },
-      { name: "Cash Register", href: "/dashboard/register", icon: Landmark },
+      { name: "Reports", href: "/dashboard/reports", permission: "reports.view", icon: BarChart3 },
+      { name: "Staff Report", href: "/dashboard/staff-report", permission: "reports.view", icon: Users },
+      { name: "Expenses", href: "/dashboard/expenses", permission: "expenses.manage", icon: WalletCards },
+      { name: "Cash Register", href: "/dashboard/register", permission: "register.manage", icon: Landmark },
     ],
   },
   {
     title: "Subscription",
     icon: CreditCard,
     href: "/dashboard/settings/subscription",
+    permission: "business.update",
     items: [],
   },
   {
     title: "Settings",
     icon: Settings,
     items: [
-      { name: "General", href: "/dashboard/settings", icon: Settings },
-      { name: "Branches", href: "/dashboard/locations", icon: Store },
-      { name: "Backup & Export", href: "/dashboard/exports", icon: Download },
-      { name: "Audit Logs", href: "/dashboard/audit-logs", icon: FileSearch },
+      { name: "General", href: "/dashboard/settings", permission: "business.view", icon: Settings },
+      { name: "User & Manage User", href: "/dashboard/settings/users", permission: "users.view", icon: Users },
+      { name: "Branches", href: "/dashboard/locations", permission: "locations.manage", icon: Store },
+      { name: "Printer", href: "/dashboard/settings/printers", permission: "business.update", icon: Printer },
+      { name: "Backup & Export", href: "/dashboard/exports", permission: "exports.manage", icon: Download },
+      { name: "Audit Logs", href: "/dashboard/audit-logs", permission: "audit_logs.view", icon: FileSearch },
     ],
   },
 ];
@@ -158,11 +167,13 @@ const searchScopes = [
   "Suppliers",
   "Purchase Orders",
   "Stock Transfers",
+  "Credit Accounts / Settings",
 ];
 
-export default function SidebarClient({ businessId, branchId }: { businessId: string; branchId: string }) {
+export default function SidebarClient({ businessId, branchId, effectivePermissions }: { businessId: string; branchId: string; effectivePermissions: Permission[] }) {
   const pathname = usePathname();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const groups = useMemo(() => filterMenuGroups(effectivePermissions), [effectivePermissions]);
 
   return (
     <>
@@ -187,7 +198,7 @@ export default function SidebarClient({ businessId, branchId }: { businessId: st
             className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
           />
 
-          <aside
+          <aside data-sidebar="true"
             role="dialog"
             aria-modal="true"
             aria-label="Dashboard navigation"
@@ -204,7 +215,7 @@ export default function SidebarClient({ businessId, branchId }: { businessId: st
 
             <SidebarShell
               pathname={pathname}
-              businessId={businessId} branchId={branchId}
+              businessId={businessId} branchId={branchId} groups={groups}
               onNavigate={() => setIsMobileOpen(false)}
               mobile
             />
@@ -213,7 +224,7 @@ export default function SidebarClient({ businessId, branchId }: { businessId: st
       )}
 
       <div className="fixed inset-y-0 left-0 z-50 hidden lg:block">
-        <SidebarShell key={branchId} pathname={pathname} businessId={businessId} branchId={branchId} />
+        <SidebarShell key={branchId} pathname={pathname} businessId={businessId} branchId={branchId} groups={groups} />
       </div>
     </>
   );
@@ -222,15 +233,17 @@ export default function SidebarClient({ businessId, branchId }: { businessId: st
 function SidebarShell({
   pathname,
   businessId, branchId,
+  groups,
   onNavigate,
   mobile = false,
 }: {
   pathname: string;
   businessId: string; branchId: string;
+  groups: MenuGroup[];
   onNavigate?: () => void;
   mobile?: boolean;
 }) {
-  const routeGroup = useMemo(() => getActiveGroup(pathname), [pathname]);
+  const routeGroup = useMemo(() => getActiveGroup(pathname, groups), [pathname, groups]);
   const searchRoute = isSearchRoute(pathname);
   const notificationsRoute = isNotificationsRoute(pathname);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -246,6 +259,18 @@ function SidebarShell({
   );
   const [query, setQuery] = useState("");
   const notifications = useBusinessNotifications(businessId, branchId);
+
+  useEffect(() => {
+    const onGlobalSearchShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setOpenGroupTitle(null);
+        setSpecialPanel("search");
+      }
+    };
+    window.addEventListener("keydown", onGlobalSearchShortcut);
+    return () => window.removeEventListener("keydown", onGlobalSearchShortcut);
+  }, []);
 
   useEffect(() => {
     if (!mobile) return;
@@ -297,7 +322,7 @@ function SidebarShell({
   }, [mobile, openGroupTitle, specialPanel]);
 
   const openGroup = openGroupTitle
-    ? menuGroups.find((group) => group.title === openGroupTitle) ?? null
+    ? groups.find((group) => group.title === openGroupTitle) ?? null
     : null;
 
   const closePanels = () => {
@@ -322,12 +347,14 @@ function SidebarShell({
   };
 
   return (
-    <div ref={shellRef} className="h-full">
+    <div ref={shellRef} className="sidebar-accent h-full">
       <IconRail
         pathname={pathname}
+        groups={groups}
         openGroupTitle={openGroupTitle}
         specialPanel={specialPanel}
         unreadCount={notifications.unread}
+        subscriptionUnreadCount={notifications.subscriptionUnread}
         onSelect={toggleGroup}
         onSearch={() => toggleSpecialPanel("search")}
         onNotifications={() => toggleSpecialPanel("notifications")}
@@ -337,6 +364,18 @@ function SidebarShell({
         }}
         mobile={mobile}
       />
+
+      {notifications.toast ? (
+        <PaymentNotificationToast
+          notification={notifications.toast}
+          onClose={notifications.dismissToast}
+          onNavigate={() => {
+            notifications.dismissToast();
+            closePanels();
+            onNavigate?.();
+          }}
+        />
+      ) : null}
 
       {mobile ? (
         <div className="absolute inset-y-0 left-16 right-0 border-l border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
@@ -399,9 +438,11 @@ function SidebarShell({
 
 function IconRail({
   pathname,
+  groups,
   openGroupTitle,
   specialPanel,
   unreadCount,
+  subscriptionUnreadCount,
   onSelect,
   onSearch,
   onNotifications,
@@ -409,21 +450,23 @@ function IconRail({
   mobile,
 }: {
   pathname: string;
+  groups: MenuGroup[];
   openGroupTitle: string | null;
   specialPanel: SpecialPanel;
   unreadCount: number;
+  subscriptionUnreadCount: number;
   onSelect: (title: string) => void;
   onSearch: () => void;
   onNotifications: () => void;
   onDirectNavigate?: () => void;
   mobile: boolean;
 }) {
-  const routeGroup = getActiveGroup(pathname);
+  const routeGroup = getActiveGroup(pathname, groups);
   const directRailRoute = isDirectRailRoute(pathname);
 
   return (
-    <aside
-      className={`relative flex h-full shrink-0 flex-col items-center border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 ${
+    <aside data-sidebar="true"
+      className={`sidebar-accent relative flex h-full shrink-0 flex-col items-center border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 ${
         mobile ? "w-16" : "w-16 shadow-[4px_0_18px_rgba(15,23,42,0.03)]"
       }`}
     >
@@ -463,7 +506,7 @@ function IconRail({
           onNavigate={onDirectNavigate}
         />
 
-        {menuGroups.map((group) => {
+        {groups.map((group) => {
           if (group.href) {
             return (
               <RailDirectLink
@@ -474,6 +517,7 @@ function IconRail({
                 active={isSubscriptionRoute(pathname)}
                 mobile={mobile}
                 onNavigate={onDirectNavigate}
+                badge={group.title === "Subscription" ? subscriptionUnreadCount : 0}
               />
             );
           }
@@ -583,6 +627,7 @@ function RailDirectLink({
   active,
   mobile,
   onNavigate,
+  badge = 0,
 }: {
   href: string;
   label: string;
@@ -590,6 +635,7 @@ function RailDirectLink({
   active: boolean;
   mobile: boolean;
   onNavigate?: () => void;
+  badge?: number;
 }) {
   return (
     <div className="group relative flex w-full justify-center">
@@ -597,19 +643,57 @@ function RailDirectLink({
         href={href}
         onClick={onNavigate}
         aria-label={label}
-        className={`flex h-11 w-11 items-center justify-center rounded-xl transition duration-150 focus:outline-none focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-950 ${
+        className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition duration-150 focus:outline-none focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-950 ${
           active
             ? "bg-blue-100 text-blue-700 shadow-sm dark:bg-blue-950 dark:text-blue-300"
             : "text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
         }`}
       >
         <Icon size={20} strokeWidth={2} />
+        {badge > 0 ? (
+          <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-amber-500 px-1.5 py-0.5 text-center text-[9px] font-black leading-4 text-white ring-2 ring-white dark:ring-slate-950">
+            {badge > 99 ? "99+" : badge}
+          </span>
+        ) : null}
       </Link>
       {!mobile ? <RailTooltip label={label} /> : null}
     </div>
   );
 }
 
+function PaymentNotificationToast({
+  notification,
+  onClose,
+  onNavigate,
+}: {
+  notification: NotificationRow;
+  onClose: () => void;
+  onNavigate: () => void;
+}) {
+  const tone =
+    notification.severity === "success"
+      ? "border-emerald-200 bg-emerald-50/95 dark:border-emerald-900 dark:bg-emerald-950/95"
+      : notification.severity === "critical"
+        ? "border-red-200 bg-red-50/95 dark:border-red-900 dark:bg-red-950/95"
+        : notification.severity === "warning"
+          ? "border-amber-200 bg-amber-50/95 dark:border-amber-900 dark:bg-amber-950/95"
+          : "border-blue-200 bg-blue-50/95 dark:border-blue-900 dark:bg-blue-950/95";
+
+  return (
+    <div role="status" aria-live="polite" className={`fixed right-4 top-4 z-[110] w-[min(390px,calc(100vw-2rem))] rounded-2xl border p-4 shadow-2xl backdrop-blur ${tone}`}>
+      <div className="flex items-start gap-3">
+        <Bell size={19} className="mt-0.5 shrink-0 text-slate-700 dark:text-slate-200" />
+        <Link href={notification.href ?? "/dashboard/notifications"} onClick={onNavigate} className="min-w-0 flex-1">
+          <p className="font-extrabold text-slate-950 dark:text-white">{notification.title}</p>
+          <p className="mt-1 text-sm leading-5 text-slate-600 dark:text-slate-300">{notification.message}</p>
+        </Link>
+        <button type="button" onClick={onClose} aria-label="Dismiss payment notification" className="rounded-lg p-1.5 text-slate-500 hover:bg-white/70 hover:text-slate-900 dark:hover:bg-slate-900/60 dark:hover:text-white">
+          <X size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function RailSignOutButton({
   mobile,
@@ -619,6 +703,7 @@ function RailSignOutButton({
   onNavigate?: () => void;
 }) {
   const [pending, setPending] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const signOut = async () => {
     if (pending) return;
@@ -635,22 +720,92 @@ function RailSignOutButton({
   };
 
   return (
-    <div className="group relative flex w-full justify-center">
-      <button
-        type="button"
-        onClick={() => void signOut()}
-        disabled={pending}
-        aria-label="Sign out"
-        className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-4 focus:ring-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
-      >
-        {pending ? (
-          <Loader2 size={20} className="animate-spin" />
-        ) : (
-          <LogOut size={20} strokeWidth={2} />
-        )}
-      </button>
-      {!mobile ? <RailTooltip label={pending ? "Signing out..." : "Sign out"} /> : null}
-    </div>
+    <>
+      <div className="group relative flex w-full justify-center">
+        <button
+          type="button"
+          onClick={() => setConfirmOpen(true)}
+          disabled={pending}
+          aria-label="Sign out"
+          className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-4 focus:ring-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
+        >
+          {pending ? (
+            <Loader2 size={20} className="animate-spin" />
+          ) : (
+            <LogOut size={20} strokeWidth={2} />
+          )}
+        </button>
+        {!mobile ? <RailTooltip label={pending ? "Signing out..." : "Sign out"} /> : null}
+      </div>
+
+      {confirmOpen ? (
+        <div
+          className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !pending) setConfirmOpen(false);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sidebar-signout-title"
+            className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300">
+                <TriangleAlert size={23} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-red-600 dark:text-red-300">
+                      Sign out
+                    </p>
+                    <h2 id="sidebar-signout-title" className="mt-1 text-xl font-black text-slate-950 dark:text-white">
+                      Sign out of TENH POS?
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Close sign out confirmation"
+                    disabled={pending}
+                    onClick={() => setConfirmOpen(false)}
+                    className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                  >
+                    <X size={19} />
+                  </button>
+                </div>
+
+                <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  You will need to sign in again to access this workspace.
+                </p>
+
+                <div className="mt-6 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => setConfirmOpen(false)}
+                    className="min-h-11 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => void signOut()}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {pending ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+                    {pending ? "Signing out..." : "Sign out"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -727,7 +882,7 @@ function GlobalSearchPanel({
               autoFocus={!mobile}
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="Order #, SKU, barcode, customer..."
+              placeholder="Search anything…"
               className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:border-blue-500 dark:focus:bg-slate-900 dark:focus:ring-blue-950"
             />
           </label>
@@ -1043,6 +1198,7 @@ function useBusinessNotifications(businessId: string, branchId: string) {
   });
   const prefsRef = useRef(prefs);
   const previousUnread = useRef(0);
+  const [toast, setToast] = useState<NotificationRow | null>(null);
   const [supabase] = useState(() => createClient());
 
   useEffect(() => {
@@ -1085,6 +1241,10 @@ function useBusinessNotifications(businessId: string, branchId: string) {
 
       if (announce && unread > previousUnread.current) {
         const newest = rows.find((item) => !read.has(item.id));
+
+        if (newest && isSubscriptionPaymentNotification(newest)) {
+          setToast(newest);
+        }
 
         if (nextPrefs.sound_enabled) {
           try {
@@ -1132,6 +1292,16 @@ function useBusinessNotifications(businessId: string, branchId: string) {
           event: "*",
           schema: "public",
           table: "business_notifications",
+          filter: `business_id=eq.${businessId}`,
+        },
+        () => void load(true),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "subscription_orders",
           filter: `business_id=eq.${businessId}`,
         },
         () => void load(true),
@@ -1204,7 +1374,16 @@ function useBusinessNotifications(businessId: string, branchId: string) {
     };
   }, [businessId, load, supabase]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   const unread = items.filter((item) => !readIds.has(item.id)).length;
+  const subscriptionUnread = items.filter(
+    (item) => !readIds.has(item.id) && isSubscriptionPaymentNotification(item),
+  ).length;
 
   const markRead = async (id: string) => {
     const {
@@ -1285,6 +1464,10 @@ function useBusinessNotifications(businessId: string, branchId: string) {
   };
 }
 
+function isSubscriptionPaymentNotification(item: NotificationRow) {
+  return item.notification_type.startsWith("subscription_");
+}
+
 function formatNotificationDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -1301,12 +1484,26 @@ function formatNotificationDate(value: string) {
   }).format(date);
 }
 
-function getActiveGroup(pathname: string): MenuGroup {
-  const match = menuGroups.find((group) =>
+function filterMenuGroups(effectivePermissions: Permission[]): MenuGroup[] {
+  const allowed = new Set<Permission>(effectivePermissions);
+  return menuGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.permission || allowed.has(item.permission)),
+    }))
+    .filter((group) =>
+      group.href
+        ? !group.permission || allowed.has(group.permission)
+        : group.items.length > 0,
+    );
+}
+
+function getActiveGroup(pathname: string, groups: MenuGroup[]): MenuGroup {
+  const match = groups.find((group) =>
     group.items.some((item) => isItemActive(pathname, item.href)),
   );
 
-  return match ?? menuGroups[0];
+  return match ?? groups[0] ?? menuGroups[0];
 }
 
 function isSearchRoute(pathname: string) {
@@ -1343,14 +1540,15 @@ function isItemActive(pathname: string, href: string) {
     return pathname === "/dashboard";
   }
 
+  if (href === "/dashboard/settings/printers") {
+    return pathname.startsWith("/dashboard/settings/printers") || pathname.startsWith("/dashboard/settings/receipts");
+  }
+
   if (href === "/dashboard/settings") {
     return (
       pathname === href ||
       pathname.startsWith("/dashboard/settings/system") ||
       pathname.startsWith("/dashboard/settings/security") ||
-      pathname.startsWith("/dashboard/settings/receipts") ||
-      pathname.startsWith("/dashboard/settings/printers") ||
-      pathname.startsWith("/dashboard/settings/users") ||
       pathname.startsWith("/dashboard/settings/business")
     );
   }

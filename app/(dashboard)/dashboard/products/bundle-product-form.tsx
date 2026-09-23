@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { Gift, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import ProductVariantPicker from '@/components/product-variant-picker';
 
 import {
   createBundleProduct,
@@ -11,7 +12,7 @@ import {
 
 type Category = { id: string; name: string };
 
-type ComponentProduct = {
+export type ComponentProduct = {
   id: string;
   name: string;
   sku: string | null;
@@ -20,9 +21,16 @@ type ComponentProduct = {
   cost_price: number;
   selling_price: number;
   stock_quantity: number;
+  product_type: string | null;
+  imageUrl: string | null;
+  categoryName: string;
+  categoryId: string | null;
+  businessStock: number;
+  groups: { id: string; name: string; selection_type: string; is_required: boolean; min_selections: number; max_selections: number }[];
+  options: { id: string; group_id: string; name: string; is_default: boolean; price_adjustment: number }[];
 };
 
-type SelectedItem = { productId: string; quantity: number };
+type SelectedItem = { productId: string; quantity: number; optionIds: string[] };
 
 const initialState: CreateBundleState = { success: false, message: "" };
 const inputClass =
@@ -31,9 +39,15 @@ const inputClass =
 export default function BundleProductForm({
   categories,
   products,
+  branchId,
+  requestId,
+  onCreated,
 }: {
   categories: Category[];
   products: ComponentProduct[];
+  branchId: string;
+  requestId: string;
+  onCreated?: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(createBundleProduct, initialState);
@@ -45,12 +59,11 @@ export default function BundleProductForm({
     if (state.success) {
       toast.success(state.message);
       formRef.current?.reset();
-      setItems([]);
-      setSelectedProductId("");
+      onCreated?.();
     } else {
       toast.error(state.message);
     }
-  }, [state]);
+  }, [state, onCreated]);
 
   const productMap = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
@@ -59,7 +72,8 @@ export default function BundleProductForm({
 
   const normalTotal = items.reduce((total, item) => {
     const product = productMap.get(item.productId);
-    return total + Number(product?.selling_price ?? 0) * item.quantity;
+    const optionTotal = product?.options.filter(option => item.optionIds.includes(option.id)).reduce((sum, option) => sum + Number(option.price_adjustment), 0) ?? 0;
+    return total + (Number(product?.selling_price ?? 0) + optionTotal) * item.quantity;
   }, 0);
 
   const costTotal = items.reduce((total, item) => {
@@ -69,13 +83,16 @@ export default function BundleProductForm({
 
   function addItem() {
     if (!selectedProductId || items.some((item) => item.productId === selectedProductId)) return;
-    setItems((current) => [...current, { productId: selectedProductId, quantity: 1 }]);
+    const product = productMap.get(selectedProductId);
+    setItems((current) => [...current, { productId: selectedProductId, quantity: 1, optionIds: product?.options.filter(option => option.is_default).map(option => option.id) ?? [] }]);
     setSelectedProductId("");
   }
 
   return (
     <form ref={formRef} action={formAction} className="mt-6 space-y-5">
       <input type="hidden" name="items" value={JSON.stringify(items)} />
+      <input type="hidden" name="branchId" value={branchId} />
+      <input type="hidden" name="requestId" value={requestId} />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Bundle name" htmlFor="bundle-name">
@@ -105,14 +122,7 @@ export default function BundleProductForm({
         </div>
 
         <div className="flex gap-2">
-          <select value={selectedProductId} onChange={(event) => setSelectedProductId(event.target.value)} className={inputClass}>
-            <option value="">Select a product or exact variant</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {formatProductName(product)} — stock {product.stock_quantity}
-              </option>
-            ))}
-          </select>
+          <div className="min-w-0 flex-1"><ProductVariantPicker products={products.filter(product => !items.some(item => item.productId === product.id))} value={selectedProductId} onChange={setSelectedProductId} allowOutOfStock stockForProduct={product => productMap.get(product.id)?.stock_quantity ?? 0} /></div>
           <button type="button" onClick={addItem} disabled={!selectedProductId} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 font-semibold text-white disabled:opacity-50">
             <Plus size={17} /> Add
           </button>
@@ -125,7 +135,8 @@ export default function BundleProductForm({
             const product = productMap.get(item.productId);
             if (!product) return null;
             return (
-              <div key={item.productId} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+              <div key={item.productId} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-slate-900">{formatProductName(product)}</p>
                   <p className="text-xs text-slate-500">SKU {product.sku ?? "—"} · available {product.stock_quantity}</p>
@@ -134,7 +145,7 @@ export default function BundleProductForm({
                   aria-label={`Quantity for ${product.name}`}
                   type="number"
                   min="1"
-                  max={Math.max(1, product.stock_quantity)}
+                  max={999}
                   value={item.quantity}
                   onChange={(event) => {
                     const quantity = Math.max(1, Number(event.target.value) || 1);
@@ -142,9 +153,16 @@ export default function BundleProductForm({
                   }}
                   className="w-20 rounded-lg border border-slate-300 px-3 py-2"
                 />
-                <button type="button" onClick={() => setItems((current) => current.filter((row) => row.productId !== item.productId))} className="rounded-lg p-2 text-red-600 hover:bg-red-50">
+                <button type="button" aria-label={`Remove ${product.name}`} onClick={() => setItems((current) => current.filter((row) => row.productId !== item.productId))} className="rounded-lg p-2 text-red-600 hover:bg-red-50">
                   <Trash2 size={17} />
                 </button>
+              </div>
+              {product.groups.map(group => <fieldset key={group.id} className="mt-3 border-t border-slate-100 pt-2">
+                <legend className="text-xs font-semibold text-slate-600">{group.name}{group.is_required || group.min_selections > 0 ? ' *' : ''} · {group.selection_type === 'single' ? 'Choose one' : `Up to ${group.max_selections}`}</legend>
+                <div className="mt-1 flex flex-wrap gap-3">{product.options.filter(option => option.group_id === group.id).map(option => <label key={option.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={item.optionIds.includes(option.id)} onChange={event => setItems(current => current.map(row => row.productId !== item.productId ? row : { ...row, optionIds: event.target.checked ? [...row.optionIds.filter(id => group.selection_type !== 'single' || !product.options.some(o => o.id === id && o.group_id === group.id)), option.id] : row.optionIds.filter(id => id !== option.id) }))} />{option.name}
+                </label>)}</div>
+              </fieldset>)}
               </div>
             );
           })}
@@ -163,6 +181,7 @@ export default function BundleProductForm({
       <button type="submit" disabled={pending || items.length < 2} className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
         {pending ? "Creating bundle..." : "Create Bundle"}
       </button>
+      <p className="text-xs text-slate-500">Creates an empty bundle. Pack sets from branch stock before selling. The included variants and options stay fixed.</p>
     </form>
   );
 }

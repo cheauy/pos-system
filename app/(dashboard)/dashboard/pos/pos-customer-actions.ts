@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { getBranchContext, assertOperatingBranch } from '@/lib/branches/context';
 import { isConfirmedRollback } from '@/lib/operations/rpc-outcome';
 import { requirePermission } from '@/lib/auth/require-permission';
-import { hasPermission } from '@/lib/auth/permissions';
+import { businessHasPermission } from '@/lib/auth/effective-permissions';
 import { createClient } from '@/lib/supabase/branch-server';
 import { customerInputIssue } from './pos-customer-helpers';
 import type { CustomerInput, CustomerPage, PickerCustomer } from './pos-customer-helpers';
@@ -44,14 +44,14 @@ export async function fetchPosCustomers(businessId: string, search: string, offs
     const {data,error}=await query;
     if(error) return {success:false,message:failure(error).message};
     const fieldSettings=await customerFields(business.id);
-    return {success:true,data:{items:(data ?? []).slice(0,30),hasMore:(data?.length ?? 0)>30,nextOffset:offset+30,canCreate:hasPermission(business.role,'customers.create'),fieldSettings} as CustomerPage};
+    return {success:true,data:{items:(data ?? []).slice(0,30),hasMore:(data?.length ?? 0)>30,nextOffset:offset+30,canCreate:await businessHasPermission(business,'customers.create'),fieldSettings} as CustomerPage};
   } catch(error) {return {success:false,message:failure(error).message};}
 }
 
 export async function createPosCustomer(businessId: string, input: CustomerInput): Promise<ActionResult<PickerCustomer>> {
   const business=await requirePermission('pos.access');
   if(business.id!==businessId) return {success:false,uncertain:true,message:'Your active business changed. Keep this customer request and reopen the original business.'};
-  if(!hasPermission(business.role,'customers.create')) return {success:false,uncertain:true,message:'You do not have permission to create customers. Keep the pending request and ask an owner to verify its outcome.'};
+  if(!(await businessHasPermission(business,'customers.create'))) return {success:false,uncertain:true,message:'You do not have permission to create customers. Keep the pending request and ask an owner to verify its outcome.'};
   try {
     if (!input?.branchId) return {success:false,uncertain:true,message:'A confirmed branch is required for this customer request. Check the original customer save before starting another.'};
     try { await assertOperatingBranch(input.branchId); }

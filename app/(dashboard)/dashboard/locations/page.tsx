@@ -1,7 +1,6 @@
-import { getBranchEntitlement } from "@/lib/subscriptions/branch-limits";
-import BackToSettingsLink from "@/components/settings/back-to-settings-link";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getBranchEntitlement } from "@/lib/subscriptions/branch-limits";
 
 import BranchesClient, {
   type BranchManagerOption,
@@ -50,8 +49,8 @@ type StockRow = {
 
 export default async function LocationsPage() {
   const business = await requirePermission("locations.manage");
-
   const entitlement = await getBranchEntitlement(business.id);
+
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
@@ -203,10 +202,9 @@ export default async function LocationsPage() {
 
   return (
     <main className="mx-auto w-full max-w-[1600px] space-y-5 pb-10">
-      <BackToSettingsLink />
-      <section className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm"><strong>{entitlement.used} / {entitlement.limit} active branches</strong><p>Standard plans and trial include 1 branch. Custom Plan adds branches at $20 each per month after payment approval.</p><a className="mt-2 inline-block font-semibold text-blue-700" href="/dashboard/settings/subscription/plans">Customize subscription</a>{entitlement.used > entitlement.limit && <p className="mt-2 text-red-700">Deactivate unused branches or upgrade your plan to continue branch operations. Historical records are preserved.</p>}</section>
       <BranchesClient
         businessName={business.name}
+        branchCapacity={{ used: entitlement.activeUsed, limit: entitlement.limit, locked: entitlement.accessLocked || !entitlement.ready }}
         branches={branches}
         managerOptions={managerOptions}
       />

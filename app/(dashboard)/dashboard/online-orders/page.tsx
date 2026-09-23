@@ -1,12 +1,17 @@
 import { getBranchContext } from "@/lib/branches/context";
 import { createClient } from "@/lib/supabase/branch-server";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { businessHasPermission } from "@/lib/auth/effective-permissions";
 
 import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
 import OnlineOrdersClient, { type OnlineOrder } from "./online-orders-client";
 
 export default async function OnlineOrdersPage() {
   const business = await requirePermission("orders.view");
+  const [canUpdate, canCancel] = await Promise.all([
+    businessHasPermission(business, "orders.update"),
+    businessHasPermission(business, "orders.cancel"),
+  ]);
   const scopedDb = await createClient();
   const {branchId}=await getBranchContext();
 
@@ -65,6 +70,8 @@ export default async function OnlineOrdersPage() {
       branchId={branchId}
       initialOrders={(data ?? []).map(order => ({ ...order, order_items: order.order_items.map(item => { const product = Array.isArray(item.products) ? item.products[0] : item.products; return { ...item, image_url: product?.variant_image_url || product?.image_url || null }; }) })) as OnlineOrder[]}
       currency={settings.currency}
+      canUpdate={canUpdate}
+      canCancel={canCancel}
     />
   );
 }

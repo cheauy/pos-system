@@ -66,7 +66,7 @@ export default async function SubscriptionPaymentsAdminPage() {
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">Super Admin</p>
         <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-slate-950 dark:text-white">Subscription Payments</h1>
-        <p className="mt-2 text-sm text-slate-500">Create custom quotes and manually verify ABA subscription payments.</p>
+        <p className="mt-2 text-sm text-slate-500">Create custom quotes and review Manual Bank Transfer subscription payments.</p>
       </div>
 
       <section className="grid gap-4 md:grid-cols-3">

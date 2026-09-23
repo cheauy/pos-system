@@ -172,13 +172,14 @@ export async function createPurchaseOrder(formData: FormData) {
 }
 
 export async function setPurchaseOrderStatus(formData: FormData) {
-  const business = await requirePermission("purchases.update");
   const id = text(formData, "id");
   const status = text(formData, "status");
 
   if (!id || !status || !["draft", "sent", "cancelled"].includes(status)) {
     throw new Error("Invalid status.");
   }
+
+  const business = await requirePermission(status === "cancelled" ? "purchases.cancel" : "purchases.update");
 
   const supabase = await createClient();
   const { error } = await supabase

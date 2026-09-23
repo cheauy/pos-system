@@ -104,6 +104,15 @@ const orderedBusinessModePresets = [...businessModePresets].sort(
     (businessModeOrder.get(b.value) ?? 999),
 );
 
+const comingSoonBusinessModes = new Set([
+  "milk_tea",
+  "restaurant",
+  "cafe",
+  "beauty",
+  "electronics",
+  "other",
+]);
+
 export default function GetStartedForm({ accountEmail }: { accountEmail: string }) {
   const [state, formAction, pending] = useActionState(
     createOwnerBusiness,
@@ -111,7 +120,6 @@ export default function GetStartedForm({ accountEmail }: { accountEmail: string 
   );
   const [step, setStep] = useState<1 | 2>(1);
   const [businessMode, setBusinessMode] = useState("shoes");
-  const [isUnsure, setIsUnsure] = useState(false);
   const [businessName, setBusinessName] = useState("");
   const [subdomain, setSubdomain] = useState("");
   const [subdomainTouched, setSubdomainTouched] = useState(false);
@@ -228,43 +236,19 @@ export default function GetStartedForm({ accountEmail }: { accountEmail: string 
                 </p>
 
                 <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {orderedBusinessModePresets.map((preset) => (
-                    <BusinessModeCard
-                      key={preset.value}
-                      preset={preset}
-                      selected={businessMode === preset.value && !isUnsure}
-                      onSelect={() => {
-                        setIsUnsure(false);
-                        setBusinessMode(preset.value);
-                      }}
-                    />
-                  ))}
+                  {orderedBusinessModePresets.map((preset) => {
+                    const comingSoon = comingSoonBusinessModes.has(preset.value);
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsUnsure(true);
-                      setBusinessMode("other");
-                    }}
-                    className={`group relative flex min-h-[190px] flex-col items-center justify-center rounded-2xl border border-dashed p-4 text-center transition duration-200 ${
-                      isUnsure
-                        ? "border-blue-500 bg-blue-50/70 shadow-[0_8px_28px_rgba(37,99,235,0.08)] ring-2 ring-blue-100"
-                        : "border-blue-200 bg-white hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-md hover:shadow-blue-100/60"
-                    }`}
-                  >
-                    {isUnsure && (
-                      <span className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
-                        <Check size={14} strokeWidth={3} />
-                      </span>
-                    )}
-                    <div className="flex h-[74px] w-[74px] items-center justify-center rounded-[22px] bg-blue-50 text-3xl font-light text-blue-600 transition group-hover:scale-105">
-                      +
-                    </div>
-                    <p className="mt-3 text-[15px] font-extrabold leading-5 text-slate-950">Not sure yet?</p>
-                    <p className="mt-1.5 max-w-[160px] text-xs leading-[1.45] text-slate-500">
-                      You can change this later in settings.
-                    </p>
-                  </button>
+                    return (
+                      <BusinessModeCard
+                        key={preset.value}
+                        preset={preset}
+                        selected={!comingSoon && businessMode === preset.value}
+                        disabled={comingSoon}
+                        onSelect={() => setBusinessMode(preset.value)}
+                      />
+                    );
+                  })}
                 </div>
 
                 <SetupSummaryBar
@@ -359,10 +343,12 @@ function StepMarker({
 function BusinessModeCard({
   preset,
   selected,
+  disabled,
   onSelect,
 }: {
   preset: BusinessModePreset;
   selected: boolean;
+  disabled: boolean;
   onSelect: () => void;
 }) {
   const illustration = businessIllustrationByMode[preset.value];
@@ -371,18 +357,26 @@ function BusinessModeCard({
     <button
       type="button"
       onClick={onSelect}
+      disabled={disabled}
+      aria-disabled={disabled}
       className={`group relative flex min-h-[190px] flex-col items-center rounded-2xl border px-3.5 py-4 text-center transition duration-200 ${
-        selected
-          ? "border-blue-500 bg-white shadow-[0_10px_30px_rgba(37,99,235,0.10)] ring-2 ring-blue-100"
-          : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md hover:shadow-slate-200/60"
+        disabled
+          ? "cursor-not-allowed border-slate-200 bg-slate-50/80 opacity-70"
+          : selected
+            ? "border-blue-500 bg-white shadow-[0_10px_30px_rgba(37,99,235,0.10)] ring-2 ring-blue-100"
+            : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md hover:shadow-slate-200/60"
       }`}
     >
-      {selected && (
+      {disabled ? (
+        <span className="absolute right-3 top-3 z-10 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-amber-700">
+          Coming soon
+        </span>
+      ) : selected ? (
         <span className="absolute right-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
           <Check size={14} strokeWidth={3} />
         </span>
-      )}
-      <div className="flex h-[78px] w-[78px] shrink-0 items-center justify-center overflow-hidden rounded-[22px] bg-gradient-to-br from-slate-50 to-blue-50 transition duration-200 group-hover:scale-[1.04]">
+      ) : null}
+      <div className={`flex h-[78px] w-[78px] shrink-0 items-center justify-center overflow-hidden rounded-[22px] bg-gradient-to-br from-slate-50 to-blue-50 transition duration-200 ${disabled ? "grayscale-[0.15]" : "group-hover:scale-[1.04]"}`}>
         <Image
           src={illustration}
           alt=""
@@ -392,8 +386,8 @@ function BusinessModeCard({
           className="h-full w-full object-contain p-1"
         />
       </div>
-      <p className="mt-3 text-[15px] font-extrabold leading-5 text-slate-950">{preset.label}</p>
-      <p className="mt-1.5 max-w-[185px] text-xs leading-[1.45] text-slate-500">{preset.description}</p>
+      <p className={`mt-3 text-[15px] font-extrabold leading-5 ${disabled ? "text-slate-600" : "text-slate-950"}`}>{preset.label}</p>
+      <p className={`mt-1.5 max-w-[185px] text-xs leading-[1.45] ${disabled ? "text-slate-400" : "text-slate-500"}`}>{preset.description}</p>
     </button>
   );
 }

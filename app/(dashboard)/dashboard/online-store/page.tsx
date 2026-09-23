@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { requirePermission } from "@/lib/auth/require-permission";
+import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
 import { formatBusinessType } from "@/lib/storefront/types";
 import { getSubdomainUrl } from "@/lib/tenancy/domain";
@@ -27,7 +28,7 @@ export default async function OnlineStorePage() {
   if(branchResult.error || fulfillment.error)throw new Error("Apply the operating branch migration to configure online fulfilment.");
   const settings = await getStorefrontSettings(business.id);
   const storeUrl = getSubdomainUrl(business.slug);
-  const canEdit = business.role === "owner" || business.role === "admin";
+  const canEdit = await businessHasPermission(business, "storefront.update");
   const [productResult, categoryResult, tablesResult] = await Promise.all([
     supabaseAdmin.from("products")
       .select("id, name, sku, size, color, image_url, variant_image_url, selling_price, stock_quantity, is_online, category_id")

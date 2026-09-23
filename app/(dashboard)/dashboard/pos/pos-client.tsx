@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { switchOperatingBranch } from "../branch-actions";
+import { posBranchSwitchReason } from '@/lib/branches/switch-model';
+import { useWorkspaceBranch, useBranchSwitchGuard } from "../workspace-branch-provider";
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Barcode, Banknote, Check, ChevronDown, Clock, CreditCard, Gift, Grid2X2, Heart, List, Minus, Package, Plus, Printer, RefreshCw, Search, Settings2, ShoppingCart, SlidersHorizontal, Store, Trash2, UserRound, X } from 'lucide-react';
 import { allocatePosStock, checkPosSale, completePosSale, deletePosHold, loadPosWorkspace, savePosHold, savePosSettings } from './pos-workspace-actions';
 import { cartIssue, cents, configuredLine, discountIssue, EMPTY_FILTERS, inventoryFor, isVariantGroup, restoreHeldDraft, money, productGroups, stockFor, thresholdFor, totals, validateCheckout } from './pos-workspace-helpers';
 import { currencyQuote, currencySymbol, quoteMoney } from './pos-currency';
-import { CurrencyAmountInput, CurrencySwitch } from './pos-currency-components';
+import { CurrencyAmountInput } from './pos-currency-components';
 import { CheckoutPanel, VariantPicker } from './pos-workspace-flow';
 import { BarcodeScanner, Modal, ProductImage, ReceiptContent } from './pos-workspace-components';
 import { PosCustomerPicker } from './pos-customer-picker';
@@ -26,6 +27,7 @@ function newRequestId(): string {
 const messageOf = (e: unknown) => e instanceof Error ? e.message : 'The request failed. Please try again.';
 
 export default function PosClient({ initialData }: { initialData: Workspace }) {
+  const { requestSwitch } = useWorkspaceBranch();
   const [data, setData] = useState(initialData);
   const [branch, setBranch] = useState(initialData.defaultBranchId);
   const [filters, setFilters] = useState<CatalogFilters>({ ...EMPTY_FILTERS });
@@ -79,10 +81,14 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   const favoriteKey = `tenh-pos:favorites:${initialData.businessId}:${initialData.userId}`;
   const recoveryKey = `tenh-pos:pending-sale:${initialData.businessId}:${initialData.userId}`;
   const frozen = Boolean(busy || recovery);
+  useBranchSwitchGuard(targetId => posBranchSwitchReason(targetId, {
+    busy: Boolean(inFlight.current || busy), pendingBranchId: (recoveryRef.current || recovery)?.branchId || null,
+    hasCart: lines.length > 0, hasDialog: Boolean(dialog),
+  }));
   const customer = data.customers.find(c => c.id === customerId);
   const count = lines.reduce((sum, l) => sum + l.quantity, 0);
   const values = totals(lines, Number(discount), Number(delivery), Number(points), Number(data.settings.taxRate), Number(data.settings.pointValue), discountType);
-  const quote = currencyQuote(data.settings,selectedCurrency);
+  const quote = currencyQuote(data.settings);
   const cash = (value: number) => quoteMoney(value, quote);
   const productIssue = cartIssue(lines, branch, data);
   const amountIssue = discountIssue(Number(discount), discountType, values.subtotal) || ([delivery, points].some(v => !Number.isFinite(Number(v)) || Number(v) < 0 || Number(v) > 999999999) ? 'Enter valid discount, delivery and points amounts.' : values.discount > values.subtotal ? 'Discount and redeemed points exceed the merchandise subtotal.' : !Number.isInteger(Number(points)) ? 'Loyalty points must be a whole number.' : Number(points) > Number(customer?.loyalty_points ?? 0) ? 'The customer does not have enough loyalty points.' : null);
@@ -142,11 +148,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     return ()=>{channel?.close();window.removeEventListener('focus',reload);window.removeEventListener('storage',storage);};
   },[initialData.businessId]);
   function setEntryError(key:string,error:string|null) { setEntryErrors(old=>old[key]===error?old:{...old,[key]:error}); }
-  function selectCurrency(code:string) {
-    if(frozen || code===quote.displayCurrency) return;
-    setSelectedCurrency(code);setPaid('');setConfirmed(false);setEntryErrors({});setDiscountEntryError(null);
-    if(lines.length)setNotice({kind:'info',text:'Entry currency changed. Prices, discount and shipping fee keep their accounting value. Confirm the actual payment again.'});
-  }
+
   function selectCustomer(id:string) {
     const next=data.customers.find(c=>c.id===id);
     setCustomerId(next?.id || '');setPoints('0');setCreateCustomer(false);recipientEdited.current=false;
@@ -207,13 +209,8 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     finally { if (!silent) setBusy(''); }
   }
   async function changeBranch(next: string) {
-    if (next === branch) return;
-    if (lines.length) { setNotice({ kind: 'info', text: 'Hold or clear the current order before changing branch. Stock must be checked for one branch at a time.' }); return; }
-    if (frozen) return;
-    setBusy('branch');
-    try { const result = await switchOperatingBranch(next); if (!result.success) { setNotice({kind:'error',text:result.message}); return; } window.location.reload(); }
-    catch { setNotice({kind:'error',text:'Unable to switch branch. Please retry.'}); }
-    finally { setBusy(''); }
+    if (next === branch || frozen) return;
+    await requestSwitch(next);
   }
   function addProduct(product: Product, ids: string[] = []): boolean {
     if (frozen) return false;
@@ -401,9 +398,9 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
       <header className={s.pageHeader}>
         <div><h1>Point of Sale</h1><p>Search products, filter inventory, and complete sales quickly.</p></div>
         <div className={s.headerStats}>
-          <div className={s.productSummary} aria-label="Products and currency">
+          <div className={s.productSummary} aria-label="Products">
             <div className={s.productCount}><span><Package size={19}/></span><div><strong>{allGroupCount}</strong><small>Products</small></div></div>
-            <CurrencySwitch quote={quote} onChange={selectCurrency} disabled={frozen}/>
+
           </div>
           <button className={`${s.miniStat} ${s.warningStat}`} onClick={() => changeFilter('stock', filters.stock === 'low' ? 'all' : 'low')} aria-pressed={filters.stock === 'low'}><span><AlertTriangle size={19} /></span><div><strong>{lowStockCount}</strong><small>Low stock SKUs</small></div></button>
           <label className={s.branchStat}><Store size={19} /><span><small>Branch</small><select aria-label="Sale branch" value={branch} onChange={e => changeBranch(e.target.value)} disabled={frozen}>{data.branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></span></label>

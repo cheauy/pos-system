@@ -1,6 +1,7 @@
 "use server";
 
-import { getBranchEntitlement } from "@/lib/subscriptions/branch-limits";
+import { subscriptionSelection, subscriptionFailure, type SubscriptionSelectionState } from "@/lib/subscriptions/checkout-input";
+import { isConfirmedRollback } from "@/lib/operations/rpc-outcome";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -8,13 +9,15 @@ import { redirect } from "next/navigation";
 import { getCurrentBusinessForSubscription } from "@/lib/business/get-current-business";
 import { getAppUrl } from "@/lib/tenancy/domain";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { cancelSubscriptionPaywayCheckout } from "@/lib/payway/server";
+import { getManualPaymentConfig } from "@/lib/subscriptions/manual-bank";
 import { createClient } from "@/lib/supabase/server";
+import { isSubscriptionPlanKey, isSubscriptionTermMonths } from "@/lib/subscriptions/plans";
 import {
-  calculateCustomSubscriptionPrice,
-  subscriptionPlans,
-  isSubscriptionPlanKey,
-  isSubscriptionTermMonths,
-} from "@/lib/subscriptions/plans";
+  expireStaleSubscriptionPaymentRequestsForBusiness,
+  expireSubscriptionPaymentRequestSafely,
+  isSubscriptionPaymentExpired,
+} from "@/lib/subscriptions/payment-expiry";
 import {
   checkTrialRegistrationEligibility,
   recordTrialSignupEvent,
@@ -54,81 +57,228 @@ function safeFileName(name: string) {
   );
 }
 
-export async function createSubscriptionOrder(formData: FormData) {
+// No client-supplied price/credit is accepted. The locked SQL quote is authoritative.
+async function prepareSubscriptionOrder(formData: FormData, reactivateCurrent = false) {
   const business = await getCurrentBusinessForSubscription({ startTrial: false });
+  if (business.role !== "owner") throw new Error("Only the business owner can purchase a subscription.");
+  const expectedBusinessId=formData.get('expectedBusinessId');
+  if(typeof expectedBusinessId!=='string' || expectedBusinessId!==business.id) throw new Error('Your active business changed or this checkout page is stale. Reload plans before purchasing.');
+  if (reactivateCurrent) {
+    if (business.subscriptionStatus !== "expired") throw new Error("Your subscription is no longer expired. Refresh Subscription to see its current status.");
+    const { data: current, error } = await supabaseAdmin.from("businesses")
+      .select("subscription_plan_key,subscription_user_limit,subscription_branch_limit,subscription_months")
+      .eq("id", business.id).maybeSingle();
+    if (error || !current) throw new Error("Unable to load your current subscription. Please try again.");
+    if (!isSubscriptionPlanKey(current.subscription_plan_key)) {
+      return "/dashboard/settings/subscription?view=plans&expired=change";
+    }
+    const months = Number(current.subscription_months);
+    if (!isSubscriptionTermMonths(months)) throw new Error("Your previous billing term is unavailable. Choose another plan to continue.");
+    formData = new FormData();
+    formData.set("plan", current.subscription_plan_key);
+    formData.set("termMonths", String(months));
+    formData.set("userLimit", String(current.subscription_user_limit));
+    formData.set("branchLimit", String(current.subscription_branch_limit));
+    formData.set("expiredAction", "reactivate");
+  }
+  const selection = subscriptionSelection(formData);
+  const expiredAction = formData.get("expiredAction");
+  // Upgrade duration is chosen on the payment page. Older clients may still
+  // submit 0 here; create the initial upgrade quote with a valid 1-month term
+  // so subscription_orders_term_check is never violated.
+  const initialTermMonths = selection.term === 0 ? 1 : selection.term;
 
+  if (business.subscriptionStatus === "expired") {
+    if (expiredAction !== "reactivate" && expiredAction !== "change") {
+      throw new Error("Choose Reactivate or choose a new plan from the expired Subscription screen.");
+    }
+
+    if (expiredAction === "reactivate") {
+      if (selection.term === 0) {
+        throw new Error("Choose a new billing term to reactivate the subscription.");
+      }
+
+      const { data: latestSubscription, error: latestSubscriptionError } =
+        await supabaseAdmin
+          .from("businesses")
+          .select("subscription_plan_key,subscription_user_limit,subscription_branch_limit")
+          .eq("id", business.id)
+          .maybeSingle();
+
+      if (latestSubscriptionError || !latestSubscription) {
+        throw new Error(
+          latestSubscriptionError?.message ??
+            "Unable to verify the latest subscription before reactivation.",
+        );
+      }
+
+      const latestPlan = latestSubscription.subscription_plan_key;
+      const latestUsers = Math.max(
+        1,
+        Number(latestSubscription.subscription_user_limit) || 1,
+      );
+      const latestBranches = Math.max(
+        1,
+        Number(latestSubscription.subscription_branch_limit) || 1,
+      );
+
+      if (
+        !latestPlan ||
+        selection.plan !== latestPlan ||
+        selection.users !== latestUsers ||
+        selection.branches !== latestBranches
+      ) {
+        throw new Error(
+          `Reactivate keeps your latest subscription unchanged (${latestUsers} ${latestUsers === 1 ? "user" : "users"} · ${latestBranches} ${latestBranches === 1 ? "branch" : "branches"}). Use Choose a different plan if you want to change capacity.`,
+        );
+      }
+    }
+  }
+
+  const db = await createClient();
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) throw new Error("Your session expired. Please sign in again.");
+
+  // Clear expired 10-minute requests before checking for an open PayWay
+  // transaction. An unresolved PayWay transaction stays locked for safety.
+  await expireStaleSubscriptionPaymentRequestsForBusiness(business.id);
+
+  if (reactivateCurrent) {
+    const { data: existing, error } = await supabaseAdmin.from("subscription_orders")
+      .select("id,status,payment_expires_at,payment_expired_at,created_at")
+      .eq("business_id", business.id).eq("plan_key", selection.plan)
+      .eq("term_months", initialTermMonths).eq("requested_user_limit", selection.users)
+      .eq("requested_branch_limit", selection.branches)
+      .in("status", ["pending_payment", "payment_submitted"])
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (error) throw new Error("Unable to check your existing payment request. Please try again.");
+    if (existing && (existing.status === "payment_submitted" || !isSubscriptionPaymentExpired(existing))) {
+      return `/dashboard/settings/subscription/payment/${existing.id}`;
+    }
+  }
+
+  const keepMemberIds = formData.getAll("keepMemberId").filter((value): value is string => typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value));
+  const keepBranchIds = formData.getAll("keepBranchId").filter((value): value is string => typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value));
+
+  // Only a PayWay checkout that is still inside TENH's authoritative payment
+  // window can block a new subscription selection. An expired TENH request may
+  // remain provider-locked externally when PayWay refuses Close Transaction,
+  // but it must not trap the owner on an old plan. Late provider approvals are
+  // isolated for review in the PayWay verification path instead of activating.
+  const paymentWindowNow = new Date().toISOString();
+  const { data: openPayway, error: openPaywayError } = await supabaseAdmin
+    .from("subscription_orders")
+    .select("id")
+    .eq("business_id", business.id)
+    .eq("status", "pending_payment")
+    .eq("payment_provider", "aba_payway")
+    .is("payment_expired_at", null)
+    .gt("payment_expires_at", paymentWindowNow)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (openPaywayError) throw new Error(`Unable to verify existing payment checkout: ${openPaywayError.message}`);
+  if (openPayway?.id) {
+    throw new Error(`An ABA PayWay checkout is already open. Check or cancel payment order ${String(openPayway.id).slice(0, 8).toUpperCase()} before choosing another plan.`);
+  }
+
+  const {data,error} = await supabaseAdmin.rpc("create_safe_subscription_order", {
+    p_business_id:business.id,p_requesting_user_id:user.id,p_plan_key:selection.plan,
+    p_term_months:initialTermMonths,p_requested_user_limit:selection.users,
+    p_requested_branch_limit:selection.branches,
+    p_keep_member_ids:keepMemberIds.length ? keepMemberIds : null,
+    p_keep_branch_ids:keepBranchIds.length ? keepBranchIds : null,
+  });
+  if(error) throw new Error(subscriptionFailure(error));
+  const row=Array.isArray(data)?data[0]:data;
+  if(!row?.order_id || typeof row.order_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(row.order_id)) throw new Error('Subscription order was not confirmed. Check Subscription before retrying.');
+  try {revalidatePath('/dashboard/settings/subscription');} catch { /* Quote is committed. */ }
+  return `/dashboard/settings/subscription/payment/${row.order_id}`;
+}
+// Retained for older callers. The new plans form displays expected errors inline.
+export async function createSubscriptionOrder(formData: FormData) {
+  redirect(await prepareSubscriptionOrder(formData));
+}
+export async function submitSubscriptionSelection(_previous: SubscriptionSelectionState, formData: FormData): Promise<SubscriptionSelectionState> {
+  let destination: string;
+  try { destination=await prepareSubscriptionOrder(formData); }
+  catch(error) {return {error:subscriptionFailure(error)};}
+  // Redirect must not be caught and rendered as a failed purchase.
+  redirect(destination);
+}
+
+export async function reactivateCurrentSubscription(_previous: SubscriptionSelectionState, formData: FormData): Promise<SubscriptionSelectionState> {
+  let destination: string;
+  try { destination = await prepareSubscriptionOrder(formData, true); }
+  catch (error) { return { error: subscriptionFailure(error) }; }
+  redirect(destination);
+}
+
+
+export async function changePendingUpgradeDuration(formData: FormData) {
+  const business = await getCurrentBusinessForSubscription({ startTrial: false });
   if (business.role !== "owner") {
-    throw new Error("Only the business owner can purchase a subscription.");
+    throw new Error("Only the business owner can change an upgrade duration.");
   }
 
-  const planValue = formData.get("plan");
+  const orderId = formData.get("orderId");
   const termValue = formData.get("termMonths");
-  const userLimitValue = formData.get("userLimit");
-
-  const plan = typeof planValue === "string" ? planValue : "";
+  if (typeof orderId !== "string" || !/^[0-9a-f-]{36}$/i.test(orderId)) {
+    throw new Error("A valid subscription order is required.");
+  }
+  if (typeof termValue !== "string" || !/^(0|1|3|6|12)$/.test(termValue)) {
+    throw new Error("Choose Keep current, 1 month, 3 months, 6 months, or 1 year.");
+  }
   const termMonths = Number(termValue);
-  const requestedUserLimit = Number(userLimitValue);
-  const requestedBranchLimit = Number(formData.get("branchLimit") ?? 1);
 
-  if (!isSubscriptionPlanKey(plan)) {
-    throw new Error("Choose a valid subscription plan.");
-  }
-
-  if (!isSubscriptionTermMonths(termMonths)) {
-    throw new Error("Choose a valid subscription term.");
-  }
-
-  if (plan === "custom") {
-    calculateCustomSubscriptionPrice(requestedUserLimit, requestedBranchLimit, termMonths);
-  }
-
-  const supabase = await createClient();
+  const db = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await db.auth.getUser();
+  if (!user) throw new Error("Your session expired. Please sign in again.");
 
-  if (!user) {
-    throw new Error("Your session expired. Please sign in again.");
-  }
-
-  let { data, error } = await supabaseAdmin.rpc("create_branch_subscription_order", {
-    p_business_id: business.id,
-    p_requesting_user_id: user.id,
-    p_plan_key: plan,
-    p_term_months: termMonths,
-    p_requested_user_limit: plan === "custom" ? requestedUserLimit : subscriptionPlans[plan].userLimit,
-    p_base_plan_key: plan === "custom" ? null : plan,
-    p_requested_branch_limit: plan === "custom" ? requestedBranchLimit : 1,
+  await expireSubscriptionPaymentRequestSafely({
+    businessId: business.id,
+    orderId,
   });
 
-  if (error?.code === "PGRST202" && plan !== "custom") {
-    const branches = await getBranchEntitlement(business.id);
-    if (branches.used > 1) throw new Error("This plan includes one branch. Deactivate unused branches before continuing.");
-    const { count: activeUsers, error: memberError } = await supabaseAdmin.from("business_members").select("id", { count: "exact", head: true }).eq("business_id", business.id).eq("is_active", true);
-    if (memberError) throw new Error("Unable to verify current user usage.");
-    if ((activeUsers ?? 0) > (subscriptionPlans[plan].userLimit ?? 1)) throw new Error("This plan does not cover your active users. Deactivate unused users or select a larger plan.");
-    ({ data, error } = await supabaseAdmin.rpc("create_subscription_order", { p_business_id: business.id, p_requesting_user_id: user.id, p_plan_key: plan, p_term_months: termMonths, p_requested_user_limit: subscriptionPlans[plan].userLimit }));
-  }
-  if (error) {
-    if (error.code === "PGRST202") throw new Error("Branch subscription checkout is not deployed yet. Apply 20260920_subscription_branch_limits.sql, then try again.");
-    throw new Error(error.message);
-  }
+  const { data, error } = await supabaseAdmin.rpc("update_pending_subscription_billing_term", {
+    p_business_id: business.id,
+    p_requesting_user_id: user.id,
+    p_order_id: orderId,
+    p_term_months: termMonths,
+  });
+  if (error) throw new Error(subscriptionFailure(error));
 
   const row = Array.isArray(data) ? data[0] : data;
-  const orderId = row?.order_id;
-  const orderStatus = row?.order_status;
-
-  if (!orderId) {
-    throw new Error("Subscription order was not created.");
+  if (!row?.order_id || row.order_id !== orderId) {
+    throw new Error("The updated upgrade quote was not confirmed. Refresh Checkout and try again.");
   }
 
   revalidatePath("/dashboard/settings/subscription");
-
-  if (orderStatus === "quote_requested") {
-    redirect("/dashboard/settings/subscription?quote=requested");
-  }
-
+  revalidatePath(`/dashboard/settings/subscription/payment/${orderId}`);
   redirect(`/dashboard/settings/subscription/payment/${orderId}`);
+}
+
+export async function saveScheduledRenewalSelection(formData: FormData) {
+  const business = await getCurrentBusinessForSubscription({ startTrial: false });
+  if (business.role !== "owner") throw new Error("Only the business owner can change this selection.");
+  const orderId = formData.get("orderId");
+  if (typeof orderId !== "string" || !/^[0-9a-f-]{36}$/i.test(orderId)) throw new Error("Next-plan order is required.");
+  const keepMemberIds = formData.getAll("keepMemberId").filter((value): value is string => typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value));
+  const keepBranchIds = formData.getAll("keepBranchId").filter((value): value is string => typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value));
+  const db = await createClient();
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) throw new Error("Your session expired. Please sign in again.");
+  const { data, error } = await supabaseAdmin.rpc("update_subscription_keep_selection", {
+    p_business_id: business.id,
+    p_user_id: user.id,
+    p_order_id: orderId,
+    p_keep_member_ids: keepMemberIds.length ? keepMemberIds : null,
+    p_keep_branch_ids: keepBranchIds.length ? keepBranchIds : null,
+  });
+  if (error || !data) throw new Error(error?.message ?? "Unable to save the keep-active selection.");
+  revalidatePath("/dashboard/settings/subscription");
 }
 
 
@@ -152,7 +302,7 @@ export async function continueFreeTrial(_formData: FormData) {
   }
 
   if (business.subscriptionStatus !== "trial_pending") {
-    redirect(getAppUrl("/dashboard/settings/subscription/plans?onboarding=1&trial=unavailable"));
+    redirect(getAppUrl("/dashboard/settings/subscription?view=plans&onboarding=1&trial=unavailable"));
   }
 
   const supabase = await createClient();
@@ -185,7 +335,7 @@ export async function continueFreeTrial(_formData: FormData) {
       .eq("id", business.id)
       .eq("subscription_status", "trial_pending");
 
-    redirect(getAppUrl("/dashboard/settings/subscription/plans?onboarding=1&trial=unavailable"));
+    redirect(getAppUrl("/dashboard/settings/subscription?view=plans&onboarding=1&trial=unavailable"));
   }
 
   await recordTrialSignupEvent({
@@ -213,7 +363,7 @@ export async function continueFreeTrial(_formData: FormData) {
   }
 
   if (refreshed?.subscription_status !== "trialing") {
-    redirect(getAppUrl("/dashboard/settings/subscription/plans?onboarding=1&trial=unavailable"));
+    redirect(getAppUrl("/dashboard/settings/subscription?view=plans&onboarding=1&trial=unavailable"));
   }
 
   revalidatePath("/dashboard/settings/subscription");
@@ -230,34 +380,284 @@ export async function selectSubscriptionPaymentMethod(formData: FormData) {
   const orderId = formData.get("orderId");
   const method = formData.get("paymentMethod");
 
-  if (typeof orderId !== "string" || !orderId) {
+  if (typeof orderId !== "string" || !/^[0-9a-f-]{36}$/i.test(orderId)) {
     throw new Error("Subscription order is required.");
   }
 
-  if (method !== "aba_khqr" && method !== "manual") {
-    throw new Error("Choose ABA KHQR or Manual payment.");
+  if (method !== "manual") {
+    throw new Error("Choose Manual payment or use ABA PayWay checkout.");
   }
 
-  const { data: updatedOrder, error } = await supabaseAdmin
-    .from("subscription_orders")
-    .update({
-      payment_method: method,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", orderId)
-    .eq("business_id", business.id)
-    .eq("status", "pending_payment")
-    .select("id")
-    .maybeSingle();
-
-  if (error || !updatedOrder) {
+  const manualConfig = getManualPaymentConfig();
+  if (!manualConfig.enabled) {
     throw new Error(
-      error?.message ?? "This subscription order is no longer waiting for payment.",
+      "Manual payment is not available. Check TENH_MANUAL_PAYMENT_* configuration.",
     );
   }
 
-  revalidatePath(`/dashboard/settings/subscription/payment/${orderId}`);
-  redirect(`/dashboard/settings/subscription/payment/${orderId}`);
+  const db = await createClient();
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) throw new Error("Your session expired. Please sign in again.");
+
+  const { data: routeOrder, error: routeError } = await supabaseAdmin
+    .from("subscription_orders")
+    .select(
+      "id,status,payment_provider,payway_tran_id,payment_expires_at,created_at,plan_key,term_months,requested_user_limit,requested_branch_limit,keep_member_ids,keep_branch_ids",
+    )
+    .eq("id", orderId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+
+  if (routeError || !routeOrder) {
+    throw new Error(routeError?.message ?? "Subscription order was not found.");
+  }
+  if (routeOrder.status !== "pending_payment") {
+    throw new Error("This subscription order is not waiting for payment.");
+  }
+  if (isSubscriptionPaymentExpired(routeOrder)) {
+    await expireSubscriptionPaymentRequestSafely({ businessId: business.id, orderId });
+    throw new Error("This 10-minute payment request expired. Create a new payment request to continue.");
+  }
+
+  let targetOrderId = orderId;
+
+  // PayWay -> Manual must never be a local-only toggle. If a PayWay
+  // transaction was actually started, verify it first and close it at PayWay.
+  // Only after PayWay confirms the unpaid transaction is closed do we create a
+  // fresh replacement TENH order for Manual payment. The cancelled PayWay order
+  // remains in history, so provider reconciliation is never lost.
+  if (routeOrder.payment_provider === "aba_payway" || routeOrder.payway_tran_id) {
+    let result: Awaited<ReturnType<typeof cancelSubscriptionPaywayCheckout>>;
+    try {
+      result = await cancelSubscriptionPaywayCheckout({
+        orderId,
+        businessId: business.id,
+        reason: "owner_cancelled",
+      });
+    } catch {
+      redirect(
+        `/dashboard/settings/subscription/payment/${orderId}?switch=payway_status_unavailable`,
+      );
+    }
+
+    if (result.state === "approved") {
+      try {
+        revalidatePath(`/dashboard/settings/subscription/payment/${orderId}`);
+        revalidatePath("/dashboard/settings/subscription");
+      } catch { /* Payment confirmation is already committed. */ }
+      redirect(`/dashboard/settings/subscription/payment/${orderId}`);
+    }
+
+    if (result.state === "provider_close_unavailable") {
+      redirect(
+        `/dashboard/settings/subscription/payment/${orderId}?switch=payway_close_unavailable`,
+      );
+    }
+
+    const { data: replacement, error: replacementError } = await supabaseAdmin.rpc(
+      "create_safe_subscription_order",
+      {
+        p_business_id: business.id,
+        p_requesting_user_id: user.id,
+        p_plan_key: routeOrder.plan_key,
+        p_term_months: routeOrder.term_months,
+        p_requested_user_limit: routeOrder.requested_user_limit,
+        p_requested_branch_limit: routeOrder.requested_branch_limit,
+        p_keep_member_ids:
+          Array.isArray(routeOrder.keep_member_ids) && routeOrder.keep_member_ids.length
+            ? routeOrder.keep_member_ids
+            : null,
+        p_keep_branch_ids:
+          Array.isArray(routeOrder.keep_branch_ids) && routeOrder.keep_branch_ids.length
+            ? routeOrder.keep_branch_ids
+            : null,
+      },
+    );
+
+    if (replacementError) throw new Error(subscriptionFailure(replacementError));
+    const replacementRow = Array.isArray(replacement) ? replacement[0] : replacement;
+    if (
+      !replacementRow?.order_id ||
+      typeof replacementRow.order_id !== "string" ||
+      !/^[0-9a-f-]{36}$/i.test(replacementRow.order_id)
+    ) {
+      throw new Error(
+        "ABA PayWay was closed, but TENH could not create the replacement Manual payment request. Return to Choose Subscription.",
+      );
+    }
+    targetOrderId = replacementRow.order_id;
+  }
+
+  const { data: updatedOrder, error } = await supabaseAdmin.rpc(
+    "tenh_subscription_payment",
+    {
+      p_business_id: business.id,
+      p_user_id: user.id,
+      p_order_id: targetOrderId,
+      p_action: "method",
+      p_input: { method },
+    },
+  );
+
+  if (error || !updatedOrder) {
+    throw new Error(
+      error
+        ? subscriptionFailure(error)
+        : "Payment method was not confirmed. Refresh this order before paying.",
+    );
+  }
+
+  try {
+    revalidatePath(`/dashboard/settings/subscription/payment/${orderId}`);
+    if (targetOrderId !== orderId) {
+      revalidatePath(`/dashboard/settings/subscription/payment/${targetOrderId}`);
+    }
+    revalidatePath("/dashboard/settings/subscription");
+  } catch { /* Selection is committed. */ }
+
+  redirect(`/dashboard/settings/subscription/payment/${targetOrderId}`);
+}
+
+export async function expireSubscriptionPaymentRequest(orderId: string) {
+  const business = await getCurrentBusinessForSubscription({ startTrial: false });
+  if (business.role !== "owner") {
+    throw new Error("Only the business owner can expire a subscription payment request.");
+  }
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) {
+    throw new Error("Subscription order is required.");
+  }
+
+  const result = await expireSubscriptionPaymentRequestSafely({
+    businessId: business.id,
+    orderId,
+  });
+
+  try {
+    revalidatePath(`/dashboard/settings/subscription/payment/${orderId}`);
+    revalidatePath("/dashboard/settings/subscription");
+  } catch { /* Expiry/verification is already committed. */ }
+
+  return result;
+}
+
+export async function cancelPendingSubscriptionPayment(formData: FormData) {
+  const business = await getCurrentBusinessForSubscription({ startTrial: false });
+  if (business.role !== "owner") {
+    throw new Error("Only the business owner can cancel a pending payment request.");
+  }
+
+  const orderId = formData.get("orderId");
+  if (typeof orderId !== "string" || !/^[0-9a-f-]{36}$/i.test(orderId)) {
+    throw new Error("Subscription order is required.");
+  }
+
+  const db = await createClient();
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) throw new Error("Your session expired. Please sign in again.");
+
+  const { data: order, error: orderError } = await supabaseAdmin
+    .from("subscription_orders")
+    .select("id,status,payment_provider,payway_tran_id,payway_verified_at,proof_path,payment_expired_at")
+    .eq("id", orderId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+
+  if (orderError) throw new Error(`Unable to verify this payment request: ${orderError.message}`);
+  if (!order) throw new Error("Subscription payment request was not found.");
+
+  // Idempotent: an already-cancelled/expired request is safe to leave closed.
+  if (order.status === "cancelled") {
+    redirect("/dashboard/settings/subscription");
+  }
+
+  // Never let a cancellation race revoke a payment that is already under review
+  // or approved. The owner must use the normal review/refund flow instead.
+  if (order.status !== "pending_payment") {
+    throw new Error("Only an unpaid pending payment request can be cancelled.");
+  }
+  if (order.proof_path) {
+    throw new Error("Payment proof is already attached. This request can no longer be cancelled as unpaid.");
+  }
+
+  if (order.payment_provider === "aba_payway" && order.payway_tran_id) {
+    // PayWay is verified first. If it is already approved, the subscription is
+    // confirmed instead of cancelled. Otherwise the external transaction is
+    // closed before TENH marks the request cancelled.
+    let result: Awaited<ReturnType<typeof cancelSubscriptionPaywayCheckout>>;
+    try {
+      result = await cancelSubscriptionPaywayCheckout({
+        orderId,
+        businessId: business.id,
+        reason: "owner_cancelled",
+      });
+    } catch {
+      redirect(`/dashboard/settings/subscription/payment/${orderId}?cancel=payway_unavailable`);
+    }
+    try {
+      revalidatePath(`/dashboard/settings/subscription/payment/${orderId}`);
+      revalidatePath("/dashboard/settings/subscription");
+    } catch { /* The provider verification/cancellation is already committed. */ }
+
+    if (result.state === "approved") {
+      redirect(`/dashboard/settings/subscription/payment/${orderId}`);
+    }
+    if (result.state === "provider_close_unavailable") {
+      redirect(`/dashboard/settings/subscription/payment/${orderId}?cancel=payway_close_unavailable`);
+    }
+    redirect("/dashboard/settings/subscription");
+  }
+
+  const { data: cancelled, error: cancelError } = await supabaseAdmin.rpc(
+    "cancel_pending_subscription_payment_order",
+    {
+      p_business_id: business.id,
+      p_order_id: orderId,
+      p_requesting_user_id: user.id,
+    },
+  );
+  if (cancelError) throw new Error(subscriptionFailure(cancelError));
+
+  const state = cancelled && typeof cancelled === "object" && "state" in cancelled
+    ? String((cancelled as { state?: unknown }).state ?? "")
+    : "";
+  if (state === "approved" || state === "payment_submitted") {
+    throw new Error("This payment is no longer unpaid, so it was not cancelled.");
+  }
+
+  try {
+    revalidatePath(`/dashboard/settings/subscription/payment/${orderId}`);
+    revalidatePath("/dashboard/settings/subscription");
+  } catch { /* Cancellation is already committed. */ }
+
+  redirect("/dashboard/settings/subscription");
+}
+
+export async function cancelSubscriptionPaywayPayment(formData: FormData) {
+  const business = await getCurrentBusinessForSubscription({ startTrial: false });
+  if (business.role !== "owner") throw new Error("Only the business owner can cancel ABA PayWay checkout.");
+  const orderId = formData.get("orderId");
+  if (typeof orderId !== "string" || !/^[0-9a-f-]{36}$/i.test(orderId)) {
+    throw new Error("Subscription order is required.");
+  }
+
+  let result: Awaited<ReturnType<typeof cancelSubscriptionPaywayCheckout>>;
+  try {
+    result = await cancelSubscriptionPaywayCheckout({ orderId, businessId: business.id });
+  } catch {
+    redirect(`/dashboard/settings/subscription/payment/${orderId}?cancel=payway_unavailable`);
+  }
+  try {
+    revalidatePath(`/dashboard/settings/subscription/payment/${orderId}`);
+    revalidatePath("/dashboard/settings/subscription");
+  } catch { /* Cancellation/verification is already committed. */ }
+
+  if (result.state === "approved") {
+    redirect(`/dashboard/settings/subscription/payment/${orderId}`);
+  }
+  if (result.state === "provider_close_unavailable") {
+    redirect(`/dashboard/settings/subscription/payment/${orderId}?cancel=payway_close_unavailable`);
+  }
+  redirect("/dashboard/settings/subscription");
 }
 
 export async function submitSubscriptionPayment(formData: FormData) {
@@ -276,18 +676,14 @@ export async function submitSubscriptionPayment(formData: FormData) {
     throw new Error("Subscription order is required.");
   }
 
-  if (
-    typeof paymentNote !== "string" ||
-    paymentNote.trim().length < 2 ||
-    paymentNote.trim().length > 1000
-  ) {
-    throw new Error("Add a payment note before submitting for review.");
+  if (typeof paymentNote !== "string" || paymentNote.trim().length > 1000) {
+    throw new Error("Payment note must be 1000 characters or fewer.");
   }
 
   const { data: order, error: orderError } = await supabaseAdmin
     .from("subscription_orders")
     .select(
-      "id,status,total_amount,payment_method,proof_bucket,proof_path,proof_file_name,requested_by_user_id,pricing_locked_until",
+      "id,status,total_amount,currency,payment_method,payment_provider,proof_bucket,proof_path,proof_file_name,requested_by_user_id,pricing_locked_until,payment_expires_at,created_at",
     )
     .eq("id", orderId)
     .eq("business_id", business.id)
@@ -301,28 +697,26 @@ export async function submitSubscriptionPayment(formData: FormData) {
     throw new Error("Subscription order was not found.");
   }
 
+  if (order.status === "payment_submitted") return; // Retry after a committed/lost response.
   if (order.status !== "pending_payment") {
     throw new Error("This subscription order is not waiting for payment.");
   }
+  if (isSubscriptionPaymentExpired(order)) {
+    await expireSubscriptionPaymentRequestSafely({ businessId: business.id, orderId: order.id });
+    throw new Error("This 10-minute payment request expired. Create a new payment request before submitting proof.");
+  }
+  if (order.payment_provider === "aba_payway") {
+    throw new Error("This order is already locked to ABA PayWay. Do not upload a second payment proof.");
+  }
 
+  // Keep legacy ABA KHQR orders reviewable, but new checkout selection no longer exposes KHQR.
   if (order.payment_method !== "aba_khqr" && order.payment_method !== "manual") {
-    throw new Error("Choose ABA KHQR or Manual payment before submitting proof.");
+    throw new Error("Choose Manual payment before submitting proof, or use ABA PayWay checkout.");
   }
 
   if (order.pricing_locked_until) {
     const lockExpiresAt = new Date(order.pricing_locked_until).getTime();
     if (Number.isFinite(lockExpiresAt) && lockExpiresAt <= Date.now()) {
-      await supabaseAdmin
-        .from("subscription_orders")
-        .update({
-          status: "cancelled",
-          cancelled_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", order.id)
-        .eq("business_id", business.id)
-        .eq("status", "pending_payment");
-
       throw new Error(
         "This subscription price expired. Return to Subscription and create a fresh order so the upgrade credit is recalculated safely.",
       );
@@ -368,51 +762,29 @@ export async function submitSubscriptionPayment(formData: FormData) {
     }
   }
 
-  const update: Record<string, unknown> = {
-    payment_note: paymentNote.trim(),
-    status: "payment_submitted",
-    updated_at: new Date().toISOString(),
-  };
-
-  if (uploadedPath) {
-    update.proof_bucket = PROOF_BUCKET;
-    update.proof_path = uploadedPath;
-    update.proof_file_name = uploadedName;
-    update.proof_mime_type = uploadedMime;
-    update.proof_size_bytes = uploadedSize;
-    update.proof_uploaded_at = new Date().toISOString();
-  }
-
-  const { data: updatedOrder, error: updateError } = await supabaseAdmin
-    .from("subscription_orders")
-    .update(update)
-    .eq("id", order.id)
-    .eq("business_id", business.id)
-    .eq("status", "pending_payment")
-    .select("id")
-    .maybeSingle();
-
-  if (updateError || !updatedOrder) {
-    if (uploadedPath) {
-      await supabaseAdmin.storage.from(PROOF_BUCKET).remove([uploadedPath]);
+  const db=await createClient();
+  const {data:{user}}=await db.auth.getUser();
+  if(!user)throw new Error('Session expired. Uploaded proof is retained; sign in and check the payment order.');
+  const normalizedNote = paymentNote.trim() || "Manual bank transfer";
+  const {data:updatedOrder,error:updateError}=await supabaseAdmin.rpc('tenh_subscription_payment',{
+    p_business_id:business.id,p_user_id:user.id,p_order_id:order.id,p_action:'submit',
+    p_input:{note:normalizedNote,bucket:uploadedPath?PROOF_BUCKET:null,path:uploadedPath,name:uploadedName,mime:uploadedMime,size:uploadedSize},
+  });
+  if(updateError || !updatedOrder) {
+    // Never delete proof on an uncertain network result: it may be the committed
+    // proof being reviewed. Only an explicit SQL rollback permits cleanup.
+    if(uploadedPath && updateError && isConfirmedRollback(updateError)) {
+      try {await supabaseAdmin.storage.from(PROOF_BUCKET).remove([uploadedPath]);} catch { /* Optional orphan cleanup. */ }
     }
-    throw new Error(
-      updateError
-        ? `Unable to submit subscription payment: ${updateError.message}`
-        : "This subscription order is no longer waiting for payment.",
-    );
+    throw new Error(updateError?subscriptionFailure(updateError):'Submission could not be confirmed. Refresh this same payment order; do not pay again.');
   }
+  // Original/replaced proofs are retained for audit; no cleanup can invalidate a
+  // concurrent successful submission. Retention cleanup is a separate admin task.
 
-  if (
-    uploadedPath &&
-    order.proof_bucket === PROOF_BUCKET &&
-    order.proof_path &&
-    order.proof_path !== uploadedPath
-  ) {
-    await supabaseAdmin.storage.from(PROOF_BUCKET).remove([order.proof_path]);
-  }
 
-  revalidatePath(`/dashboard/settings/subscription/payment/${order.id}`);
-  revalidatePath("/dashboard/settings/subscription");
-  revalidatePath("/super-admin/subscription-payments");
+  try {
+    revalidatePath(`/dashboard/settings/subscription/payment/${order.id}`);
+    revalidatePath("/dashboard/settings/subscription");
+    revalidatePath("/super-admin/subscription-payments");
+  } catch { /* Proof is committed. Never report a failed payment after refresh fails. */ }
 }

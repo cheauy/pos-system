@@ -25,6 +25,20 @@ const hanuman = Hanuman({
   display: "swap",
 });
 
+
+const THEME_BOOTSTRAP = `(() => {
+  try {
+    const saved = localStorage.getItem("theme");
+    const theme = saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
+    const resolved = theme === "system"
+      ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+      : theme;
+    const root = document.documentElement;
+    root.classList.toggle("dark", resolved === "dark");
+    root.style.colorScheme = resolved;
+  } catch {}
+})();`;
+
 export const metadata: Metadata = {
   title: {
     default: "Tenh POS | Manage your Business",
@@ -59,6 +73,12 @@ export default async function RootLayout({
       suppressHydrationWarning
       className={`${inter.variable} ${hanuman.variable}`}
     >
+      <head>
+        <script
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }}
+        />
+      </head>
       <body>
         <ThemeProvider
           attribute="class"

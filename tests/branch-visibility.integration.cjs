@@ -1,0 +1,35 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+const fs=require('node:fs'),assert=require('node:assert/strict');
+const {PGlite}=require('./helpers/pglite.cjs');
+const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
+(async()=>{const db=new PGlite();try{
+ await db.exec(`create role authenticated;create schema auth;create function auth.uid() returns uuid language sql as $$select '${id(1)}'::uuid$$;
+ create table business_members(business_id uuid,user_id uuid,role text,default_location_id uuid,is_active boolean,team_password_required boolean);
+ create table business_locations(id uuid,business_id uuid,is_active boolean);
+ create table orders(id uuid,business_id uuid,location_id uuid);
+ insert into business_members values('${id(2)}','${id(1)}','owner','${id(3)}',true,false);
+ insert into business_locations values('${id(3)}','${id(2)}',true),('${id(4)}','${id(2)}',true),('${id(6)}','${id(5)}',true);
+ insert into orders values('${id(7)}','${id(2)}','${id(3)}'),('${id(8)}','${id(2)}','${id(4)}'),('${id(9)}','${id(5)}','${id(6)}');
+ grant usage on schema public,auth to authenticated;grant select on all tables in schema public to authenticated;
+ alter table orders enable row level security;alter table business_locations enable row level security;
+ create policy member_access on orders to authenticated using(true);
+ create policy member_locations on business_locations to authenticated using(true);`);
+ for(const f of JSON.parse(fs.readFileSync('tests/fixtures/branch-visibility-functions.json','utf8')).sort((a,b)=>Number(b.proname==='tenh_request_branch')-Number(a.proname==='tenh_request_branch')))await db.exec(f.definition);
+ await db.exec(`create policy operating_branch on orders as restrictive to authenticated using(tenh_branch_visible(business_id,location_id));
+ create policy tenh_assigned_branch_locations on business_locations as restrictive to authenticated using(tenh_request_branch(business_id) is null or id=tenh_request_branch(business_id));
+ set role authenticated;`);
+ await assert.rejects(db.query('select * from orders'),/Business access is unavailable/);
+ await db.exec('reset role');await db.exec(fs.readFileSync('supabase/migrations/20260924002000_branch_visibility_safe.sql','utf8'));
+ const context=async headers=>db.query("select set_config('request.headers',$1,false)",[JSON.stringify(headers)]);
+ await db.exec('set role authenticated');
+ assert.equal((await db.query('select * from orders')).rows.length,2,'owner sees both own branches, no foreign rows');
+ assert.equal((await db.query('select * from business_locations')).rows.length,2);
+ await context({'x-tenh-business-id':id(2),'x-tenh-branch-id':id(4)});
+ assert.deepEqual((await db.query('select id from orders')).rows.map(r=>r.id),[id(8)]);
+ await context({'x-tenh-business-id':id(2),'x-tenh-branch-id':'invalid'});assert.equal((await db.query('select * from orders')).rows.length,0);
+ await db.exec('reset role');await db.exec("update business_members set role='staff'");await context({});await db.exec('set role authenticated');
+ assert.deepEqual((await db.query('select id from orders')).rows.map(r=>r.id),[id(7)]);
+ await context({'x-tenh-branch-id':id(4)});assert.equal((await db.query('select * from orders')).rows.length,0);
+ await assert.rejects(db.query('select tenh_request_branch($1)',[id(2)]),/not assigned/);
+ console.log('PASS: reproduced old error; owner multi-branch reads, staff isolation, foreign rows, invalid headers, strict write validator.');
+}finally{await db.close();}})().catch(e=>{console.error(e.message);process.exitCode=1;});

@@ -53,7 +53,7 @@ function newGroup(): GroupRow {
   };
 }
 
-export default function ConfigurableProductForm({ categories, businessType = "general", branches=[] }: { categories: Category[]; branches?:{id:string;name:string}[]; businessType?: string }) {
+export default function ConfigurableProductForm({ categories, businessType = "general", branches=[], onCreated }: { categories: Category[]; branches?:{id:string;name:string}[]; businessType?: string; onCreated?: () => void }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(createConfigurableProduct, initialState);
   const isMilkTea = businessType === "milk_tea";
@@ -66,10 +66,11 @@ export default function ConfigurableProductForm({ categories, businessType = "ge
       toast.success(state.message);
       formRef.current?.reset();
       setGroups(configurableTemplate(businessType));
+      onCreated?.();
     } else {
       toast.error(state.message);
     }
-  }, [state]);
+  }, [state, businessType, onCreated]);
 
   function updateGroup(id: string, patch: Partial<GroupRow>) {
     setGroups((current) => current.map((group) => group.id === id ? { ...group, ...patch } : group));

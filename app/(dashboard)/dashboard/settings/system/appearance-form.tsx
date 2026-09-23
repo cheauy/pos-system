@@ -12,7 +12,7 @@ import {
   Sun,
   type LucideIcon,
 } from "lucide-react";
-import { useTheme } from "next-themes";
+import { useTheme, accentColors } from "@/components/providers/theme-provider";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -23,7 +23,7 @@ type ThemeValue = "system" | "light" | "dark";
 
 export default function AppearanceForm() {
   const { language, setLanguage } = useLanguage();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, accent, setAccent } = useTheme();
   const [selectedTheme, setSelectedTheme] = useState<ThemeValue>("system");
 
   useEffect(() => {
@@ -44,6 +44,7 @@ export default function AppearanceForm() {
   function handleReset() {
     setSelectedTheme("system");
     setTheme("system");
+    setAccent('white');
     setLanguage("en");
     toast.success("Appearance reset to system defaults.");
   }
@@ -74,6 +75,13 @@ export default function AppearanceForm() {
         </div>
 
         <div className="divide-y divide-slate-100 px-5 sm:px-6 dark:divide-slate-800">
+          <section className="py-6">
+            <h3 className="font-bold">Colors</h3>
+            <p className="mt-1 text-sm text-slate-500">White is the default. Colors apply to menus, workspace and panels in light or dark mode. Saved on this device.</p>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {Object.entries(accentColors).map(([name, color]) => <button key={name} type="button" aria-pressed={accent === name} onClick={() => setAccent(name as keyof typeof accentColors)} className="flex items-center gap-2 rounded-xl border p-3 text-sm font-semibold capitalize" style={{ borderColor: accent === name ? (name === 'white' ? '#64748b' : color) : undefined }}><span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200" style={{ background: color, color: name === 'white' ? '#334155' : '#ffffff' }}>{accent === name && <Check size={16} />}</span>{name}{name === 'white' && <span className="text-xs text-slate-500">Default</span>}</button>)}
+            </div>
+          </section>
           <section className="py-6">
             <div className="mb-4 flex items-start gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300">

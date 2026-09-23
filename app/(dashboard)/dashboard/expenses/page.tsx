@@ -6,7 +6,7 @@ import ExpensesClient from "./expenses-client";
 import type { Expense } from "./expense-model";
 export default async function ExpensesPage() {
  const business=await requirePermission("expenses.manage");
- const {ownBranchId}=await getBranchContext();
+ const {branchId}=await getBranchContext();
  const db=await createClient();
  const {data:branches,error}=await db.from("business_locations").select("id,name,is_active").eq("business_id",business.id).order("is_default",{ascending:false}).order("name");
  if(error) throw new Error("Unable to load branches. Please retry.");
@@ -18,5 +18,5 @@ export default async function ExpensesPage() {
  }
  const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Phnom_Penh",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
  const receiptIds=await expenseReceiptIds(business.id);
- return <ExpensesClient expenses={expenses.map(e=>({...e,has_receipt:receiptIds.has(e.id)}))} branches={branches||[]} defaultBranchId={ownBranchId} today={today}/>;
+ return <ExpensesClient expenses={expenses.map(e=>({...e,has_receipt:receiptIds.has(e.id)}))} branches={branches||[]} defaultBranchId={branchId} today={today}/>;
 }

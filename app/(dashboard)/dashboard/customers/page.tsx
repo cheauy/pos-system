@@ -1,5 +1,5 @@
 import { requirePermission } from "@/lib/auth/require-permission";
-import { hasPermission } from "@/lib/auth/permissions";
+import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { getCustomerFieldSettings } from "@/lib/customers/get-customer-field-settings";
 import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
 import { createClient } from "@/lib/supabase/branch-server";
@@ -133,6 +133,10 @@ export default async function CustomersPage() {
     active: enrichedCustomers.filter((customer) => customer.isActive).length,
   };
 
+  const [canCreate, canUpdate] = await Promise.all([
+    businessHasPermission(business, "customers.create"),
+    businessHasPermission(business, "customers.update"),
+  ]);
   return (
     <CustomersWorkspace
       customers={enrichedCustomers}
@@ -141,8 +145,8 @@ export default async function CustomersPage() {
       accentColor={storefrontSettings.primary_color || "#2563EB"}
       fieldSettings={fieldSettings}
       canManageSettings={business.role === "owner"}
-      canCreate={hasPermission(business.role, "customers.create")}
-      canUpdate={hasPermission(business.role, "customers.update")}
+      canCreate={canCreate}
+      canUpdate={canUpdate}
     />
   );
 }

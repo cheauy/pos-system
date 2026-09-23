@@ -1,9 +1,14 @@
 "use server";
 
+import { parseCsv } from "@/lib/exports/import-files";
+import { csvImportTemplates } from "@/lib/exports/import-catalog";
+import { exportGroups } from "@/lib/exports/catalog";
+import { exportBusinessData } from "./full-export-actions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/branch-server";
+import { getBranchContext } from "@/lib/branches/context";
 
 export type ExportEntity =
   | "products"
@@ -16,7 +21,7 @@ export type ExportEntity =
   | "credit";
 
 export type ImportEntity = "products" | "inventory" | "customers" | "suppliers";
-export type ImportMode = "merge" | "update";
+export type ImportMode = "insert" | "merge" | "update";
 
 type ExportFormat = "csv" | "json";
 type Row = Record<string, unknown>;
@@ -32,6 +37,10 @@ export type ImportPreviewResult = {
   headers: string[];
   preview: Record<string, string | number | boolean | null>[];
   errors: string[];
+  fingerprint?: string;
+  inserted?: number;
+  updated?: number;
+  skipped?: number;
 };
 
 export type ImportCommitResult = {
@@ -235,72 +244,12 @@ export async function buildExport(entity: ExportEntity, format: ExportFormat = "
 }
 
 export async function buildExportAll(): Promise<ExportResult> {
-  const business = await requirePermission("exports.manage");
-  const filename = `tenh-business-backup-${new Date().toISOString().slice(0, 10)}.json`;
-  try {
-    const entities: ExportEntity[] = ["products", "inventory", "customers", "orders", "expenses", "suppliers", "shifts", "credit"];
-    const entries = await Promise.all(entities.map(async (entity) => [entity, await fetchExportRows(entity, business.id)] as const));
-    const data = Object.fromEntries(entries);
-    const rowCount = entries.reduce((total, [, rows]) => total + rows.length, 0);
-    const content = JSON.stringify({
-      tenhBackupVersion: 1,
-      exportedAt: new Date().toISOString(),
-      business: { id: business.id, name: business.name, slug: business.slug, productMode: business.product_mode },
-      data,
-    }, null, 2);
-    await recordTransfer({ businessId: business.id, direction: "export", entity: "all", format: "json", filename, rowCount, status: "completed", summary: { entities: entries.map(([entity, rows]) => ({ entity, rows: rows.length })) } });
-    return { ok: true, filename, mime: "application/json", content, rowCount };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to export business backup.";
-    await recordTransfer({ businessId: business.id, direction: "export", entity: "all", format: "json", filename, rowCount: 0, status: "failed", errorMessage: message });
-    return { ok: false, message };
-  }
+  try { return {ok:true,...await exportBusinessData(exportGroups.map(group=>group.id),"json")}; }
+  catch(error) {return {ok:false,message:error instanceof Error?error.message:"Export failed."};}
 }
 
 function normalizeHeader(value: string) {
   return value.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[\s-]+/g, "_").replace(/[^a-z0-9_]/g, "");
-}
-
-function parseCsv(text: string) {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let quoted = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    if (quoted) {
-      if (char === '"') {
-        if (text[index + 1] === '"') {
-          field += '"';
-          index += 1;
-        } else {
-          quoted = false;
-        }
-      } else {
-        field += char;
-      }
-      continue;
-    }
-    if (char === '"') {
-      quoted = true;
-    } else if (char === ",") {
-      row.push(field);
-      field = "";
-    } else if (char === "\n") {
-      row.push(field.replace(/\r$/, ""));
-      rows.push(row);
-      row = [];
-      field = "";
-    } else {
-      field += char;
-    }
-  }
-  if (quoted) throw new Error("CSV has an unclosed quoted field.");
-  if (field.length > 0 || row.length > 0) {
-    row.push(field.replace(/\r$/, ""));
-    rows.push(row);
-  }
-  return rows.filter((items) => items.some((item) => item.trim() !== ""));
 }
 
 function boolValue(value: string, fallback = true) {
@@ -313,7 +262,7 @@ function boolValue(value: string, fallback = true) {
 
 function numberValue(value: string, field: string, rowNumber: number, options: { integer?: boolean; min?: number } = {}) {
   const number = Number(value);
-  if (!Number.isFinite(number) || (options.integer && !Number.isInteger(number)) || (options.min !== undefined && number < options.min)) {
+  if (!value?.trim() || !Number.isFinite(number) || (options.integer && !Number.isInteger(number)) || (options.min !== undefined && number < options.min)) {
     throw new Error(`Row ${rowNumber}: ${field} is invalid.`);
   }
   return number;
@@ -324,13 +273,15 @@ function optionalNumber(value: string, field: string, rowNumber: number, options
   return numberValue(value, field, rowNumber, options);
 }
 
-function sanitizeText(value: string, max = 500) {
+function sanitizeText(value = "", max = 500) {
   const cleaned = value.trim();
-  return cleaned ? cleaned.slice(0, max) : null;
+  if (cleaned.length > max) throw new Error(`Text exceeds ${max} characters.`);
+  return cleaned || null;
 }
 
-function validateCsv(entity: ImportEntity, csvText: string): ImportPreviewResult & { rows: Record<string, string | number | boolean | null>[] } {
+function validateCsv(entity: ImportEntity, csvText: string, businessId: string, branchId: string): ImportPreviewResult & { rows: Record<string, string | number | boolean | null>[] } {
   const base = { ok: false, message: "", rowCount: 0, headers: [] as string[], preview: [] as Record<string, string | number | boolean | null>[], errors: [] as string[], rows: [] as Record<string, string | number | boolean | null>[] };
+  if (!["products", "customers", "suppliers", "inventory"].includes(entity) || typeof csvText !== "string") return { ...base, message: "Invalid import options.", errors: ["Invalid import options."] };
   if (!csvText.trim()) return { ...base, message: "Choose a CSV file first.", errors: ["The CSV file is empty."] };
   if (csvText.length > MAX_IMPORT_CHARS) return { ...base, message: "CSV file is too large.", errors: [`Keep imports below ${Math.round(MAX_IMPORT_CHARS / 1000)} KB.`] };
 
@@ -345,6 +296,9 @@ function validateCsv(entity: ImportEntity, csvText: string): ImportPreviewResult
 
   const headers = matrix[0].map(normalizeHeader);
   if (new Set(headers).size !== headers.length) return { ...base, headers, message: "CSV has duplicate column names.", errors: ["Each CSV column must have a unique header."] };
+  const accepted = [...csvImportTemplates[entity].csv.split("\n")[0].split(","), "id", "business_id", "location_id", "owner_id", "created_at", "updated_at"];
+  const unexpected = headers.filter(header => !accepted.includes(header));
+  if (unexpected.length) return { ...base, headers, message: "Columns do not match this feature.", errors: [`Unsupported columns: ${unexpected.join(", ")}. Use this feature's template.`] };
   const required: Record<ImportEntity, string[]> = {
     products: ["name", "sku", "selling_price"],
     customers: ["name"],
@@ -366,6 +320,9 @@ function validateCsv(entity: ImportEntity, csvText: string): ImportPreviewResult
     const source: Record<string, string> = {};
     headers.forEach((header, column) => { source[header] = cells[column] ?? ""; });
     try {
+      if (cells.length !== headers.length) throw new Error(`Row ${rowNumber}: column count does not match the header.`);
+      if (source.business_id && source.business_id !== businessId) throw new Error(`Row ${rowNumber}: this record belongs to another business.`);
+      if (source.location_id && source.location_id !== branchId) throw new Error(`Row ${rowNumber}: this record belongs to another branch.`);
       if (entity === "products") {
         const name = sanitizeText(source.name, 200);
         const sku = sanitizeText(source.sku, 100)?.toUpperCase() ?? null;
@@ -408,6 +365,7 @@ function validateCsv(entity: ImportEntity, csvText: string): ImportPreviewResult
           email,
           address: sanitizeText(source.address, 1000),
           notes: sanitizeText(source.notes, 2000),
+          is_active: boolValue(source.is_active ?? "", true),
         });
       } else {
         const sku = sanitizeText(source.sku, 100)?.toUpperCase() ?? null;
@@ -440,185 +398,42 @@ function validateCsv(entity: ImportEntity, csvText: string): ImportPreviewResult
   };
 }
 
-export async function previewCsvImport(entity: ImportEntity, csvText: string): Promise<ImportPreviewResult> {
-  await requirePermission("exports.manage");
-  const result = validateCsv(entity, csvText);
-  const { rows: _rows, ...publicResult } = result;
-  return publicResult;
-}
-
-async function importProducts(rows: Record<string, string | number | boolean | null>[], mode: ImportMode, business: { id: string; product_mode: string }) {
-  if (business.product_mode !== "standard") {
-    throw new Error("Product CSV import is available only for Standard product mode. Variant and configurable businesses should create products in the Products module so sizes/options remain valid.");
-  }
-  const { supabase, userId } = await currentUserId();
-  const skus = rows.map((row) => String(row.sku));
-  const { data: existing, error: existingError } = await supabase.from("products").select("id,sku").eq("business_id", business.id).in("sku", skus);
-  if (existingError) throw new Error(existingError.message);
-  const existingMap = new Map((existing ?? []).map((product) => [String(product.sku).toUpperCase(), product.id]));
-  let inserted = 0;
-  let updated = 0;
-  let skipped = 0;
-  for (const row of rows) {
-    const sku = String(row.sku).toUpperCase();
-    const productId = existingMap.get(sku);
-    const values = {
-      name: String(row.name),
-      sku,
-      barcode: row.barcode ? String(row.barcode) : sku,
-      description: row.description ? String(row.description) : null,
-      cost_price: Number(row.cost_price ?? 0),
-      selling_price: Number(row.selling_price),
-      low_stock_quantity: Number(row.low_stock_quantity ?? 0),
-      is_active: Boolean(row.is_active),
-      updated_at: new Date().toISOString(),
-    };
-    if (productId) {
-      const { error } = await supabase.from("products").update(values).eq("id", productId).eq("business_id", business.id);
-      if (error) throw new Error(`SKU ${sku}: ${error.message}`);
-      updated += 1;
-    } else if (mode === "merge") {
-      const { error } = await supabase.from("products").insert({
-        ...values,
-        owner_id: userId,
-        business_id: business.id,
-        stock_quantity: 0,
-        product_type: "standard",
-      });
-      if (error) throw new Error(`SKU ${sku}: ${error.message}`);
-      inserted += 1;
-    } else {
-      skipped += 1;
-    }
-  }
-  return { inserted, updated, skipped };
-}
-
-async function importCustomers(rows: Record<string, string | number | boolean | null>[], mode: ImportMode, businessId: string) {
-  const { supabase, userId } = await currentUserId();
-  const { data: existing, error: existingError } = await supabase.from("customers").select("id,email,phone").eq("business_id", businessId).limit(20_000);
-  if (existingError) throw new Error(existingError.message);
-  const emailMap = new Map<string, string>();
-  const phoneMap = new Map<string, string>();
-  for (const customer of existing ?? []) {
-    if (customer.email) emailMap.set(String(customer.email).toLowerCase(), customer.id);
-    if (customer.phone) phoneMap.set(String(customer.phone), customer.id);
-  }
-  let inserted = 0;
-  let updated = 0;
-  let skipped = 0;
-  for (const row of rows) {
-    const email = row.email ? String(row.email).toLowerCase() : null;
-    const phone = row.phone ? String(row.phone) : null;
-    const id = (email ? emailMap.get(email) : undefined) ?? (phone ? phoneMap.get(phone) : undefined);
-    const values = {
-      name: String(row.name),
-      email,
-      phone,
-      address: row.address ? String(row.address) : null,
-      note: row.note ? String(row.note) : null,
-      updated_at: new Date().toISOString(),
-    };
-    if (id) {
-      const { error } = await supabase.from("customers").update(values).eq("id", id).eq("business_id", businessId);
-      if (error) throw new Error(`${row.name}: ${error.message}`);
-      updated += 1;
-    } else if (mode === "merge") {
-      const { data, error } = await supabase.from("customers").insert({ ...values, owner_id: userId, business_id: businessId }).select("id").single();
-      if (error) throw new Error(`${row.name}: ${error.message}`);
-      if (email) emailMap.set(email, data.id);
-      if (phone) phoneMap.set(phone, data.id);
-      inserted += 1;
-    } else {
-      skipped += 1;
-    }
-  }
-  return { inserted, updated, skipped };
-}
-
-async function importSuppliers(rows: Record<string, string | number | boolean | null>[], mode: ImportMode, businessId: string) {
-  const { supabase, userId } = await currentUserId();
-  const { data: existing, error: existingError } = await supabase.from("suppliers").select("id,name,email").eq("business_id", businessId).limit(20_000);
-  if (existingError) throw new Error(existingError.message);
-  const emailMap = new Map<string, string>();
-  const nameMap = new Map<string, string>();
-  for (const supplier of existing ?? []) {
-    if (supplier.email) emailMap.set(String(supplier.email).toLowerCase(), supplier.id);
-    if (supplier.name) nameMap.set(String(supplier.name).trim().toLowerCase(), supplier.id);
-  }
-  let inserted = 0;
-  let updated = 0;
-  let skipped = 0;
-  for (const row of rows) {
-    const email = row.email ? String(row.email).toLowerCase() : null;
-    const name = String(row.name);
-    const id = (email ? emailMap.get(email) : undefined) ?? nameMap.get(name.toLowerCase());
-    const values = {
-      name,
-      contact_person: row.contact_person ? String(row.contact_person) : null,
-      phone: row.phone ? String(row.phone) : null,
-      email,
-      address: row.address ? String(row.address) : null,
-      notes: row.notes ? String(row.notes) : null,
-      updated_at: new Date().toISOString(),
-    };
-    if (id) {
-      const { error } = await supabase.from("suppliers").update(values).eq("id", id).eq("business_id", businessId);
-      if (error) throw new Error(`${name}: ${error.message}`);
-      updated += 1;
-    } else if (mode === "merge") {
-      const { data, error } = await supabase.from("suppliers").insert({ ...values, owner_id: userId, business_id: businessId }).select("id").single();
-      if (error) throw new Error(`${name}: ${error.message}`);
-      if (email) emailMap.set(email, data.id);
-      nameMap.set(name.toLowerCase(), data.id);
-      inserted += 1;
-    } else {
-      skipped += 1;
-    }
-  }
-  return { inserted, updated, skipped };
-}
-
-export async function commitCsvImport(entity: ImportEntity, mode: ImportMode, csvText: string, filename?: string): Promise<ImportCommitResult> {
+export async function previewCsvImport(entity: ImportEntity, csvText: string, mode: ImportMode = "merge"): Promise<ImportPreviewResult> {
   const business = await requirePermission("exports.manage");
-  const validated = validateCsv(entity, csvText);
+  const context = await getBranchContext();
+  const result = validateCsv(entity, csvText, business.id, context.branchId);
+  const publicResult: ImportPreviewResult = { ok: result.ok, message: result.message, rowCount: result.rowCount, headers: result.headers, preview: result.preview, errors: result.errors };
+  if (!result.ok) return publicResult;
+  try {
+    if (business.role !== "owner") throw new Error("Only the business owner can import data.");
+    const db = await createClient();
+    const { data, error } = await db.rpc("tenh_import_business_safe", { p_business_id: business.id, p_kind: entity, p_mode: mode, p_payload: result.rows, p_branch_id: context.branchId });
+    if (error) throw new Error(error.message);
+    return { ...publicResult, ...data, message: `${data.inserted} added, ${data.updated} updated, ${data.skipped} unchanged or skipped. Review before confirming.` };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Validation failed.";
+    return { ...publicResult, ok: false, message, errors: [message] };
+  }
+}
+
+export async function commitCsvImport(entity: ImportEntity, mode: ImportMode, csvText: string, filename?: string, confirmation?: { fingerprint: string; requestId: string }): Promise<ImportCommitResult> {
+  const business = await requirePermission("exports.manage");
+  const context = await getBranchContext();
+  const validated = validateCsv(entity, csvText, business.id, context.branchId);
   if (!validated.ok) {
     return { ok: false, message: validated.errors[0] ?? validated.message, inserted: 0, updated: 0, skipped: validated.rowCount };
   }
   try {
-    let result: { inserted: number; updated: number; skipped: number };
-    if (entity === "products") {
-      result = await importProducts(validated.rows, mode, business);
-    } else if (entity === "customers") {
-      result = await importCustomers(validated.rows, mode, business.id);
-    } else if (entity === "suppliers") {
-      result = await importSuppliers(validated.rows, mode, business.id);
-    } else {
-      const { supabase } = await currentUserId();
-      const { data, error } = await supabase.rpc("import_branch_inventory_safe", {
-        p_business_id: business.id,
-        p_rows: validated.rows,
-      });
-      if (error) throw new Error(error.message);
-      const payload = isRecord(data) ? data : {};
-      result = { inserted: 0, updated: Number(payload.updated ?? validated.rows.length), skipped: Number(payload.skipped ?? 0) };
-    }
-    await recordTransfer({
-      businessId: business.id,
-      direction: "import",
-      entity,
-      format: "csv",
-      mode,
-      filename: filename?.slice(0, 255) ?? null,
-      rowCount: validated.rows.length,
-      status: "completed",
-      summary: result,
+    if (business.role !== "owner") throw new Error("Only the business owner can import data.");
+    if (!confirmation) throw new Error("Validate and confirm the file first.");
+    const db = await createClient();
+    const { data, error } = await db.rpc("tenh_import_business_safe", {
+      p_business_id: business.id, p_kind: entity, p_mode: mode, p_payload: validated.rows, p_branch_id: context.branchId,
+      p_commit: true, p_expected: confirmation.fingerprint, p_request_id: confirmation.requestId, p_filename: filename ?? null,
     });
-    revalidatePath("/dashboard/exports");
-    revalidatePath("/dashboard/products");
-    revalidatePath("/dashboard/inventory");
-    revalidatePath("/dashboard/customers");
-    revalidatePath("/dashboard/suppliers");
+    if (error) throw new Error(error.message);
+    const result = { inserted: Number(data.inserted), updated: Number(data.updated), skipped: Number(data.skipped) };
+    revalidatePath("/dashboard", "layout");
     return { ok: true, message: `Import completed: ${result.inserted} added, ${result.updated} updated, ${result.skipped} skipped.`, ...result };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to import data.";

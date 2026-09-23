@@ -115,9 +115,13 @@ function statusClass(status: PurchaseOrderListItem["status"]) {
 export default function PurchaseOrdersClient({
   orders,
   suppliers,
+  canCreate,
+  canUpdate,
 }: {
   orders: PurchaseOrderListItem[];
   suppliers: PurchaseOrderSupplier[];
+  canCreate: boolean;
+  canUpdate: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("all");
@@ -259,13 +263,15 @@ export default function PurchaseOrdersClient({
             <Filter size={17} />
             Filters
           </button>
-          <Link
-            href="/dashboard/purchase-orders/new"
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-          >
-            <Plus size={18} />
-            New Purchase Order
-          </Link>
+          {canCreate ? (
+            <Link
+              href="/dashboard/purchase-orders/new"
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            >
+              <Plus size={18} />
+              New Purchase Order
+            </Link>
+          ) : null}
         </div>
       </div>
 
@@ -489,6 +495,7 @@ export default function PurchaseOrdersClient({
           supplier={selectedSupplier}
           tab={detailTab}
           onTabChange={setDetailTab}
+          canUpdate={canUpdate}
         />
       </div>
     </main>
@@ -500,11 +507,13 @@ function PurchaseOrderDetails({
   supplier,
   tab,
   onTabChange,
+  canUpdate,
 }: {
   order: PurchaseOrderListItem | null;
   supplier: PurchaseOrderSupplier | null;
   tab: DetailTab;
   onTabChange: (tab: DetailTab) => void;
+  canUpdate: boolean;
 }) {
   if (!order) {
     return (
@@ -638,7 +647,7 @@ function PurchaseOrderDetails({
             <PackageCheck size={16} />
             View PO
           </Link>
-          {!['received', 'cancelled'].includes(order.status) ? (
+          {canUpdate && !['received', 'cancelled'].includes(order.status) ? (
             <Link
               href={`/dashboard/purchase-orders/${order.id}`}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
@@ -646,12 +655,12 @@ function PurchaseOrderDetails({
               <ShoppingCart size={16} />
               Receive Items
             </Link>
-          ) : (
+          ) : ['received', 'cancelled'].includes(order.status) ? (
             <div className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-400">
               <CheckCircle2 size={16} />
               Closed
             </div>
-          )}
+          ) : <div />}
         </div>
       </div>
     </aside>

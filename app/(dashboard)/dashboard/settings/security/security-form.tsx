@@ -10,7 +10,6 @@ import {
 } from "react";
 import {
   AlertTriangle,
-  Check,
   CheckCircle2,
   Clock3,
   Eye,
@@ -286,14 +285,6 @@ export default function SecurityForm({
     window.location.assign("/login");
   }
 
-  const passwordRules = {
-    length: newPassword.length >= 8,
-    upper: /[A-Z]/.test(newPassword),
-    lower: /[a-z]/.test(newPassword),
-    number: /\d/.test(newPassword),
-    symbol: /[^A-Za-z0-9]/.test(newPassword),
-  };
-
   const twoFactorEnabled = verifiedFactors.length > 0;
   const isProtectedOwner = profileRole === "super_admin";
 
@@ -378,18 +369,6 @@ export default function SecurityForm({
                 </button>
               </div>
 
-              <div className="rounded-2xl bg-blue-50/80 p-5 dark:bg-blue-950/25">
-                <p className="font-bold text-slate-900 dark:text-white">
-                  Password requirements
-                </p>
-                <div className="mt-4 space-y-3">
-                  <Requirement ok={passwordRules.length}>At least 8 characters</Requirement>
-                  <Requirement ok={passwordRules.upper}>Uppercase letter (A-Z)</Requirement>
-                  <Requirement ok={passwordRules.lower}>Lowercase letter (a-z)</Requirement>
-                  <Requirement ok={passwordRules.number}>At least one number (0-9)</Requirement>
-                  <Requirement ok={passwordRules.symbol}>At least one special symbol</Requirement>
-                </div>
-              </div>
             </div>
           </form>
 
@@ -563,32 +542,6 @@ export default function SecurityForm({
         </div>
 
         <aside className="space-y-5">
-          <section className="overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-6 text-white shadow-sm">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10">
-              <LockKeyhole className="h-5 w-5" />
-            </div>
-            <h2 className="mt-4 text-xl font-bold">Keep your account safe</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-300">
-              Follow these security tips to protect your business and data.
-            </p>
-            <div className="mt-5 space-y-4 text-sm text-slate-100">
-              {[
-                "Use a strong, unique password",
-                "Enable two-factor authentication",
-                "Keep your recovery information up to date",
-                "Sign out from unused devices",
-                "Be careful with suspicious links",
-              ].map((tip) => (
-                <div key={tip} className="flex items-center gap-3">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600">
-                    <Check className="h-4 w-4" />
-                  </span>
-                  <span>{tip}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <SectionHeading
               icon={Mail}
@@ -759,25 +712,6 @@ function PasswordField({
           {visible ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
         </button>
       </div>
-    </div>
-  );
-}
-
-function Requirement({ ok, children }: { ok: boolean; children: ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 text-sm">
-      <span
-        className={
-          ok
-            ? "flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white"
-            : "flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-400 dark:bg-slate-700"
-        }
-      >
-        <Check className="h-3.5 w-3.5" />
-      </span>
-      <span className={ok ? "text-slate-800 dark:text-slate-200" : "text-slate-500 dark:text-slate-400"}>
-        {children}
-      </span>
     </div>
   );
 }

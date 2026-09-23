@@ -144,6 +144,7 @@ export async function createProduct(
     };
   }
 
+  const isGeneralShop = currentBusinessMode.value === "general";
   const nameValue = formData.get("name");
 
   const name =
@@ -192,15 +193,13 @@ export async function createProduct(
     "description",
   );
 
-  const size = getOptionalText(
-    formData,
-    "size",
-  );
-
-  const color = getOptionalText(
-    formData,
-    "color",
-  );
+  const barcodeInput = isGeneralShop
+    ? getOptionalText(formData, "barcode")
+    : null;
+  const barcode = isGeneralShop ? barcodeInput ?? sku : sku;
+  const size = isGeneralShop ? getOptionalText(formData, "size") : null;
+  const color = isGeneralShop ? getOptionalText(formData, "color") : null;
+  const isOnline = isGeneralShop ? formData.get("isOnline") === "on" : true;
 
   const costPrice = getNumber(
     formData,
@@ -298,6 +297,33 @@ export async function createProduct(
     };
   }
 
+  if (isGeneralShop && existingProduct) {
+    return {
+      success: false,
+      message: "This SKU is already used by another product in this business.",
+    };
+  }
+
+  if (isGeneralShop && barcode) {
+    const { data: existingBarcode, error: barcodeCheckError } = await supabase
+      .from("products")
+      .select("id")
+      .eq("business_id", business.id)
+      .eq("barcode", barcode)
+      .maybeSingle();
+
+    if (barcodeCheckError) {
+      return { success: false, message: barcodeCheckError.message };
+    }
+
+    if (existingBarcode) {
+      return {
+        success: false,
+        message: "This barcode is already used by another product in this business.",
+      };
+    }
+  }
+
   let imageUrl: string | null = null;
   let uploadedImagePath: string | null =
     null;
@@ -350,7 +376,7 @@ export async function createProduct(
         category_id: categoryId,
         name,
         sku,
-        barcode: sku,
+        barcode,
         image_url: imageUrl,
         description,
         cost_price: costPrice,
@@ -360,6 +386,9 @@ export async function createProduct(
           lowStockQuantity,
         product_type: "standard",
         is_active: true,
+        ...(isGeneralShop
+          ? { size, color, is_online: isOnline }
+          : {}),
       })
       .select("id, name")
       .single();
@@ -394,6 +423,9 @@ export async function createProduct(
       `Created product ${product.name}`,
     metadata: {
       sku,
+      ...(isGeneralShop
+        ? { barcode, size, color, is_online: isOnline }
+        : {}),
       image_url: imageUrl,
       selling_price: sellingPrice,
       stock_quantity: stockQuantity,
@@ -1474,10 +1506,13 @@ export async function createVariantProduct(
     productMode: business.productMode,
   });
 
-  if (currentBusinessMode.productMode !== "variant") {
+  if (
+    currentBusinessMode.productMode !== "variant" &&
+    currentBusinessMode.value !== "general"
+  ) {
     return {
       success: false,
-      message: "This business is not using Variant product mode.",
+      message: "This business is not using a product mode that supports variants.",
     };
   }
 
@@ -1486,6 +1521,10 @@ export async function createVariantProduct(
   const categoryId = getOptionalText(formData, "categoryId");
   await assertCategoryBelongsToBusiness(business.id, categoryId);
   const description = getOptionalText(formData, "description");
+  const isOnline =
+    currentBusinessMode.value === "general"
+      ? formData.get("isOnline") === "on"
+      : true;
   const variants = parseVariantInputs(formData.get("variants"));
 
   if (name.length < 2) {
@@ -1616,7 +1655,7 @@ export async function createVariantProduct(
     product_type: "variant",
     variant_group_id: variantGroupId,
     is_active: true,
-    is_online: true,
+    is_online: isOnline,
   }));
 
   const { data: created, error } = await supabaseAdmin
@@ -1998,6 +2037,11 @@ export async function updateProductGroup(
   formData: FormData,
 ): Promise<UpdateProductGroupState> {
   const business = await requirePermission("products.update");
+  const currentBusinessMode = await getCurrentBusinessMode({
+    businessId: business.id,
+    productMode: business.productMode,
+  });
+  const isGeneralShop = currentBusinessMode.value === "general";
   const productIdValue = formData.get("productId");
   const nameValue = formData.get("name");
   const productId = typeof productIdValue === "string" ? productIdValue.trim() : "";
@@ -2006,6 +2050,7 @@ export async function updateProductGroup(
   const description = getOptionalText(formData, "description");
   const isOnline = formData.get("isOnline") === "true";
   const variants = parseEditVariants(formData.get("variants"));
+  const requestedBarcode = isGeneralShop ? getOptionalText(formData, "barcode") : null;
 
   if (!productId) return { success: false, message: "Invalid product ID." };
   if (name.length < 2) return { success: false, message: "Product name must contain at least 2 characters." };
@@ -2067,6 +2112,27 @@ export async function updateProductGroup(
 
   if (!supportsVariants && (variants.length !== 1 || variants[0].id !== representative.id)) {
     return { success: false, message: "This product does not support multiple variants." };
+  }
+
+  const generalBarcode = isGeneralShop && !supportsVariants
+    ? requestedBarcode ?? variants[0]?.sku ?? null
+    : null;
+
+  if (isGeneralShop && !supportsVariants && generalBarcode) {
+    const { data: barcodeMatches, error: barcodeCheckError } = await supabase
+      .from("products")
+      .select("id")
+      .eq("business_id", business.id)
+      .eq("barcode", generalBarcode)
+      .neq("id", representative.id)
+      .limit(1);
+
+    if (barcodeCheckError) {
+      return { success: false, message: barcodeCheckError.message };
+    }
+    if ((barcodeMatches ?? []).length > 0) {
+      return { success: false, message: "This barcode is already used by another product in this business." };
+    }
   }
 
   if (supportsVariants) {
@@ -2156,7 +2222,10 @@ export async function updateProductGroup(
           category_id: categoryId,
           name,
           sku: variant.sku,
-          barcode: variant.sku,
+          barcode:
+            isGeneralShop && !supportsVariants
+              ? generalBarcode ?? variant.sku
+              : variant.sku,
           description,
           size: variant.size || null,
           color: variant.color || null,

@@ -1,10 +1,8 @@
+import { getBranchContext } from "@/lib/branches/context";
 import {
   AlertTriangle,
   CheckCircle2,
   Package,
-  Settings2,
-  Shirt,
-  SlidersHorizontal,
   XCircle,
 } from "lucide-react";
 
@@ -12,10 +10,7 @@ import ProductList from "@/components/product-list";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
 import { createClient } from "@/lib/supabase/server";
-import AddClothingStyleModal from "./add-clothing-style-modal";
-import ConfigurableProductForm from "./configurable-product-form";
-import StandardProductForm from "./standard-product-form";
-import VariantProductForm from "./variant-product-form";
+import AddProductModal from "./add-product-modal";
 
 type Category = {
   id: string;
@@ -56,7 +51,9 @@ function groupKey(product: Product, variantMode: boolean) {
 }
 
 export default async function ProductsPage({ searchParams }: { searchParams: Promise<{ branch?: string }> }) {
-  const { branch: selectedBranch } = await searchParams;
+  const { branch: requestedBranch } = await searchParams;
+  const { branchId: operatingBranchId } = await getBranchContext();
+  const selectedBranch = requestedBranch === "all" ? "" : requestedBranch ?? operatingBranchId;
   const supabase = await createClient();
   const business = await requirePermission("products.view");
 
@@ -116,10 +113,11 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   const businessType = currentMode.value;
   const productMode = currentMode.productMode;
   const variantMode = productMode === "variant";
+  const groupVariantProducts = variantMode || businessType === "general";
 
   const grouped = new Map<string, Product[]>();
   for (const product of products) {
-    const key = groupKey(product, variantMode);
+    const key = groupKey(product, groupVariantProducts);
     const rows = grouped.get(key) ?? [];
     rows.push(product);
     grouped.set(key, rows);
@@ -144,38 +142,6 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
     );
   }).length;
 
-  const isFashion = businessType === "fashion";
-  const isShoes = businessType === "shoes";
-  const useFashionCreateModal = variantMode && isFashion;
-
-  const formMeta = variantMode
-    ? {
-        title: isFashion
-          ? "Add Product"
-          : isShoes
-            ? "Add Shoe Style"
-            : "Add Variant Product",
-        description: isFashion
-          ? "Create a clothing style with variants and inventory."
-          : isShoes
-            ? "Create a shoe style with sizes, colours and inventory."
-            : "Create a product with multiple inventory variants.",
-        badge: isFashion ? "Fashion mode" : isShoes ? "Shoes mode" : "Variant mode",
-        icon: isFashion || isShoes ? <Shirt size={20} /> : <SlidersHorizontal size={20} />,
-      }
-    : productMode === "configurable"
-      ? {
-          title: "Add Configurable Product",
-          description: "Create a product with selectable options and pricing.",
-          badge: "Configurable mode",
-          icon: <Settings2 size={20} />,
-        }
-      : {
-          title: "Add Product",
-          description: "Create a product and its starting inventory.",
-          badge: "Standard mode",
-          icon: <Package size={20} />,
-        };
 
   return (
     <main className="min-w-0 space-y-5">
@@ -188,60 +154,21 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
           </p>
         </div>
 
-        {useFashionCreateModal && (
-          <AddClothingStyleModal
-            categories={categories}
-            businessType={businessType}
-            branches={branches||[]}
-          />
-        )}
+        <AddProductModal
+          categories={categories}
+          branches={branches || []}
+          businessType={businessType}
+          productMode={productMode}
+        />
       </header>
 
-      <div
-        className={
-          useFashionCreateModal
-            ? "grid items-start gap-4"
-            : "grid items-start gap-4 xl:grid-cols-[400px_minmax(0,1fr)]"
-        }
-      >
-        {!useFashionCreateModal && (
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-4">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                {formMeta.icon}
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-lg font-bold text-slate-950">{formMeta.title}</h1>
-                <p className="mt-0.5 text-xs leading-5 text-slate-500">
-                  {formMeta.description}
-                </p>
-              </div>
-            </div>
-            <span className="shrink-0 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700">
-              {formMeta.badge}
-            </span>
-          </div>
-
-          <div className="p-4">
-            {categoryError && (
-              <p className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                {categoryError.message}
-              </p>
-            )}
-
-            {variantMode ? (
-              <VariantProductForm categories={categories} businessType={businessType} branches={branches||[]} />
-            ) : productMode === "configurable" ? (
-              <ConfigurableProductForm categories={categories} businessType={businessType} branches={branches||[]} />
-            ) : (
-              <StandardProductForm categories={categories} branches={branches||[]} />
-            )}
-          </div>
+      {categoryError && (
+        <section className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-sm">
+          Unable to load product categories. You can still view products, but adding or editing a category may be unavailable until this is resolved.
         </section>
-        )}
+      )}
 
-        <div className="min-w-0 space-y-4">
+      <div className="min-w-0 space-y-4">
           <section className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
             <MetricCard
               icon={<Package size={22} />}
@@ -278,9 +205,8 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
               {productError.message}
             </section>
           ) : (
-            <ProductList products={products} productMode={productMode} branches={branches||[]} branchId={branch?.id||""} />
+            <ProductList products={products} productMode={productMode} branches={branches||[]} branchId={branch?.id||""} businessType={businessType} />
           )}
-        </div>
       </div>
     </main>
   );

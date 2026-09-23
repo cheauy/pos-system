@@ -1,6 +1,7 @@
 "use server";
 
 import { assertBranchCapacity } from "@/lib/subscriptions/branch-limits";
+import { normalizeBranchOpeningHours } from "@/lib/branches/opening-hours";
 import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit/create-audit-log";
@@ -95,7 +96,7 @@ export async function createLocation(
         city: optionalText(formData, "city", 100),
         state_region: optionalText(formData, "stateRegion", 100),
         timezone: optionalText(formData, "timezone", 100) ?? "Asia/Phnom_Penh",
-        opening_hours: optionalText(formData, "openingHours", 120),
+        opening_hours: normalizeBranchOpeningHours(optionalText(formData, "openingHours", 3000)),
         notes: optionalText(formData, "notes", 500),
         manager_user_id: managerUserId,
         is_default: false,
@@ -181,7 +182,7 @@ export async function updateLocation(
         city: optionalText(formData, "city", 100),
         state_region: optionalText(formData, "stateRegion", 100),
         timezone: optionalText(formData, "timezone", 100) ?? "Asia/Phnom_Penh",
-        opening_hours: optionalText(formData, "openingHours", 120),
+        opening_hours: normalizeBranchOpeningHours(optionalText(formData, "openingHours", 3000)),
         notes: optionalText(formData, "notes", 500),
         manager_user_id: managerUserId,
         updated_at: new Date().toISOString(),

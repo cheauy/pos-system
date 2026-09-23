@@ -1,4 +1,5 @@
 import "server-only";
+import { needsTeamPasswordSetup } from "@/lib/users/setup-state";
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -93,6 +94,22 @@ async function loadBusiness(businessId: string) {
   return (data ?? null) as Business | null;
 }
 
+async function applyDueSubscriptionRenewal(businessId: string) {
+  const { data, error } = await supabaseAdmin.rpc(
+    "tenh_apply_due_subscription_renewals",
+    { p_business_id: businessId },
+  );
+
+  if (error) {
+    // Staged deploys may briefly run app code before this migration is applied.
+    // Ignore only a missing RPC; all other failures must stop the request.
+    if (error.code === "PGRST202" || error.code === "42883") return false;
+    throw new Error(`Unable to apply the scheduled subscription: ${error.message}`);
+  }
+
+  return Number(data ?? 0) > 0;
+}
+
 async function loadContext() {
   const supabase = await createClient();
   const tenantSlug = await getRequestTenantSlug();
@@ -105,6 +122,8 @@ async function loadContext() {
   if (userError || !user) {
     redirect(getAppUrl("/login"));
   }
+
+  if (await needsTeamPasswordSetup(user.id)) redirect(getAppUrl("/team-setup"));
 
   let member: BusinessMember | null = null;
   let business: Business | null = null;
@@ -127,6 +146,11 @@ async function loadContext() {
 
     if (!business) {
       redirect(getAppUrl("/no-business"));
+    }
+
+    if (await applyDueSubscriptionRenewal(business.id)) {
+      business = await loadBusiness(business.id);
+      if (!business) redirect(getAppUrl("/no-business"));
     }
 
     const { data: memberData, error: memberError } =
@@ -173,6 +197,10 @@ async function loadContext() {
       cookieStore.get(SELECTED_BUSINESS_COOKIE)?.value?.trim() ?? "";
 
     if (selectedBusinessId) {
+      if (/^[0-9a-f-]{36}$/i.test(selectedBusinessId)) {
+        await applyDueSubscriptionRenewal(selectedBusinessId);
+      }
+
       const { data: selectedMember, error: selectedMemberError } =
         await supabase
           .from("business_members")
@@ -217,6 +245,22 @@ async function loadContext() {
       }
 
       member = (memberData ?? null) as BusinessMember | null;
+
+      if (member && await applyDueSubscriptionRenewal(member.business_id)) {
+        const { data: refreshedMember, error: refreshedMemberError } = await supabase
+          .from("business_members")
+          .select("business_id,role")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle();
+
+        if (refreshedMemberError) {
+          throw new Error(`Unable to refresh business membership: ${refreshedMemberError.message}`);
+        }
+
+        member = (refreshedMember ?? null) as BusinessMember | null;
+      }
 
       if (!member) {
         const { data: inactiveMember, error: inactiveMemberError } =
@@ -288,6 +332,11 @@ async function refreshSubscriptionState(
       );
     }
 
+    const reloaded = await loadBusiness(current.id);
+    if (reloaded) current = reloaded;
+  }
+
+  if (await applyDueSubscriptionRenewal(current.id)) {
     const reloaded = await loadBusiness(current.id);
     if (reloaded) current = reloaded;
   }

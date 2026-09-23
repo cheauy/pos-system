@@ -3,7 +3,6 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import {
   AlertTriangle,
-  ArrowLeft,
   ArrowRight,
   CalendarClock,
   CheckCircle2,
@@ -25,6 +24,7 @@ import {
 } from "lucide-react";
 
 import LogoutButton from "@/components/logout-button";
+import ScheduledRenewalCard from "./scheduled-renewal-card";
 import { getCurrentBusinessForSubscription } from "@/lib/business/get-current-business";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -32,6 +32,13 @@ import {
   isSubscriptionPlanKey,
   subscriptionPlans,
 } from "@/lib/subscriptions/plans";
+import {
+  expireStaleSubscriptionPaymentRequestsForBusiness,
+  getSubscriptionPaymentExpiryAt,
+} from "@/lib/subscriptions/payment-expiry";
+import PaymentRequestCountdown from "./payment-request-countdown";
+import SubscriptionPlanPickerPage from "./subscription-plan-picker-page";
+import ReactivateButton from "./reactivate-button";
 
 type BusinessSubscriptionRow = {
   subscription_plan_key: string | null;
@@ -64,6 +71,8 @@ type OrderRow = {
   requested_user_limit: number;
   total_amount: number | string | null;
   status: string;
+  payment_expires_at?: string | null;
+  payment_expired_at?: string | null;
   created_at: string;
 };
 
@@ -101,6 +110,14 @@ function formatMoney(value: number | string | null) {
   return Number.isFinite(amount) ? `$${amount.toFixed(2)}` : "Quote";
 }
 
+function isExpiredPendingPaymentRequest(order: OrderRow) {
+  if (order.status !== "pending_payment") return false;
+  const expiresAt = getSubscriptionPaymentExpiryAt(order);
+  if (!expiresAt) return false;
+  const expiresAtMs = new Date(expiresAt).getTime();
+  return Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now();
+}
+
 function daysUntil(value: string | null) {
   if (!value) return null;
   const target = new Date(value).getTime();
@@ -116,25 +133,8 @@ function termLabel(months: number | null, status: string | null) {
   return `${months} months`;
 }
 
-function getStatusLabel(status: string | null) {
-  switch (status) {
-    case "trial_pending":
-      return "Trial pending";
-    case "trialing":
-      return "Free trial";
-    case "active":
-      return "Active";
-    case "expired":
-      return "Expired";
-    case "trial_blocked":
-      return "Trial unavailable";
-    default:
-      return "Inactive";
-  }
-}
-
 function subscriptionActionLabel(status: string | null) {
-  if (status === "active") return "Upgrade Subscription";
+  if (status === "active") return "Change Subscription";
   if (status === "expired") return "Reactivate Subscription";
   return "Choose Subscription";
 }
@@ -178,9 +178,45 @@ export default async function SubscriptionSettingsPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const business = await getCurrentBusinessForSubscription();
-  const branchEntitlement = await getBranchEntitlement(business.id);
   const params = searchParams ? await searchParams : {};
+  const getParam = (value: string | string[] | undefined) =>
+    Array.isArray(value) ? value[0] : value;
+
+  const business = await getCurrentBusinessForSubscription({ startTrial: false });
+  const showPlanPicker =
+    getParam(params.view) === "plans" ||
+    getParam(params.onboarding) === "1" ||
+    business.subscriptionStatus === "trial_pending" ||
+    business.subscriptionStatus === "trial_blocked";
+
+  if (showPlanPicker) {
+    return (
+      <SubscriptionPlanPickerPage
+        businessOverride={business}
+        searchParams={Promise.resolve({
+          onboarding:
+            getParam(params.onboarding) === "1" ||
+            business.subscriptionStatus === "trial_pending" ||
+            business.subscriptionStatus === "trial_blocked"
+              ? "1"
+              : undefined,
+          trial: getParam(params.trial),
+          expired: getParam(params.expired),
+        })}
+      />
+    );
+  }
+
+  const branchEntitlement = await getBranchEntitlement(business.id);
+
+  // Keep the Payment requests list truthful. Expired manual requests are closed
+  // immediately; expired PayWay requests are verified/closed safely first.
+  try {
+    await expireStaleSubscriptionPaymentRequestsForBusiness(business.id);
+  } catch {
+    // If external payment verification is temporarily unavailable, leave the
+    // request locked instead of risking a duplicate payment.
+  }
 
   const [
     { data: subscription, error: subscriptionError },
@@ -204,11 +240,11 @@ export default async function SubscriptionSettingsPage({
       .limit(30),
     supabaseAdmin
       .from("subscription_orders")
-      .select("id,plan_key,term_months,requested_user_limit,total_amount,status,created_at")
+      .select("id,plan_key,term_months,requested_user_limit,total_amount,status,payment_expires_at,payment_expired_at,created_at")
       .eq("business_id", business.id)
       .neq("status", "cancelled")
       .order("created_at", { ascending: false })
-      .limit(12),
+      .limit(50),
     supabaseAdmin
       .from("business_members")
       .select("id", { count: "exact", head: true })
@@ -228,7 +264,10 @@ export default async function SubscriptionSettingsPage({
   const current = (subscription ?? null) as BusinessSubscriptionRow | null;
   const historyRows = (history ?? []) as HistoryRow[];
   const orderRows = (orders ?? []) as OrderRow[];
-  const status = current?.subscription_status ?? business.subscriptionStatus;
+  const visibleOrderRows = orderRows
+    .filter((order) => !isExpiredPendingPaymentRequest(order))
+    .slice(0, 12);
+  const status = business.subscriptionStatus;
   const expiry = current?.subscription_expires_at ?? business.subscriptionExpiresAt;
   const deletionDate = current?.deletion_scheduled_at ?? business.deletionScheduledAt;
   const remainingDays = daysUntil(expiry);
@@ -238,6 +277,10 @@ export default async function SubscriptionSettingsPage({
   const plan = isSubscriptionPlanKey(planKey) ? subscriptionPlans[planKey] : null;
   const activeMembers = activeMemberCount ?? 0;
   const activeLocations = activeLocationCount ?? 0;
+  const branchLimit =
+    status === "expired"
+      ? branchEntitlement.configuredLimit
+      : branchEntitlement.limit;
   const userLimit = current?.subscription_user_limit ?? plan?.userLimit ?? null;
   const seatPercent = userLimit && userLimit > 0 ? Math.min(100, Math.round((activeMembers / userLimit) * 100)) : 0;
   const teamEnabled = plan?.teamEnabled ?? status === "trialing";
@@ -256,16 +299,6 @@ export default async function SubscriptionSettingsPage({
 
   return (
     <main className="mx-auto w-full max-w-[1540px] space-y-4 pb-10">
-      {!locked ? (
-        <Link
-          href="/dashboard/settings"
-          className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-blue-600"
-        >
-          <ArrowLeft size={16} />
-          Back to General
-        </Link>
-      ) : null}
-
       {params.quote === "requested" ? (
         <Notice tone="blue">
           Custom Team quote requested. TENH can set the monthly price in Super Admin; payment becomes available after the quote is created.
@@ -296,7 +329,20 @@ export default async function SubscriptionSettingsPage({
                 </p>
               </div>
             </div>
-            <LogoutButton />
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {business.role === "owner" ? (
+                <>
+                  <ReactivateButton businessId={business.id} billingTerm={currentTerm} />
+                  <Link
+                    href="/dashboard/settings/subscription?view=plans&expired=change"
+                    className="inline-flex min-h-10 items-center justify-center rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-extrabold text-red-800 transition hover:bg-red-100"
+                  >
+                    Choose another plan
+                  </Link>
+                </>
+              ) : null}
+              <LogoutButton />
+            </div>
           </div>
         </section>
       ) : null}
@@ -318,6 +364,8 @@ export default async function SubscriptionSettingsPage({
           7-day free trial active{remainingDays !== null ? ` · ${Math.max(0, remainingDays)} days remaining` : ""}.
         </Notice>
       ) : null}
+
+      {business.role === "owner" ? <ScheduledRenewalCard businessId={business.id} /> : null}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
         <div className="space-y-4">
@@ -344,9 +392,9 @@ export default async function SubscriptionSettingsPage({
                 />
                 <OverviewItem
                   icon={<Store size={16} />}
-                  label="Store locations"
-                  value={`${activeLocations} active`}
-                  detail={`${branchEntitlement.used} of ${branchEntitlement.limit} active branches · ${Math.max(0, branchEntitlement.limit - branchEntitlement.used)} available. Custom Plan costs $5/user and $20/branch per month.`}
+                  label="Branches"
+                  value={`${branchEntitlement.used} of ${branchLimit} Used`}
+                  detail={`${Math.max(0, branchLimit - branchEntitlement.used)} branch slots available on the current plan.`}
                 />
               </div>
 
@@ -371,8 +419,8 @@ export default async function SubscriptionSettingsPage({
                   <MiniDetail
                     icon={<Wallet size={17} />}
                     label="Payment method"
-                    value="ABA QR · Manual"
-                    detail="Payment reviewed manually"
+                    value="ABA PayWay · Manual"
+                    detail="PayWay verifies automatically · Manual is reviewed"
                   />
                   <MiniDetail
                     icon={<RefreshCw size={17} />}
@@ -397,9 +445,9 @@ export default async function SubscriptionSettingsPage({
               title="Payment requests"
               subtitle="Quotes, payments under review, and approved subscription orders."
               action={
-                business.role === "owner" ? (
+                business.role === "owner" && status === "expired" ? <ReactivateButton businessId={business.id} /> : business.role === "owner" ? (
                   <Link
-                    href="/dashboard/settings/subscription/plans"
+                    href="/dashboard/settings/subscription?view=plans"
                     className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
                   >
                     <Sparkles size={15} />
@@ -411,7 +459,7 @@ export default async function SubscriptionSettingsPage({
 
             {ordersError ? (
               <div className="p-6 text-sm text-red-700">Unable to load subscription orders: {ordersError.message}</div>
-            ) : orderRows.length === 0 ? (
+            ) : visibleOrderRows.length === 0 ? (
               <div className="flex min-h-40 flex-col items-center justify-center px-6 py-10 text-center">
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-400">
                   <ReceiptText size={20} />
@@ -421,8 +469,12 @@ export default async function SubscriptionSettingsPage({
               </div>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {orderRows.map((order) => {
+                {visibleOrderRows.map((order) => {
                   const canOpen = order.status !== "quote_requested";
+                  const paymentExpiresAt = getSubscriptionPaymentExpiryAt(order);
+                  const paymentRemainingSeconds = paymentExpiresAt
+                    ? Math.max(0, Math.ceil((new Date(paymentExpiresAt).getTime() - Date.now()) / 1000))
+                    : 0;
                   return (
                     <div key={order.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
@@ -433,6 +485,13 @@ export default async function SubscriptionSettingsPage({
                           <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${orderStatusClasses(order.status)}`}>
                             {orderStatus(order.status)}
                           </span>
+                          {order.status === "pending_payment" && paymentExpiresAt ? (
+                            <PaymentRequestCountdown
+                              orderId={order.id}
+                              expiresAt={paymentExpiresAt}
+                              initialRemainingSeconds={paymentRemainingSeconds}
+                            />
+                          ) : null}
                         </div>
                         <p className="mt-1 text-xs text-slate-500">
                           {order.requested_user_limit} users · {formatDateTime(order.created_at)}
@@ -526,11 +585,11 @@ export default async function SubscriptionSettingsPage({
               <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-                    <MapPin size={15} className="text-blue-600" /> Store locations
+                    <MapPin size={15} className="text-blue-600" /> Branches
                   </div>
-                  <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200">{activeLocations} active</span>
+                  <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200">{activeLocations} of {branchLimit} Used</span>
                 </div>
-                <p className="mt-2 text-[11px] leading-5 text-slate-400">Branches and stock locations connected to this business.</p>
+                <p className="mt-2 text-[11px] leading-5 text-slate-400">Active branches currently using this subscription allowance.</p>
               </div>
 
               <div className="border-t border-slate-100 pt-5 dark:border-slate-800">
@@ -550,35 +609,23 @@ export default async function SubscriptionSettingsPage({
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <SectionHeader
               icon={<HelpCircle size={19} />}
-              title="Need help with your subscription?"
-              subtitle="Payment, renewal, and plan guidance."
+              title="How to Buy Subscription"
+              subtitle="Complete your subscription in four simple steps."
             />
             <div className="space-y-4 p-5 text-xs leading-5 text-slate-500">
-              <HelpLine icon={<Clock3 size={15} />} text="Manual payments are usually reviewed after your payment proof is submitted." />
-              <HelpLine icon={<ReceiptText size={15} />} text="Each payment request keeps its review status and proof details." />
-              <HelpLine icon={<CreditCard size={15} />} text="Billing activity stays available in your subscription history." />
+              <HelpLine icon={<Sparkles size={15} />} text="Choose a subscription that fits your business." />
+              <HelpLine icon={<ArrowRight size={15} />} text="Continue to Payment." />
+              <HelpLine icon={<CreditCard size={15} />} text="Choose your payment method." />
+              <HelpLine icon={<CheckCircle2 size={15} />} text="Pay to complete your subscription purchase." />
 
-              {business.role === "owner" ? (
+              {business.role === "owner" && status !== "expired" ? (
                 <Link
-                  href="/dashboard/settings/subscription/plans"
+                  href="/dashboard/settings/subscription?view=plans"
                   className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-50 px-3 py-2.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300"
                 >
                   {subscriptionAction} <ArrowRight size={14} />
                 </Link>
               ) : null}
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex items-start gap-3">
-              <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${status === "active" || status === "trialing" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"}`}>
-                {status === "active" || status === "trialing" ? <CheckCircle2 size={18} /> : <Clock3 size={18} />}
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-400">Subscription status</p>
-                <p className="mt-1 text-base font-extrabold text-slate-950 dark:text-white">{getStatusLabel(status)}</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">{formatDate(expiry)}{remainingDays !== null && remainingDays > 0 ? ` · ${remainingDays} days remaining` : ""}</p>
-              </div>
             </div>
           </section>
         </aside>

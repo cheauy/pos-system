@@ -103,11 +103,15 @@ export default function OnlineOrdersClient({
   businessId, branchId,
   initialOrders,
   currency,
+  canUpdate,
+  canCancel,
 }: {
   businessId: string;
   branchId: string;
   initialOrders: OnlineOrder[];
   currency: string;
+  canUpdate: boolean;
+  canCancel: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -387,6 +391,10 @@ export default function OnlineOrdersClient({
     orderId: string,
     status: "accepted" | "preparing" | "ready" | "completed" | "rejected",
   ) {
+    if (status === "rejected" ? !canCancel : !canUpdate) {
+      toast.error(status === "rejected" ? "You do not have permission to cancel orders." : "You do not have permission to update orders.");
+      return;
+    }
     setPendingOrderId(orderId);
     startTransition(async () => {
       const result = await updateOnlineOrderStatus(orderId, status);
@@ -404,6 +412,7 @@ export default function OnlineOrdersClient({
     orderId: string,
     status: "pending_verification" | "paid" | "unpaid",
   ) {
+    if (!canUpdate) { toast.error("You do not have permission to update payments."); return; }
     setPendingOrderId(orderId);
     startTransition(async () => {
       const result = await updateOnlinePaymentStatus(orderId, status);
@@ -671,6 +680,7 @@ export default function OnlineOrdersClient({
                 setViewMode("split");
               }}
               onChange={changeStatus}
+              canUpdate={canUpdate}
             />
           ))}
         </section>
@@ -700,6 +710,7 @@ export default function OnlineOrdersClient({
                   busy={pending && pendingOrderId === order.id}
                   onSelect={() => setSelectedOrderId(order.id)}
                   onChange={changeStatus}
+                  canUpdate={canUpdate}
                 />
               ))}
             </div>
@@ -715,6 +726,8 @@ export default function OnlineOrdersClient({
                 onSelect={setSelectedOrderId}
                 onChange={changeStatus}
                 onPaymentChange={changePaymentStatus}
+                canUpdate={canUpdate}
+                canCancel={canCancel}
               />
             ) : (
               <div className="flex h-full min-h-[570px] items-center justify-center p-8 text-center text-slate-500">
@@ -836,6 +849,7 @@ function OrderListItem({
   busy,
   onSelect,
   onChange,
+  canUpdate,
 }: {
   order: OnlineOrder;
   currency: string;
@@ -846,6 +860,7 @@ function OrderListItem({
     orderId: string,
     status: "accepted" | "preparing" | "ready" | "completed" | "rejected",
   ) => void;
+  canUpdate: boolean;
 }) {
   const status = order.online_status ?? "new";
   const primary = primaryAction(status);
@@ -892,7 +907,7 @@ function OrderListItem({
               <span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 text-xs font-semibold text-slate-500">
                 <Loader2 size={13} className="animate-spin" /> Updating
               </span>
-            ) : primary ? (
+            ) : primary && canUpdate ? (
               <button
                 type="button"
                 onClick={(event) => {
@@ -933,6 +948,7 @@ function QueueOrderCard({
   selected,
   onSelect,
   onChange,
+  canUpdate,
 }: {
   order: OnlineOrder;
   currency: string;
@@ -943,6 +959,7 @@ function QueueOrderCard({
     orderId: string,
     status: "accepted" | "preparing" | "ready" | "completed" | "rejected",
   ) => void;
+  canUpdate: boolean;
 }) {
   const status = order.online_status ?? "new";
   const primary = primaryAction(status);
@@ -975,7 +992,7 @@ function QueueOrderCard({
         </button>
         {busy ? (
           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500"><Loader2 size={13} className="animate-spin" /> Updating</span>
-        ) : primary ? (
+        ) : primary && canUpdate ? (
           <button type="button" onClick={() => onChange(order.id, primary.status)} className={`ml-auto rounded-lg px-3 py-2 text-xs font-semibold ${primary.className}`}>
             {primary.label}
           </button>
@@ -993,6 +1010,8 @@ function OrderDetails({
   onSelect,
   onChange,
   onPaymentChange,
+  canUpdate,
+  canCancel,
 }: {
   order: OnlineOrder;
   currency: string;
@@ -1007,6 +1026,8 @@ function OrderDetails({
     orderId: string,
     status: "pending_verification" | "paid" | "unpaid",
   ) => void;
+  canUpdate: boolean;
+  canCancel: boolean;
 }) {
   const status = order.online_status ?? "new";
   const index = orders.findIndex((item) => item.id === order.id);
@@ -1120,7 +1141,7 @@ function OrderDetails({
               <p className="mt-1 text-xs italic leading-5 text-amber-900">{order.customer_note ? `“${order.customer_note}”` : "No customer note for this order."}</p>
             </section>
 
-            {order.payment_method === "khqr" && order.payment_status !== "paid" && (
+            {canUpdate && order.payment_method === "khqr" && order.payment_status !== "paid" && (
               <section className="rounded-xl border border-blue-200 bg-blue-50 p-3">
                 <p className="text-xs font-bold text-blue-800">KHQR verification</p>
                 <p className="mt-1 text-xs text-blue-700">Confirm the payment before completing the order.</p>
@@ -1148,11 +1169,11 @@ function OrderDetails({
           <ExternalLink size={14} /> Full Order
         </Link>
 
-        {busy ? (
+        {canUpdate && busy ? (
           <span className="ml-auto inline-flex h-9 items-center gap-2 rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-500"><Loader2 size={14} className="animate-spin" /> Updating...</span>
-        ) : primary ? (
+        ) : canUpdate && primary ? (
           <>
-            {!["completed", "rejected"].includes(status) && status !== "ready" && (
+            {canCancel && !["completed", "rejected"].includes(status) && status !== "ready" && (
               <button type="button" onClick={() => onChange(order.id, "rejected")} className="ml-auto h-9 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-600 hover:bg-rose-50">Cancel Order</button>
             )}
             <button type="button" onClick={() => onChange(order.id, primary.status)} className={`${status === "ready" || status === "new" ? "ml-auto" : ""} inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold ${primary.className}`}>

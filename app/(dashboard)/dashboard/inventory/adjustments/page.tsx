@@ -1,3 +1,4 @@
+import { getViewingBranchId } from "@/lib/branches/context";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
 
@@ -48,7 +49,8 @@ type LocationRow = {
 };
 
 export default async function StockAdjustmentPage({ searchParams }: { searchParams: Promise<{ branch?: string }> }) {
-  const { branch: selectedBranch } = await searchParams;
+  const { branch: requestedBranch } = await searchParams;
+  const selectedBranch = await getViewingBranchId(requestedBranch);
   const business = await requirePermission("products.stock_adjust");
   const supabase = await createClient();
 

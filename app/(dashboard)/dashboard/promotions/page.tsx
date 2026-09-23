@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 import { requirePermission } from "@/lib/auth/require-permission";
+import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { createClient } from "@/lib/supabase/branch-server";
 import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
 import {
@@ -126,7 +127,7 @@ export default async function PromotionsPage({
   const orders = orderResult.error
     ? []
     : ((orderResult.data ?? []) as PromotionOrder[]);
-  const canEdit = business.role === "owner" || business.role === "admin";
+  const canEdit = await businessHasPermission(business, "storefront.update");
 
   const now = Date.now();
   const activeCount = coupons.filter(

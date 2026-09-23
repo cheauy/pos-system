@@ -100,6 +100,7 @@ export default function VariantProductForm({
 }) {
   const isShoes = businessType === "shoes";
   const isFashion = businessType === "fashion";
+  const isGeneral = businessType === "general";
   const isSpecialVariant = isShoes || isFashion;
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(createVariantProduct, initialState);
@@ -386,6 +387,21 @@ export default function VariantProductForm({
         />
       </Field>
 
+      {isGeneral && (
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <input
+            type="checkbox"
+            name="isOnline"
+            defaultChecked
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span>
+            <span className="block text-sm font-semibold text-slate-800">Show on online store</span>
+            <span className="mt-0.5 block text-xs leading-5 text-slate-500">All variants will follow this online visibility when created.</span>
+          </span>
+        </label>
+      )}
+
       {isSpecialVariant && (
         <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-3">
           <div className="flex items-start gap-2">
@@ -448,10 +464,20 @@ export default function VariantProductForm({
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-3">
           <div className="flex min-w-0 items-start gap-2">
-            <Shirt size={17} className="mt-0.5 shrink-0 text-slate-600" />
+            {isGeneral ? (
+              <PackagePlus size={17} className="mt-0.5 shrink-0 text-slate-600" />
+            ) : (
+              <Shirt size={17} className="mt-0.5 shrink-0 text-slate-600" />
+            )}
             <div>
               <h3 className="text-sm font-bold text-slate-900">
-                {isShoes ? "Shoe sizes & colours" : isFashion ? "Clothing sizes & colours" : "Variants"}
+                {isShoes
+                  ? "Shoe sizes & colours"
+                  : isFashion
+                    ? "Clothing sizes & colours"
+                    : isGeneral
+                      ? "Options & variants"
+                      : "Variants"}
               </h3>
               <p className="text-[11px] text-slate-500">
                 {variants.length} variant{variants.length === 1 ? "" : "s"} · {totalStock} total stock
@@ -489,8 +515,8 @@ export default function VariantProductForm({
             <thead className="bg-white text-[10px] uppercase tracking-wide text-slate-400">
               <tr className="border-b border-slate-200">
                 <th className="w-14 px-2 py-2 text-left font-semibold">Image</th>
-                <th className="px-2 py-2 text-left font-semibold">Size</th>
-                <th className="px-2 py-2 text-left font-semibold">Colour</th>
+                <th className="px-2 py-2 text-left font-semibold">{isGeneral ? "Size / option" : "Size"}</th>
+                <th className="px-2 py-2 text-left font-semibold">{isGeneral ? "Color" : "Colour"}</th>
                 <th className="px-2 py-2 text-left font-semibold">SKU</th>
                 <th className="px-2 py-2 text-left font-semibold">Cost</th>
                 <th className="px-2 py-2 text-left font-semibold">Price</th>
@@ -503,8 +529,12 @@ export default function VariantProductForm({
               {variants.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center">
-                    <p className="text-xs font-semibold text-slate-600">No sizes or variants added</p>
-                    <p className="mt-1 text-[11px] text-slate-400">Use Add Size or a quick size run to add inventory rows.</p>
+                    <p className="text-xs font-semibold text-slate-600">{isGeneral ? "No variants added" : "No sizes or variants added"}</p>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      {isGeneral
+                        ? "Use Add Variant to create options with their own SKU, price and stock."
+                        : "Use Add Size or a quick size run to add inventory rows."}
+                    </p>
                   </td>
                 </tr>
               )}
@@ -533,9 +563,25 @@ export default function VariantProductForm({
                         );
                       })()}
                     </td>
-                    <CellInput value={variant.size} placeholder={isShoes ? "41" : "M"} required={isSpecialVariant} onChange={(value) => updateVariant(variant.id, "size", value)} />
-                    <CellInput value={variant.color} placeholder="Black" required={isSpecialVariant} onChange={(value) => updateVariant(variant.id, "color", value)} />
-                    <CellInput value={variant.sku} placeholder="TEE01-BLK-M" required onChange={(value) => updateVariant(variant.id, "sku", value)} wide />
+                    <CellInput
+                      value={variant.size}
+                      placeholder={isGeneral ? "500ml / 128GB / Large" : isShoes ? "41" : "M"}
+                      required={isSpecialVariant}
+                      onChange={(value) => updateVariant(variant.id, "size", value)}
+                    />
+                    <CellInput
+                      value={variant.color}
+                      placeholder={isGeneral ? "Optional" : "Black"}
+                      required={isSpecialVariant}
+                      onChange={(value) => updateVariant(variant.id, "color", value)}
+                    />
+                    <CellInput
+                      value={variant.sku}
+                      placeholder={isGeneral ? "ITEM-001-BLK" : "TEE01-BLK-M"}
+                      required
+                      onChange={(value) => updateVariant(variant.id, "sku", value)}
+                      wide
+                    />
                     <CellInput value={variant.costPrice} type="number" min="0" step="0.01" required onChange={(value) => updateVariant(variant.id, "costPrice", value)} />
                     <CellInput value={variant.sellingPrice} type="number" min="0" step="0.01" required onChange={(value) => updateVariant(variant.id, "sellingPrice", value)} />
                     <CellInput value={variant.stockQuantity} type="number" min="0" required onChange={(value) => updateVariant(variant.id, "stockQuantity", value)} />
@@ -570,7 +616,13 @@ export default function VariantProductForm({
           </>
         ) : (
           <>
-            <PackagePlus size={17} /> {isShoes ? "Create Shoe & Inventory" : isFashion ? "Create Style & Inventory" : "Create Variant Product"}
+            <PackagePlus size={17} /> {isShoes
+              ? "Create Shoe & Inventory"
+              : isFashion
+                ? "Create Style & Inventory"
+                : isGeneral
+                  ? "Create Product & Inventory"
+                  : "Create Variant Product"}
           </>
         )}
       </button>

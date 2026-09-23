@@ -1,6 +1,11 @@
 import "server-only";
+import { needsTeamPasswordSetup } from "@/lib/users/setup-state";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import {
+  loadSubscriptionSafetySnapshot,
+  subscriptionIsEffectivelyExpired,
+} from "@/lib/subscriptions/access-safety";
 import { createClient } from "@/lib/supabase/server";
 import {
   getAdminUrl,
@@ -91,6 +96,7 @@ export async function getAccountDestination(
   userId: string,
 ): Promise<string> {
   const supabase = await createClient();
+  if (await needsTeamPasswordSetup(userId)) return getAppUrl("/team-setup");
   const profile = await ensureProfile(userId);
 
   if (profile.is_active !== true) {
@@ -144,9 +150,12 @@ export async function getAccountDestination(
       : getAppUrl("/business-disabled?reason=business_unavailable");
   }
 
+  const subscription = await loadSubscriptionSafetySnapshot(
+    membership.business_id,
+  );
   const { data: business, error: businessError } = await supabase
     .from("businesses")
-    .select("slug,is_active,disabled_reason,subscription_status")
+    .select("slug,is_active,disabled_reason")
     .eq("id", membership.business_id)
     .maybeSingle();
 
@@ -164,11 +173,13 @@ export async function getAccountDestination(
     return getAppUrl("/business-disabled?reason=business_disabled");
   }
 
-  if (
-    business.subscription_status === "expired" &&
-    membership.role !== "owner"
-  ) {
-    return getAppUrl("/business-disabled?reason=subscription_expired");
+  if (subscriptionIsEffectivelyExpired(subscription)) {
+    return membership.role === "owner"
+      ? getTenantDashboardUrl(
+          business.slug,
+          "/dashboard/settings/subscription?locked=1",
+        )
+      : getAppUrl("/business-disabled?reason=subscription_expired");
   }
 
   return getTenantDashboardUrl(business.slug, "/dashboard");

@@ -3,6 +3,7 @@ export const businessRoles = [
   "admin",
   "manager",
   "cashier",
+  "staff",
 ] as const;
 
 export type BusinessRole =

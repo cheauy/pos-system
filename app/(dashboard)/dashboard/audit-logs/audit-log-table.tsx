@@ -11,7 +11,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleCheck,
-  CircleHelp,
   Download,
   Eye,
   FileClock,
@@ -21,7 +20,6 @@ import {
   ListFilter,
   LockKeyhole,
   Search,
-  Settings2,
   ShieldAlert,
   ShieldCheck,
   UserRound,
@@ -70,7 +68,6 @@ export default function AuditLogsTable({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [selectedLog, setSelectedLog] = useState<NormalizedAuditLog | null>(null);
-  const [showRetention, setShowRetention] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showDateMenu, setShowDateMenu] = useState(false);
 
@@ -325,15 +322,6 @@ export default function AuditLogsTable({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setShowRetention(true)}
-            className="inline-flex h-11 items-center gap-2 rounded-xl border border-blue-100 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-          >
-            <Settings2 className="h-4 w-4 text-blue-600" />
-            Retention settings
-          </button>
-
           <div className="relative">
             <button
               type="button"
@@ -597,7 +585,6 @@ export default function AuditLogsTable({
       </section>
 
       {selectedLog ? <AuditLogDialog log={selectedLog} onClose={() => setSelectedLog(null)} /> : null}
-      {showRetention ? <RetentionDialog onClose={() => setShowRetention(false)} /> : null}
     </main>
   );
 }
@@ -785,24 +772,6 @@ function AuditLogDialog({
             <p className="text-sm text-slate-500">No metadata recorded.</p>
           )}
         </div>
-      </div>
-    </Modal>
-  );
-}
-
-function RetentionDialog({ onClose }: { onClose: () => void }) {
-  return (
-    <Modal onClose={onClose} title="Audit log retention" subtitle="Data safety and retention information">
-      <div className="space-y-4 text-sm leading-6 text-slate-600 dark:text-slate-300">
-        <div className="flex gap-3 rounded-xl bg-blue-50 p-4 text-blue-800 dark:bg-blue-950/30 dark:text-blue-200">
-          <CircleHelp className="mt-0.5 h-5 w-5 shrink-0" />
-          <p>
-            TENH POS currently preserves audit records according to your database policy. This screen does not automatically delete historical audit evidence.
-          </p>
-        </div>
-        <p>
-          If you later add an automatic retention period, it should be enforced server-side and should preserve any records required for accounting, security, or compliance investigations.
-        </p>
       </div>
     </Modal>
   );

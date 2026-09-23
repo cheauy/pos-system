@@ -1,24 +1,17 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
-
-import {
-  getCurrentBusiness,
-} from "@/lib/business/get-current-business";
-import type {
-  CurrentBusiness,
-} from "@/lib/business/types";
-import {
-  hasPermission,
-  type Permission,
-} from "./permissions";
+import { getCurrentBusiness } from "@/lib/business/get-current-business";
+import type { CurrentBusiness } from "@/lib/business/types";
+import { businessHasPermission } from "@/lib/auth/effective-permissions";
+import type { Permission } from "./permissions";
 
 export async function requirePermission(
   permission: Permission,
 ): Promise<CurrentBusiness> {
   const business = await getCurrentBusiness();
 
-  if (!hasPermission(business.role, permission)) {
+  if (!(await businessHasPermission(business, permission))) {
     redirect("/dashboard");
   }
 
@@ -29,13 +22,13 @@ export async function requireAnyPermission(
   requiredPermissions: Permission[],
 ): Promise<CurrentBusiness> {
   const business = await getCurrentBusiness();
-
-  const allowed = requiredPermissions.some(
-    (permission) =>
-      hasPermission(business.role, permission),
+  const checks = await Promise.all(
+    requiredPermissions.map((permission) =>
+      businessHasPermission(business, permission),
+    ),
   );
 
-  if (!allowed) {
+  if (!checks.some(Boolean)) {
     redirect("/dashboard");
   }
 

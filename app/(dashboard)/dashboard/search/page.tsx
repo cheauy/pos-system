@@ -1,23 +1,12 @@
-import Link from "next/link";
-import { Search } from "lucide-react";
-import { getCurrentBusiness } from "@/lib/business/get-current-business";
-import { hasPermission } from "@/lib/auth/permissions";
-import { createClient } from "@/lib/supabase/branch-server";
+import { requirePermission } from "@/lib/auth/require-permission";
+import GlobalSearchClient from "./global-search-client";
 
-type Result={kind:string;title:string;subtitle:string;href:string};
-function escapeLike(v:string){return v.replace(/[%_,()]/g," ").trim();}
-export default async function SearchPage({searchParams}:{searchParams:Promise<{q?:string}>}){
- const {q=""}=await searchParams; const term=escapeLike(q); const business=await getCurrentBusiness(); const supabase=await createClient(); const results:Result[]=[];
- if(term){
-  const tasks:Promise<void>[]=[];
-  if(hasPermission(business.role,"products.view")) tasks.push((async()=>{const {data}=await supabase.from("products").select("id,name,sku,barcode,size,color").eq("business_id",business.id).or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`).limit(12); for(const p of data??[]) results.push({kind:"Product",title:p.name,subtitle:[p.sku,p.barcode,p.color,p.size].filter(Boolean).join(" · "),href:"/dashboard/products"});})());
-  if(hasPermission(business.role,"orders.view")) tasks.push((async()=>{const {data}=await supabase.from("orders").select("id,order_number,guest_name,guest_phone,total,status").eq("business_id",business.id).or(`order_number.ilike.%${term}%,guest_name.ilike.%${term}%,guest_phone.ilike.%${term}%`).order("created_at",{ascending:false}).limit(12); for(const o of data??[]) results.push({kind:"Order",title:o.order_number??"Order",subtitle:[o.guest_name,o.guest_phone,o.status,o.total].filter(v=>v!==null&&v!==undefined&&v!=="").join(" · "),href:`/dashboard/orders/${o.id}`});})());
-  if(hasPermission(business.role,"customers.view")) tasks.push((async()=>{const {data}=await supabase.from("customers").select("id,name,phone,email").eq("business_id",business.id).or(`name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`).limit(12); for(const c of data??[]) results.push({kind:"Customer",title:c.name,subtitle:[c.phone,c.email].filter(Boolean).join(" · "),href:`/dashboard/customers/${c.id}`});})());
-  if(hasPermission(business.role,"suppliers.manage")) tasks.push((async()=>{const {data}=await supabase.from("suppliers").select("id,name,phone,email").eq("business_id",business.id).or(`name.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`).limit(10); for(const s of data??[]) results.push({kind:"Supplier",title:s.name,subtitle:[s.phone,s.email].filter(Boolean).join(" · "),href:"/dashboard/suppliers"});})());
-  if(hasPermission(business.role,"purchases.view")) tasks.push((async()=>{const {data}=await supabase.from("purchase_orders").select("id,po_number,supplier_name,status,reference_number").eq("business_id",business.id).or(`po_number.ilike.%${term}%,supplier_name.ilike.%${term}%,reference_number.ilike.%${term}%`).order("created_at",{ascending:false}).limit(10); for(const p of data??[]) results.push({kind:"Purchase Order",title:p.po_number,subtitle:[p.supplier_name,p.status,p.reference_number].filter(Boolean).join(" · "),href:`/dashboard/purchase-orders/${p.id}`});})());
-  if(hasPermission(business.role,"transfers.manage")) tasks.push((async()=>{const {data}=await supabase.from("stock_transfers").select("id,transfer_number,status,note").eq("business_id",business.id).or(`transfer_number.ilike.%${term}%,note.ilike.%${term}%`).order("created_at",{ascending:false}).limit(10); for(const t of data??[]) results.push({kind:"Stock Transfer",title:t.transfer_number,subtitle:t.status,href:"/dashboard/stock-transfers"});})());
-  if(hasPermission(business.role,"credit.manage")) tasks.push((async()=>{const {data}=await supabase.from("customers").select("id,name,phone,customer_credit_accounts(balance,credit_limit,payment_due_date)").eq("business_id",business.id).or(`name.ilike.%${term}%,phone.ilike.%${term}%`).limit(10); for(const c of data??[]){const a=Array.isArray(c.customer_credit_accounts)?c.customer_credit_accounts[0]:c.customer_credit_accounts; if(a&&Number(a.balance)>0) results.push({kind:"Customer Credit",title:c.name,subtitle:`Balance ${a.balance} · Limit ${a.credit_limit}`,href:`/dashboard/customers/${c.id}`});}})());
-  await Promise.all(tasks);
- }
- return <main className="mx-auto max-w-5xl"><div className="mb-6"><h1 className="flex items-center gap-3 text-3xl font-bold"><Search/>Global Search</h1><p className="mt-1 text-slate-500">Find orders, products, barcodes, customers, suppliers, purchase orders, transfers and credit accounts.</p></div><form className="mb-6"><div className="flex gap-2"><input name="q" defaultValue={q} autoFocus placeholder="Order #, SKU, barcode, customer phone…" className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900"/><button className="rounded-xl bg-blue-600 px-5 font-semibold text-white hover:bg-blue-700">Search</button></div></form>{!term?<div className="rounded-2xl border border-dashed p-10 text-center text-slate-500">Type a search above, or press <kbd className="rounded border px-2 py-1">/</kbd> anywhere in the dashboard.</div>:results.length===0?<div className="rounded-2xl border p-10 text-center text-slate-500">No results for “{q}”.</div>:<div className="overflow-hidden rounded-2xl border bg-white dark:border-slate-800 dark:bg-slate-900">{results.slice(0,60).map((r,i)=><Link key={`${r.kind}-${r.href}-${i}`} href={r.href} className="flex items-center gap-4 border-b border-slate-100 p-4 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"><span className="w-28 shrink-0 text-xs font-semibold uppercase tracking-wide text-blue-600">{r.kind}</span><span className="min-w-0"><span className="block font-semibold">{r.title}</span><span className="block truncate text-sm text-slate-500">{r.subtitle}</span></span></Link>)}</div>}</main>;
+export default async function SearchPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  await requirePermission("business.view");
+  const params = await searchParams;
+  return <GlobalSearchClient initialQuery={typeof params.q === "string" ? params.q : ""} />;
 }

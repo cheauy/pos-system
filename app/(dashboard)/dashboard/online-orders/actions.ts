@@ -29,7 +29,7 @@ export async function updateOnlineOrderStatus(
 ): Promise<UpdateOnlineOrderResult> {
   try {
     const business = await requirePermission(
-      "orders.update",
+      nextStatus === "rejected" ? "orders.cancel" : "orders.update",
     );
     const scopedDb = await createClient();
 

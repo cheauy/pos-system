@@ -49,6 +49,7 @@ type LocationStock = {
 };
 
 type Props = {
+  defaultBranchId?: string;
   products: Product[];
   categories: Category[];
   locations: Location[];
@@ -86,11 +87,11 @@ function movementTab(product: Product): "fast" | "slow" | "none" {
   return "slow";
 }
 
-export default function InventoryClient({ products, categories, locations, locationStock }: Props) {
+export default function InventoryClient({ products, categories, locations, locationStock, defaultBranchId = "all" }: Props) {
   const [tab, setTab] = useState<Tab>("all");
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("all");
-  const [locationId, setLocationId] = useState("all");
+  const [locationId, setLocationId] = useState(defaultBranchId);
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -130,7 +131,7 @@ export default function InventoryClient({ products, categories, locations, locat
           locationId === "all"
             ? null
             : branchStock.get(`${locationId}:${product.id}`) ?? null;
-        const stock = branch ? Number(branch.quantity || 0) : Number(product.stock_quantity || 0);
+        const stock = locationId === "all" ? Number(product.stock_quantity || 0) : Number(branch?.quantity || 0);
         const threshold = branch
           ? Number(branch.low_stock_threshold || 0)
           : Number(product.low_stock_quantity || 0);

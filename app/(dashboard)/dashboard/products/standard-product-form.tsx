@@ -23,9 +23,13 @@ const initialState: CreateProductState = {
 export default function StandardProductForm({
   categories, branches=[],
   businessType = "general",
+  generalShop = false,
+  onCreated,
 }: {
   categories: Category[]; branches?:{id:string;name:string}[];
   businessType?: string;
+  generalShop?: boolean;
+  onCreated?: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const experience = getProductExperience(businessType).standard ?? getProductExperience("general").standard!;
@@ -39,10 +43,11 @@ export default function StandardProductForm({
     if (state.success) {
       toast.success(state.message);
       formRef.current?.reset();
+      onCreated?.();
     } else {
       toast.error(state.message);
     }
-  }, [state]);
+  }, [state, onCreated]);
 
   return (
     <form
@@ -121,8 +126,44 @@ export default function StandardProductForm({
           />
         </div>
 
-        <ImageUpload />
+        {generalShop ? (
+          <div>
+            <label htmlFor="barcode" className="mb-2 block text-sm font-medium text-slate-700">
+              Barcode <span className="font-normal text-slate-400">(optional)</span>
+            </label>
+            <input
+              id="barcode"
+              name="barcode"
+              type="text"
+              placeholder="Scan or enter barcode"
+              className={inputClass}
+            />
+            <p className="mt-1.5 text-[11px] text-slate-400">If empty, SKU is used as the barcode.</p>
+          </div>
+        ) : (
+          <ImageUpload />
+        )}
       </div>
+
+      {generalShop && (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor="color" className="mb-2 block text-sm font-medium text-slate-700">
+                Color <span className="font-normal text-slate-400">(optional)</span>
+              </label>
+              <input id="color" name="color" type="text" placeholder="Black, Blue, Clear..." className={inputClass} />
+            </div>
+            <div>
+              <label htmlFor="size" className="mb-2 block text-sm font-medium text-slate-700">
+                Size / option <span className="font-normal text-slate-400">(optional)</span>
+              </label>
+              <input id="size" name="size" type="text" placeholder="500ml, 128GB, Large..." className={inputClass} />
+            </div>
+          </div>
+          <ImageUpload />
+        </>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
@@ -207,6 +248,21 @@ export default function StandardProductForm({
           />
         </div>
       </div>
+
+      {generalShop && (
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <input
+            type="checkbox"
+            name="isOnline"
+            defaultChecked
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span>
+            <span className="block text-sm font-semibold text-slate-800">Show on online store</span>
+            <span className="mt-0.5 block text-xs leading-5 text-slate-500">Customers can see this product on your public store while it remains active.</span>
+          </span>
+        </label>
+      )}
 
       <div>
         <label

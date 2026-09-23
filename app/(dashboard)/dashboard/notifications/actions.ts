@@ -18,6 +18,7 @@ const allowedRoles = ["owner", "admin", "manager", "cashier"] as const;
 
 export async function saveNotificationRoleSettings(formData: FormData) {
   const business = await requirePermission("business.update");
+  if (business.role !== 'owner') throw new Error('Only the owner can change alert recipients.');
   const supabase = await createClient();
   const rows = allowedTypes.map((type) => {
     const roles = allowedRoles.filter((role) => formData.get(`${type}:${role}`) === "on");
@@ -32,4 +33,6 @@ export async function saveNotificationRoleSettings(formData: FormData) {
   if (error) throw new Error(error.message);
   await supabase.rpc("refresh_business_notifications", { p_business_id: business.id });
   revalidatePath("/dashboard/notifications");
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/settings/notifications");
 }

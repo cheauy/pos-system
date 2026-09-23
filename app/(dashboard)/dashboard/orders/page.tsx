@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AlertCircle } from "lucide-react";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { hasPermission } from "@/lib/auth/permissions";
+import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { loadWorkspace } from "./order-workspace-data";
 import { parseFilters } from "./order-workspace-types";
 import OrdersWorkspace from "./orders-workspace";
@@ -18,9 +18,13 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
       <Link href="/dashboard/orders" className="mt-5 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Try again</Link>
     </section>;
   }
+  const [edit, cancel, refund, create] = await Promise.all([
+    businessHasPermission(business,"orders.update"),
+    businessHasPermission(business,"orders.cancel"),
+    businessHasPermission(business,"orders.return"),
+    businessHasPermission(business,"pos.access"),
+  ]);
   return <OrdersWorkspace key={business.id} businessId={business.id} businessName={business.name} data={workspace} filters={filters} permissions={{
-    edit: hasPermission(business.role,"orders.update"), cancel: hasPermission(business.role,"orders.cancel"),
-    delete: hasPermission(business.role,"orders.cancel"), refund: hasPermission(business.role,"orders.return"),
-    create: hasPermission(business.role,"pos.access"),
+    edit, cancel, delete: cancel, refund, create,
   }} />;
 }

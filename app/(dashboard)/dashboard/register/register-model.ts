@@ -1,4 +1,4 @@
-export type Branch={id:string;name:string;code:string;is_active:boolean};
+export type Branch={id:string;name:string;code:string;is_active:boolean;plan_disable_pending?:boolean};
 export type Shift={register_summary?:ReturnType<typeof totals>|null;id:string;status:string;opening_cash:number;closing_cash:number|null;expected_cash:number|null;variance:number|null;opened_at:string;closed_at:string|null;location_id:string;opened_by:string;opening_note:string|null;closing_note:string|null};
 export type Movement={id:string;shift_id:string;movement_type:string;amount:number;reason:string;reference:string|null;created_at:string;created_by:string};
 export type Order={id:string;order_number:string;register_shift_id:string;payment_method:string|null;total:number;amount_paid:number;change_amount:number;status:string;created_at:string;pos_checkout:{cashReceived?:number;receipt?:{amountPaid:number;change:number};tenders?:{method:string;amount:number}[]}|null};

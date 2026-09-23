@@ -1,4 +1,4 @@
-import { getViewingBranchId } from "@/lib/branches/context";
+import { getBranchContext, getViewingBranchId } from "@/lib/branches/context";
 import ViewBranchSelect from "@/components/view-branch-select";
 import {soldVariant} from "@/lib/analytics/product-variants";
 import SalesTrendChart from "./sales-trend-chart";
@@ -17,7 +17,7 @@ import {
   WalletCards,
 } from "lucide-react";
 
-import { hasPermission } from "@/lib/auth/permissions";
+import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
 import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
 import DashboardPeriodFilter from "./dashboard-period-filter";
@@ -106,13 +106,25 @@ export default async function DashboardPage({
 }) {
   const params = await searchParams;
   const business = await getCurrentBusiness();
-  const canViewReports = hasPermission(business.role, "reports.view");
-  const supabase = await createClient();
+  const canViewReports = await businessHasPermission(business, "reports.view");
+  const branchContext = await getBranchContext();
+  const requestedBranch = typeof params.branch === "string" ? params.branch : undefined;
+  const branchId = await getViewingBranchId(requestedBranch);
+  const branches = branchContext.branches.map((branch) => ({
+    id: branch.id,
+    name: branch.name,
+    is_active: branch.is_active,
+  }));
+
+  // Keep Supabase RLS and the visible dashboard branch in the same context.
+  // For Owners viewing all branches, omit x-tenh-branch-id intentionally.
+  const analyticsHeaders: Record<string, string> = {
+    "x-tenh-business-id": business.id,
+  };
+  if (branchId) analyticsHeaders["x-tenh-branch-id"] = branchId;
+  const supabase = await createClient(analyticsHeaders);
   const { data: { user } } = await supabase.auth.getUser();
-  const {data:branches,error:branchError}=await supabase.from("business_locations").select("id,name,is_active").eq("business_id",business.id).order("is_default",{ascending:false});
-  if(branchError)throw new Error("Unable to load dashboard branches.");
-  const branchId=await getViewingBranchId(typeof params.branch==="string"?params.branch:undefined);
-  if(branchId && !branches?.some(b=>b.id===branchId))throw new Error("Choose a branch in this business.");
+
   const period = resolvePeriod(params);
   const previousPeriod = previousComparablePeriod(period);
 
@@ -180,14 +192,24 @@ export default async function DashboardPage({
       .limit(5000),
   ]);
 
-  if(periodError||previousError||recentError||linesError)throw new Error("Unable to load dashboard analytics. Please retry.");
-  const allPeriodOrders = (periodOrders ?? []) as DashboardOrder[];
+  const analyticsErrors = [
+    periodError ? `current orders (${periodError.code ?? "unknown"}): ${periodError.message}` : null,
+    previousError ? `previous orders (${previousError.code ?? "unknown"}): ${previousError.message}` : null,
+    recentError ? `recent orders (${recentError.code ?? "unknown"}): ${recentError.message}` : null,
+    linesError ? `order items (${linesError.code ?? "unknown"}): ${linesError.message}` : null,
+  ].filter((value): value is string => Boolean(value));
+  if (analyticsErrors.length) console.warn('[dashboard analytics]', { businessId: business.id, branchId, errors: analyticsErrors });
+
+  // Reporting queries are non-critical. A failed dataset must not throw or call
+  // console.error from a Server Component because Next.js promotes server errors
+  // into the development overlay. Failed datasets render as unavailable/zero.
+  const allPeriodOrders = (periodError ? [] : periodOrders ?? []) as DashboardOrder[];
   const completedOrders = allPeriodOrders.filter(
     (order) => order.status.toLowerCase() === "completed",
   );
-  const previousCompleted = (previousOrders ?? []) as DashboardOrder[];
-  const recent = (recentOrders ?? []) as DashboardOrder[];
-  const soldLines = (lines ?? []) as unknown as Line[];
+  const previousCompleted = (previousError ? [] : previousOrders ?? []) as DashboardOrder[];
+  const recent = (recentError ? [] : recentOrders ?? []) as DashboardOrder[];
+  const soldLines = (linesError ? [] : lines ?? []) as unknown as Line[];
 
   const currency = storefront?.currency ?? "USD";
 
@@ -267,6 +289,12 @@ export default async function DashboardPage({
           </span>
         </div>
       </header>
+
+      {analyticsErrors.length > 0 ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+          Some dashboard analytics are temporarily unavailable. POS, orders, and inventory remain usable. Refresh this page to try the analytics again.
+        </section>
+      ) : null}
 
       <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
         <div className="flex flex-col gap-5">

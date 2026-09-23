@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
 
@@ -15,7 +15,7 @@ export const getBranchContext = cache(async () => {
   if (!user) throw new Error("Please sign in again.");
   const [membership, locations] = await Promise.all([
     db.from("business_members").select("default_location_id").eq("business_id", business.id).eq("user_id", user.id).eq("is_active", true).single(),
-    db.from("business_locations").select("id,name,is_default,is_active").eq("business_id", business.id).eq("is_active", true).order("is_default", { ascending: false }).order("name"),
+    db.from("business_locations").select("id,name,is_default,is_active,plan_disable_pending").eq("business_id", business.id).eq("is_active", true).eq("plan_disable_pending", false).order("is_default", { ascending: false }).order("name"),
   ]);
   if (membership.error || locations.error) throw new Error("Unable to load your branch assignment.");
   const branches = locations.data ?? [];
@@ -25,16 +25,16 @@ export const getBranchContext = cache(async () => {
   return { business, userId: user.id, branches, ownBranchId, branchId };
 });
 
-// Analytics selections are navigation-only: a fresh document (including reload)
-// starts at the staff member's own branch, independently of the operating branch.
+// A fresh workspace always defaults to the operating branch. Explicit report
+// comparisons remain view-only and do not alter the operating-branch cookie.
 export async function getViewingBranchId(requested?: string) {
-  const context = await getBranchContext();
-  const isClientNavigation = (await headers()).get("rsc") === "1";
-  if (!isClientNavigation || requested === undefined) return context.ownBranchId;
-  if (requested === "all" || requested === "") return "";
-  const db = await createClient();
-  const { data, error } = await db.from("business_locations").select("id").eq("business_id", context.business.id).eq("id", requested).maybeSingle();
-  if (error || !data) throw new Error("Branch does not belong to this business.");
+  const context=await getBranchContext();
+  if (requested === undefined) return context.branchId;
+  if (requested === 'all' || requested === '') return '';
+  if (!/^[0-9a-f-]{36}$/i.test(requested)) throw new Error('Choose a valid branch.');
+  const db=await createClient();
+  const {data,error}=await db.from('business_locations').select('id').eq('business_id',context.business.id).eq('id',requested).maybeSingle();
+  if(error || !data)throw new Error('Branch does not belong to this business.');
   return data.id as string;
 }
 

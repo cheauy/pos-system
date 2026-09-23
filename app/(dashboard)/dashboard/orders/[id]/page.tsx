@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { ArrowLeft, CalendarDays, CheckCircle2, Clock, CreditCard, ExternalLink, MapPin, Package, Phone, ReceiptText, ShoppingCart, Store, UserRound } from 'lucide-react';
 import { requirePermission } from '@/lib/auth/require-permission';
-import { hasPermission } from '@/lib/auth/permissions';
+import { businessHasPermission } from '@/lib/auth/effective-permissions';
 import { createClient } from '@/lib/supabase/branch-server';
 import { loadReceiptContext } from '@/lib/receipts/load-receipt-context';
 import { PosReceipt } from '@/components/receipts/pos-receipt';
@@ -37,8 +37,9 @@ export default async function OrderDetailsPage({params}:{params:Promise<{id:stri
  const returnable=items.map(i=>({id:i.id,product_name:[i.product_name || one(i.products)?.name || 'Product',i.variant_label].filter(Boolean).join(' · '),quantity:numeric(i.quantity),unit_price:numeric(i.unit_price),returned_quantity:qtyMap.get(i.id)||0})).filter(i=>i.quantity>i.returned_quantity);
  const managed=['new','pending','completed'].includes(order.status);const hasReturns=qtyMap.size>0;
  const financiallyLinked=numeric(order.amount_paid)>0 || ['paid','refunded','pending_verification'].includes(order.payment_status || '') || !!order.payment_reference || order.payment_method==='credit' || hasReturns || !!returns.error;
- const canReturn=managed && !returns.error && returnable.length>0 && hasPermission(business.role,'orders.return');
- const canCancel=managed && !financiallyLinked && hasPermission(business.role,'orders.cancel');
+ const [allowReturn,allowCancel,allowEdit,allowCustomerView]=await Promise.all([businessHasPermission(business,'orders.return'),businessHasPermission(business,'orders.cancel'),businessHasPermission(business,'orders.update'),businessHasPermission(business,'customers.view')]);
+ const canReturn=managed && !returns.error && returnable.length>0 && allowReturn;
+ const canCancel=managed && !financiallyLinked && allowCancel;
  const paymentStatus=order.payment_status==='refunded'?'Refunded':order.payment_status==='pending_verification'?'Pending verification':numeric(order.remaining_balance)>0?(numeric(order.amount_paid)>0?'Part-paid':'Unpaid'):order.payment_status==='paid'?'Paid':titleCase(order.payment_status || 'Unpaid');
  const fulfillment=orderType(order);const source=order.order_source==='qr'?'Table QR':order.order_source==='online'?'Online Store':'POS';
  const actor=order.pos_checkout?.createdBy;let cashier=original?.cashierName || 'Not recorded';
@@ -48,7 +49,7 @@ export default async function OrderDetailsPage({params}:{params:Promise<{id:stri
  return <main className={s.page}>
  <header className={s.header}><div><Link className={s.back} href="/dashboard/orders"><ArrowLeft size={15}/>Back to orders</Link><h1>Order Details</h1><p>View customer, products and payment information.</p></div><div className={s.headerActions}>
  <OrderPrintMenu orderId={id} className={s.button}/>
- <OrderMoreActions id={id} number={order.order_number} businessId={business.id} updatedAt={order.updated_at} status={order.status} source={order.order_source} onlineStatus={order.online_status} canEdit={hasPermission(business.role,'orders.update')} canDelete={canCancel && ['new','pending','cancelled'].includes(order.status)} note={order.customer_note || ''}/>
+ <OrderMoreActions id={id} number={order.order_number} businessId={business.id} updatedAt={order.updated_at} status={order.status} source={order.order_source} onlineStatus={order.online_status} canEdit={allowEdit} canDelete={canCancel && ['new','pending','cancelled'].includes(order.status)} note={order.customer_note || ''}/>
  {canReturn && <ReturnItemsForm orderId={id} orderNumber={order.order_number} items={returnable}/>}{canCancel && <CancelOrderForm orderId={id} orderNumber={order.order_number}/>}
  </div></header>
  <section className={s.metrics}>
@@ -61,7 +62,7 @@ export default async function OrderDetailsPage({params}:{params:Promise<{id:stri
  <div className={s.card}><Heading icon={<ReceiptText/>} title="Order Information" text="General information about this order"/><div className={s.infoGrid}>
  <Field label="Order number" value={order.order_number}/><Field label="Branch" value={name}/><Field label="Sales channel" value={`${source} · ${fulfillment}`}/><Field label="Created at" value={formatDate(order.created_at)}/><Field label="Payment method" value={paymentName(order)}/><Field label="Status" value={<Badge value={order.status}/>}/><Field label="Cashier / Staff" value={cashier}/><Field label="Payment status" value={paymentStatus}/>
  </div></div>
- <div className={s.card}><div className={s.between}><Heading icon={<UserRound/>} title="Customer Information" text="Customer details and purchase history"/>{customer && hasPermission(business.role,'customers.view') && <Link className={s.soft} href={`/dashboard/customers/${customer.id}`}>View customer<ExternalLink size={13}/></Link>}</div>
+ <div className={s.card}><div className={s.between}><Heading icon={<UserRound/>} title="Customer Information" text="Customer details and purchase history"/>{customer && allowCustomerView && <Link className={s.soft} href={`/dashboard/customers/${customer.id}`}>View customer<ExternalLink size={13}/></Link>}</div>
  <div className={s.customerGrid}><div className={s.customerFields}><Field label="Customer name" value={order.guest_name || customer?.name || 'Walk-in customer'}/><Field label="Phone" value={order.guest_phone || customer?.phone || '—'}/><Field label="Address" value={order.guest_address || customer?.address || '—'}/><Field label="Customer note" value={order.customer_note || '—'}/></div>
  <div><div className={s.history}><ShoppingCart size={22}/><div><small>Completed orders</small><strong>{customer?(summary.error?'Unavailable':`${summary.data?.completedCount ?? 0}`):'Guest'}</strong></div><div><small>Completed sales</small><strong>{customer?(summary.error?'—':cash(summary.data?.completedTotal || 0)):'—'}</strong></div></div><p className={s.muted}>Order context</p><div className={s.tags}><span>{source}</span><span>{fulfillment}</span><Badge value={order.status}/></div></div></div>
  </div></section>

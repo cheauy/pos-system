@@ -11,7 +11,7 @@ export default async function PosCurrencyPage() {
   const result=await loadPosWorkspace(business.id);
   return <main className={`${s.currencySettingsPage} ${s.dialogTheme}`}>
     <Link href="/dashboard/settings" className={s.textButton}>← Settings</Link>
-    <h1>POS Currency</h1><p className={s.muted}>Manage the $ / ៛ switch and your store’s exchange rate.</p>
+    <h1>Currency Settings</h1><p className={s.muted}>Set your store currency, exchange rate and amount format.</p>
     {result.success ? <PosCurrencySettings businessId={business.id} settings={result.data.settings}/> : <p role="alert" className={s.orangeText}>{result.message}</p>}
     <Link className={s.textButton} href="/dashboard/pos">Open Point of Sale →</Link>
   </main>;

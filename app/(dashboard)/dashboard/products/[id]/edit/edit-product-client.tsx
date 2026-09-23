@@ -51,6 +51,7 @@ type Product = {
   name: string;
   categoryId: string | null;
   description: string;
+  barcode: string;
   imageUrl: string | null;
   images: string[];
   productType: string;
@@ -147,10 +148,12 @@ export default function EditProductClient({
   product,
   categories,
   initialVariants,
+  businessType,
 }: {
   product: Product;
   categories: Category[];
   initialVariants: InitialVariant[];
+  businessType?: string;
 }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -161,8 +164,10 @@ export default function EditProductClient({
   const [deletePending, startDeleteTransition] = useTransition();
   const [bulkPending, startBulkTransition] = useTransition();
 
+  const isGeneralShop = businessType === "general";
   const [name, setName] = useState(product.name);
   const [description, setDescription] = useState(product.description);
+  const [barcode, setBarcode] = useState(product.barcode);
   const [categoryId, setCategoryId] = useState(product.categoryId ?? "");
   const [variants, setVariants] = useState<VariantRow[]>(hydrateVariants(initialVariants));
   const [showOnline, setShowOnline] = useState(product.isOnline);
@@ -563,7 +568,9 @@ export default function EditProductClient({
           </Link>
           <h1 className="text-2xl font-bold tracking-tight text-slate-950">Edit Product</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Update product details, variants, pricing, inventory and images.
+            {isGeneralShop
+              ? "Update product details, barcode, pricing, inventory and visibility."
+              : "Update product details, variants, pricing, inventory and images."}
           </p>
         </div>
       </div>
@@ -571,6 +578,7 @@ export default function EditProductClient({
       <form action={formAction} className="space-y-4">
         <input type="hidden" name="productId" value={product.id} />
         <input type="hidden" name="isOnline" value={showOnline ? "true" : "false"} />
+        {isGeneralShop && !supportsVariants && <input type="hidden" name="barcode" value={barcode} />}
         <input
           type="hidden"
           name="variants"
@@ -621,7 +629,11 @@ export default function EditProductClient({
                 <Package size={17} className="text-blue-600" />
                 <div>
                   <h2 className="text-sm font-bold text-slate-900">Basic Information</h2>
-                  <p className="text-xs text-slate-500">Edit the product name, category and description.</p>
+                  <p className="text-xs text-slate-500">
+                    {isGeneralShop
+                      ? "Edit the product name, category, barcode and description."
+                      : "Edit the product name, category and description."}
+                  </p>
                 </div>
               </div>
 
@@ -652,6 +664,16 @@ export default function EditProductClient({
                       ))}
                     </select>
                   </Field>
+                  {isGeneralShop && !supportsVariants && (
+                    <Field label="Barcode">
+                      <input
+                        value={barcode}
+                        onChange={(event) => setBarcode(event.target.value)}
+                        placeholder="Scan or enter barcode"
+                        className={inputClass}
+                      />
+                    </Field>
+                  )}
                 </div>
 
                 <Field label="Description">
@@ -660,14 +682,14 @@ export default function EditProductClient({
                     rows={6}
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
-                    placeholder="Product details, material, fit or notes..."
+                    placeholder={isGeneralShop ? "Product details, brand, model or notes..." : "Product details, material, fit or notes..."}
                     className="min-h-32 w-full resize-none rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   />
                 </Field>
               </div>
             </section>
 
-            {supportsVariants && (
+            {supportsVariants && !isGeneralShop && (
               <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 shadow-sm">
                 <div className="flex items-start gap-2">
                   <Zap size={17} className="mt-0.5 shrink-0 text-blue-600" />
@@ -720,10 +742,18 @@ export default function EditProductClient({
             <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-center gap-2">
-                  <Shirt size={17} className="text-blue-600" />
+                  {isGeneralShop ? (
+                    <Package size={17} className="text-blue-600" />
+                  ) : (
+                    <Shirt size={17} className="text-blue-600" />
+                  )}
                   <div>
-                    <h2 className="text-sm font-bold text-slate-900">Variants</h2>
-                    <p className="text-xs text-slate-500">Manage clothing sizes, colours, price, stock and visibility.</p>
+                    <h2 className="text-sm font-bold text-slate-900">{isGeneralShop ? "Inventory & pricing" : "Variants"}</h2>
+                    <p className="text-xs text-slate-500">
+                      {isGeneralShop
+                        ? "Manage SKU, optional size/color, price, stock and visibility."
+                        : "Manage clothing sizes, colours, price, stock and visibility."}
+                    </p>
                   </div>
                 </div>
 
@@ -774,7 +804,7 @@ export default function EditProductClient({
                   <input
                     value={variantSearch}
                     onChange={(event) => setVariantSearch(event.target.value)}
-                    placeholder="Search size, colour or SKU..."
+                    placeholder={isGeneralShop ? "Search option, color or SKU..." : "Search size, colour or SKU..."}
                     className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   />
                 </label>
@@ -839,8 +869,8 @@ export default function EditProductClient({
                         />
                       </th>
                       <th className="w-14 px-3 py-2.5">Image</th>
-                      <th className="px-3 py-2.5">Size</th>
-                      <th className="px-3 py-2.5">Colour</th>
+                      <th className="px-3 py-2.5">{isGeneralShop ? "Size / option" : "Size"}</th>
+                      <th className="px-3 py-2.5">{isGeneralShop ? "Color" : "Colour"}</th>
                       <th className="px-3 py-2.5">SKU</th>
                       <th className="px-3 py-2.5">Cost Price</th>
                       <th className="px-3 py-2.5">Selling Price</th>
@@ -869,9 +899,9 @@ export default function EditProductClient({
                             </div>
                           )}
                         </td>
-                        <td className="p-2"><CellInput value={row.size} placeholder="M" onChange={(value) => updateVariant(row.localId, "size", value)} /></td>
-                        <td className="p-2"><CellInput value={row.color} placeholder="Black" onChange={(value) => updateVariant(row.localId, "color", value)} /></td>
-                        <td className="p-2 min-w-40"><CellInput value={row.sku} placeholder="STYLE-BLK-M" onChange={(value) => updateVariant(row.localId, "sku", value)} /></td>
+                        <td className="p-2"><CellInput value={row.size} placeholder={isGeneralShop ? "500ml / 128GB" : "M"} onChange={(value) => updateVariant(row.localId, "size", value)} /></td>
+                        <td className="p-2"><CellInput value={row.color} placeholder={isGeneralShop ? "Optional" : "Black"} onChange={(value) => updateVariant(row.localId, "color", value)} /></td>
+                        <td className="p-2 min-w-40"><CellInput value={row.sku} placeholder={isGeneralShop ? "ITEM-001" : "STYLE-BLK-M"} onChange={(value) => updateVariant(row.localId, "sku", value)} /></td>
                         <td className="p-2"><CellInput type="number" value={row.costPrice} onChange={(value) => updateVariant(row.localId, "costPrice", value)} /></td>
                         <td className="p-2"><CellInput type="number" value={row.sellingPrice} onChange={(value) => updateVariant(row.localId, "sellingPrice", value)} /></td>
                         <td className="p-2"><CellInput type="number" value={row.stockQuantity} onChange={(value) => updateVariant(row.localId, "stockQuantity", value)} /></td>
@@ -907,7 +937,11 @@ export default function EditProductClient({
           <aside className="space-y-4">
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-bold text-slate-900">Product Image</h2>
-              <p className="mt-1 text-xs text-slate-500">Main style image first; colour-run images appear as gallery thumbnails.</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {isGeneralShop
+                  ? "Main product image used in POS and the online store."
+                  : "Main style image first; colour-run images appear as gallery thumbnails."}
+              </p>
 
               <input ref={fileInputRef} type="file" name="image" accept="image/jpeg,image/png,image/webp" onChange={handleImageChange} className="sr-only" />
 
@@ -952,7 +986,11 @@ export default function EditProductClient({
                   )}
                 </div>
               )}
-              <p className="mt-2 text-[10px] text-slate-400">Main image is the POS/storefront list fallback. Colour images are loaded when that colour is opened.</p>
+              <p className="mt-2 text-[10px] text-slate-400">
+                {isGeneralShop
+                  ? "This image is used as the main POS and storefront product image."
+                  : "Main image is the POS/storefront list fallback. Colour images are loaded when that colour is opened."}
+              </p>
             </section>
 
             <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -968,7 +1006,9 @@ export default function EditProductClient({
                 />
                 <span>
                   <span className="block text-xs font-bold text-slate-800">Show on POS</span>
-                  <span className="mt-0.5 block text-[10px] text-slate-500">Turning this off makes every variant inactive.</span>
+                  <span className="mt-0.5 block text-[10px] text-slate-500">
+                    {isGeneralShop ? "Turning this off hides this product from POS." : "Turning this off makes every variant inactive."}
+                  </span>
                 </span>
               </label>
 
@@ -981,12 +1021,14 @@ export default function EditProductClient({
                 />
                 <span>
                   <span className="block text-xs font-bold text-slate-800">Show online</span>
-                  <span className="mt-0.5 block text-[10px] text-slate-500">Controls online visibility for the whole style.</span>
+                  <span className="mt-0.5 block text-[10px] text-slate-500">
+                    {isGeneralShop ? "Controls this product on your public store." : "Controls online visibility for the whole style."}
+                  </span>
                 </span>
               </label>
 
               <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-3 text-xs">
-                <div><p className="text-slate-400">Variants</p><p className="mt-1 font-bold text-slate-900">{variants.length}</p></div>
+                <div><p className="text-slate-400">{isGeneralShop ? "Stock records" : "Variants"}</p><p className="mt-1 font-bold text-slate-900">{variants.length}</p></div>
                 <div><p className="text-slate-400">Total Stock</p><p className="mt-1 font-bold text-slate-900">{totalStock}</p></div>
               </div>
             </section>

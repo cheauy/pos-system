@@ -96,7 +96,7 @@ export async function reviewSubscriptionPayment(formData: FormData) {
     throw new Error(orderError?.message ?? "Subscription payment was not found.");
   }
 
-  if (order.status !== "payment_submitted" && !(decision === "approve" && order.status === "approved")) {
+  if (order.status !== "payment_submitted" && !(decision === "approve" && order.status === "approved") && !(decision === "reject" && order.status === "rejected")) {
     throw new Error("Only a submitted subscription payment can be reviewed.");
   }
 
@@ -111,13 +111,34 @@ export async function reviewSubscriptionPayment(formData: FormData) {
     p_admin_email: admin.email,
     p_review_note: reviewNote || null,
   };
-  let { data: result, error } = await supabaseAdmin.rpc("review_branch_subscription_order", reviewArgs);
-  if (error?.code === "PGRST202" && ![2, 3].includes(order.pricing_version)) ({ data: result, error } = await supabaseAdmin.rpc("review_subscription_order", reviewArgs));
+  let result: unknown;
+  let error: { code?: string; message?: string } | null = null;
+  if ([5, 6, 7].includes(Number(order.pricing_version))) {
+    // Pricing versions 5-7 are created by the safe subscription flow.
+    // They include locked current-plan snapshots, branch limits, carryover,
+    // and (for v7) upgrade proration/extension pricing. Sending them through
+    // the legacy reviewer recalculates with an older formula and can reject a
+    // valid paid quote with "Subscription price validation failed."
+    ({ data: result, error } = await supabaseAdmin.rpc("review_safe_subscription_order", reviewArgs));
+  } else {
+    ({ data: result, error } = await supabaseAdmin.rpc("review_branch_subscription_order", reviewArgs));
+    if (error?.code === "PGRST202" && ![2, 3, 4].includes(order.pricing_version)) {
+      ({ data: result, error } = await supabaseAdmin.rpc("review_subscription_order", reviewArgs));
+    }
+  }
 
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(error.message ?? "Unable to review subscription payment.");
 
-  const row = Array.isArray(result) ? result[0] : result;
+  const row = Array.isArray(result) ? result[0] : result as { status?: string; alreadyReviewed?: boolean; new_expiry?: string | null } | null;
+  const expectedStatus = decision === "approve" ? "approved" : "rejected";
+  if (!row || ([4, 5, 6, 7].includes(Number(order.pricing_version)) && row.status !== expectedStatus)) {
+    throw new Error("The review result could not be confirmed. Reload this same order before retrying; do not create a second payment.");
+  }
+  if (row?.alreadyReviewed) return; // Do not duplicate audit/notification side effects on retries.
 
+  // Approval/rejection has committed. Ancillary notification/cache failures must
+  // not appear to roll back payment or ask an administrator to approve again.
+  try {
   await supabaseAdmin.from("audit_logs").insert({
     business_id: order.business_id,
     user_id: admin.id,
@@ -134,6 +155,8 @@ export async function reviewSubscriptionPayment(formData: FormData) {
       plan_key: order.plan_key,
       term_months: order.term_months,
       requested_user_limit: order.requested_user_limit,
+      requested_branch_limit: order.requested_branch_limit ?? 1,
+      effective_at: order.effective_at ?? null,
       total_amount: Number(order.total_amount),
       decision,
       review_note: reviewNote || null,
@@ -155,7 +178,7 @@ export async function reviewSubscriptionPayment(formData: FormData) {
               : order.order_kind === "upgrade"
                 ? "Subscription upgraded"
                 : order.order_kind === "renewal"
-                  ? "Subscription renewed"
+                  ? "Next plan payment approved"
                   : "Subscription activated"
             : "Subscription payment rejected",
         message:
@@ -163,8 +186,10 @@ export async function reviewSubscriptionPayment(formData: FormData) {
             ? order.order_kind === "reactivation"
               ? "Your payment was approved. TENH POS access is reactivated on the paid plan; no new free trial is started."
               : order.order_kind === "upgrade"
-                ? "Your payment was approved. The upgraded team limits and plan entitlements are now active."
-                : "Your payment was approved and the TENH POS subscription is active."
+                ? "Your payment was approved. The expanded limits and selected plan entitlements are now active."
+                : order.order_kind === "renewal"
+                  ? "Your payment was approved. Your current paid access stays unchanged until its existing end date, then the selected plan takes effect."
+                  : "Your payment was approved and the TENH POS subscription is active."
             : reviewNote,
         href: `/dashboard/settings/subscription/payment/${order.id}`,
         target_roles: ["owner"],
@@ -183,4 +208,7 @@ export async function reviewSubscriptionPayment(formData: FormData) {
   revalidatePath("/super-admin/businesses");
   revalidatePath("/dashboard/settings/subscription");
   revalidatePath(`/dashboard/settings/subscription/payment/${order.id}`);
+  } catch (postCommitError) {
+    console.error("Subscription review committed; refresh/notification failed", postCommitError);
+  }
 }

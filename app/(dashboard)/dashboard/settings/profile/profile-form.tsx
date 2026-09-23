@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Building2,
   Mail,
   Save,
   ShieldCheck,
@@ -17,6 +18,8 @@ type ProfileFormProps = {
   defaultFullName: string;
   email: string;
   role: string;
+  businessName: string;
+  canEditBusinessName: boolean;
 };
 
 const initialState: UpdateProfileState = {
@@ -28,6 +31,8 @@ export default function ProfileForm({
   defaultFullName,
   email,
   role,
+  businessName,
+  canEditBusinessName,
 }: ProfileFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(updateProfile, initialState);
@@ -73,6 +78,36 @@ export default function ProfileForm({
               className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-blue-950"
             />
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="business_name" className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+            Business Name
+          </label>
+          <div className="relative">
+            <Building2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              id="business_name"
+              name="business_name"
+              type="text"
+              required={canEditBusinessName}
+              minLength={2}
+              maxLength={100}
+              defaultValue={businessName}
+              disabled={!canEditBusinessName}
+              placeholder="Enter your business name"
+              className={`w-full rounded-xl border py-2.5 pl-10 pr-3 text-sm outline-none transition ${
+                canEditBusinessName
+                  ? "border-slate-200 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-blue-950"
+                  : "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400"
+              }`}
+            />
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {canEditBusinessName
+              ? "Only the Owner can change the workspace business name. Your store display name remains managed in Online Store settings."
+              : "Only the business Owner can change this name."}
+          </p>
         </div>
 
         <div className="space-y-2">

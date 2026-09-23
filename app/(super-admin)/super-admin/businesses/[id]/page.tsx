@@ -1,4 +1,6 @@
 import Link from "next/link";
+import ExpiryTestControls from './expiry-test-controls';
+import { expiryTestsEnabled } from '@/lib/subscriptions/expiry-test-controls';
 import { ExtendSubscriptionForm } from "./extend-subscription-form";
 import { expireDueBusinesses } from "@/lib/subscriptions/expire-businesses";
 import { BusinessActivityHistory } from "./business-activity-history";
@@ -271,6 +273,11 @@ export default async function BusinessDetailsPage({
   if (!business) {
     notFound();
   }
+
+  const showExpiryTest = expiryTestsEnabled();
+  const expiryTest = showExpiryTest
+    ? await supabaseAdmin.from('subscription_expiry_tests').select('original_expiry').eq('business_id', id).maybeSingle()
+    : null;
 
   let owner: OwnerProfile | null = null;
 
@@ -559,6 +566,8 @@ const daysRemaining = expiryDate
           />
         </section>
             
+{showExpiryTest && <ExpiryTestControls businessId={id} active={Boolean(expiryTest?.data)} originalExpiry={expiryTest?.data?.original_expiry ?? null} available={!expiryTest?.error} />}
+
 {businessStatus === "suspended" ? (
   <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
     <h2 className="text-xl font-bold text-amber-900">

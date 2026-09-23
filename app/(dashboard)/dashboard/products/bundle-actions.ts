@@ -1,208 +1,48 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-
-import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { assertOperatingBranch } from "@/lib/branches/context";
 import { createClient } from "@/lib/supabase/server";
 
-export type CreateBundleState = {
-  success: boolean;
-  message: string;
-};
-
-type BundleItemInput = {
-  productId: string;
-  quantity: number;
-};
-
-function readText(formData: FormData, key: string) {
-  const value = formData.get(key);
-  return typeof value === "string" ? value.trim() : "";
+export type CreateBundleState = { success: boolean; message: string };
+const read = (form: FormData, key: string) => String(form.get(key) ?? '').trim();
+function refreshBundles() {
+  for (const path of ['/dashboard/bundles', '/dashboard/products', '/dashboard/inventory', '/dashboard/pos']) revalidatePath(path);
 }
 
-function readMoney(formData: FormData, key: string) {
-  const value = Number(readText(formData, key));
-  return Number.isFinite(value) ? value : Number.NaN;
+export async function manageBundle(input: { branchId: string; bundleId: string; action: 'edit' | 'pos' | 'online' | 'delete'; expected: string | null; values: Record<string, string | boolean> }): Promise<CreateBundleState> {
+  const business = await requirePermission(input.action === 'delete' ? 'products.disable' : 'products.update');
+  try { await assertOperatingBranch(input.branchId); } catch { return { success: false, message: 'Your branch changed. Reload before continuing.' }; }
+  const db = await createClient();
+  const { error } = await db.rpc('tenh_manage_bundle', { p_business_id: business.id, p_branch_id: input.branchId, p_bundle_id: input.bundleId, p_action: input.action, p_input: input.values, p_expected: input.expected });
+  if (error) return { success: false, message: error.code === '23503' ? 'This bundle is used by other records. Hide it instead to keep your history safe.' : error.code === '23505' ? 'This SKU is already in use.' : error.message };
+  refreshBundles(); revalidatePath(`/_sites/${business.slug}`);
+  return { success: true, message: input.action === 'delete' ? 'Bundle deleted.' : 'Bundle updated.' };
 }
 
-function parseItems(value: FormDataEntryValue | null): BundleItemInput[] {
-  if (typeof value !== "string") return [];
-
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((item): BundleItemInput | null => {
-        if (!item || typeof item !== "object") return null;
-
-        const productId = "productId" in item ? item.productId : null;
-        const quantity = "quantity" in item ? Number(item.quantity) : Number.NaN;
-
-        if (
-          typeof productId !== "string" ||
-          productId.trim().length === 0 ||
-          !Number.isInteger(quantity) ||
-          quantity <= 0
-        ) {
-          return null;
-        }
-
-        return { productId: productId.trim(), quantity };
-      })
-      .filter((item): item is BundleItemInput => item !== null);
-  } catch {
-    return [];
-  }
-}
-
-export async function createBundleProduct(
-  _previousState: CreateBundleState,
-  formData: FormData,
-): Promise<CreateBundleState> {
-  const business = await requirePermission("products.create");
-  const supabase = await createClient();
-
-  if (business.product_mode === "configurable") {
-    return {
-      success: false,
-      message: "Bundles are currently enabled only for Standard and Variant modes.",
-    };
-  }
-
-  const name = readText(formData, "name");
-  const sku = readText(formData, "sku");
-  const categoryId = readText(formData, "categoryId") || null;
-  const description = readText(formData, "description") || null;
-  const sellingPrice = readMoney(formData, "sellingPrice");
-  const items = parseItems(formData.get("items"));
-
-  if (name.length < 2) {
-    return { success: false, message: "Bundle name must contain at least 2 characters." };
-  }
-
-  if (!sku) {
-    return { success: false, message: "Please enter a bundle SKU." };
-  }
-
-  if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
-    return { success: false, message: "Please enter a valid bundle selling price." };
-  }
-
-  if (items.length < 2) {
-    return { success: false, message: "A bundle must contain at least 2 products." };
-  }
-
-  const uniqueIds = new Set(items.map((item) => item.productId));
-  if (uniqueIds.size !== items.length) {
-    return { success: false, message: "The same product cannot be added twice." };
-  }
-
-  const { data: componentProducts, error: componentError } = await supabase
-    .from("products")
-    .select("id, name, product_type, cost_price, stock_quantity")
-    .eq("business_id", business.id)
-    .in("id", [...uniqueIds]);
-
-  if (componentError) {
-    return { success: false, message: componentError.message };
-  }
-
-  if ((componentProducts ?? []).length !== items.length) {
-    return { success: false, message: "One or more selected products are invalid." };
-  }
-
-  if ((componentProducts ?? []).some((product) => product.product_type === "bundle")) {
-    return { success: false, message: "A bundle cannot contain another bundle." };
-  }
-
-  const componentMap = new Map(
-    (componentProducts ?? []).map((product) => [product.id, product]),
-  );
-
-  const bundleCost = items.reduce((total, item) => {
-    const product = componentMap.get(item.productId);
-    return total + Number(product?.cost_price ?? 0) * item.quantity;
-  }, 0);
-
-  const availableStock = Math.min(
-    ...items.map((item) => {
-      const product = componentMap.get(item.productId);
-      return Math.floor(Number(product?.stock_quantity ?? 0) / item.quantity);
-    }),
-  );
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { success: false, message: "Your login session has expired." };
-  }
-
-  const { data: existingSku, error: skuError } = await supabase
-    .from("products")
-    .select("id")
-    .eq("business_id", business.id)
-    .eq("sku", sku)
-    .maybeSingle();
-
-  if (skuError) return { success: false, message: skuError.message };
-  if (existingSku) return { success: false, message: "This SKU is already in use." };
-
-  const { data: bundle, error: bundleError } = await supabase
-    .from("products")
-    .insert({
-      owner_id: user.id,
-      business_id: business.id,
-      category_id: categoryId,
-      name,
-      sku,
-      description,
-      product_type: "bundle",
-      cost_price: bundleCost,
-      selling_price: sellingPrice,
-      stock_quantity: availableStock,
-      low_stock_quantity: 1,
-      is_active: true,
-    })
-    .select("id, name")
-    .single();
-
-  if (bundleError || !bundle) {
-    return { success: false, message: bundleError?.message ?? "Unable to create bundle." };
-  }
-
-  const { error: itemError } = await supabase.from("bundle_items").insert(
-    items.map((item) => ({
-      business_id: business.id,
-      bundle_product_id: bundle.id,
-      component_product_id: item.productId,
-      quantity: item.quantity,
-    })),
-  );
-
-  if (itemError) {
-    await supabase.from("products").delete().eq("id", bundle.id).eq("business_id", business.id);
-    return { success: false, message: itemError.message };
-  }
-
-  await createAuditLog({
-    action: "create",
-    entityType: "product",
-    entityId: bundle.id,
-    description: `Created bundle ${bundle.name}`,
-    metadata: {
-      product_type: "bundle",
-      selling_price: sellingPrice,
-      available_stock: availableStock,
-      components: items,
-    },
+export async function createBundleProduct(_state: CreateBundleState, form: FormData): Promise<CreateBundleState> {
+  const business = await requirePermission('products.create');
+  const branchId = read(form, 'branchId');
+  try { await assertOperatingBranch(branchId); } catch { return { success: false, message: 'Your branch changed. Reload before creating the bundle.' }; }
+  let items: unknown;
+  try { items = JSON.parse(read(form, 'items')); } catch { return { success: false, message: 'Choose the included products again.' }; }
+  const db = await createClient();
+  const { error } = await db.rpc('tenh_create_packed_bundle', {
+    p_business_id: business.id, p_branch_id: branchId, p_request_id: read(form, 'requestId'),
+    p_input: { name: read(form, 'name'), sku: read(form, 'sku'), sellingPrice: read(form, 'sellingPrice'), categoryId: read(form, 'categoryId'), description: read(form, 'description'), items },
   });
+  if (error) return { success: false, message: error.code === '23505' ? 'This SKU is already in use.' : error.message };
+  refreshBundles();
+  return { success: true, message: 'Bundle created. Pack sets to make them available for sale.' };
+}
 
-  revalidatePath("/dashboard/products");
-  revalidatePath("/dashboard/pos");
-
-  return { success: true, message: "Bundle created successfully." };
+export async function packBundle(input: { branchId: string; bundleId: string; quantity: number; requestId: string }): Promise<CreateBundleState> {
+  const business = await requirePermission('products.stock_adjust');
+  try { await assertOperatingBranch(input.branchId); } catch { return { success: false, message: 'Your branch changed. Reload before packing.' }; }
+  const db = await createClient();
+  const { error } = await db.rpc('tenh_pack_bundle', { p_business_id: business.id, p_branch_id: input.branchId, p_bundle_id: input.bundleId, p_quantity: input.quantity, p_request_id: input.requestId });
+  if (error) return { success: false, message: error.message };
+  refreshBundles();
+  return { success: true, message: input.quantity > 0 ? 'Sets packed. Component stock has been deducted.' : 'Sets unpacked. Component stock has been restored.' };
 }

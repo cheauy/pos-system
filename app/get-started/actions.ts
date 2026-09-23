@@ -11,6 +11,13 @@ import { getStoreSlugAvailability } from "@/lib/tenancy/store-slug-availability"
 
 import type { GetStartedState } from "./state";
 
+const selectableGetStartedBusinessModes = new Set([
+  "general",
+  "shoes",
+  "fashion",
+  "grocery",
+  "accessories",
+]);
 
 export type GetStartedStoreAddressAvailabilityResult = {
   slug: string;
@@ -180,10 +187,10 @@ export async function createOwnerBusiness(
     const selectedMode = requiredText(formData, "businessMode");
     const preset = getBusinessModePreset(selectedMode);
 
-    if (!preset) {
+    if (!preset || !selectableGetStartedBusinessModes.has(selectedMode)) {
       return {
         success: false,
-        message: "Choose a valid business type.",
+        message: "This business type is coming soon. Choose an available business type.",
       };
     }
 
@@ -355,7 +362,7 @@ export async function createOwnerBusiness(
       message: "Your Tenh POS business is ready. Choose a subscription or continue with the 7-day free trial.",
       destination: getTenantDashboardUrl(
         slug,
-        "/dashboard/settings/subscription/plans?onboarding=1",
+        "/dashboard/settings/subscription?view=plans&onboarding=1",
       ),
     };
   } catch (error) {

@@ -1,4 +1,5 @@
 import { requirePermission } from "@/lib/auth/require-permission";
+import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { createClient } from "@/lib/supabase/branch-server";
 
 import PurchaseOrdersClient, {
@@ -39,6 +40,10 @@ type ProfileRow = {
 
 export default async function PurchaseOrdersPage() {
   const business = await requirePermission("purchases.view");
+  const [canCreate, canUpdate] = await Promise.all([
+    businessHasPermission(business, "purchases.create"),
+    businessHasPermission(business, "purchases.update"),
+  ]);
   const supabase = await createClient();
 
   const [ordersResult, itemsResult, suppliersResult] = await Promise.all([
@@ -140,6 +145,8 @@ export default async function PurchaseOrdersPage() {
     <PurchaseOrdersClient
       orders={purchaseOrders}
       suppliers={suppliers}
+      canCreate={canCreate}
+      canUpdate={canUpdate}
     />
   );
 }

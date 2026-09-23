@@ -1,9 +1,32 @@
 @import "tailwindcss";
 
 :root {
+  --app-accent: #2563eb;
+  --workspace-panel: #ffffff;
+  --workspace-background: #ffffff;
   --background: #ffffff;
   --foreground: #171717;
 }
+
+.sidebar-accent [class~="bg-blue-100"], .sidebar-accent [class~="bg-blue-50"] { background-color: color-mix(in srgb, var(--app-accent) 12%, transparent); }
+.sidebar-accent [class~="text-blue-700"], .sidebar-accent [class~="text-blue-600"] { color: var(--app-accent); }
+.sidebar-accent [class~="bg-blue-600"] { background-color: var(--app-accent); }
+.dark .sidebar-accent [class~="text-blue-700"], .dark .sidebar-accent [class~="text-blue-600"] { color: color-mix(in srgb, var(--app-accent) 50%, white); }
+
+:root[data-workspace-color]:not([data-workspace-color="white"]) {
+  --workspace-panel: color-mix(in srgb, var(--app-accent) 4%, white);
+  --workspace-background: color-mix(in srgb, var(--app-accent) 9%, white);
+}
+.dark { --workspace-panel: #101b2e; --workspace-background: #020617; }
+:root.dark[data-workspace-color]:not([data-workspace-color="white"]) {
+  --workspace-panel: color-mix(in srgb, var(--app-accent) 12%, #101b2e);
+  --workspace-background: color-mix(in srgb, var(--app-accent) 8%, #020617);
+}
+.workspace-theme { background: var(--workspace-background); }
+.workspace-theme [class~="bg-white"], .workspace-theme [class~="dark:bg-slate-900"], .workspace-theme dialog { background-color: var(--workspace-panel); }
+.workspace-theme [class~="bg-blue-600"] { background-color: var(--app-accent); }
+.workspace-theme [class~="text-blue-600"], .workspace-theme [class~="text-blue-700"] { color: var(--app-accent); }
+.dark .workspace-theme [class~="text-blue-600"], .dark .workspace-theme [class~="text-blue-700"] { color: color-mix(in srgb, var(--app-accent) 50%, white); }
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {

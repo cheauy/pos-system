@@ -5,18 +5,20 @@ import OnlineOrderListener from "@/components/online-order-listener";
 import { getCurrentBusinessForSubscription } from "@/lib/business/get-current-business";
 import { createClient } from "@/lib/supabase/server";
 import { getBranchContext } from "@/lib/branches/context";
-import BranchSwitcher from "./branch-switcher";
+import { getEffectivePermissions } from "@/lib/auth/effective-permissions";
+import PermissionRefresh from '@/components/permission-refresh';
+import WorkspaceBranchProvider from "./workspace-branch-provider";
 import SidebarClient from "./sidebar-client";
 
 const SUBSCRIPTION_PATH = "/dashboard/settings/subscription";
-const SUBSCRIPTION_PLANS_PATH =
+const LEGACY_SUBSCRIPTION_PLANS_PATH =
   "/dashboard/settings/subscription/plans";
 const SUBSCRIPTION_PAYMENT_PATH =
   "/dashboard/settings/subscription/payment";
 const ONBOARDING_PLANS_PATH =
-  "/dashboard/settings/subscription/plans?onboarding=1";
+  "/dashboard/settings/subscription?view=plans&onboarding=1";
 const TRIAL_BLOCKED_PLANS_PATH =
-  "/dashboard/settings/subscription/plans?onboarding=1&trial=unavailable";
+  "/dashboard/settings/subscription?view=plans&onboarding=1&trial=unavailable";
 
 export default async function DashboardLayout({
   children,
@@ -44,7 +46,8 @@ export default async function DashboardLayout({
     business.subscriptionStatus === "trial_pending" ||
     business.subscriptionStatus === "trial_blocked";
   const isTrialChoiceRoute =
-    pathname === SUBSCRIPTION_PLANS_PATH ||
+    pathname === SUBSCRIPTION_PATH ||
+    pathname === LEGACY_SUBSCRIPTION_PLANS_PATH ||
     pathname.startsWith(`${SUBSCRIPTION_PAYMENT_PATH}/`);
 
   // Subscription state belongs to the business, not only the owner. Staff are
@@ -88,15 +91,21 @@ export default async function DashboardLayout({
     );
   }
 
-  const branchContext = await getBranchContext();
+  const [branchContext, effectivePermissions] = await Promise.all([
+    getBranchContext(),
+    getEffectivePermissions(business.id, business.role),
+  ]);
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <SidebarClient businessId={business.id} branchId={branchContext.branchId} />
+    <div className="workspace-theme min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <WorkspaceBranchProvider businessId={business.id} userId={branchContext.userId} branchId={branchContext.branchId} branches={branchContext.branches}>
+      <SidebarClient businessId={business.id} branchId={branchContext.branchId} effectivePermissions={effectivePermissions} />
+      <PermissionRefresh businessId={business.id} userId={branchContext.userId} role={business.role} />
       <OnlineOrderListener businessId={business.id} branchId={branchContext.branchId} />
 
       <div className="lg:pl-16">
-        <main className="p-4 sm:p-6"><BranchSwitcher branches={branchContext.branches} branchId={branchContext.branchId}/><div key={branchContext.branchId}>{children}</div></main>
+        <main className="p-4 sm:p-6"><div key={branchContext.branchId}>{children}</div></main>
       </div>
+      </WorkspaceBranchProvider>
     </div>
   );
 }

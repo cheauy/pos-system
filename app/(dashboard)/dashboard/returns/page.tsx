@@ -1,4 +1,5 @@
 import { requirePermission } from "@/lib/auth/require-permission";
+import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { createClient } from "@/lib/supabase/branch-server";
 import ReturnsWorkspace, { type ReturnWorkspaceRecord } from "./returns-workspace";
 
@@ -152,12 +153,14 @@ export default async function ReturnsPage() {
     },
   );
 
+  const canManage = await businessHasPermission(business, "orders.return");
+
   return (
     <ReturnsWorkspace
       initialRecords={records}
       completedOrderCount={ordersCountResult.count ?? 0}
       accentColor={storefrontResult.data?.primary_color || "#2563EB"}
-      canManage={business.role === "owner" || business.role === "admin" || business.role === "manager"}
+      canManage={canManage}
     />
   );
 }

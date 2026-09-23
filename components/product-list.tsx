@@ -161,15 +161,37 @@ function groupProducts(products: Product[], variantMode: boolean): ProductGroup[
 
 export default function ProductList({
   products,
-  productMode = "standard", branches=[], branchId="",
+  productMode = "standard", branches=[], branchId="", businessType,
 }: {
   products: Product[];
-  productMode?: string; branches?:{id:string;name:string}[];branchId?:string;
+  productMode?: string; branches?:{id:string;name:string}[];branchId?:string; businessType?: string;
 }) {
   const router = useRouter();
   const [actionPending, startActionTransition] = useTransition();
-  const variantMode = productMode === "variant";
-  const groups = useMemo(() => groupProducts(products, variantMode), [products, variantMode]);
+  const isGeneralShop = businessType === "general";
+  const isFashion = businessType === "fashion";
+  const isShoes = businessType === "shoes";
+  const isVariantMode = productMode === "variant";
+  const groupVariantProducts = isVariantMode || isGeneralShop;
+  const groups = useMemo(
+    () => groupProducts(products, groupVariantProducts),
+    [products, groupVariantProducts],
+  );
+  const tableDetailLabel = isVariantMode
+    ? "Variants"
+    : isGeneralShop
+      ? "SKU / Barcode"
+      : "SKU";
+  const detailDescription = isFashion
+    ? "View style information, pricing, stock and clothing variants."
+    : isShoes
+      ? "View shoe information, pricing, stock and size / colour variants."
+      : "View product information, pricing, stock and online visibility.";
+  const variantSectionTitle = isFashion
+    ? "Clothing sizes & colours"
+    : isShoes
+      ? "Shoe sizes & colours"
+      : "Product variants";
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [channel, setChannel] = useState("all");
@@ -360,7 +382,7 @@ export default function ProductList({
             <option value="all">All Categories</option>
             {categories.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
-          <select aria-label="Filter products by branch" value={branchId} onChange={event=>router.push(`/dashboard/products${event.target.value?`?branch=${encodeURIComponent(event.target.value)}`:""}`)} className={filterInputClass}><option value="">All Branches</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>
+          <select aria-label="Filter products by branch" value={branchId} onChange={event=>router.push(`/dashboard/products${event.target.value?`?branch=${encodeURIComponent(event.target.value)}`:"?branch=all"}`)} className={filterInputClass}><option value="">All Branches</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>
           <select value={channel} onChange={(event) => { setChannel(event.target.value); resetPage(); }} className={filterInputClass}>
             <option value="all">All Channels</option>
             <option value="online">Online</option>
@@ -402,7 +424,7 @@ export default function ProductList({
       ) : view === "grid" ? (
         <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
           {pageRows.map((group) => (
-            <ProductCard key={group.key} group={group} onMenu={openActionMenu} />
+            <ProductCard key={group.key} group={group} onMenu={openActionMenu} isGeneralShop={isGeneralShop} isVariantMode={isVariantMode} />
           ))}
         </div>
       ) : (
@@ -413,7 +435,7 @@ export default function ProductList({
                 <th className="w-10 px-3 py-3"><input type="checkbox" aria-label="Select all products" /></th>
                 <th className="px-3 py-3 text-left font-semibold">Product</th>
                 <th className="px-3 py-3 text-left font-semibold">Category</th>
-                <th className="px-3 py-3 text-left font-semibold">Variants</th>
+                <th className="px-3 py-3 text-left font-semibold">{tableDetailLabel}</th>
                 <th className="px-3 py-3 text-left font-semibold">Price Range</th>
                 <th className="px-3 py-3 text-left font-semibold">Total Stock</th>
                 <th className="px-3 py-3 text-left font-semibold">Status</th>
@@ -440,8 +462,31 @@ export default function ProductList({
                   </td>
                   <td className="px-3 py-3 text-xs text-slate-600">{group.category}</td>
                   <td className="px-3 py-3">
-                    <p className="text-xs font-semibold text-slate-800">{group.variants}</p>
-                    {group.sizes.length > 0 && <p className="mt-0.5 max-w-32 truncate text-[10px] text-slate-400">{group.sizes.join(" · ")}</p>}
+                    {isVariantMode ? (
+                      <>
+                        <p className="text-xs font-semibold text-slate-800">{group.variants}</p>
+                        {group.sizes.length > 0 && (
+                          <p className="mt-0.5 max-w-32 truncate text-[10px] text-slate-400">
+                            {group.sizes.join(" · ")}
+                          </p>
+                        )}
+                      </>
+                    ) : isGeneralShop ? (
+                      <>
+                        <p className="max-w-36 truncate text-xs font-semibold text-slate-800">
+                          {group.variants > 1 ? `${group.variants} options` : group.sku || "No SKU"}
+                        </p>
+                        <p className="mt-0.5 max-w-36 truncate text-[10px] text-slate-400">
+                          {group.variants > 1
+                            ? "Separate SKU / stock per option"
+                            : group.representative.barcode || "No barcode"}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="max-w-36 truncate text-xs font-semibold text-slate-800">
+                        {group.sku || "No SKU"}
+                      </p>
+                    )}
                   </td>
                   <td className="px-3 py-3 text-xs font-medium text-slate-700">
                     {group.minPrice === group.maxPrice ? formatMoney(group.minPrice) : `${formatMoney(group.minPrice)} – ${formatMoney(group.maxPrice)}`}
@@ -554,7 +599,9 @@ export default function ProductList({
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-600">Product details</p>
                   <h3 className="mt-1 text-lg font-bold text-slate-950">{detailGroup.name}</h3>
-                  <p className="mt-0.5 text-xs text-slate-500">View style information, inventory and clothing variants.</p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {detailDescription}
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -584,7 +631,26 @@ export default function ProductList({
                 </div>
 
                 <div className="mt-5 grid grid-cols-3 gap-2">
-                  <DetailMetric label="Variants" value={String(detailGroup.variants)} />
+                  <DetailMetric
+                    label={
+                      isVariantMode
+                        ? "Variants"
+                        : isGeneralShop && detailGroup.rows.length > 1
+                          ? "Options"
+                          : isGeneralShop
+                            ? "Barcode"
+                            : "SKU"
+                    }
+                    value={
+                      isVariantMode
+                        ? String(detailGroup.variants)
+                        : isGeneralShop && detailGroup.rows.length > 1
+                          ? String(detailGroup.rows.length)
+                          : isGeneralShop
+                            ? detailGroup.representative.barcode || "—"
+                            : detailGroup.sku || "—"
+                    }
+                  />
                   <DetailMetric label="Total stock" value={String(detailGroup.totalStock)} />
                   <DetailMetric
                     label="Price"
@@ -592,11 +658,12 @@ export default function ProductList({
                   />
                 </div>
 
+                {isVariantMode && (
                 <div className="mt-6">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <h4 className="text-sm font-bold text-slate-950">Clothing sizes & colours</h4>
-                      <p className="mt-0.5 text-xs text-slate-500">{detailGroup.rows.length} variant{detailGroup.rows.length === 1 ? "" : "s"} in this style.</p>
+                      <h4 className="text-sm font-bold text-slate-950">{variantSectionTitle}</h4>
+                      <p className="mt-0.5 text-xs text-slate-500">{detailGroup.rows.length} variant{detailGroup.rows.length === 1 ? "" : "s"} in this product.</p>
                     </div>
                   </div>
 
@@ -735,6 +802,56 @@ export default function ProductList({
                     })}
                   </div>
                 </div>
+                )}
+
+                {!isVariantMode && (
+                  <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+                    <h4 className="text-sm font-bold text-slate-950">Product information</h4>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <GeneralInfo label="SKU" value={detailGroup.representative.sku || "—"} />
+                      <GeneralInfo label="Barcode" value={detailGroup.representative.barcode || "—"} />
+                      {isGeneralShop && (
+                        <>
+                          <GeneralInfo label="Color" value={detailGroup.representative.color || "—"} />
+                          <GeneralInfo label="Size / option" value={detailGroup.representative.size || "—"} />
+                        </>
+                      )}
+                    </div>
+
+                    {isGeneralShop && detailGroup.rows.length > 1 && (
+                      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
+                        <div className="border-b border-slate-200 bg-slate-50 px-3 py-2">
+                          <p className="text-xs font-bold text-slate-800">Product options</p>
+                          <p className="mt-0.5 text-[10px] text-slate-500">Each option keeps its own SKU, price and stock.</p>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[560px] text-xs">
+                            <thead className="bg-white text-[10px] uppercase tracking-wide text-slate-400">
+                              <tr className="border-b border-slate-100">
+                                <th className="px-3 py-2 text-left font-semibold">Option</th>
+                                <th className="px-3 py-2 text-left font-semibold">Color</th>
+                                <th className="px-3 py-2 text-left font-semibold">SKU</th>
+                                <th className="px-3 py-2 text-right font-semibold">Price</th>
+                                <th className="px-3 py-2 text-right font-semibold">Stock</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {detailGroup.rows.map((row) => (
+                                <tr key={row.id}>
+                                  <td className="px-3 py-2 font-semibold text-slate-800">{row.size || "—"}</td>
+                                  <td className="px-3 py-2 text-slate-600">{row.color || "—"}</td>
+                                  <td className="px-3 py-2 font-mono text-[11px] text-slate-500">{row.sku || "—"}</td>
+                                  <td className="px-3 py-2 text-right font-semibold text-slate-800">{formatMoney(Number(row.selling_price || 0))}</td>
+                                  <td className="px-3 py-2 text-right font-semibold text-slate-700">{Number(row.stock_quantity || 0)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex items-center justify-between gap-4 text-xs">
@@ -829,9 +946,13 @@ export default function ProductList({
 function ProductCard({
   group,
   onMenu,
+  isGeneralShop = false,
+  isVariantMode = false,
 }: {
   group: ProductGroup;
   onMenu: (event: ReactMouseEvent<HTMLButtonElement>, group: ProductGroup) => void;
+  isGeneralShop?: boolean;
+  isVariantMode?: boolean;
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm">
@@ -855,10 +976,32 @@ function ProductCard({
         </button>
       </div>
       <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3 text-center">
-        <div><p className="text-[10px] text-slate-400">Variants</p><p className="text-xs font-semibold text-slate-800">{group.variants}</p></div>
+        <div>
+          <p className="text-[10px] text-slate-400">
+            {isVariantMode ? "Variants" : isGeneralShop ? "Barcode" : "SKU"}
+          </p>
+          <p className="truncate text-xs font-semibold text-slate-800">
+            {isVariantMode
+              ? group.variants
+              : isGeneralShop
+                ? group.variants > 1
+                  ? `${group.variants} options`
+                  : group.representative.barcode || "—"
+                : group.sku || "—"}
+          </p>
+        </div>
         <div><p className="text-[10px] text-slate-400">Stock</p><p className="text-xs font-semibold text-slate-800">{group.totalStock}</p></div>
         <div><p className="text-[10px] text-slate-400">Price</p><p className="text-xs font-semibold text-slate-800">{formatMoney(group.minPrice)}</p></div>
       </div>
+    </div>
+  );
+}
+
+function GeneralInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-slate-50 px-3 py-2.5">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-1 truncate text-xs font-semibold text-slate-800" title={value}>{value}</p>
     </div>
   );
 }

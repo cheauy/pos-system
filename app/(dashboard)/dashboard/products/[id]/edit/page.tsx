@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { requirePermission } from "@/lib/auth/require-permission";
+import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
 import { createClient } from "@/lib/supabase/server";
 
 import EditProductClient from "./edit-product-client";
@@ -19,6 +20,7 @@ type ProductRow = {
   category_id: string | null;
   name: string;
   sku: string | null;
+  barcode: string | null;
   image_url: string | null;
   variant_image_url: string | null;
   description: string | null;
@@ -38,6 +40,10 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
   const { id } = await params;
   const business = await requirePermission("products.update");
   const supabase = await createClient();
+  const currentMode = await getCurrentBusinessMode({
+    businessId: business.id,
+    productMode: business.productMode,
+  });
 
   const [{ data: productData, error: productError }, { data: categoryData, error: categoryError }] =
     await Promise.all([
@@ -48,6 +54,7 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
           category_id,
           name,
           sku,
+          barcode,
           image_url,
           variant_image_url,
           description,
@@ -91,6 +98,7 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
         category_id,
         name,
         sku,
+        barcode,
         image_url,
         variant_image_url,
         description,
@@ -138,6 +146,7 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
         name: representative.name,
         categoryId: representative.category_id,
         description: representative.description ?? "",
+        barcode: representative.barcode ?? representative.sku ?? "",
         imageUrl:
           representative.image_url ??
           rows.find((row) => row.image_url)?.image_url ??
@@ -157,6 +166,7 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
       }}
       categories={(categoryData ?? []) as Category[]}
       initialVariants={variants}
+      businessType={currentMode.value === "general" ? "general" : undefined}
     />
   );
 }

@@ -1,3 +1,4 @@
+import { getBranchContext } from "@/lib/branches/context";
 import { createClient } from "@/lib/supabase/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import InventoryClient from "./inventory-client";
@@ -32,6 +33,7 @@ type SoldLine = { product_id: string | null; quantity: number };
 
 export default async function InventoryPage() {
   const business = await requirePermission("inventory.view");
+  const {branchId}=await getBranchContext();
   const supabase = await createClient();
 
   const movementStart = new Date();
@@ -83,8 +85,7 @@ export default async function InventoryPage() {
     productError ??
     categoryError ??
     locationError ??
-    locationStockError ??
-    soldLineError;
+    locationStockError;
 
   if (loadError) {
     return (
@@ -115,11 +116,15 @@ export default async function InventoryPage() {
   }));
 
   return (
+    <>
+    {soldLineError && <p role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Sales activity could not load. Your inventory quantities are available.</p>}
     <InventoryClient
+      defaultBranchId={branchId}
       products={products}
       categories={(categoryData ?? []) as CategoryRow[]}
       locations={(locationData ?? []) as LocationRow[]}
       locationStock={(locationStockData ?? []) as LocationStockRow[]}
     />
+    </>
   );
 }

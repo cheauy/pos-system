@@ -1,4 +1,5 @@
 import type { ReceiptContext } from '@/lib/receipts/receipt-model';
+import type { CurrencyFormat } from '@/lib/currency-format';
 export type Product = {
   id: string; name: string; sku: string | null; barcode: string | null;
   image_url: string | null; variant_image_url: string | null;
@@ -21,10 +22,10 @@ export type DiscountType = 'amount' | 'percent';
 export type ShippingMethod = 'in_store' | 'pickup' | 'delivery';
 export type ShippingCarrier = '' | 'jt' | 'vet' | 'grab' | 'other';
 export type ShippingDetails = { method: ShippingMethod; recipientName: string; phone: string; address: string; carrier?: ShippingCarrier; carrierOther?: string };
-export type CurrencyQuote = { baseCurrency: string; displayCurrency: string; usdKhrRate: number; enabled: boolean };
+export type CurrencyQuote = { baseCurrency: string; displayCurrency: string; usdKhrRate: number; enabled: boolean; currencyFormat?: CurrencyFormat };
 export type CartDraft = { branchId: string; customerId: string; lines: CartLine[]; discount: string; deliveryFee: string; points: string; note: string; paymentMethod: PaymentMethod; discountType?: DiscountType; shipping?: ShippingDetails; tenders?: Tender[]; displayCurrency?: string; baseCurrency?: string; createCustomer?: boolean };
 export type HeldOrder = { id: string; label: string; version: number; created_at: string; updated_at: string; draft: CartDraft };
-export type PosSettings = { currency: string; taxRate: number; pointValue: number; loyaltyEnabled: boolean; spendPerPoint: number; loyaltyMinimumOrder: number; dualCurrencyEnabled?: boolean; usdKhrRate?: number };
+export type PosSettings = { currency: string; taxRate: number; pointValue: number; loyaltyEnabled: boolean; spendPerPoint: number; loyaltyMinimumOrder: number; dualCurrencyEnabled?: boolean; usdKhrRate?: number; currencyFormat?: CurrencyFormat };
 export type Workspace = {
   receiptContext?: ReceiptContext;
   checkoutVersion?: number; canCreateCustomer?: boolean; inventoryVersion?: number; inventoryLocationCount?: number;

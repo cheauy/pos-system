@@ -1,4 +1,5 @@
 import type { CurrencyQuote, PosSettings } from './pos-workspace-types';
+import { formatStoreMoney } from '@/lib/currency-format';
 
 export const DEFAULT_USD_KHR_RATE = 4000;
 export function currencySymbol(code: string): string { return code === 'USD' ? '$' : code === 'KHR' ? '៛' : code; }
@@ -8,7 +9,7 @@ export function currencyQuote(settings: PosSettings, requested?: string): Curren
   const rate = Number(settings.usdKhrRate ?? DEFAULT_USD_KHR_RATE);
   const enabled = supported && settings.dualCurrencyEnabled === true && Number.isFinite(rate) && rate >= 1 && rate <= 1000000;
   return { baseCurrency, displayCurrency: enabled && ['USD', 'KHR'].includes(requested || '') ? requested! : baseCurrency,
-    usdKhrRate: Number.isFinite(rate) && rate >= 1 && rate <= 1000000 ? rate : DEFAULT_USD_KHR_RATE, enabled };
+    usdKhrRate: Number.isFinite(rate) && rate >= 1 && rate <= 1000000 ? rate : DEFAULT_USD_KHR_RATE, enabled, currencyFormat: settings.currencyFormat };
 }
 // Keep the existing accounting currency and its two-decimal precision. Conversion
 // is integer half-up; no n-suffix BigInt literals (the project targets ES2017).
@@ -34,6 +35,7 @@ export function formatCurrency(value: number, code: string): string {
   catch { return `${code} ${value.toFixed(2)}`; }
 }
 export function quoteMoney(baseAmount: number, quote: CurrencyQuote): string {
+  if (quote.currencyFormat && quote.displayCurrency === quote.baseCurrency) return formatStoreMoney(baseAmount, quote.currencyFormat);
   return formatCurrency(displayAmount(baseAmount, quote), quote.displayCurrency);
 }
 export function parseMoneyEntry(raw: string, quote: CurrencyQuote): { value: string; error: string | null } {

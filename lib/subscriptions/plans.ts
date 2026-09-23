@@ -111,6 +111,7 @@ export function calculateSubscriptionPrice(
     discountPercent,
     discountAmount,
     total,
+    matchedPlanKey: null as Exclude<SubscriptionPlanKey, "custom"> | null,
   };
 }
 
@@ -126,13 +127,73 @@ export function getSubscriptionPlanLabel(planKey: string | null | undefined) {
 export const CUSTOM_USER_MONTHLY_PRICE = 5;
 export const CUSTOM_BRANCH_MONTHLY_PRICE = 20;
 
-export function calculateCustomSubscriptionPrice(users: number, branches: number, months: SubscriptionTermMonths) {
-  if (!Number.isInteger(users) || users < 1 || users > 500 || !Number.isInteger(branches) || branches < 1 || branches > 100 || !isSubscriptionTermMonths(months)) {
+/**
+ * Custom-plan user pricing follows the regular plan curve instead of charging
+ * every included user at $5. That keeps custom configurations fair and makes
+ * exact equivalents match the normal plans:
+ *   1 user  = $10 (Solo)
+ *   5 users = $18 (Small Team)
+ *   10 users = $38 (Growth Team)
+ * Users 11+ add $5 each above Growth Team. One branch is included; extra
+ * branches are priced separately.
+ */
+export function calculateCustomUserBaseMonthlyPrice(users: number) {
+  if (!Number.isInteger(users) || users < 1 || users > 500) {
+    throw new Error("Choose a valid user count.");
+  }
+
+  if (users <= 5) return 10 + (users - 1) * 2;
+  if (users <= 10) return 18 + (users - 5) * 4;
+  return 38 + (users - 10) * CUSTOM_USER_MONTHLY_PRICE;
+}
+
+export function matchingStandardPlanForCustom(users: number, branches: number) {
+  if (branches !== 1) return null;
+  const keys: Array<Exclude<SubscriptionPlanKey, "custom">> = ["solo", "small_team", "growth"];
+  return keys.find((key) => subscriptionPlans[key].userLimit === users) ?? null;
+}
+
+export function calculateCustomSubscriptionPrice(
+  users: number,
+  branches: number,
+  months: SubscriptionTermMonths,
+) {
+  if (
+    !Number.isInteger(users) ||
+    users < 1 ||
+    users > 500 ||
+    !Number.isInteger(branches) ||
+    branches < 1 ||
+    branches > 100 ||
+    !isSubscriptionTermMonths(months)
+  ) {
     throw new Error("Choose a valid user count, branch count and billing term.");
   }
-  const monthlyPrice = users * CUSTOM_USER_MONTHLY_PRICE + branches * CUSTOM_BRANCH_MONTHLY_PRICE;
+
+  // One branch is included in the user-based base price. Additional branches
+  // are $20 each. Exact standard-plan equivalents still resolve to the exact
+  // standard-plan price.
+  const matchedPlanKey = matchingStandardPlanForCustom(users, branches);
+  const userBaseMonthlyPrice = calculateCustomUserBaseMonthlyPrice(users);
+  const additionalBranchCount = Math.max(0, branches - 1);
+  const additionalBranchMonthlyPrice = additionalBranchCount * CUSTOM_BRANCH_MONTHLY_PRICE;
+  const monthlyPrice = matchedPlanKey
+    ? subscriptionPlans[matchedPlanKey].monthlyPrice ?? 0
+    : userBaseMonthlyPrice + additionalBranchMonthlyPrice;
   const subtotal = monthlyPrice * months;
   const discountPercent = getTermDiscount(months);
   const discountAmount = Number((subtotal * discountPercent / 100).toFixed(2));
-  return { monthlyPrice, subtotal, discountPercent, discountAmount, total: Number((subtotal - discountAmount).toFixed(2)) };
+
+  return {
+    monthlyPrice,
+    subtotal,
+    discountPercent,
+    discountAmount,
+    total: Number((subtotal - discountAmount).toFixed(2)),
+    matchedPlanKey,
+    userBaseMonthlyPrice,
+    includedBranchCount: 1,
+    additionalBranchCount,
+    additionalBranchMonthlyPrice,
+  };
 }

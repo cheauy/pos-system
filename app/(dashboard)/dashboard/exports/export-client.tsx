@@ -1,6 +1,9 @@
 "use client";
+import FullExportPanel from './full-export-panel';
+import SafeImportPanel from './safe-import-panel';
+import type { ProductMode } from '@/lib/business/types';
 
-import { useMemo, useRef, useState, type ComponentType } from "react";
+import { useMemo, useState, type ComponentType } from "react";
 import {
   Archive,
   Boxes,
@@ -14,22 +17,15 @@ import {
   RefreshCw,
   ShoppingCart,
   Truck,
-  Upload,
   Users,
   XCircle,
   CheckCircle2,
   AlertTriangle,
-  ShieldCheck,
 } from "lucide-react";
 import {
   buildExport,
   buildExportAll,
-  commitCsvImport,
-  previewCsvImport,
   type ExportEntity,
-  type ImportEntity,
-  type ImportMode,
-  type ImportPreviewResult,
 } from "./actions";
 
 type RecentJob = {
@@ -64,20 +60,6 @@ const entities: EntityCard[] = [
   { id: "credit", label: "Customer Credit", description: "Customer credit ledger transactions and balances.", icon: CreditCard, tone: "bg-pink-50 text-pink-600" },
 ];
 
-const importTemplates: Record<ImportEntity, string> = {
-  products: "name,sku,barcode,description,cost_price,selling_price,low_stock_quantity,is_active\nClassic Tee,TEE-001,TEE-001,Example product,5,12,5,true\n",
-  customers: "name,email,phone,address,note\nExample Customer,customer@example.com,+85512345678,Phnom Penh,VIP\n",
-  suppliers: "name,contact_person,phone,email,address,notes\nExample Supplier,Mr. Dara,+85512345678,supplier@example.com,Phnom Penh,Primary supplier\n",
-  inventory: "branch_code,sku,quantity,low_stock_threshold\nMAIN,TEE-001,25,5\n",
-};
-
-const importLabels: Record<ImportEntity, string> = {
-  products: "Products",
-  customers: "Customers",
-  suppliers: "Suppliers",
-  inventory: "Branch Inventory",
-};
-
 function downloadText(filename: string, mime: string, content: string) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -96,16 +78,10 @@ function dateLabel(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
 }
 
-export default function ExportClient({ recentJobs }: { recentJobs: RecentJob[] }) {
+export default function ExportClient({ recentJobs, isOwner, productMode }: { recentJobs: RecentJob[]; isOwner: boolean; productMode: ProductMode }) {
   const [busy, setBusy] = useState("");
   const [tab, setTab] = useState<"export" | "import" | "history">("export");
-  const [importEntity, setImportEntity] = useState<ImportEntity>("products");
-  const [importMode, setImportMode] = useState<ImportMode>("merge");
-  const [file, setFile] = useState<File | null>(null);
-  const [csvText, setCsvText] = useState("");
-  const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
   const [importMessage, setImportMessage] = useState<{ ok: boolean; text: string } | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
 
   const jobs = useMemo(() => recentJobs, [recentJobs]);
 
@@ -142,80 +118,13 @@ export default function ExportClient({ recentJobs }: { recentJobs: RecentJob[] }
     }
   }
 
-  async function selectFile(nextFile: File | null) {
-    setPreview(null);
-    setImportMessage(null);
-    if (!nextFile) {
-      setFile(null);
-      setCsvText("");
-      return;
-    }
-    if (!nextFile.name.toLowerCase().endsWith(".csv")) {
-      setImportMessage({ ok: false, text: "Only CSV files can be imported." });
-      return;
-    }
-    if (nextFile.size > 750_000) {
-      setImportMessage({ ok: false, text: "Keep each CSV import below 750 KB and 1,000 rows." });
-      return;
-    }
-    const text = await nextFile.text();
-    setFile(nextFile);
-    setCsvText(text);
-  }
-
-  async function validateImport() {
-    if (!csvText || !file) {
-      setImportMessage({ ok: false, text: "Choose a CSV file first." });
-      return;
-    }
-    setBusy("validate");
-    try {
-      const result = await previewCsvImport(importEntity, csvText);
-      setPreview(result);
-      setImportMessage({ ok: result.ok, text: result.message });
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function runImport() {
-    if (!file || !csvText) return;
-    setBusy("import");
-    try {
-      const checked = preview?.ok ? preview : await previewCsvImport(importEntity, csvText);
-      setPreview(checked);
-      if (!checked.ok) {
-        setImportMessage({ ok: false, text: checked.errors[0] ?? checked.message });
-        return;
-      }
-      const result = await commitCsvImport(importEntity, importMode, csvText, file.name);
-      setImportMessage({ ok: result.ok, text: result.message });
-      if (result.ok) {
-        setFile(null);
-        setCsvText("");
-        setPreview(null);
-        if (fileInput.current) fileInput.current.value = "";
-      }
-    } finally {
-      setBusy("");
-    }
-  }
-
-  function downloadTemplate() {
-    downloadText(`tenh-${importEntity}-import-template.csv`, "text/csv;charset=utf-8", importTemplates[importEntity]);
-  }
-
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-        <div className="grid gap-2 md:grid-cols-3">
-          {(["export", "import", "history"] as const).map((item) => (
-            <button key={item} type="button" onClick={() => setTab(item)} className={`flex items-center gap-3 rounded-xl border px-5 py-3 text-left transition ${tab === item ? "border-blue-300 bg-blue-50 text-blue-700" : "border-transparent text-slate-600 hover:bg-slate-50"}`}>
-              {item === "export" ? <Download size={20} /> : item === "import" ? <Upload size={20} /> : <Clock3 size={20} />}
-              <span><span className="block font-semibold capitalize">{item}</span><span className="block text-xs text-slate-500">{item === "export" ? "Download your data" : item === "import" ? "Import validated CSV files" : "View transfer records"}</span></span>
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div><h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">Backup &amp; Export</h1><p className="mt-1 text-slate-500">Export or import your business data. Download portable CSV or JSON files for use in other systems.</p></div>
+        <button type="button" aria-pressed={tab === "history"} onClick={() => setTab(tab === "history" ? "export" : "history")} className={`inline-flex shrink-0 items-center gap-3 self-start rounded-xl border px-5 py-3 text-left transition ${tab === "history" ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
+          <Clock3 size={20}/><span><span className="block font-semibold">History</span><span className="block text-xs">{tab === "history" ? "Click to return to your data" : "View transfer records"}</span></span>
+        </button>
       </div>
 
       <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -234,7 +143,7 @@ export default function ExportClient({ recentJobs }: { recentJobs: RecentJob[] }
         <HistoryPanel jobs={jobs} />
       ) : (
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          {isOwner ? <FullExportPanel /> : <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-bold text-slate-950">Export Data</h2>
@@ -276,94 +185,25 @@ export default function ExportClient({ recentJobs }: { recentJobs: RecentJob[] }
                 </button>
               </article>
             </div>
-          </section>
+          </section>}
 
-          <div className="space-y-4">
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="mb-4 flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><Upload size={22} /></div>
-                <div><h2 className="text-xl font-bold text-slate-950">Import Data</h2><p className="text-sm text-slate-500">Validated CSV import into this business only.</p></div>
-              </div>
-
-              <label className="block text-sm font-semibold text-slate-700">Data type
-                <select value={importEntity} onChange={(event) => { setImportEntity(event.target.value as ImportEntity); setPreview(null); setImportMessage(null); }} className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5">
-                  {(Object.keys(importLabels) as ImportEntity[]).map((entity) => <option key={entity} value={entity}>{importLabels[entity]}</option>)}
-                </select>
-              </label>
-
-              <div
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => { event.preventDefault(); void selectFile(event.dataTransfer.files[0] ?? null); }}
-                className="mt-4 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-5 text-center"
-              >
-                <Upload className="mx-auto text-blue-600" size={28} />
-                <p className="mt-2 text-sm font-semibold text-slate-800">Choose a CSV file or drag and drop</p>
-                <p className="mt-1 text-xs text-slate-500">Up to 750 KB / 1,000 rows</p>
-                <input ref={fileInput} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => void selectFile(event.target.files?.[0] ?? null)} />
-                <button type="button" onClick={() => fileInput.current?.click()} className="mt-3 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Browse Files</button>
-                {file ? <p className="mt-3 truncate text-xs font-medium text-blue-700">{file.name}</p> : null}
-              </div>
-
-              <button type="button" onClick={downloadTemplate} className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700"><Download size={15} /> Download {importLabels[importEntity]} template</button>
-
-              <div className="my-4 border-t border-slate-100" />
-              <h3 className="font-semibold text-slate-900">Import Options</h3>
-              <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm">
-                <input type="radio" checked={importMode === "merge"} onChange={() => setImportMode("merge")} className="mt-1" />
-                <span><span className="block font-medium text-slate-800">Merge with existing data</span><span className="text-slate-500">Update matching records and add new records.</span></span>
-              </label>
-              <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm">
-                <input type="radio" checked={importMode === "update"} onChange={() => setImportMode("update")} className="mt-1" />
-                <span><span className="block font-medium text-slate-800">Update matching only</span><span className="text-slate-500">Never add new records and never delete existing data.</span></span>
-              </label>
-              <label className="mt-4 flex items-start gap-3 rounded-xl bg-emerald-50 px-3 py-3 text-sm text-emerald-800">
-                <input type="checkbox" checked readOnly className="mt-1" />
-                <span><span className="block font-semibold">Validate data before import</span><span className="text-emerald-700">Always on for safety. Cross-business IDs are ignored.</span></span>
-              </label>
-
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => void validateImport()} disabled={!file || !!busy} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><ShieldCheck size={16} /> Validate</button>
-                <button type="button" onClick={() => void runImport()} disabled={!file || !!busy || (preview !== null && !preview.ok)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40"><Upload size={16} /> {busy === "import" ? "Importing..." : "Import Data"}</button>
-              </div>
-
-              {preview ? <ImportPreview preview={preview} /> : null}
-            </section>
-
-            <HistoryPanel jobs={jobs.slice(0, 5)} compact />
-          </div>
+          <SafeImportPanel isOwner={isOwner} productMode={productMode} />
         </div>
       )}
 
       <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-sm shadow-sm md:grid-cols-3">
         <div className="flex gap-3"><CheckCircle2 className="shrink-0 text-emerald-600" size={20} /><div><h3 className="font-bold text-slate-900">Included</h3><p className="mt-1 text-slate-500">Business products, inventory, customers, orders and operational records for the current tenant.</p></div></div>
         <div className="flex gap-3"><XCircle className="shrink-0 text-red-500" size={20} /><div><h3 className="font-bold text-slate-900">Not included</h3><p className="mt-1 text-slate-500">Passwords, authentication secrets, service-role keys, OAuth credentials and full database internals.</p></div></div>
-        <div className="flex gap-3"><FileSpreadsheet className="shrink-0 text-blue-600" size={20} /><div><h3 className="font-bold text-slate-900">Safe import rules</h3><p className="mt-1 text-slate-500">Products, customers, suppliers and branch inventory only. Orders and financial history remain export-only.</p></div></div>
+        <div className="flex gap-3"><FileSpreadsheet className="shrink-0 text-blue-600" size={20} /><div><h3 className="font-bold text-slate-900">Safe import rules</h3><p className="mt-1 text-slate-500">Validate and confirm every import. Changed financial history is blocked; failed imports save no changes.</p></div></div>
       </section>
     </div>
   );
 }
 
-function ImportPreview({ preview }: { preview: ImportPreviewResult }) {
-  return (
-    <div className={`mt-4 rounded-xl border p-3 text-sm ${preview.ok ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
-      <div className="flex items-center gap-2 font-semibold">{preview.ok ? <CheckCircle2 className="text-emerald-600" size={17} /> : <XCircle className="text-red-600" size={17} />}{preview.message}</div>
-      {preview.errors.length ? <ul className="mt-2 space-y-1 text-xs text-red-700">{preview.errors.map((error) => <li key={error}>• {error}</li>)}</ul> : null}
-      {preview.ok && preview.preview.length ? (
-        <div className="mt-3 overflow-x-auto rounded-lg border border-emerald-200 bg-white">
-          <table className="min-w-full text-xs">
-            <thead className="bg-slate-50 text-slate-500"><tr>{Object.keys(preview.preview[0]).map((key) => <th key={key} className="px-2 py-2 text-left font-semibold">{key}</th>)}</tr></thead>
-            <tbody>{preview.preview.map((row, index) => <tr key={index} className="border-t">{Object.keys(preview.preview[0]).map((key) => <td key={key} className="max-w-40 truncate px-2 py-2 text-slate-700">{String(row[key] ?? "")}</td>)}</tr>)}</tbody>
-          </table>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function HistoryPanel({ jobs, compact = false }: { jobs: RecentJob[]; compact?: boolean }) {
+function HistoryPanel({ jobs }: { jobs: RecentJob[] }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Clock3 className="text-slate-500" size={19} /><h2 className="font-bold text-slate-950">Recent Backup Activity</h2></div>{compact ? <span className="text-xs text-slate-400">Last {jobs.length}</span> : null}</div>
+      <div className="mb-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Clock3 className="text-slate-500" size={19} /><h2 className="font-bold text-slate-950">History</h2></div></div>
       {jobs.length ? <div className="divide-y divide-slate-100">{jobs.map((job) => (
         <div key={job.id} className="grid gap-1 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
           <div className="min-w-0"><p className="truncate font-semibold text-slate-800">{job.direction === "import" ? "Import" : "Export"} · {job.entity.replaceAll("_", " ")}</p><p className="truncate text-xs text-slate-500">{job.filename ?? `${job.row_count} rows`} · {dateLabel(job.created_at)}</p></div>

@@ -3,12 +3,12 @@ import {
   ArrowRight,
   Building2,
   Banknote,
+  Bell,
   ChevronRight,
   Languages,
   LockKeyhole,
   MapPinned,
   Palette,
-  Printer,
   ShieldCheck,
   Store,
   UserRound,
@@ -17,7 +17,7 @@ import {
 
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
 import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
-import { hasPermission } from "@/lib/auth/permissions";
+import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type SettingItem = {
@@ -109,58 +109,31 @@ export default async function SettingsPage() {
 
   const businessType = businessMode.shortLabel;
 
-  const canManageUsers =
-    business.role === "owner" || business.role === "admin";
-  const canManageBranches = hasPermission(
-    business.role,
-    "locations.manage",
-  );
-  const canManageReceipt = hasPermission(
-    business.role,
-    "business.update",
-  );
+  const [canManageUsers, canManageBranches, canUpdateBusiness] = await Promise.all([
+    businessHasPermission(business, "users.view"),
+    businessHasPermission(business, "locations.manage"),
+    businessHasPermission(business, "business.update"),
+  ]);
 
   const settingsItems: SettingItem[] = [
     ...baseSettings,
+    { title: "Notification Settings", description: "Choose who receives each business alert.", href: "/dashboard/settings/notifications", icon: Bell, visible: business.role === "owner", details: ["Alert recipients", "Role visibility", "Order and stock alerts"] },
     {
-      title: "POS Currency",
-      description: "Enable USD / KHR display and configure your store exchange rate.",
+      title: "Currency Settings",
+      description: "Set your store currency, exchange rate and money format.",
       href: "/dashboard/settings/pos-currency",
       icon: Banknote,
       visible: business.role === "owner",
-      details: ["$ / ៛ switch", "Default $1 = 4,000៛", "Saved order rate snapshots"],
+      details: ["USD by default", "Exchange rate", "Live format preview"],
     },
-    {
-      title: "Printer Settings",
-      description: "Configure receipts, barcode labels and shipping labels with live previews.",
-      href: "/dashboard/settings/printers",
-      icon: Printer,
-      visible: canManageReceipt,
-      details: [
-        "Receipt templates",
-        "Barcode label settings",
-        "Shipping labels and live previews",
-      ],
-    },
-    {
-      title: "Users",
-      description: "Manage employee accounts and staff permissions.",
-      href: "/dashboard/settings/users",
-      icon: UsersRound,
-      visible: canManageUsers,
-      details: [
-        "Add or remove users",
-        "Roles and permissions",
-        "Access control",
-      ],
-    },
+
   ].filter((item) => item.visible !== false);
 
   return (
     <main className="mx-auto w-full max-w-[1600px] space-y-5 pb-8">
       <section>
         <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">
-          General
+          General Settings
         </h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Manage your business, account, appearance, security, printers and users.
@@ -169,7 +142,7 @@ export default async function SettingsPage() {
 
       <section className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="grid divide-y divide-slate-100 lg:grid-cols-[2.2fr_repeat(2,minmax(0,0.85fr))] lg:divide-x lg:divide-y-0 dark:divide-slate-800">
-          <Link
+          {canUpdateBusiness ? <Link
             href="/dashboard/settings/business"
             aria-label={`Manage ${business.name} store URL and business mode`}
             className="group flex min-w-0 items-center gap-4 p-5 transition hover:bg-blue-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:p-6 dark:hover:bg-blue-950/20"
@@ -203,7 +176,7 @@ export default async function SettingsPage() {
               <span className="hidden sm:inline">Change URL & mode</span>
               <ChevronRight size={17} />
             </div>
-          </Link>
+          </Link> : null}
 
           <SummaryMetric
             icon={Building2}
@@ -215,7 +188,7 @@ export default async function SettingsPage() {
           <SummaryMetric
             icon={UsersRound}
             value={employeeCount}
-            label="Employees"
+            label="User & Manage User"
             href={canManageUsers ? "/dashboard/settings/users" : undefined}
             action="Manage"
           />
@@ -228,28 +201,6 @@ export default async function SettingsPage() {
         ))}
       </section>
 
-      <section className="flex flex-col gap-3 rounded-2xl border border-blue-100 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300">
-            <ShieldCheck size={18} />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-slate-900 dark:text-white">
-              Keep your business secure and up to date
-            </p>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Regularly review your settings, manage user access, and export important business data.
-            </p>
-          </div>
-        </div>
-        <Link
-          href="/dashboard/settings/security"
-          className="inline-flex items-center gap-1.5 self-start rounded-xl border border-blue-100 px-3 py-2 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 sm:self-center dark:border-blue-900/50 dark:hover:bg-blue-950/30"
-        >
-          Review security
-          <ArrowRight size={14} />
-        </Link>
-      </section>
     </main>
   );
 }
