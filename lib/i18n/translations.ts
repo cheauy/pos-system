@@ -844,6 +844,65 @@ const km: Record<string, string> = {
   "Saving password...": "កំពុងរក្សាទុកពាក្យសម្ងាត់...",
 };
 
+const currentUi: Record<string, string> = {
+  "Report a Bug": "រាយការណ៍បញ្ហា", "My reports": "របាយការណ៍របស់ខ្ញុំ", "New report": "របាយការណ៍ថ្មី", "Send report": "ផ្ញើរបាយការណ៍",
+  "Tell our support team about a problem.": "ប្រាប់ក្រុមជំនួយរបស់យើងអំពីបញ្ហា។", "Send a bug report": "ផ្ញើរបាយការណ៍បញ្ហា", "Track your reports": "តាមដានរបាយការណ៍របស់អ្នក", "See resolution status": "មើលស្ថានភាពដោះស្រាយ",
+  "Send a problem to Support and follow its progress.": "ផ្ញើបញ្ហាទៅក្រុមជំនួយ និងតាមដានការដោះស្រាយ។", "Priority": "អាទិភាព", "Page path": "ផ្លូវទំព័រ", "What happened?": "តើមានអ្វីកើតឡើង?", "In progress": "កំពុងដោះស្រាយ", "Resolved": "បានដោះស្រាយ", "Urgent": "បន្ទាន់", "Normal": "ធម្មតា", "Low": "ទាប",
+  "No reports yet": "មិនទាន់មានរបាយការណ៍", "Your submitted reports will appear here.": "របាយការណ៍ដែលបានផ្ញើនឹងបង្ហាញនៅទីនេះ។", "Your latest 50 reports in this workspace": "របាយការណ៍ថ្មីបំផុត ៥០ របស់អ្នកនៅក្នុងអាជីវកម្មនេះ",
+  "Cancel": "បោះបង់", "Close": "បិទ", "Clear": "សម្អាត", "Select": "ជ្រើសរើស", "Confirm": "បញ្ជាក់",
+  "Add": "បន្ថែម", "New": "ថ្មី", "Create": "បង្កើត", "View": "មើល", "Edit": "កែប្រែ", "Delete": "លុប", "Save": "រក្សាទុក",
+  "Branch": "សាខា", "Product": "ផលិតផល", "Category": "ប្រភេទ", "Customer": "អតិថិជន", "Supplier": "អ្នកផ្គត់ផ្គង់", "User": "អ្នកប្រើ",
+  "Bundle": "សំណុំផលិតផល", "Expense": "ចំណាយ", "Item": "មុខទំនិញ", "Order": "ការបញ្ជាទិញ", "Return": "ការបង្វិលទំនិញ", "Campaign": "យុទ្ធនាការ",
+  "All Branches": "គ្រប់សាខា", "All Categories": "គ្រប់ប្រភេទ", "All Statuses": "គ្រប់ស្ថានភាព", "All Status": "គ្រប់ស្ថានភាព",
+  "All Sources": "គ្រប់ប្រភព", "All users": "អ្នកប្រើទាំងអស់", "All products": "ផលិតផលទាំងអស់", "All sizes": "គ្រប់ទំហំ", "All colors": "គ្រប់ពណ៌",
+  "All Fulfillment Types": "គ្រប់ប្រភេទបំពេញការបញ្ជាទិញ", "All Payment Statuses": "គ្រប់ស្ថានភាពបង់ប្រាក់",
+  "Select branch": "ជ្រើសរើសសាខា", "Select category": "ជ្រើសរើសប្រភេទ", "Select a product": "ជ្រើសរើសផលិតផល", "Select product / variant": "ជ្រើសរើសផលិតផល ឬជម្រើស",
+  "Select reason": "ជ្រើសរើសមូលហេតុ", "Select all": "ជ្រើសរើសទាំងអស់", "Clear selection": "សម្អាតការជ្រើសរើស", "Clear filters": "សម្អាតតម្រង",
+  "Cancel edit": "បោះបង់ការកែប្រែ", "Cancel Order": "បោះបង់ការបញ្ជាទិញ", "Cancel Purchase": "បោះបង់ការទិញ", "Discard changes": "បោះបង់ការផ្លាស់ប្តូរ",
+  "Close dialog": "បិទផ្ទាំង", "Close edit dialog": "បិទផ្ទាំងកែប្រែ", "Close delete dialog": "បិទផ្ទាំងលុប", "Deletion confirmation": "ការបញ្ជាក់ការលុប",
+  "Delete branch?": "លុបសាខា?", "Delete product?": "លុបផលិតផល?", "Deletion reason": "មូលហេតុលុប", "Type DELETE to confirm": "វាយ DELETE ដើម្បីបញ្ជាក់",
+  "Category name": "ឈ្មោះប្រភេទ", "Category List": "បញ្ជីប្រភេទ", "Category visibility": "ការបង្ហាញប្រភេទ", "Product name": "ឈ្មោះផលិតផល",
+  "Customer Information": "ព័ត៌មានអតិថិជន", "Customer List": "បញ្ជីអតិថិជន", "Customer note": "កំណត់សម្គាល់អតិថិជន", "Supplier Details": "ព័ត៌មានអ្នកផ្គត់ផ្គង់",
+  "Branch Information": "ព័ត៌មានសាខា", "Business Information": "ព័ត៌មានអាជីវកម្ម", "Basic Information": "ព័ត៌មានមូលដ្ឋាន", "Additional Information": "ព័ត៌មានបន្ថែម",
+  "Assigned branch": "សាខាដែលបានកំណត់", "Assign to Branch": "កំណត់ទៅសាខា", "Apply all branches": "អនុវត្តគ្រប់សាខា", "Apply to branches": "អនុវត្តទៅសាខា",
+  "Display in branches": "បង្ហាញនៅសាខា", "Active Branches": "សាខាសកម្ម", "Active Products": "ផលិតផលសកម្ម", "Active Customers": "អតិថិជនសកម្ម",
+  "Show on Online Store": "បង្ហាញនៅហាងអនឡាញ", "Visible online": "បង្ហាញអនឡាញ", "Show details": "បង្ហាញព័ត៌មានលម្អិត", "Bundle image": "រូបភាពសំណុំផលិតផល",
+  "Upload product image": "បញ្ចូលរូបភាពផលិតផល", "Add product image": "បន្ថែមរូបភាពផលិតផល", "Click to replace image": "ចុចដើម្បីប្តូររូបភាព", "Choose file": "ជ្រើសរើសឯកសារ",
+  "Save settings": "រក្សាទុកការកំណត់", "Save as Draft": "រក្សាទុកជាសេចក្តីព្រាង", "Save branch": "រក្សាទុកសាខា", "Save selection": "រក្សាទុកការជ្រើសរើស",
+  "Current Stock": "ស្តុកបច្ចុប្បន្ន", "Stock Status": "ស្ថានភាពស្តុក", "Suggested Reorder": "បរិមាណណែនាំឱ្យទិញបន្ថែម", "Adjustment": "ការកែស្តុក", "Adjustment Details": "ព័ត៌មានការកែស្តុក",
+  "Unit Price": "តម្លៃឯកតា", "Total Amount": "ចំនួនទឹកប្រាក់សរុប", "Total Quantity": "បរិមាណសរុប", "Total Items": "មុខទំនិញសរុប", "Total Refund": "ប្រាក់សងសរុប",
+  "Order Details": "ព័ត៌មានការបញ្ជាទិញ", "View order details": "មើលព័ត៌មានការបញ្ជាទិញ", "Current Order": "ការបញ្ជាទិញបច្ចុប្បន្ន", "Order Note": "កំណត់សម្គាល់ការបញ្ជាទិញ",
+  "Shipping Labels": "ស្លាកដឹកជញ្ជូន", "Shipping label": "ស្លាកដឹកជញ្ជូន", "Shipping fee": "ថ្លៃដឹកជញ្ជូន", "Currency Settings": "ការកំណត់រូបិយប័ណ្ណ",
+  "Activity": "សកម្មភាព", "Activity Log": "កំណត់ហេតុសកម្មភាព", "Audit Log Details": "ព័ត៌មានកំណត់ហេតុត្រួតពិនិត្យ", "Created By": "បង្កើតដោយ", "Created at": "ពេលបង្កើត",
+  "Small": "តូច", "Medium": "មធ្យម", "Large": "ធំ", "Custom color": "ពណ៌ផ្ទាល់ខ្លួន", "Choose custom color": "ជ្រើសពណ៌ផ្ទាល់ខ្លួន", "Choose any color": "ជ្រើសពណ៌ណាមួយ",
+  "Search products": "ស្វែងរកផលិតផល", "Search customers": "ស្វែងរកអតិថិជន", "Search orders": "ស្វែងរកការបញ្ជាទិញ", "Search bundles": "ស្វែងរកសំណុំផលិតផល", "Search users": "ស្វែងរកអ្នកប្រើ",
+  "Try again": "ព្យាយាមម្តងទៀត", "Download template": "ទាញយកគំរូ", "Add new only": "បន្ថែមតែទិន្នន័យថ្មី", "Template file type": "ប្រភេទឯកសារគំរូ",
+  "Sales trend": "និន្នាការលក់", "Sales mix": "សមាសភាពការលក់", "Sales by Payment Method": "ការលក់តាមវិធីបង់ប្រាក់", "Top staff": "បុគ្គលិកឆ្នើម", "Top orders": "ការបញ្ជាទិញកំពូល",
+  "POS": "ចំណុចលក់", "All Suppliers": "អ្នកផ្គត់ផ្គង់ទាំងអស់",
+  "Bundle Items": "សំណុំផលិតផល", "Bundle Item": "សំណុំផលិតផល", "Staff Report": "របាយការណ៍បុគ្គលិក",
+  "Printer Settings": "ការកំណត់ម៉ាស៊ីនបោះពុម្ព", "Printer": "ម៉ាស៊ីនបោះពុម្ព", "General": "ទូទៅ",
+  "General Settings": "ការកំណត់ទូទៅ", "Role Permissions": "សិទ្ធិតាមតួនាទី", "User & Manage User": "គ្រប់គ្រងអ្នកប្រើ",
+  "Backup & Export": "បម្រុងទុក និងនាំចេញ", "Barcode & Labels": "បាកូដ និងស្លាក", "Promotions & Loyalty": "ប្រូម៉ូសិន និងភាពស្មោះត្រង់",
+  "Order Items": "មុខទំនិញបញ្ជាទិញ", "Select product or variant": "ជ្រើសរើសផលិតផល ឬជម្រើសផលិតផល",
+  "Add New Category": "បន្ថែមប្រភេទថ្មី", "New Purchase Order": "ការបញ្ជាទិញចូលថ្មី",
+  "Color theme": "ពណ៌រូបរាង", "Theme mode": "របៀបរូបរាង", "Text size": "ទំហំអក្សរ",
+  "Interface density": "ភាពចង្អៀតនៃផ្ទៃកម្មវិធី", "Accessibility": "ភាពងាយស្រួលប្រើ", "High contrast mode": "របៀបកម្រិតពណ៌ច្បាស់",
+  "Compact": "ចង្អៀត", "Comfortable": "ទូលាយ", "More content": "មាតិកាច្រើន", "More breathing room": "ទំហំទូលាយជាងមុន",
+  "Unsaved changes. Click Save to apply.": "មិនទាន់រក្សាទុក។ ចុចរក្សាទុកដើម្បីអនុវត្ត។",
+  "Your preferences are saved on this device.": "ចំណូលចិត្តរបស់អ្នកត្រូវបានរក្សាទុកលើឧបករណ៍នេះ។",
+  "Choose a color for the sidebar and interface accents.": "ជ្រើសរើសពណ៌សម្រាប់ម៉ឺនុយចំហៀង និងផ្ទៃកម្មវិធី។",
+  "Choose how your app looks. System will match your device settings.": "ជ្រើសរើសរូបរាងកម្មវិធី។ របៀបប្រព័ន្ធនឹងតាមការកំណត់ឧបករណ៍។",
+  "Automatically match your device settings": "ផ្គូផ្គងការកំណត់ឧបករណ៍ដោយស្វ័យប្រវត្តិ",
+  "Clean and bright for everyday use": "ភ្លឺ និងងាយស្រួលប្រើប្រចាំថ្ងៃ", "Easy on the eyes in low light": "ស្រួលភ្នែកនៅកន្លែងពន្លឺតិច",
+  "Choose your preferred language for the interface.": "ជ្រើសរើសភាសាសម្រាប់ផ្ទៃកម្មវិធី។",
+  "Adjust text size across the app.": "កែទំហំអក្សរក្នុងកម្មវិធី។", "Choose how compact the layout feels.": "ជ្រើសរើសភាពចង្អៀតនៃប្លង់។",
+  "Improve visibility with higher contrast.": "ធ្វើឱ្យងាយមើលដោយបង្កើនកម្រិតពណ៌។", "Stronger colors and clearer borders": "ពណ៌ច្បាស់ និងស៊ុមងាយមើល",
+  "Select a page to continue": "ជ្រើសរើសទំព័រដើម្បីបន្ត", "Show on POS": "បង្ហាញនៅ POS", "Show online": "បង្ហាញតាមអនឡាញ",
+  "Apply to all branches": "អនុវត្តចំពោះគ្រប់សាខា", "Display settings": "ការកំណត់ការបង្ហាញ",
+  "View details": "មើលព័ត៌មានលម្អិត", "Save changes": "រក្សាទុកការផ្លាស់ប្តូរ", "Delete user": "លុបអ្នកប្រើ",
+};
+const normalizedUi = new Map(Object.entries({ ...km, ...currentUi }).map(([key, value]) => [key.toLowerCase().replace(/\s+/g, ' '), value]));
+
 function preserveWhitespace(source: string, translated: string) {
   const leading = source.match(/^\s*/)?.[0] ?? "";
   const trailing = source.match(/\s*$/)?.[0] ?? "";
@@ -863,15 +922,26 @@ export function translateUiText(
     return source;
   }
 
-  const exact = km[trimmed];
+  const exact = normalizedUi.get(trimmed.toLowerCase().replace(/\s+/g, ' '));
   if (exact) {
     return preserveWhitespace(source, exact);
   }
 
   // Common dynamic UI strings that include a value.
+  const suffix = trimmed.match(/^(.*?)(\s*[:*])$/);
+  if (suffix) {
+    const label = translateUiText(suffix[1], language);
+    if (label !== suffix[1]) return preserveWhitespace(source, label + suffix[2]);
+  }
+  const action = trimmed.match(/^(Add|New|Create|Edit|Delete|View)\s+(.+)$/i);
+  if (action) {
+    const verb = normalizedUi.get(action[1].toLowerCase());
+    const noun = normalizedUi.get(action[2].toLowerCase());
+    if (verb && noun) return preserveWhitespace(source, `${verb}${noun}`);
+  }
   const patterns: Array<[RegExp, (match: RegExpMatchArray) => string]> = [
-    [/^Order\s+#?(.+)$/i, (m) => `ការបញ្ជាទិញ #${m[1]}`],
-    [/^Table\s+(.+)$/i, (m) => `តុ ${m[1]}`],
+    [/^Order\s+#?((?:WEB-)?[\d][\w-]*)$/i, (m) => `ការបញ្ជាទិញ #${m[1]}`],
+    [/^Table\s+(\d+)$/i, (m) => `តុ ${m[1]}`],
     [/^Branch:\s*(.+)$/i, (m) => `សាខា៖ ${m[1]}`],
     [/^Customer:\s*(.+)$/i, (m) => `អតិថិជន៖ ${m[1]}`],
     [/^Total:\s*(.+)$/i, (m) => `សរុប៖ ${m[1]}`],

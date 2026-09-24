@@ -1,4 +1,5 @@
 "use client";
+import ProductPhoto from '@/components/product-photo';
 import {Box,Check,ChevronDown,Search,Package} from "lucide-react";
 import {useEffect,useMemo,useRef,useState,type KeyboardEvent as ReactKeyboardEvent} from "react";
 export type PickerProduct = {id:string;name:string;sku:string|null;size:string|null;color:string|null;imageUrl:string|null;categoryName:string;categoryId:string|null;businessStock:number};
@@ -163,8 +164,7 @@ export default function ProductVariantPicker({
       >
         <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
           {selected?.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={selected.imageUrl} alt="" className="h-full w-full object-cover" />
+            <ProductPhoto src={selected.imageUrl} alt="" sizes="40px" className="h-full w-full object-cover" />
           ) : (
             <Box size={18} className="text-slate-400" />
           )}
@@ -313,8 +313,7 @@ export default function ProductVariantPicker({
                       >
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
                           {product.imageUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={product.imageUrl} alt="" className="h-full w-full object-cover" />
+                              <ProductPhoto src={product.imageUrl} alt="" sizes="40px" className="h-full w-full object-cover" />
                           ) : (
                             <Box size={18} className="text-slate-400" />
                           )}

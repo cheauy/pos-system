@@ -23,8 +23,7 @@ import {
 
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
-import { createClient } from "@/lib/supabase/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/branch-server";
 
 type CustomerRow = {
   id: string;
@@ -81,7 +80,7 @@ export default async function MarketingPage() {
       .eq("business_id", business.id)
       .order("created_at", { ascending: false })
       .limit(10000),
-    supabaseAdmin
+    supabase
       .from("business_coupons")
       .select(
         "id,code,name,discount_type,discount_value,minimum_order,starts_at,ends_at,usage_limit,usage_count,is_active,created_at",

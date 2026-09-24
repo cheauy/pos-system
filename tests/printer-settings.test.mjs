@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import ts from "typescript";
 import { DEFAULT_RECEIPT } from "../lib/receipts/receipt-model.ts";
 import * as receiptModel from "../lib/receipts/receipt-model.ts";
+import * as photoCache from "../lib/public-photo-cache.ts";
 
 const require = createRequire(import.meta.url);
 function actions({ missingQr = false } = {}) {
@@ -15,10 +16,11 @@ function actions({ missingQr = false } = {}) {
     return { error: missingQr && "receipt_qr_url" in values ? { code: "PGRST204", message: "Missing receipt_qr_url column" } : null };
   } }) };
   const bucket = {
-    upload: async (path, bytes) => { uploads.push({ path, bytes }); return { error: null }; },
+    upload: async (path, bytes, options) => { uploads.push({ path, bytes, options }); return { error: null }; },
     getPublicUrl: path => ({ data: { publicUrl: `https://example.com/${path}` } }),
   };
   const deps = {
+    "@/lib/public-photo-cache": photoCache,
     "next/cache": { revalidatePath() {} },
     "@/lib/auth/require-permission": { requirePermission: async permission => {
       assert.equal(permission, "business.update"); return { id: "authorized-business" };
@@ -63,6 +65,8 @@ test("receipt uploads check business identity before using server storage", asyn
   assert.equal(uploads.length, 0);
   assert.equal((await api.uploadReceiptLogo("authorized-business", form)).success, true);
   assert.match(uploads[0].path, /^authorized-business\/.+\.png$/);
+  assert.equal(uploads[0].options.cacheControl, photoCache.PUBLIC_PHOTO_CACHE_SECONDS);
+  assert.equal(uploads[0].options.upsert, false);
 });
 
 test("barcode save persists the chosen new layout, size and fields only", async () => {

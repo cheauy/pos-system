@@ -55,11 +55,19 @@ export async function loadOrderDetail(businessId: string, orderId: string): Prom
     order.location_id
       ? supabase.from("business_locations").select("name").eq("id", order.location_id).eq("business_id", businessId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
-    supabase.from("returns").select("id", { count: "exact", head: true }).eq("business_id", businessId).eq("order_id", orderId),
+    supabase.from("returns").select("id,status,return_items(order_item_id,quantity)", { count: "exact" }).eq("business_id", businessId).eq("order_id", orderId),
     supabase.from("audit_logs").select("id,description,created_at,action").eq("business_id", businessId).eq("entity_type", "order").eq("entity_id", orderId).order("created_at", { ascending: false }).limit(30),
   ]);
+  const returned = new Map<string, number>();
+  for (const record of returns.data ?? []) {
+    if ((record.status ?? "refunded") !== "refunded") continue;
+    for (const item of record.return_items ?? []) returned.set(item.order_item_id, (returned.get(item.order_item_id) ?? 0) + number(item.quantity));
+  }
+  const fullyReturned = !returns.error && order.order_items.length > 0
+    && order.order_items.some(item => number(item.quantity) > 0)
+    && order.order_items.every(item => (returned.get(item.id) ?? 0) >= number(item.quantity));
   const paid = Math.max(0, number(order.amount_paid) - number(order.change_amount));
-  const paymentState: PaymentState = order.status === "refunded" || order.payment_status === "refunded" ? "refunded"
+  const paymentState: PaymentState = fullyReturned || order.status === "refunded" || order.payment_status === "refunded" ? "refunded"
     : order.payment_status === "pending_verification" ? "pending_verification"
     : order.payment_status === "paid" || paid >= number(order.total) ? "paid"
     : number(order.amount_paid) > 0 ? "partial" : "unpaid";
@@ -69,8 +77,8 @@ export async function loadOrderDetail(businessId: string, orderId: string): Prom
     customerPhone: customer?.phone || order.guest_phone || null,
     customerEmail: customer?.email || null, customerAddress: customer?.address || order.guest_address || null,
     guestName: order.guest_name, guestPhone: order.guest_phone, guestAddress: order.guest_address,
-    source: order.order_source || "pos", fulfillment: order.fulfillment_type,
-    status: order.status, onlineStatus: order.online_status,
+    source: order.order_source || "pos", fulfillment: !order.fulfillment_type || order.fulfillment_type === 'dine_in' ? 'walk_in' : order.fulfillment_type,
+    status: fullyReturned ? "refunded" : order.status, onlineStatus: order.online_status,
     paymentState, paymentMethod: order.payment_method, total: number(order.total),
     amountPaid: number(order.amount_paid), createdAt: order.created_at, updatedAt: order.updated_at,
     branchId: order.location_id, branchName: branch.data?.name || "Unassigned",
@@ -84,10 +92,11 @@ export async function loadOrderDetail(businessId: string, orderId: string): Prom
     remainingBalance: number(order.remaining_balance), couponCode: order.coupon_code,
     couponDiscount: number(order.coupon_discount), paymentReference: order.payment_reference,
     tableName: order.table_name, requestedFor: order.requested_for,
+    returnsUnavailable: !!returns.error,
     items: (order.order_items ?? []).map((item) => ({
       id: item.id, name: item.product_name || one(item.products)?.name || "Deleted product",
       imageUrl: imageUrl(one(item.products)?.image_url), variant: item.variant_label,
-      quantity: number(item.quantity), unitPrice: number(item.unit_price), subtotal: number(item.subtotal),
+      returnedQuantity: returned.get(item.id) ?? 0, quantity: number(item.quantity), unitPrice: number(item.unit_price), subtotal: number(item.subtotal),
       options: Array.isArray(item.selected_options) ? item.selected_options.map((option) => option?.name ?? "").filter(Boolean) : [],
     })),
     activity: [

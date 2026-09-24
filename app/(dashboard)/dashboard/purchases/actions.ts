@@ -258,7 +258,7 @@ export async function createPurchase(
     data: products,
     error: productsError,
   } = await supabase
-    .from("products")
+    .from("branch_products")
     .select(
       "id, name, stock_quantity",
     )

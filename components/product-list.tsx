@@ -1,5 +1,7 @@
 "use client";
 
+import ProductPhoto from '@/components/product-photo';
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -382,7 +384,7 @@ export default function ProductList({
             <option value="all">All Categories</option>
             {categories.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
-          <select aria-label="Filter products by branch" value={branchId} onChange={event=>router.push(`/dashboard/products${event.target.value?`?branch=${encodeURIComponent(event.target.value)}`:"?branch=all"}`)} className={filterInputClass}><option value="">All Branches</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>
+          <span className={`${filterInputClass} inline-flex items-center`}>{branches.find(branch=>branch.id===branchId)?.name ?? "Current branch"}</span>
           <select value={channel} onChange={(event) => { setChannel(event.target.value); resetPage(); }} className={filterInputClass}>
             <option value="all">All Channels</option>
             <option value="online">Online</option>
@@ -450,7 +452,7 @@ export default function ProductList({
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-3">
                       {group.imageUrl ? (
-                        <img src={group.imageUrl} alt={group.name} loading="lazy" decoding="async" className="h-11 w-11 rounded-lg border border-slate-200 object-cover" />
+                        <ProductPhoto src={group.imageUrl} alt={group.name} sizes="56px" className="h-11 w-11 rounded-lg border border-slate-200 object-cover" />
                       ) : (
                         <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 text-slate-400"><Package size={18} /></div>
                       )}
@@ -958,7 +960,7 @@ function ProductCard({
     <div className="rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm">
       <div className="flex items-start gap-3">
         <Link href={`/dashboard/products/${group.representative.id}/edit`} className="flex min-w-0 flex-1 items-start gap-3">
-          {group.imageUrl ? <img src={group.imageUrl} alt={group.name} loading="lazy" decoding="async" className="h-14 w-14 rounded-xl border border-slate-200 object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><Package size={20} /></div>}
+          {group.imageUrl ? <ProductPhoto src={group.imageUrl} alt={group.name} sizes="56px" className="h-14 w-14 rounded-xl border border-slate-200 object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><Package size={20} /></div>}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-slate-900">{group.name}</p>
             <p className="mt-0.5 text-xs text-slate-400">{group.category}</p>

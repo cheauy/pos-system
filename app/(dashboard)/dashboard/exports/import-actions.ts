@@ -1,7 +1,8 @@
 'use server';
 
 import { requirePermission } from '@/lib/auth/require-permission';
-import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/branch-server';
+import { getBranchContext } from '@/lib/branches/context';
 import { parseImportBackup } from '@/lib/exports/import-backup';
 import { revalidatePath } from 'next/cache';
 import { exportGroups, selectedExportTables } from '@/lib/exports/catalog';
@@ -32,8 +33,10 @@ export async function importBackup(text: string, selected: string[], confirmatio
   if (business.role !== 'owner') throw new Error('Only the business owner can import data.');
   const payload = parseImportBackup(text, business.id, selected);
   const db = await createClient();
+  const { branchId } = await getBranchContext();
   const { data, error } = await db.rpc('tenh_import_business_safe', {
     p_business_id: business.id, p_kind: 'backup', p_mode: 'update', p_payload: payload,
+    p_branch_id: branchId,
     p_commit: Boolean(confirmation), p_expected: confirmation?.fingerprint ?? null,
     p_request_id: confirmation?.requestId ?? null, p_filename: confirmation?.filename ?? null,
   });

@@ -1,6 +1,7 @@
 "use client";
 
 import CategoryBranchesDialog from "./category-branches-dialog";
+import CategoryDisplayBranches from "./category-display-branches";
 import { useRouter } from "next/navigation";
 import {
   Box,
@@ -370,17 +371,6 @@ export default function CategoriesClient({
               <h2 className="text-lg font-bold text-slate-950">Add New Category</h2>
               <p className="mt-1 text-sm text-slate-500">Create a category to organize your products.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                createFormRef.current?.reset();
-                setCreateName("");
-                setCreateDescription("");
-              }}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Cancel
-            </button>
           </div>
 
           <form ref={createFormRef} onSubmit={handleCreate} className="mt-6 space-y-5">
@@ -423,6 +413,7 @@ export default function CategoriesClient({
 
             <div>
               <div className="mb-3 text-sm font-semibold text-slate-800">Display settings</div>
+              <CategoryDisplayBranches branches={branches} />
               <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
                 <label className="flex items-start gap-3 opacity-80">
                   <input type="checkbox" checked readOnly disabled className="mt-0.5 size-4 rounded border-slate-300" />
@@ -650,6 +641,7 @@ export default function CategoriesClient({
               </button>
             </div>
             <form onSubmit={handleEdit} className="space-y-5 p-5">
+              <CategoryDisplayBranches key={editing.id} branches={branches} branchIds={editing.branchIds} />
               <input type="hidden" name="categoryId" value={editing.id} />
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-800">Category name <span className="text-rose-500">*</span></label>

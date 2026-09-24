@@ -2,9 +2,7 @@
 
 import {
   AtSign,
-  Bell,
   Camera,
-  CheckCircle2,
   ChevronRight,
   Clock3,
   CreditCard,
@@ -28,6 +26,7 @@ import {
 } from "lucide-react";
 import { useActionState, useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 import type { StorefrontSettings } from "@/lib/storefront/types";
 import FulfillmentFields from "./ordering/fulfillment-fields";
@@ -54,6 +53,7 @@ export default function StorefrontSettingsForm({
   canEdit: boolean;
   children?: React.ReactNode;
 }) {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState(updateStorefrontSettings, initialState);
   const [displayName, setDisplayName] = useState(settings.display_name ?? businessName);
   const [description, setDescription] = useState(settings.description ?? "");
@@ -71,9 +71,9 @@ export default function StorefrontSettingsForm({
 
   useEffect(() => {
     if (!state.message) return;
-    if (state.success) toast.success(state.message);
+    if (state.success) { toast.success(state.message); router.refresh(); }
     else toast.error(state.message);
-  }, [state]);
+  }, [state, router]);
 
   return (
     <>
@@ -451,21 +451,6 @@ export default function StorefrontSettingsForm({
       </div>
 
       <FulfillmentFields settings={{ ...settings, business_type: businessType }} canEdit={canEdit} />
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-            <Card
-              icon={<Bell size={17} />}
-              iconClass="bg-blue-50 text-blue-600"
-              title="Customer Notifications"
-              description="Order updates are handled from the order workflow."
-            >
-              <div className="space-y-2 text-xs text-slate-600">
-                <InfoRow label="Order confirmation" value="Enabled by order flow" />
-                <InfoRow label="Order status updates" value="Managed in Orders" />
-              </div>
-
-            </Card>
-          </div>
-
       <input type="hidden" name="allowScheduledOrders" value={settings.allow_scheduled_orders ? "on" : ""} />
       <input type="hidden" name="minScheduleLeadMinutes" value={settings.min_schedule_lead_minutes ?? 30} />
       <input type="hidden" name="maxScheduleDays" value={settings.max_schedule_days ?? 7} />
@@ -662,16 +647,6 @@ function Switch({
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2">
-      <span className="flex items-center gap-2 font-medium text-slate-700">
-        <CheckCircle2 size={13} className="text-emerald-500" /> {label}
-      </span>
-      <span className="text-right text-[11px] text-slate-500">{value}</span>
-    </div>
-  );
-}
 
 function ImageField({ label, name, preview, disabled, imageClass }: {
   label: string; name: string; preview: string | null; disabled: boolean; imageClass: string;

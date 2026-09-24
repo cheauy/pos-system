@@ -2,6 +2,8 @@
 
 :root {
   --app-accent: #2563eb;
+  --sidebar-background: #ffffff;
+  --sidebar-foreground: #01204e;
   --workspace-panel: #ffffff;
   --workspace-background: #ffffff;
   --background: #ffffff;
@@ -13,20 +15,59 @@
 .sidebar-accent [class~="bg-blue-600"] { background-color: var(--app-accent); }
 .dark .sidebar-accent [class~="text-blue-700"], .dark .sidebar-accent [class~="text-blue-600"] { color: color-mix(in srgb, var(--app-accent) 50%, white); }
 
-:root[data-workspace-color]:not([data-workspace-color="white"]) {
+:root:not(.dark)[data-workspace-color]:not([data-workspace-color="white"]) {
   --workspace-panel: color-mix(in srgb, var(--app-accent) 4%, white);
   --workspace-background: color-mix(in srgb, var(--app-accent) 9%, white);
 }
 .dark { --workspace-panel: #101b2e; --workspace-background: #020617; }
-:root.dark[data-workspace-color]:not([data-workspace-color="white"]) {
-  --workspace-panel: color-mix(in srgb, var(--app-accent) 12%, #101b2e);
-  --workspace-background: color-mix(in srgb, var(--app-accent) 8%, #020617);
-}
 .workspace-theme { background: var(--workspace-background); }
 .workspace-theme [class~="bg-white"], .workspace-theme [class~="dark:bg-slate-900"], .workspace-theme dialog { background-color: var(--workspace-panel); }
 .workspace-theme [class~="bg-blue-600"] { background-color: var(--app-accent); }
 .workspace-theme [class~="text-blue-600"], .workspace-theme [class~="text-blue-700"] { color: var(--app-accent); }
 .dark .workspace-theme [class~="text-blue-600"], .dark .workspace-theme [class~="text-blue-700"] { color: color-mix(in srgb, var(--app-accent) 50%, white); }
+
+/* The selected palette fills the left rail and its panels, including dark mode.
+   Confirmation dialogs keep their own neutral surface and semantic colors. */
+.workspace-theme .sidebar-surface {
+  background-color: var(--sidebar-background);
+  color: var(--sidebar-foreground);
+  border-color: color-mix(in srgb, var(--sidebar-foreground) 18%, transparent);
+}
+.sidebar-surface :is([class*="text-slate-"], [class~="text-blue-600"], [class~="text-blue-700"]):not(.sidebar-neutral *) {
+  color: var(--sidebar-foreground);
+}
+.sidebar-surface :is([class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-blue-50"], [class~="bg-blue-100"]):not(.sidebar-neutral *) {
+  background-color: color-mix(in srgb, var(--sidebar-foreground) 12%, var(--sidebar-background));
+}
+.sidebar-surface :is(button, a):is([class*="text-slate-"], [class~="text-blue-600"], [class~="text-blue-700"]):hover:not(.sidebar-neutral *) {
+  background-color: color-mix(in srgb, var(--sidebar-foreground) 18%, var(--sidebar-background));
+}
+.sidebar-surface input:not(.sidebar-neutral *) { color: var(--sidebar-foreground); }
+.sidebar-surface input::placeholder { color: color-mix(in srgb, var(--sidebar-foreground) 75%, transparent); }
+.sidebar-surface :focus-visible:not(.sidebar-neutral *) { outline: 2px solid var(--sidebar-foreground); outline-offset: 2px; }
+
+/* Device appearance preferences affect screens only, preserving printed sizes. */
+@media screen {
+  .dark .workspace-theme { color: #e2e8f0; }
+  .dark .workspace-theme :is([class~="text-slate-950"], [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-slate-700"]):not(.receipt, .receipt *) { color: #f1f5f9; }
+  .dark .workspace-theme :is([class~="text-slate-600"], [class~="text-slate-500"], [class~="text-slate-400"]):not(.receipt, .receipt *) { color: #94a3b8; }
+  .dark .workspace-theme :is([class~="border-slate-100"], [class~="border-slate-200"], [class~="border-slate-300"]):not(.receipt, .receipt *) { border-color: #334155; }
+  .dark .workspace-theme :is([class~="bg-slate-50"], [class~="bg-slate-100"], input, select, textarea):not(.receipt, .receipt *, [type="checkbox"], [type="radio"], [type="color"]) { background-color: #1e293b; color: #e2e8f0; }
+  .workspace-theme :is(input, select, textarea) { max-width: 100%; }
+  .workspace-theme button { overflow-wrap: anywhere; }
+  :root[data-text-size="small"] { font-size: 14px; }
+  :root[data-text-size="medium"] { font-size: 16px; }
+  :root[data-text-size="large"] { font-size: 18px; }
+  :root[data-density="compact"] .workspace-theme :is(th, td) { padding-block: 0.45rem; }
+  :root[data-density="compact"] .workspace-theme :is([class~="p-5"], [class~="p-6"]) { padding: 1rem; }
+  :root[data-density="compact"] .workspace-theme :is([class~="gap-5"], [class~="gap-6"]) { gap: 1rem; }
+  :root[data-high-contrast="true"] .workspace-theme { --workspace-panel: #fff; --workspace-background: #f1f5f9; }
+  :root[data-high-contrast="true"] .workspace-theme :is([class~="text-slate-400"], [class~="text-slate-500"], [class~="text-slate-600"]) { color: #334155; }
+  :root[data-high-contrast="true"] .workspace-theme :is([class~="border-slate-100"], [class~="border-slate-200"], [class~="border-slate-300"]) { border-color: #64748b; }
+  :root.dark[data-high-contrast="true"] .workspace-theme { --workspace-panel: #020617; --workspace-background: #000; }
+  :root.dark[data-high-contrast="true"] .workspace-theme :is([class~="text-slate-400"], [class~="text-slate-500"], [class~="text-slate-600"]) { color: #e2e8f0; }
+  :root[data-high-contrast="true"] .workspace-theme .sidebar-surface :is([class*="text-slate-"], [class~="text-blue-600"], [class~="text-blue-700"]):not(.sidebar-neutral *) { color: var(--sidebar-foreground); }
+}
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
@@ -36,11 +77,9 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+:root.dark {
     --background: #0a0a0a;
     --foreground: #ededed;
-  }
 }
 
 body {

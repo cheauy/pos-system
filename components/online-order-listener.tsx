@@ -5,16 +5,40 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 
 import { createClient } from "@/lib/supabase/client";
+import { incomingOrderSummary } from "@/app/(dashboard)/dashboard/online-orders/actions";
 
 export default function OnlineOrderListener({
-  businessId, branchId,
+  businessId, branchId, receiveAll = false,
 }: {
   businessId: string; branchId: string;
+  receiveAll?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
+    if (receiveAll) {
+      let stopped = false, busy = false;
+      let seen: Set<string> | null = null;
+      const poll = async () => {
+        if (busy || document.visibilityState !== "visible") return;
+        busy = true;
+        try {
+          const orders = await incomingOrderSummary();
+          if (stopped) return;
+          const fresh = orders.filter(order => seen && !seen.has(order.id));
+          seen = new Set(orders.map(order => order.id));
+          if (fresh.length && !pathname.startsWith("/dashboard/online-orders")) {
+            playOrderTone();
+            toast.success("New online order", { description: "An order is waiting for confirmation.", action: { label: "Open", onClick: () => router.push("/dashboard/online-orders") }, duration: 10000 });
+          }
+          if (fresh.length) router.refresh();
+        } catch { /* Preserve the last snapshot during temporary connection failures. */ }
+        finally { busy = false; }
+      };
+      void poll(); const timer = setInterval(() => void poll(), 20000);
+      return () => { stopped = true; clearInterval(timer); };
+    }
     const supabase = createClient();
 
     const channel = supabase
@@ -54,7 +78,7 @@ export default function OnlineOrderListener({
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [businessId, branchId, pathname, router]);
+  }, [businessId, branchId, receiveAll, pathname, router]);
 
   return null;
 }

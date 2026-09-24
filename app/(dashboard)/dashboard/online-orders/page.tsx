@@ -1,10 +1,10 @@
 import { getBranchContext } from "@/lib/branches/context";
-import { createClient } from "@/lib/supabase/branch-server";
+import { getIncomingOrders } from "@/lib/branches/incoming-orders";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { businessHasPermission } from "@/lib/auth/effective-permissions";
 
 import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
-import OnlineOrdersClient, { type OnlineOrder } from "./online-orders-client";
+import OnlineOrdersClient from "./online-orders-client";
 
 export default async function OnlineOrdersPage() {
   const business = await requirePermission("orders.view");
@@ -12,63 +12,18 @@ export default async function OnlineOrdersPage() {
     businessHasPermission(business, "orders.update"),
     businessHasPermission(business, "orders.cancel"),
   ]);
-  const scopedDb = await createClient();
   const {branchId}=await getBranchContext();
 
-  const [settings, orderResult] = await Promise.all([
-    getStorefrontSettings(business.id),
-    scopedDb
-    .from("orders")
-    .select(`
-      id,
-      order_number,
-      order_source,
-      fulfillment_type,
-      online_status,
-      guest_name,
-      guest_phone,
-      guest_address,
-      customer_note,
-      table_name,
-      delivery_zone_name,
-      requested_for,
-      payment_method,
-      payment_status,
-      payment_reference,
-      subtotal,
-      discount,
-      coupon_code,
-      loyalty_points_earned,
-      delivery_fee,
-      total,
-      created_at,
-      order_items (
-        id,
-        product_name,
-        quantity,
-        unit_price,
-        variant_label,
-        selected_options,
-        products (image_url, variant_image_url)
-      )
-    `)
-    .eq("business_id", business.id)
-    .in("order_source", ["online", "qr"])
-    .order("created_at", { ascending: false })
-    .limit(100),
+  const [settings, incoming] = await Promise.all([
+    getStorefrontSettings(business.id), getIncomingOrders(business.id),
   ]);
-
-  const { data, error } = orderResult;
-
-  if (error) {
-    throw new Error(`Unable to load online orders: ${error.message}`);
-  }
 
   return (
     <OnlineOrdersClient
       businessId={business.id}
       branchId={branchId}
-      initialOrders={(data ?? []).map(order => ({ ...order, order_items: order.order_items.map(item => { const product = Array.isArray(item.products) ? item.products[0] : item.products; return { ...item, image_url: product?.variant_image_url || product?.image_url || null }; }) })) as OnlineOrder[]}
+      initialOrders={incoming.orders}
+      receiveAll={incoming.receiveAll}
       currency={settings.currency}
       canUpdate={canUpdate}
       canCancel={canCancel}

@@ -4,9 +4,12 @@ import {
   useActionState,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
+import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
 import {
@@ -34,6 +37,9 @@ type ReturnItemsFormProps = {
   orderId: string;
   orderNumber: string;
   items: OrderItem[];
+  triggerClassName?: string;
+  onReturned?: () => void;
+  currency?: string;
 };
 
 type ReturnQuantityState = Record<
@@ -50,11 +56,20 @@ export default function ReturnItemsForm({
   orderId,
   orderNumber,
   items,
+  triggerClassName,
+  onReturned,
+  currency = "USD",
 }: ReturnItemsFormProps) {
   const router = useRouter();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const handledReturn = useRef<string | null>(null);
+  function formatCurrency(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value); }
 
   const [isOpen, setIsOpen] =
     useState(false);
+
+  const [reason, setReason] = useState("");
+  const [otherReason, setOtherReason] = useState("");
 
   const [quantities, setQuantities] =
     useState<ReturnQuantityState>({});
@@ -99,20 +114,24 @@ export default function ReturnItemsForm({
   );
 
   useEffect(() => {
-    if (
-      state.success &&
-      state.returnId
-    ) {
-      router.push(
-        `/dashboard/returns/${state.returnId}`,
-      );
-      router.refresh();
-    }
-  }, [
-    state.success,
-    state.returnId,
-    router,
-  ]);
+    if (!state.success || !state.returnId || handledReturn.current === state.returnId) return;
+    handledReturn.current = state.returnId;
+    setIsOpen(false);
+    setQuantities({});
+    setReason("");
+    setOtherReason("");
+    toast.success("Items returned. Refund recorded.", { position: "top-right" });
+    onReturned?.();
+    router.refresh();
+  }, [state.success, state.returnId, router, onReturned]);
+
+  useEffect(() => {
+    if (!isOpen || !dialog.current) return;
+    const element = dialog.current;
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    element.showModal();
+    return () => { element.close(); trigger?.focus(); };
+  }, [isOpen]);
 
   function updateQuantity(
     item: OrderItem,
@@ -143,6 +162,8 @@ export default function ReturnItemsForm({
 
     setIsOpen(false);
     setQuantities({});
+    setReason("");
+    setOtherReason("");
   }
 
   if (returnableItems.length === 0) {
@@ -158,7 +179,7 @@ export default function ReturnItemsForm({
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="inline-flex h-12 min-w-[170px]
+        className={triggerClassName ?? `inline-flex h-12 min-w-[170px]
     items-center justify-center gap-2
     rounded-xl
     border border-amber-300
@@ -168,14 +189,14 @@ export default function ReturnItemsForm({
     text-amber-700
     transition
     hover:bg-amber-100
-    hover:border-amber-400"
+    hover:border-amber-400`}
       >
         <RotateCcw size={18} />
         Return Items
       </button>
 
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      {isOpen && createPortal(
+        <dialog ref={dialog} aria-label="Return items" onCancel={event => { event.preventDefault(); closeModal(); }} className="m-auto max-h-[90vh] w-[min(94vw,768px)] max-w-3xl rounded-2xl border-0 p-0 backdrop:bg-slate-950/50">
           <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-xl">
             <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-6">
               <div>
@@ -192,6 +213,7 @@ export default function ReturnItemsForm({
                 type="button"
                 disabled={isPending}
                 onClick={closeModal}
+                aria-label="Close return form"
                 className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50"
               >
                 <X size={19} />
@@ -216,7 +238,7 @@ export default function ReturnItemsForm({
                 )}
               />
 
-              {state.message && (
+              {state.message && !state.success && (
                 <div
                   className={`mb-5 flex items-start gap-3 rounded-xl border p-4 text-sm ${
                     state.success
@@ -357,28 +379,28 @@ export default function ReturnItemsForm({
 
               <div className="mt-5">
                 <label className="mb-4 block text-sm font-medium text-slate-700">Refund payment method
-                  <select name="refundMethod" required defaultValue="" className="mt-2 w-full rounded-xl border border-slate-300 p-3">
+                  <select name="refundMethod" disabled={isPending} required defaultValue="" className="mt-2 w-full rounded-xl border border-slate-300 p-3">
                     <option value="" disabled>Choose how the refund is paid</option><option value="cash">Cash from register</option><option value="bank_transfer">Bank transfer</option><option value="other">Other non-cash payment</option>
                   </select>
                   <span className="mt-1 block text-xs text-slate-500">Cash refunds use the open register at the original sale branch.</span>
                 </label>
-                <label
-                  htmlFor="reason"
-                  className="mb-2 block text-sm font-medium text-slate-700"
-                >
+                <label htmlFor="return-reason" className="mb-2 block text-sm font-medium text-slate-700">
                   Return reason
                 </label>
-
-                <textarea
-                  id="reason"
-                  name="reason"
-                  required
-                  minLength={3}
-                  rows={4}
-                  disabled={isPending}
-                  placeholder="Example: Product damaged or customer changed their mind"
-                  className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-100"
-                />
+                <select id="return-reason" name="reasonChoice" required value={reason} disabled={isPending}
+                  onChange={event => setReason(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-100">
+                  <option value="" disabled>Choose a reason</option>
+                  {["Incorrect Size or Fit", "Defective or Damaged", "Not as Described", "Wrong Item Sent", "Buyer's Remorse / Changed Mind", "Other"].map(option => <option key={option} value={option}>{option}</option>)}
+                </select>
+                <input type="hidden" name="reason" value={reason === "Other" ? otherReason.trim() : reason} />
+                {reason === "Other" && <div className="mt-3">
+                  <label htmlFor="other-return-reason" className="mb-2 block text-sm font-medium text-slate-700">Please specify</label>
+                  <textarea id="other-return-reason" name="otherReason" required minLength={3} rows={3}
+                    value={otherReason} onChange={event => setOtherReason(event.target.value)} disabled={isPending}
+                    placeholder="Enter the return reason"
+                    className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-100" />
+                </div>}
               </div>
 
               <div className="mt-6 rounded-xl bg-slate-50 p-4">
@@ -427,15 +449,8 @@ export default function ReturnItemsForm({
               </div>
             </form>
           </div>
-        </div>
+        </dialog>, document.body
       )}
     </>
   );
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(value);
 }

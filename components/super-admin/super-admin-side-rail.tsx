@@ -6,10 +6,11 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BadgeDollarSign,
   Building2,
-  CreditCard,
-  CirclePlus,
+  HeartPulse,
+  Headphones,
   LayoutDashboard,
   LogOut,
+  Megaphone,
   ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -44,7 +45,7 @@ export default function SuperAdminSideRail({
   const items: RailItem[] = [
     {
       label: "Dashboard",
-      href: "/dashboard",
+      href: "/super-admin",
       icon: LayoutDashboard,
     },
     {
@@ -52,23 +53,19 @@ export default function SuperAdminSideRail({
       href: "/super-admin/businesses",
       icon: Building2,
     },
+    { label: "User Update Alerts", href: "/super-admin/update-alerts", icon: Megaphone },
     {
-      label: "Manual Payments",
+      label: "Payment Approval",
       href: "/super-admin/manual-payments",
       icon: BadgeDollarSign,
-      badge: pendingPayments,
+      badge: pendingPayments + pendingSubscriptionPayments,
     },
     {
-      label: "Subscription Payments",
-      href: "/super-admin/subscription-payments",
-      icon: CreditCard,
-      badge: pendingSubscriptionPayments,
+      label: "Website Health",
+      href: "/super-admin/health",
+      icon: HeartPulse,
     },
-    {
-      label: "New Business",
-      href: "/super-admin/businesses/new",
-      icon: CirclePlus,
-    },
+    { label: "Support", href: "/super-admin/support", icon: Headphones },
   ];
 
   function itemIsActive(item: RailItem) {
@@ -83,11 +80,7 @@ export default function SuperAdminSideRail({
     }
 
     if (item.href === "/super-admin/manual-payments") {
-      return pathname.startsWith("/super-admin/manual-payments");
-    }
-
-    if (item.href === "/super-admin/subscription-payments") {
-      return pathname.startsWith("/super-admin/subscription-payments");
+      return pathname.startsWith("/super-admin/manual-payments") || pathname.startsWith("/super-admin/subscription-payments");
     }
 
     return pathname === item.href;
@@ -106,7 +99,7 @@ export default function SuperAdminSideRail({
     >
       <RailTooltip label="Super Admin">
         <Link
-          href="/super-admin/businesses"
+          href="/super-admin"
           aria-label="Super Admin"
           className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 transition hover:bg-blue-100"
         >

@@ -20,7 +20,6 @@ import {
   Users,
   XCircle,
   CheckCircle2,
-  AlertTriangle,
 } from "lucide-react";
 import {
   buildExport,
@@ -127,10 +126,6 @@ export default function ExportClient({ recentJobs, isOwner, productMode }: { rec
         </button>
       </div>
 
-      <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        <AlertTriangle className="mt-0.5 shrink-0" size={18} />
-        <p>Exports and imports transfer business data only. Authentication secrets, service-role keys, OAuth credentials and full database backups are intentionally excluded.</p>
-      </div>
 
       {importMessage ? (
         <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${importMessage.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`}>

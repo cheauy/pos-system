@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import ts from "typescript";
 import * as profile from "../lib/storefront/profile.ts";
+import * as photoCache from "../lib/public-photo-cache.ts";
 
 const require = createRequire(import.meta.url);
 const source = ts.transpileModule(readFileSync(new URL("../app/(dashboard)/dashboard/online-store/actions.ts", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
@@ -16,6 +17,8 @@ function setup() {
     return query;
   } };
   const deps = {
+    "@/lib/images/compress-photo": { compressPhoto: async file => file },
+    "@/lib/public-photo-cache": photoCache,
     "next/cache": { revalidatePath() {} },
     "@/lib/audit/create-audit-log": { createAuditLog: async () => {} },
     "@/lib/auth/require-permission": { requirePermission: async () => ({ id: "shop", slug: "shop", role: "owner", product_mode: "variant" }) },
@@ -69,4 +72,16 @@ test("storefront save cannot change the business mode supplied by Business Setti
   assert.equal((await context.save({}, data)).success, true);
   assert.equal(Object.hasOwn(context.writes[0], "business_type"), false);
   assert.equal(context.writes[0].allow_dine_in, false);
+});
+
+test("unchecked availability switches persist false and can be enabled again", async () => {
+  const context = setup(), data = form();
+  data.delete("isPublished"); data.delete("acceptOnlineOrders");
+  assert.equal((await context.save({}, data)).success, true);
+  assert.equal(context.writes[0].is_published, false);
+  assert.equal(context.writes[0].accept_online_orders, false);
+  data.set("isPublished", "on"); data.set("acceptOnlineOrders", "on");
+  assert.equal((await context.save({}, data)).success, true);
+  assert.equal(context.writes[1].is_published, true);
+  assert.equal(context.writes[1].accept_online_orders, true);
 });

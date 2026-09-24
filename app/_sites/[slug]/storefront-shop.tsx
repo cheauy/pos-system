@@ -631,9 +631,10 @@ function CartDrawer({
     code: string;
     discount: number;
     subtotal: number;
+    contextKey: string;
   } | null>(null);
   const couponRequest = useRef(0);
-  const latestSubtotal = useRef(0);
+  const latestCouponContext = useRef("");
   const [couponChecking, setCouponChecking] = useState(false);
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
 
@@ -643,7 +644,8 @@ function CartDrawer({
     (sum, item) => sum + item.unitPrice * item.quantity,
     0,
   );
-  useEffect(() => { latestSubtotal.current = subtotal; }, [subtotal]);
+  const couponContextKey = JSON.stringify([subtotal, cart.map(item => [item.productId, item.quantity, item.optionIds]), fulfillment === "dine_in" ? tableToken : null]);
+  useEffect(() => { latestCouponContext.current = couponContextKey; }, [couponContextKey]);
   const deliveryFee =
     fulfillment === "delivery"
       ? selectedZone?.fee ?? settings.deliveryFee
@@ -652,7 +654,7 @@ function CartDrawer({
     fulfillment === "delivery"
       ? Math.max(settings.minimumOrder, selectedZone?.minimumOrder ?? 0)
       : settings.minimumOrder;
-  const couponStale = Boolean(coupon && coupon.subtotal !== subtotal);
+  const couponStale = Boolean(coupon && coupon.contextKey !== couponContextKey);
   const couponPending = couponChecking || couponStale;
   const couponDiscount = couponStale ? 0 : Math.min(subtotal, Math.max(0, coupon?.discount ?? 0));
   const total = Math.max(0, subtotal - couponDiscount) + deliveryFee;
@@ -702,12 +704,12 @@ function CartDrawer({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, subtotal }),
+          body: JSON.stringify({ code, subtotal, items: cart.map(item => ({ productId: item.productId, quantity: item.quantity })), tableToken: fulfillment === "dine_in" ? tableToken : null }),
         },
       );
       const payload = await response.json();
       if (requestId !== couponRequest.current) return;
-      if (latestSubtotal.current !== subtotal) {
+      if (latestCouponContext.current !== couponContextKey) {
         setCouponMessage("Cart changed. Apply your coupon again.");
         return;
       }
@@ -720,6 +722,7 @@ function CartDrawer({
         code: payload.coupon.code,
         discount: Number(payload.coupon.discount ?? 0),
         subtotal,
+        contextKey: couponContextKey,
       });
       setCouponInput(payload.coupon.code);
       setCouponMessage(
@@ -737,17 +740,17 @@ function CartDrawer({
     } finally {
       if (requestId === couponRequest.current) setCouponChecking(false);
     }
-  }, [slug, subtotal, settings.currency]);
+  }, [slug, subtotal, settings.currency, cart, fulfillment, tableToken, couponContextKey]);
 
   useEffect(() => {
-    if (!coupon?.code || coupon.subtotal === subtotal) return;
+    if (!coupon?.code || coupon.contextKey === couponContextKey) return;
 
     const timer = window.setTimeout(() => {
       void previewCoupon(coupon.code);
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [previewCoupon, coupon?.code, coupon?.subtotal, subtotal]);
+  }, [previewCoupon, coupon?.code, coupon?.contextKey, couponContextKey]);
 
   async function submitOrder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

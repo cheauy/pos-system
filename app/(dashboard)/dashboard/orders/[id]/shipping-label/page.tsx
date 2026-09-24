@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/branch-server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { authorizedOrderBranch } from "@/lib/branches/order-access";
 import { loadReceiptContext } from "@/lib/receipts/load-receipt-context";
 import { loadShippingSettings } from "@/lib/receipts/shipping-design-store";
 import PrintButton from "@/components/print-button";
@@ -13,11 +14,12 @@ export default async function OrderShippingLabelPage({ params }: { params: Promi
   const { id } = await params;
   const order = await loadDetailedOrder(business.id, id);
   if (!order) notFound();
-  const db = await createClient();
+  const branchId = await authorizedOrderBranch(business.id,id);
+  if (!branchId) notFound();
   const [context, saved, custom] = await Promise.all([
-    loadReceiptContext(business.id, business.name),
-    db.from("business_receipt_settings").select("shipping_label_size,shipping_show_sender,shipping_show_phone,shipping_show_order_number,shipping_show_cod,shipping_show_item_count,shipping_show_barcode").eq("business_id", business.id).maybeSingle(),
-    loadShippingSettings(business.id),
+    loadReceiptContext(business.id, business.name,id),
+    supabaseAdmin.from("branch_receipt_settings").select("shipping_label_size,shipping_show_sender,shipping_show_phone,shipping_show_order_number,shipping_show_cod,shipping_show_item_count,shipping_show_barcode").eq("business_id", business.id).eq("location_id",branchId).maybeSingle(),
+    loadShippingSettings(business.id,id),
   ]);
   if (saved.error) throw new Error("Printer settings could not be loaded. Please retry.");
   const settings = { ...saved.data, ...custom };

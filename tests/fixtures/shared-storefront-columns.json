@@ -1,0 +1,62 @@
+[
+  {
+    "name": "business_coupons",
+    "columns": "id uuid,business_id uuid,code text,name text,discount_type text,discount_value numeric(12,2),minimum_order numeric(12,2),max_discount numeric(12,2),starts_at timestamp with time zone,ends_at timestamp with time zone,usage_limit integer,per_customer_limit integer,usage_count integer,is_active boolean,created_at timestamp with time zone,updated_at timestamp with time zone,location_id uuid"
+  },
+  {
+    "name": "business_delivery_zones",
+    "columns": "id uuid,business_id uuid,name text,fee numeric(12,2),minimum_order numeric(12,2),is_active boolean,sort_order integer,created_at timestamp with time zone,updated_at timestamp with time zone"
+  },
+  {
+    "name": "business_locations",
+    "columns": "id uuid,business_id uuid,name text,code text,address text,phone text,is_default boolean,is_active boolean,created_at timestamp with time zone,updated_at timestamp with time zone,city text,state_region text,timezone text,opening_hours text,notes text,manager_user_id uuid,plan_disable_pending boolean,plan_disabled_at timestamp with time zone"
+  },
+  {
+    "name": "business_storefronts",
+    "columns": "business_id uuid,business_type text,is_published boolean,accept_online_orders boolean,template_key text,display_name text,description text,logo_url text,banner_url text,primary_color text,phone text,address text,currency text,allow_pickup boolean,allow_delivery boolean,allow_dine_in boolean,minimum_order numeric(12,2),estimated_minutes integer,created_at timestamp with time zone,updated_at timestamp with time zone,delivery_fee numeric(12,2),checkout_message text,accept_cod boolean,accept_khqr boolean,khqr_image_url text,khqr_account_name text,khqr_instructions text,allow_scheduled_orders boolean,min_schedule_lead_minutes integer,max_schedule_days integer,enable_coupons boolean,loyalty_enabled boolean,loyalty_spend_per_point numeric(12,2),loyalty_minimum_order numeric(12,2),social_links jsonb,pos_tax_rate numeric(7,3),pos_point_value numeric(12,4),pos_dual_currency_enabled boolean,pos_usd_khr_rate numeric(14,4),fulfillment_location_id uuid,currency_format jsonb"
+  },
+  {
+    "name": "business_tables",
+    "columns": "id uuid,business_id uuid,name text,public_token uuid,is_active boolean,created_at timestamp with time zone,updated_at timestamp with time zone"
+  },
+  {
+    "name": "businesses",
+    "columns": "id uuid,name text,slug text,owner_id uuid,phone text,email text,address text,logo_url text,product_mode text,is_active boolean,created_at timestamp with time zone,updated_at timestamp with time zone,disabled_at timestamp with time zone,scheduled_deletion_at timestamp with time zone,max_staff integer,subscription_started_at timestamp with time zone,subscription_expires_at timestamp with time zone,subscription_months integer,disabled_reason text,business_code text,last_extension_months integer,subscription_logs jsonb,archived_at timestamp with time zone,released_slug text,subscription_status text,trial_started_at timestamp with time zone,trial_expires_at timestamp with time zone,expired_at timestamp with time zone,deletion_scheduled_at timestamp with time zone,trial_block_reason text,trial_signup_fingerprint_hash text,subscription_plan_key text,subscription_user_limit integer,subscription_team_enabled boolean,free_url_changes_per_month integer,free_business_mode_changes_per_month integer,subscription_monthly_price numeric(12,2),subscription_discount_percent numeric(5,2),subscription_cycle_value numeric(12,2),subscription_branch_limit integer,subscription_base_plan_key text"
+  },
+  {
+    "name": "categories",
+    "columns": "id uuid,owner_id uuid,name text,description text,created_at timestamp with time zone,business_id uuid,is_online boolean,online_sort_order integer,branch_ids uuid[]"
+  },
+  {
+    "name": "coupon_redemptions",
+    "columns": "id uuid,business_id uuid,coupon_id uuid,order_id uuid,customer_id uuid,guest_phone text,discount_amount numeric(12,2),created_at timestamp with time zone"
+  },
+  {
+    "name": "customers",
+    "columns": "id uuid,owner_id uuid,name text,phone text,email text,address text,note text,created_at timestamp with time zone,updated_at timestamp with time zone,business_id uuid,loyalty_points integer,lifetime_loyalty_points integer,birthday date,location_id uuid"
+  },
+  {
+    "name": "order_items",
+    "columns": "id uuid,order_id uuid,owner_id uuid,product_id uuid,product_name text,sku text,quantity integer,unit_price numeric(12,2),cost_price numeric(12,2),subtotal numeric(12,2),created_at timestamp with time zone,variant_label text,selected_options jsonb"
+  },
+  {
+    "name": "orders",
+    "columns": "id uuid,owner_id uuid,order_number text,subtotal numeric(12,2),discount numeric(12,2),total numeric(12,2),payment_method text,amount_paid numeric(12,2),change_amount numeric(12,2),status text,created_at timestamp with time zone,customer_id uuid,updated_at timestamp with time zone,remaining_balance numeric(12,2),delivery_fee numeric(12,2),business_id uuid,order_source text,fulfillment_type text,online_status text,guest_name text,guest_phone text,guest_address text,customer_note text,table_id uuid,table_name text,public_order_token uuid,payment_status text,payment_reference text,delivery_zone_id uuid,delivery_zone_name text,requested_for timestamp with time zone,coupon_id uuid,coupon_code text,coupon_discount numeric(12,2),loyalty_points_earned integer,location_id uuid,register_shift_id uuid,credit_amount numeric(14,2),archived_at timestamp with time zone,archived_by uuid,pos_request_id uuid,pos_request_hash text,pos_checkout jsonb,staff_user_id uuid,staff_name text"
+  },
+  {
+    "name": "product_location_stock",
+    "columns": "business_id uuid,location_id uuid,product_id uuid,quantity integer,low_stock_threshold integer,updated_at timestamp with time zone"
+  },
+  {
+    "name": "product_option_groups",
+    "columns": "id uuid,business_id uuid,product_id uuid,name text,selection_type text,is_required boolean,min_selections integer,max_selections integer,sort_order integer,created_at timestamp with time zone,updated_at timestamp with time zone"
+  },
+  {
+    "name": "product_options",
+    "columns": "id uuid,business_id uuid,product_id uuid,group_id uuid,name text,price_adjustment numeric(12,2),is_default boolean,is_active boolean,sort_order integer,created_at timestamp with time zone,updated_at timestamp with time zone"
+  },
+  {
+    "name": "products",
+    "columns": "id uuid,owner_id uuid,category_id uuid,name text,sku text,description text,image_url text,cost_price numeric(12,2),selling_price numeric(12,2),stock_quantity integer,low_stock_quantity integer,is_active boolean,created_at timestamp with time zone,updated_at timestamp with time zone,size text,color text,business_id uuid,product_type text,is_online boolean,online_sort_order integer,variant_group_id uuid,barcode text,style_name text,brand_name text,low_stock_threshold integer,variant_image_url text,bundle_stock_mode text,is_pos boolean"
+  }
+]

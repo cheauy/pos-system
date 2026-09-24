@@ -1,6 +1,6 @@
 export const exportGroups = [
- {id:'business',label:'Business & settings',tables:['businesses','business_locations','business_storefronts','business_receipt_settings','business_customer_settings','business_delivery_zones','business_tables']},
- {id:'products',label:'Products & inventory',tables:['products','product_variants','categories','product_location_stock','product_option_groups','product_options','bundle_items','inventory_movements','stock_adjustments','stock_transfers','stock_transfer_items']},
+ {id:'business',label:'Business & settings',tables:['businesses','business_locations','business_storefronts','business_receipt_settings','business_customer_settings','branch_receipt_settings','branch_customer_settings','branch_pos_settings','branch_role_permissions','branch_notification_role_settings','business_delivery_zones','business_tables']},
+ {id:'products',label:'Products & inventory',tables:['products','branch_product_details','branch_bundle_recipes','product_variants','categories','product_location_stock','product_option_groups','product_options','bundle_items','inventory_movements','stock_adjustments','stock_transfers','stock_transfer_items']},
  {id:'sales',label:'Orders & returns',tables:['orders','order_items','returns','return_items','tenh_pos_holds','tenh_pos_points_used']},
  {id:'customers',label:'Customers & loyalty',tables:['customers','customer_credit_accounts','customer_credit_ledger','customer_loyalty_transactions','business_coupons','coupon_redemptions']},
  {id:'purchases',label:'Suppliers & purchases',tables:['suppliers','purchases','purchase_items','purchase_orders','purchase_order_items']},

@@ -1,18 +1,19 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Gift, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import ProductVariantPicker from '@/components/product-variant-picker';
 
 import {
   createBundleProduct,
-  type CreateBundleState,
+  editBundleProduct,
 } from "./bundle-actions";
 
 type Category = { id: string; name: string };
 
 export type ComponentProduct = {
+  canInclude?: boolean;
   id: string;
   name: string;
   sku: string | null;
@@ -31,8 +32,8 @@ export type ComponentProduct = {
 };
 
 type SelectedItem = { productId: string; quantity: number; optionIds: string[] };
+export type BundleEditValues = { id: string; name: string; sku: string | null; price: number; categoryId: string | null; description: string | null; imageUrl: string | null; updatedAt: string | null; items: SelectedItem[] };
 
-const initialState: CreateBundleState = { success: false, message: "" };
 const inputClass =
   "w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100";
 
@@ -42,28 +43,27 @@ export default function BundleProductForm({
   branchId,
   requestId,
   onCreated,
+  onPendingChange,
+  initial,
 }: {
   categories: Category[];
   products: ComponentProduct[];
   branchId: string;
   requestId: string;
   onCreated?: () => void;
+  onPendingChange?: (pending: boolean) => void;
+  initial?: BundleEditValues;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [state, formAction, pending] = useActionState(createBundleProduct, initialState);
-  const [items, setItems] = useState<SelectedItem[]>([]);
+  const [pending, setPending] = useState(false);
+  const submitting = useRef(false);
+  const [imagePreview, setImagePreview] = useState('');
+  const imageInput = useRef<HTMLInputElement>(null);
+  const [items, setItems] = useState<SelectedItem[]>(initial?.items ?? []);
+  const [removeImage, setRemoveImage] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState("");
 
-  useEffect(() => {
-    if (!state.message) return;
-    if (state.success) {
-      toast.success(state.message);
-      formRef.current?.reset();
-      onCreated?.();
-    } else {
-      toast.error(state.message);
-    }
-  }, [state, onCreated]);
+  useEffect(() => () => { if (imagePreview) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
 
   const productMap = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
@@ -89,29 +89,56 @@ export default function BundleProductForm({
   }
 
   return (
-    <form ref={formRef} action={formAction} className="mt-6 space-y-5">
+    <form ref={formRef} onSubmit={async event => {
+      event.preventDefault();
+      if (submitting.current) return;
+      const data = new FormData(event.currentTarget);
+      submitting.current = true; setPending(true); onPendingChange?.(true);
+      try {
+        const result = initial ? await editBundleProduct(data) : await createBundleProduct({ success: false, message: '' }, data);
+        if (result.success) { toast.success(result.message); onCreated?.(); }
+        else toast.error(result.message);
+      } catch { toast.error('Could not confirm the result. Retry without changing the details.'); }
+      finally { submitting.current = false; setPending(false); onPendingChange?.(false); }
+    }} className="mt-6">
+      <fieldset disabled={pending} className="space-y-5">
       <input type="hidden" name="items" value={JSON.stringify(items)} />
       <input type="hidden" name="branchId" value={branchId} />
       <input type="hidden" name="requestId" value={requestId} />
+      <input type="hidden" name="bundleId" value={initial?.id ?? ''} />
+      <input type="hidden" name="expected" value={initial?.updatedAt ?? ''} />
+      <input type="hidden" name="removeImage" value={String(removeImage)} />
+
+      <Field label="Bundle image" htmlFor="bundle-image">
+        <div className="flex items-center gap-4 rounded-xl border border-dashed border-slate-300 p-4">
+          {(imagePreview || initial?.imageUrl && !removeImage) && <img src={imagePreview || initial?.imageUrl || ''} alt="Bundle preview" className="h-20 w-20 rounded-lg object-cover" /> /* eslint-disable-line @next/next/no-img-element */}
+          <div className="min-w-0 flex-1"><input ref={imageInput} id="bundle-image" name="image" type="file" accept="image/jpeg,image/png,image/webp" className="w-full text-sm" onChange={event => {
+            const file = event.target.files?.[0];
+            if (file && (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024)) { toast.error('Choose a JPG, PNG or WebP image up to 5 MB.'); event.target.value = ''; setImagePreview(''); return; }
+            setImagePreview(file ? URL.createObjectURL(file) : ''); if (file) setRemoveImage(false);
+          }} /><p className="mt-2 text-xs text-slate-500">JPG, PNG or WebP · Up to 5 MB · Used on POS and online.</p>{(imagePreview || initial?.imageUrl && !removeImage) && <button type="button" className="mt-2 text-xs font-semibold text-red-600" onClick={() => { if (imageInput.current) imageInput.current.value = ''; setImagePreview(''); setRemoveImage(true); }}>Remove image</button>}</div>
+        </div>
+      </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Bundle name" htmlFor="bundle-name">
-          <input id="bundle-name" name="name" required minLength={2} placeholder="Summer Outfit" className={inputClass} />
+          <input id="bundle-name" name="name" defaultValue={initial?.name} required minLength={2} maxLength={160} placeholder="Summer Outfit" className={inputClass} />
         </Field>
         <Field label="Bundle SKU" htmlFor="bundle-sku">
-          <input id="bundle-sku" name="sku" required placeholder="BUNDLE-001" className={inputClass} />
+          <input id="bundle-sku" name="sku" defaultValue={initial?.sku ?? ''} maxLength={100} required placeholder="BUNDLE-001" className={inputClass} />
         </Field>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Category" htmlFor="bundle-category">
-          <select id="bundle-category" name="categoryId" defaultValue="" className={inputClass}>
+          <select id="bundle-category" name="categoryId" defaultValue={initial?.categoryId ?? ''} className={inputClass}>
             <option value="">No category</option>
+            {initial?.categoryId && !categories.some(category => category.id === initial.categoryId) && <option value={initial.categoryId}>Current category</option>}
             {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
           </select>
         </Field>
         <Field label="Bundle selling price" htmlFor="bundle-price">
-          <input id="bundle-price" name="sellingPrice" type="number" min="0" step="0.01" required defaultValue="0" className={inputClass} />
+          <input id="bundle-price" name="sellingPrice" type="number" min="0" step="0.01" required defaultValue={initial?.price ?? 0} className={inputClass} />
         </Field>
       </div>
 
@@ -122,7 +149,7 @@ export default function BundleProductForm({
         </div>
 
         <div className="flex gap-2">
-          <div className="min-w-0 flex-1"><ProductVariantPicker products={products.filter(product => !items.some(item => item.productId === product.id))} value={selectedProductId} onChange={setSelectedProductId} allowOutOfStock stockForProduct={product => productMap.get(product.id)?.stock_quantity ?? 0} /></div>
+          <div className="min-w-0 flex-1"><ProductVariantPicker products={products.filter(product => product.canInclude !== false && !items.some(item => item.productId === product.id))} value={selectedProductId} onChange={setSelectedProductId} allowOutOfStock stockForProduct={product => productMap.get(product.id)?.stock_quantity ?? 0} /></div>
           <button type="button" onClick={addItem} disabled={!selectedProductId} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 font-semibold text-white disabled:opacity-50">
             <Plus size={17} /> Add
           </button>
@@ -175,13 +202,14 @@ export default function BundleProductForm({
       </div>
 
       <Field label="Description" htmlFor="bundle-description">
-        <textarea id="bundle-description" name="description" rows={3} placeholder="Optional bundle description" className={`${inputClass} resize-none`} />
+        <textarea id="bundle-description" name="description" defaultValue={initial?.description ?? ''} maxLength={2000} rows={3} placeholder="Optional bundle description" className={`${inputClass} resize-none`} />
       </Field>
 
       <button type="submit" disabled={pending || items.length < 2} className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
-        {pending ? "Creating bundle..." : "Create Bundle"}
+        {pending ? "Saving bundle..." : initial ? "Save changes" : "Create Bundle"}
       </button>
-      <p className="text-xs text-slate-500">Creates an empty bundle. Pack sets from branch stock before selling. The included variants and options stay fixed.</p>
+      <p className="text-xs text-slate-500">{initial ? 'Images and details can change anytime. To change items, unpack all sets first. Bundles with sales or pending transactions keep their original contents.' : 'Creates an empty bundle. Pack sets from branch stock before selling.'}</p>
+      </fieldset>
     </form>
   );
 }

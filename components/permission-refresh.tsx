@@ -11,6 +11,7 @@ export default function PermissionRefresh({businessId,userId,role}:{businessId:s
   const channel=db.channel(`access:${businessId}:${userId}`)
    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'business_members',filter:`user_id=eq.${userId}`},refresh)
    .on('postgres_changes',{event:'*',schema:'public',table:'business_role_permissions',filter:`business_id=eq.${businessId}`},refresh)
+   .on('postgres_changes',{event:'*',schema:'public',table:'branch_role_permissions',filter:`business_id=eq.${businessId}`},refresh)
    .subscribe();
   window.addEventListener('focus',refresh);
   return()=>{clearTimeout(timer);window.removeEventListener('focus',refresh);void db.removeChannel(channel);};

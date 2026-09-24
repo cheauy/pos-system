@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from 'react';
 import { needsTeamPasswordSetup } from "@/lib/users/setup-state";
 
 import { cookies } from "next/headers";
@@ -474,7 +475,9 @@ export async function getCurrentBusinessForSubscription(
   return toAccess(current, member.role);
 }
 
-export async function getCurrentBusiness(): Promise<CurrentBusiness> {
+// Deduplicate layout/page/permission reads within this request only. Every new
+// request still checks current membership and subscription access.
+export const getCurrentBusiness = cache(async (): Promise<CurrentBusiness> => {
   const business = await getCurrentBusinessForSubscription({ startTrial: false });
 
   if (business.subscriptionLocked) {
@@ -489,4 +492,4 @@ export async function getCurrentBusiness(): Promise<CurrentBusiness> {
     productMode: business.productMode,
     product_mode: business.product_mode,
   };
-}
+});

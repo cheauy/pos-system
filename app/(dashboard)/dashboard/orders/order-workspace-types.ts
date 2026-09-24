@@ -16,7 +16,7 @@ export type OrderRow = {
 };
 export type OrderItem = {
   id: string; name: string; imageUrl: string | null; variant: string | null;
-  quantity: number; unitPrice: number; subtotal: number; options: string[];
+  returnedQuantity: number; quantity: number; unitPrice: number; subtotal: number; options: string[];
 };
 export type OrderDetail = OrderRow & {
   customerEmail: string | null; customerAddress: string | null; note: string | null;
@@ -24,7 +24,7 @@ export type OrderDetail = OrderRow & {
   subtotal: number; discount: number; deliveryFee: number; changeAmount: number;
   remainingBalance: number; couponCode: string | null; couponDiscount: number;
   paymentReference: string | null; tableName: string | null; requestedFor: string | null;
-  items: OrderItem[];
+  items: OrderItem[]; returnsUnavailable: boolean;
   activity: { id: string; description: string; createdAt: string }[];
   activityUnavailable: boolean;
 };
@@ -44,14 +44,14 @@ export type EditOrderInput = {
 };
 
 export const statusLabels: Record<string, string> = {
-  all: "All", new: "New", pending: "Pending", completed: "Completed", cancelled: "Cancelled", refunded: "Refunded",
+  all: "All", new: "New", pending: "Pending", completed: "Completed", cancelled: "Cancelled", refunded: "Returned",
   accepted: "Accepted", preparing: "Preparing", ready: "Ready", rejected: "Rejected",
 };
 export const paymentLabels: Record<string, string> = {
   paid: "Paid", unpaid: "Unpaid", partial: "Part-paid", pending_verification: "Verification", refunded: "Refunded",
 };
 export const sourceLabels: Record<string, string> = { pos: "In-store", online: "Online", qr: "Table QR" };
-export const fulfillmentLabels: Record<string, string> = { pickup: "Pickup", delivery: "Delivery", dine_in: "Dine-in" };
+export const fulfillmentLabels: Record<string, string> = { walk_in: "Walk-in", pickup: "Pickup", delivery: "Delivery" };
 export function methodLabel(value: string) {
   if (value === "cod") return "Pay later / Cash";
   if (value === "khqr") return "KHQR";
@@ -69,7 +69,7 @@ export function dateText(value: string, timezone: string, timeOnly = false) {
 }
 export function nextStatuses(order: OrderRow, canCancel: boolean): { value: string; label: string }[] {
   if (["completed", "cancelled", "refunded"].includes(order.status)) return [];
-  let options: { value: string; label: string }[] = [];
+  const options: { value: string; label: string }[] = [];
   if (["online", "qr"].includes(order.source)) {
     const next: Record<string, { value: string; label: string }> = {
       new: { value: "accepted", label: "Accept order" },
@@ -107,7 +107,7 @@ export function parseFilters(params: Record<string, string | string[] | undefine
     status: choose(params.status, validStatuses, "all"),
     branch: /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(rawBranch) ? rawBranch : "all",
     source: choose(params.source, ["all", "pos", "online", "qr"], "all"),
-    fulfillment: choose(params.fulfillment, ["all", "pickup", "delivery", "dine_in"], "all"),
+    fulfillment: params.fulfillment === 'dine_in' ? 'walk_in' : choose(params.fulfillment, ["all", "pickup", "delivery", "walk_in"], "all"),
     payment: choose(params.payment, ["all", "paid", "unpaid", "partial", "pending_verification", "refunded"], "all"),
     from: from && to && from > to ? to : from,
     to: from && to && from > to ? from : to,

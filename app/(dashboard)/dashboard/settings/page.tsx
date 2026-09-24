@@ -4,6 +4,7 @@ import {
   Building2,
   Banknote,
   Bell,
+  Headphones,
   ChevronRight,
   Languages,
   LockKeyhole,
@@ -117,6 +118,7 @@ export default async function SettingsPage() {
 
   const settingsItems: SettingItem[] = [
     ...baseSettings,
+    { title: "Report a Bug", description: "Tell our support team about a problem.", href: "/dashboard/settings/support", icon: Headphones, details: ["Send a bug report", "Track your reports", "See resolution status"] },
     { title: "Notification Settings", description: "Choose who receives each business alert.", href: "/dashboard/settings/notifications", icon: Bell, visible: business.role === "owner", details: ["Alert recipients", "Role visibility", "Order and stock alerts"] },
     {
       title: "Currency Settings",

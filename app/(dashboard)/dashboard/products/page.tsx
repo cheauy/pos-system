@@ -9,7 +9,7 @@ import {
 import ProductList from "@/components/product-list";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 import AddProductModal from "./add-product-modal";
 
 type Category = {
@@ -51,9 +51,9 @@ function groupKey(product: Product, variantMode: boolean) {
 }
 
 export default async function ProductsPage({ searchParams }: { searchParams: Promise<{ branch?: string }> }) {
-  const { branch: requestedBranch } = await searchParams;
+  await searchParams;
   const { branchId: operatingBranchId } = await getBranchContext();
-  const selectedBranch = requestedBranch === "all" ? "" : requestedBranch ?? operatingBranchId;
+  const selectedBranch = operatingBranchId;
   const supabase = await createClient();
   const business = await requirePermission("products.view");
 
@@ -64,12 +64,12 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
 
   const { data: categoryData, error: categoryError } = await supabase
     .from("categories")
-    .select("id, name")
+    .select("id, name, branch_ids")
     .eq("business_id", business.id)
     .order("name");
 
   const { data: productData, error: productError } = await supabase
-    .from("products")
+    .from("branch_products")
     .select(`
       id,
       name,
@@ -89,26 +89,22 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
       color,
       product_type,
       variant_group_id,
-      categories:categories!products_category_same_business_fk (
-        name
-      )
+      category_id
     `)
     .eq("business_id", business.id)
     .order("created_at", { ascending: false });
 
-  const categories = (categoryData ?? []) as Category[];
-  const { data: branches, error: branchError } = await supabase.from("business_locations").select("id,name").eq("business_id", business.id).eq("is_active", true).order("is_default", { ascending: false }).order("name");
+  const categories = (categoryData ?? []).filter(c => c.branch_ids === null || c.branch_ids.includes(operatingBranchId)) as Category[];
+  const { data: branches, error: branchError } = await supabase.from("business_locations").select("id,name").eq("business_id", business.id).eq("is_active", true).eq("id", operatingBranchId).order("is_default", { ascending: false }).order("name");
   if (branchError) throw new Error("Unable to load product branches.");
   const branch = branches?.find(row => row.id === selectedBranch);
   if (selectedBranch && !branch) throw new Error("Branch not found in this business.");
-  let products = (productData ?? []) as Product[];
+  let products = (productData ?? []).map(p => ({...p,categories:categories.find(c => c.id === p.category_id) ?? null})) as Product[];
   if (branch) {
     const { data: stock, error: stockError } = await supabase.from("product_location_stock").select("product_id,quantity,low_stock_threshold").eq("business_id", business.id).eq("location_id", branch.id);
     if (stockError) throw new Error("Unable to load branch inventory.");
-    const { count: locationCount, error: countError } = await supabase.from("business_locations").select("id", { count: "exact", head: true }).eq("business_id", business.id);
-    if (countError) throw new Error("Unable to verify branch inventory.");
     const byProduct = new Map((stock ?? []).map(row => [row.product_id, row]));
-    products = products.filter(product=>locationCount===1||byProduct.has(product.id)).map(product => ({ ...product, stock_quantity: locationCount === 1 ? product.stock_quantity : Math.min(product.stock_quantity, byProduct.get(product.id)?.quantity ?? 0), low_stock_quantity: byProduct.get(product.id)?.low_stock_threshold ?? product.low_stock_quantity }));
+    products = products.filter(product=>byProduct.has(product.id)).map(product => ({ ...product, stock_quantity: byProduct.get(product.id)?.quantity ?? 0, low_stock_quantity: byProduct.get(product.id)?.low_stock_threshold ?? product.low_stock_quantity }));
   }
   const businessType = currentMode.value;
   const productMode = currentMode.productMode;

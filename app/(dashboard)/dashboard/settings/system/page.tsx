@@ -5,7 +5,7 @@ import AppearanceForm from "./appearance-form";
 
 export default function AppearanceSettingsPage() {
   return (
-    <main className="mx-auto w-full max-w-[1600px] space-y-5 pb-8">
+    <main className="mx-auto w-full max-w-[1200px] space-y-5 rounded-2xl bg-slate-50/60 p-3 pb-8 sm:p-5 dark:bg-slate-950/40">
       <section>
         <Link
           href="/dashboard/settings"
@@ -14,11 +14,11 @@ export default function AppearanceSettingsPage() {
           <ArrowLeft className="h-4 w-4" />
           Back to settings
         </Link>
-        <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-950 dark:text-white">
+        <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-950 dark:text-white">
           Appearance & Language
         </h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Choose English or Khmer and set your preferred theme
+          Customize how your POS looks and feels. These preferences will be saved on this device.
         </p>
       </section>
 

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 export async function updateCustomerFieldSettings(
   formData: FormData,
@@ -16,7 +16,7 @@ export async function updateCustomerFieldSettings(
   const birthdayEnabled = formData.get("birthdayEnabled") === "on";
 
   const { error } = await supabase
-    .from("business_customer_settings")
+    .from("branch_customer_settings")
     .upsert(
       {
         business_id: business.id,
@@ -24,7 +24,7 @@ export async function updateCustomerFieldSettings(
         birthday_enabled: birthdayEnabled,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "business_id" },
+      { onConflict: "business_id,location_id" },
     );
 
   if (error) {

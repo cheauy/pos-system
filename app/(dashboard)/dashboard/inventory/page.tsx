@@ -1,5 +1,6 @@
 import { getBranchContext } from "@/lib/branches/context";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
+import { readAllRows } from "@/lib/supabase/read-all-rows";
 import { requirePermission } from "@/lib/auth/require-permission";
 import InventoryClient from "./inventory-client";
 
@@ -46,15 +47,15 @@ export default async function InventoryPage() {
     { data: locationStockData, error: locationStockError },
     { data: soldLineData, error: soldLineError },
   ] = await Promise.all([
-    supabase
-      .from("products")
+    readAllRows((from,to)=>supabase
+      .from("branch_products")
       .select(
         "id,name,sku,barcode,image_url,variant_image_url,category_id,stock_quantity,low_stock_quantity,cost_price,selling_price,size,color,is_active,updated_at",
       )
       .eq("business_id", business.id)
       .eq("is_active", true)
       .order("name", { ascending: true })
-      .limit(5000),
+      .order("id").range(from,to)),
     supabase
       .from("categories")
       .select("id,name")
@@ -65,20 +66,23 @@ export default async function InventoryPage() {
       .select("id,name,code")
       .eq("business_id", business.id)
       .eq("is_active", true)
+      .eq("id", branchId)
       .order("is_default", { ascending: false })
       .order("name", { ascending: true }),
-    supabase
+    readAllRows((from,to)=>supabase
       .from("product_location_stock")
       .select("location_id,product_id,quantity,low_stock_threshold")
       .eq("business_id", business.id)
-      .limit(10000),
-    supabase
+      .eq("location_id", branchId)
+      .order("product_id").range(from,to)),
+    readAllRows((from,to)=>supabase
       .from("order_items")
-      .select("product_id,quantity,orders!inner(business_id,status,created_at)")
+      .select("product_id,quantity,orders!inner(business_id,status,created_at,location_id)")
       .eq("orders.business_id", business.id)
+      .eq("orders.location_id", branchId)
       .eq("orders.status", "completed")
       .gte("orders.created_at", movementStart.toISOString())
-      .limit(10000),
+      .order("id").range(from,to)),
   ]);
 
   const loadError =

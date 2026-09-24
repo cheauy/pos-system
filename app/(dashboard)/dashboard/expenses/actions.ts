@@ -10,7 +10,7 @@ import { redirect } from "next/navigation";
 import {
   requirePermission,
 } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 
 function getRequiredText(

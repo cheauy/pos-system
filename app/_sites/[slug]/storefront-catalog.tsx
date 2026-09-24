@@ -1,4 +1,6 @@
 "use client";
+
+import ProductPhoto from '@/components/product-photo';
 import { ImageViewer } from "./image-viewer";
 
 import { Eye, Sparkles, Award, ChevronDown, Grid2X2, List, Package, Search, ShoppingCart, SlidersHorizontal } from "lucide-react";
@@ -104,7 +106,7 @@ function CatalogCard({ product, categoryName, settings, onAdd, onQuickView }: {
   );
   const stock = matches.reduce((sum, row) => sum + Math.max(0, row.stockQuantity), 0);
   return <article className="store-product-card">
-    <div className="product-photo"><div className="product-badges">{product.isBestseller && <span className="product-bestseller-badge"><Award size={12} />{t("Bestseller")}</span>}{product.isNewArrival && <span className="product-new-badge">{t("New arrival")}</span>}</div>{image ? <button type="button" className="product-photo-open" aria-label={`${t("View full screen")} ${product.name}`} onClick={() => setImageOpen(true)}><img src={image} alt={product.name} loading="lazy" decoding="async" /></button> : <div className="product-photo-placeholder"><ShoppingCart size={32} /></div>}
+    <div className="product-photo"><div className="product-badges">{product.isBestseller && <span className="product-bestseller-badge"><Award size={12} />{t("Bestseller")}</span>}{product.isNewArrival && <span className="product-new-badge">{t("New arrival")}</span>}</div>{image ? <button type="button" className="product-photo-open" aria-label={`${t("View full screen")} ${product.name}`} onClick={() => setImageOpen(true)}><ProductPhoto src={image} alt={product.name} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px" /></button> : <div className="product-photo-placeholder"><ShoppingCart size={32} /></div>}
 
     </div>
     <div className="product-card-body"><h3 title={product.name}>{product.name}</h3><p className="product-category">{categoryName}</p>

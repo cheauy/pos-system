@@ -9,6 +9,7 @@ import * as profile from "../lib/storefront/profile.ts";
 
 const require = createRequire(import.meta.url);
 function component(path, deps = {}) {
+  deps['@/components/product-photo'] = { default: props => createElement('img', props) };
   const { outputText } = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX } });
   const module = { exports: {} };
   new Function("require", "module", "exports", outputText)(id => id === "./storefront-language" ? { useStorefrontLanguage: () => ({ language: "en", setLanguage() {}, t: value => value }) } : (id === "./order-tracking" ? { default: () => createElement("button", null, "Track My Order") } : id === "./image-viewer" ? { ImageViewer: () => null } : deps[id] ?? require(id)), module, module.exports);

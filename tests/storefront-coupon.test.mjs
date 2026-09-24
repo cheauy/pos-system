@@ -16,7 +16,7 @@ async function preview(subtotal, overrides = {}, storeOverrides = {}) {
     business_storefronts: { is_published: true, accept_online_orders: true, enable_coupons: true, ...storeOverrides },
     business_coupons: { code: "SAVE", discount_type: "percentage", discount_value: 10, minimum_order: 0, max_discount: null, starts_at: null, ends_at: null, usage_limit: null, usage_count: 0, is_active: true, ...overrides },
   };
-  const admin = { from(table) {
+  const admin = { rpc: async (name, args) => { assert.equal(name, "tenh_choose_online_branch"); assert.equal(args.p_business, "shop"); assert.equal(args.p_checkout.p_coupon_code, "SAVE"); assert.equal(args.p_checkout.p_items[0].productId, "product"); return { data: "branch", error: null }; }, from(table) {
     const query = { select() { return query; }, eq() { return query; }, ilike() { return query; }, maybeSingle: async () => ({ data: rows[table], error: null }) };
     return query;
   } };
@@ -27,7 +27,7 @@ async function preview(subtotal, overrides = {}, storeOverrides = {}) {
   const module = { exports: {} };
   new Function("require", "module", "exports", outputText)(id => dependencies[id] ?? require(id), module, module.exports);
   const request = new NextRequest("http://melodyclothing.localhost:3000/api/storefront/melodyclothing/coupon", {
-    method: "POST", body: JSON.stringify({ code: "save", subtotal }),
+    method: "POST", body: JSON.stringify({ code: "save", subtotal, items: [{ productId: "product", quantity: 1 }] }),
   });
   const response = await module.exports.POST(request, { params: Promise.resolve({ slug: "melodyclothing" }) });
   return { status: response.status, body: await response.json() };

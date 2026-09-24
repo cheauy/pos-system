@@ -32,6 +32,7 @@ import {
 
 import { submitStockAdjustment } from "./actions";
 import { initialStockAdjustmentState } from "./state";
+import { useBranchSwitchGuard } from "../../workspace-branch-provider";
 
 export type AdjustmentProduct = {
   id: string;
@@ -72,6 +73,8 @@ type Props = {
   recentAdjustments: RecentAdjustment[];
   branchName: string;
   branchId: string;
+  initialProductId?: string;
+  recoveryKey: string;
 };
 
 type Mode = "increase" | "decrease" | "set";
@@ -484,15 +487,40 @@ function ProductVariantPicker({
 export default function StockAdjustmentClient({
   products,
   recentAdjustments,
-  branchName, branchId,
+  branchName, branchId, initialProductId = "", recoveryKey,
 }: Props) {
   const router = useRouter();
+  const [recovery, setRecovery] = useState<Record<string, string> | null>(null);
+  const [ready, setReady] = useState(false);
+  const saving = useRef(false);
   const [state, formAction, pending] = useActionState(
-    submitStockAdjustment,
+    async (previous: typeof initialStockAdjustmentState, data: FormData) => {
+      if (saving.current) return previous;
+      saving.current = true;
+      let payload: Record<string, string>;
+      try {
+        payload = recovery ?? Object.fromEntries(Array.from(data.entries()).map(([key, value]) => [key, String(value)]));
+        payload.requestId ||= crypto.randomUUID();
+        sessionStorage.setItem(recoveryKey, JSON.stringify(payload));
+        setRecovery(payload);
+      } catch {
+        saving.current = false;
+        return { success: false, message: "Allow browser session storage before saving so interrupted adjustments can be recovered.", submittedAt: Date.now() };
+      }
+      try {
+        const request = new FormData();
+        for (const [key, value] of Object.entries(payload)) request.set(key, value);
+        const result = await submitStockAdjustment(previous, request);
+        if (!result.uncertain) { sessionStorage.removeItem(recoveryKey); setRecovery(null); }
+        return result;
+      } catch {
+        return { success: false, uncertain: true, message: "Save result could not be confirmed. Retry this same adjustment to check it safely.", submittedAt: Date.now() };
+      } finally { saving.current = false; }
+    },
     initialStockAdjustmentState,
   );
 
-  const [productId, setProductId] = useState(products[0]?.id ?? "");
+  const [productId, setProductId] = useState(initialProductId);
   const [mode, setMode] = useState<Mode>("increase");
   const [quantity, setQuantity] = useState("1");
   const [reason, setReason] = useState(reasons[0]);
@@ -502,11 +530,25 @@ export default function StockAdjustmentClient({
   const [dateRange, setDateRange] = useState<DateRange>("30");
 
   const selectedProduct = useMemo(
-    () => products.find((product) => product.id === productId) ?? products[0] ?? null,
+    () => products.find((product) => product.id === productId) ?? null,
     [productId, products],
   );
 
   const quantityNumber = Number(quantity);
+  useBranchSwitchGuard(() => pending || recovery ? "Finish or retry the pending stock adjustment before switching branches." : null);
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(recoveryKey);
+      if (saved) {
+        const draft = JSON.parse(saved) as Record<string, string>;
+        if (draft.locationId === branchId && draft.requestId) {
+          setRecovery(draft); setProductId(draft.productId); setMode(draft.mode as Mode);
+          setQuantity(draft.quantity); setReason(draft.reason); setReference(draft.reference ?? ""); setNotes(draft.notes ?? "");
+        }
+      }
+    } catch { /* Saving remains protected by the storage check in the action. */ }
+    finally { setReady(true); }
+  }, [branchId, recoveryKey]);
   const currentStock = selectedProduct?.stockQuantity ?? 0;
   const safeQuantity = Number.isFinite(quantityNumber) ? quantityNumber : 0;
   const newStock =
@@ -551,7 +593,7 @@ export default function StockAdjustmentClient({
   }, [router, state.submittedAt, state.success]);
 
   const canSubmit = Boolean(
-    selectedProduct &&
+    ready && selectedProduct && quantity.trim().length > 0 &&
       Number.isInteger(quantityNumber) &&
       (mode === "set" ? quantityNumber >= 0 : quantityNumber > 0) &&
       !(mode === "decrease" && quantityNumber > currentStock),
@@ -581,11 +623,11 @@ export default function StockAdjustmentClient({
         <button
           form="stock-adjustment-form"
           type="submit"
-          disabled={!canSubmit || pending}
+          disabled={(!canSubmit && !recovery) || pending || !ready}
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <PackageCheck size={18} />
-          {pending ? "Saving…" : "Save Adjustment"}
+          {pending ? "Saving…" : recovery ? "Retry / Check Adjustment" : "Save Adjustment"}
         </button>
       </div>
 
@@ -608,7 +650,10 @@ export default function StockAdjustmentClient({
             action={formAction}
             className="space-y-5 p-5"
           >
+            {recovery && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">An adjustment is awaiting confirmation. Retry checks the same request without adding stock twice.</p>}
+            <fieldset disabled={pending || Boolean(recovery)} className="min-w-0 space-y-5">
             <input type="hidden" name="locationId" value={branchId} />
+            <input type="hidden" name="expectedQuantity" value={currentStock} />
             <input type="hidden" name="mode" value={mode} />
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -631,7 +676,7 @@ export default function StockAdjustmentClient({
                   <Store size={17} className="text-slate-400" />
                   <div>
                     <p className="font-medium">{branchName}</p>
-                    <p className="text-[10px] text-slate-400">Business-wide stock adjustment</p>
+                    <p className="text-[10px] text-slate-400">Stock adjustment for this branch</p>
                   </div>
                 </div>
               </div>
@@ -797,6 +842,8 @@ export default function StockAdjustmentClient({
                 This adjustment is applied immediately and recorded in the stock adjustment ledger with its reason and reference.
               </p>
             </div>
+            </fieldset>
+            <p className="text-xs text-slate-500">Stock corrections do not refund payments. Use Orders → Return items for customer refunds.</p>
           </form>
         </section>
 

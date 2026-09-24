@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { posBranchSwitchReason } from '@/lib/branches/switch-model';
 import { useWorkspaceBranch, useBranchSwitchGuard } from "../workspace-branch-provider";
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -96,10 +97,10 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   const issue = currencyChanged || productIssue || amountIssue;
   const groups = useMemo(() => productGroups(data, branch, filters, favorites), [data, branch, filters, favorites]);
   const allGroupCount = useMemo(() => productGroups(data, branch, EMPTY_FILTERS, []).length, [data, branch]);
-  const lowStockCount = data.products.filter(p => stockFor(p, branch, data) > 0 && stockFor(p, branch, data) <= thresholdFor(p, branch, data)).length;
-  const brands = Array.from(new Set(data.products.map(p => p.brand || 'unbranded'))).sort();
-  const colors = Array.from(new Set(data.products.map(p => p.color).filter((v): v is string => Boolean(v)))).sort();
-  const sizes = Array.from(new Set(data.products.map(p => p.size).filter((v): v is string => Boolean(v)))).sort((a,b) => a.localeCompare(b, undefined, { numeric: true }));
+  const lowStockCount = useMemo(() => data.products.filter(p => stockFor(p, branch, data) > 0 && stockFor(p, branch, data) <= thresholdFor(p, branch, data)).length, [data, branch]);
+  const brands = useMemo(() => Array.from(new Set(data.products.map(p => p.brand || 'unbranded'))).sort(), [data.products]);
+  const colors = useMemo(() => Array.from(new Set(data.products.map(p => p.color).filter((v): v is string => Boolean(v)))).sort(), [data.products]);
+  const sizes = useMemo(() => Array.from(new Set(data.products.map(p => p.size).filter((v): v is string => Boolean(v)))).sort((a,b) => a.localeCompare(b, undefined, { numeric: true })), [data.products]);
   const activeFilters = Object.entries(filters).filter(([k,v]) => k !== 'sort' && k !== 'search' && (k === 'favoritesOnly' ? v : v !== 'all'));
   const branchName = data.branches.find(b => b.id === branch)?.name || 'All branches';
   const timezone = data.branches.find(b => b.id === branch)?.timezone || 'Asia/Phnom_Penh';
@@ -221,7 +222,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
       const next = existing ? lines.map(l => l.key === line.key ? { ...l, quantity: l.quantity + 1 } : l) : [...lines, line];
       const error = cartIssue(next, branch, data);
       if (error) throw new Error(error);
-      if(!lines.length)setCartCurrency(data.settings.currency);setLines(next); setNotice({ kind: 'success', text: `${product.name} added to the current order.` });
+      if(!lines.length)setCartCurrency(data.settings.currency);setLines(next); toast.success(`${product.name} added to the current order.`, { duration: 2000, position: 'top-right', id: 'pos-item-added' });
       setDialog(null); return true;
     } catch (e) { setModalError(messageOf(e)); setNotice({ kind: 'error', text: messageOf(e) }); return false; }
   }

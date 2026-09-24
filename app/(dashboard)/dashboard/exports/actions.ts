@@ -124,7 +124,7 @@ async function fetchExportRows(entity: ExportEntity, businessId: string) {
 
   if (entity === "products") {
     const { data, error } = await supabase
-      .from("products")
+      .from("branch_products")
       .select("id,name,sku,barcode,description,size,color,cost_price,selling_price,stock_quantity,low_stock_quantity,is_active,created_at,updated_at")
       .eq("business_id", businessId)
       .order("created_at", { ascending: false })
@@ -136,7 +136,7 @@ async function fetchExportRows(entity: ExportEntity, businessId: string) {
   if (entity === "inventory") {
     const [{ data: stock, error: stockError }, { data: products, error: productError }, { data: locations, error: locationError }] = await Promise.all([
       supabase.from("product_location_stock").select("location_id,product_id,quantity,low_stock_threshold,updated_at").eq("business_id", businessId).limit(MAX_EXPORT_ROWS),
-      supabase.from("products").select("id,sku,name,size,color").eq("business_id", businessId).limit(MAX_EXPORT_ROWS),
+      supabase.from("branch_products").select("id,sku,name,size,color").eq("business_id", businessId).limit(MAX_EXPORT_ROWS),
       supabase.from("business_locations").select("id,code,name,is_active").eq("business_id", businessId).limit(500),
     ]);
     if (stockError) throw new Error(stockError.message);

@@ -67,8 +67,8 @@ export default async function CorrectExtensionPage({
   }
 
 return (
-  <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
-    <div className="mx-auto max-w-3xl">
+  <main className="pb-8">
+    <div className="w-full">
       <Link
         href={`/super-admin/businesses/${id}`}
         className="mb-5 inline-flex items-center gap-2 text-sm font-semibold text-blue-600 transition hover:text-blue-700"

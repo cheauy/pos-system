@@ -5,6 +5,8 @@ import { requirePermission } from '@/lib/auth/require-permission';
 import { businessHasPermission, getPermissionMatrix } from '@/lib/auth/effective-permissions';
 import { permissions, editablePermissionRoles, normalizePermissionSelection, rolePermissions, type EditablePermissionRole, type Permission } from '@/lib/auth/permissions';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createBranchClient } from '@/lib/supabase/branch-server';
+import { getBranchContext } from '@/lib/branches/context';
 import { assertSubscriptionCapacityChangeAllowed } from '@/lib/subscriptions/access-safety';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createIssue, editIssue, isId, NEW_USER_ROLES } from '@/lib/users/team-model';
@@ -27,7 +29,7 @@ async function actor(expectedBusiness:string){
 }
 
 async function actorBranchScope(businessId:string,userId:string,role:string){
- if(role==='owner')return null;
+ if(role==='owner')return (await getBranchContext()).branchId;
  const {data,error}=await supabaseAdmin.from('business_members')
   .select('default_location_id')
   .eq('business_id',businessId)
@@ -89,7 +91,7 @@ export async function loadUsersWorkspace(businessId:string):Promise<TeamActionRe
   ]);
   const actorBranch=await actorBranchScope(businessId,user.id,business.role);
   const workspace=data as TeamWorkspace;
-  const visibleBranches=actorBranch?workspace.branches.filter(branch=>branch.id===actorBranch):workspace.branches;
+  const visibleBranches=business.role==='owner'?[...workspace.branches].sort((a,b)=>Number(b.id===actorBranch)-Number(a.id===actorBranch)):workspace.branches.filter(branch=>branch.id===actorBranch);
   const visibleRows=actorBranch?workspace.rows.filter(row=>row.role==='owner'||row.userId===user.id||row.branchId===actorBranch):workspace.rows;
   const assignableRoles = business.role==='owner' && canCreateFull
    ? [...NEW_USER_ROLES]
@@ -215,7 +217,7 @@ export async function updateTeamUser(
    if(!(await businessHasPermission(business,'users.update_role')))return {success:false,message:'You do not have permission to edit user roles or branch assignments.'};
    const allowedRoles:BusinessRole[]=business.role==='owner'?[...NEW_USER_ROLES]:['staff','cashier'];
    const issue=editIssue(payload as TeamEditInput,business.role,allowedRoles);if(issue)return {success:false,message:issue};
-   if(actorBranch && (payload as TeamEditInput).branchId!==actorBranch)return {success:false,message:'You can assign users to your branch only.'};
+   if(business.role!=='owner' && actorBranch && (payload as TeamEditInput).branchId!==actorBranch)return {success:false,message:'You can assign users to your branch only.'};
   } else if(!(await businessHasPermission(business,'users.delete'))){
    return {success:false,message:'You do not have permission to enable, disable, or remove users.'};
   }
@@ -253,7 +255,9 @@ export async function saveRolePermissions(
    updated_by:user.id,
    updated_at:now,
   }));
-  const {error}=await supabaseAdmin.from('business_role_permissions').upsert(rows,{onConflict:'business_id,role,permission'});
+  const branchId=(await getBranchContext()).branchId;
+  const db=await createBranchClient();
+  const {error}=await db.from('branch_role_permissions').upsert(rows.map(row=>({...row,location_id:branchId})),{onConflict:'business_id,location_id,role,permission'});
   if(error)throw error;
   const {error:auditError}=await supabaseAdmin.from('audit_logs').insert({
    business_id:business.id,user_id:user.id,action:'update',entity_type:'business',entity_id:business.id,
@@ -273,7 +277,9 @@ export async function resetRolePermissions(
   const {business,user}=await actor(businessId);
   if(business.role!=='owner')return {success:false,message:'Only the business owner can reset role permissions.'};
   if(!validRole(role))return {success:false,message:'Choose Manager, Staff, or Cashier.'};
-  const {error}=await supabaseAdmin.from('business_role_permissions').delete().eq('business_id',business.id).eq('role',role);
+  const branchId=(await getBranchContext()).branchId;
+  const db=await createBranchClient();
+  const {error}=await db.from('branch_role_permissions').delete().eq('business_id',business.id).eq('location_id',branchId).eq('role',role);
   if(error)throw error;
   await supabaseAdmin.from('audit_logs').insert({
    business_id:business.id,user_id:user.id,action:'update',entity_type:'business',entity_id:business.id,

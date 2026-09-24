@@ -22,6 +22,7 @@ function workspace(overrides = {}) {
   const tables = [], rpcCalls = [];
   const catalog = {
     businessId:B, inventoryVersion:2, checkoutVersion:3, defaultBranchId:C,
+    settings:{currency:'USD'},
     shift:{id:'wrong-cashier-shift',location_id:C},
     products:[{id:'shirt',category_id:'shared'},{id:'hidden-category',category_id:'other'},{id:'unassigned',category_id:null}],
     stock:[{product_id:'shirt',location_id:A},{product_id:'hidden-category',location_id:A}],
@@ -32,6 +33,7 @@ function workspace(overrides = {}) {
   const db = {
     from(table) {
       const results = {
+        business_storefronts:{data:{currency_format:null},error:null},
         customers:{data:[],error:null},
         categories:{data:[{id:'shared',branch_ids:null},{id:'other',branch_ids:[C]}],error:null},
         cash_register_shifts:{data:overrides.shifts ?? [{id:'main-drawer',location_id:A}],error:overrides.shiftError ?? null},
@@ -41,7 +43,7 @@ function workspace(overrides = {}) {
     },
     async rpc(name,args) {
       rpcCalls.push({name,args});
-      if (name==='tenh_pos_catalog') return {data:structuredClone(catalog),error:null};
+      if (name==='tenh_pos_catalog_scoped') return {data:structuredClone(catalog),error:null};
       if (name==='tenh_pos_receipt_update_ready') return {data:true,error:null};
       if (name==='tenh_pos_checkout_registered') {
         if (overrides.transport) throw new Error('connection lost');
@@ -59,6 +61,8 @@ function workspace(overrides = {}) {
     '@/lib/subscriptions/branch-limits':{assertBranchOperation:async()=>{}},
     '@/lib/operations/rpc-outcome':outcome,
     '@/lib/auth/require-permission':{requirePermission:async()=>business},
+    '@/lib/auth/effective-permissions':{businessHasPermission:async()=>true},
+    '@/lib/currency-format':loadTs('lib/currency-format.ts'),
     '@/lib/supabase/branch-server':{createClient:async()=>{dbCreated++;return db;}},
     '@/lib/receipts/load-receipt-context':{loadReceiptContext:async()=>({source:'unchanged'})},
     'next/cache':{revalidatePath(){if(overrides.cacheError)throw Error('cache offline');}},
@@ -126,7 +130,7 @@ function customers(options={}) {
     '@/lib/branches/context':{getBranchContext:async()=>({business,branchId:A}),assertOperatingBranch:async id=>{if(id!==A)throw Error('branch');}},
     '@/lib/operations/rpc-outcome':outcome,
     '@/lib/auth/require-permission':{requirePermission:async()=>business},
-    '@/lib/auth/permissions':{hasPermission:()=>options.permission!==false},
+    '@/lib/auth/effective-permissions':{businessHasPermission:async()=>options.permission!==false},
     '@/lib/supabase/branch-server':{createClient:async()=>{dbCount++;return db;}},
     'next/cache':{revalidatePath(){}},
     './pos-customer-helpers':helpers,

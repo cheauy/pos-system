@@ -75,6 +75,15 @@ async function getAuthenticatedContext() {
   return { business, supabase, user };
 }
 
+async function displayBranches(formData: FormData, businessId: string, supabase: Awaited<ReturnType<typeof createClient>>) {
+  if (formData.get("branchMode") !== "selected") return null;
+  const ids = [...new Set(formData.getAll("branchIds").map(String))];
+  if (!ids.length || ids.length > 100 || ids.some(id => !/^[0-9a-f-]{36}$/i.test(id))) throw new Error("Choose at least one valid branch.");
+  const { data, error } = await supabase.from("business_locations").select("id").eq("business_id", businessId).eq("is_active", true).eq("plan_disable_pending", false).in("id", ids);
+  if (error || data?.length !== ids.length) throw new Error("Choose active branches in this business.");
+  return ids;
+}
+
 async function categoryNameExists(
   businessId: string,
   name: string,
@@ -196,6 +205,7 @@ export async function createCategory(
   try {
     // First normalize any legacy duplicate indexes. Then insert the new category
     // into its requested position and push every older category below it by +1.
+    const branchIds = await displayBranches(formData, business.id, supabase);
     const existingRows = await loadCategoryIndexRows(supabase, business.id);
     const insertAt = clampPosition(requestedIndex, existingRows.length + 1);
 
@@ -223,6 +233,7 @@ export async function createCategory(
       description,
       is_online: isOnline,
       online_sort_order: insertAt,
+      branch_ids: branchIds,
     });
 
     if (error) throw new Error(error.message);
@@ -260,6 +271,7 @@ export async function updateCategory(
   }
 
   try {
+    const branchIds = await displayBranches(formData, business.id, supabase);
     const rows = await loadCategoryIndexRows(supabase, business.id);
     const target = rows.find((row) => row.id === categoryId);
     if (!target) return { ok: false, message: "Category was not found." };
@@ -281,6 +293,7 @@ export async function updateCategory(
         description,
         is_online: isOnline,
         online_sort_order: insertAt,
+        branch_ids: branchIds,
       })
       .eq("id", categoryId)
       .eq("business_id", business.id);
@@ -501,7 +514,7 @@ export async function toggleCategoryOnline(formData: FormData) {
 export async function applyCategoryBranches(categoryId: string, branchIds: string[] | null): Promise<CategoryActionResult> {
   try {
     const {business,supabase}=await getAuthenticatedContext();
-    if(branchIds!==null && (!Array.isArray(branchIds) || branchIds.length>100 || branchIds.some(id=>typeof id!=="string"))) throw new Error("Invalid branch selection.");
+    if(branchIds!==null && (!Array.isArray(branchIds) || branchIds.length===0 || branchIds.length>100 || branchIds.some(id=>typeof id!=="string"))) throw new Error("Invalid branch selection.");
     if(branchIds?.length){
       const branches=await supabase.from("business_locations").select("id").eq("business_id",business.id).eq("is_active",true).in("id",branchIds);
       if(branches.error || branches.data.length!==new Set(branchIds).size) throw new Error("Choose active branches in this business.");

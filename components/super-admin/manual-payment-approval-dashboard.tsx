@@ -343,8 +343,8 @@ export default function ManualPaymentApprovalDashboard({
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f7fb] px-3 py-4 sm:px-5 lg:px-6">
-      <div className="mx-auto max-w-[1680px]">
+    <section className="w-full">
+      <div className="w-full">
         <div className="mb-3 flex items-center justify-between gap-3">
           <Link
             href="/super-admin/businesses"
@@ -361,9 +361,9 @@ export default function ManualPaymentApprovalDashboard({
               <FileText size={21} />
             </div>
             <div>
-              <h1 className="text-2xl font-extrabold tracking-[-0.025em] text-slate-950 sm:text-[28px]">
-                Manual Payment Approval
-              </h1>
+              <h2 className="text-xl font-bold text-slate-950">
+                Business changes
+              </h2>
               <p className="mt-1 text-sm text-slate-500">
                 Review customer-submitted payments for Store URL and Business Mode changes.
               </p>
@@ -687,7 +687,7 @@ export default function ManualPaymentApprovalDashboard({
         </div>
       ) : null}
 
-    </main>
+    </section>
   );
 }
 

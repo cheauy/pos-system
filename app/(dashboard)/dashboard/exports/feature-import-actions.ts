@@ -1,7 +1,7 @@
 'use server';
 
 import { requirePermission } from '@/lib/auth/require-permission';
-import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/branch-server';
 import { allImportTables, csvKindForTable, productImportNotice } from '@/lib/exports/import-catalog';
 import { backupCsvRows, emptyBackupCsvTemplate, parseCsv, recordsJsonToCsv, recordsTemplate } from '@/lib/exports/import-files';
 import { parseImportBackup } from '@/lib/exports/import-backup';

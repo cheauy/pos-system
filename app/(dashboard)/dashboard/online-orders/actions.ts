@@ -6,6 +6,7 @@ import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { requirePermission } from "@/lib/auth/require-permission";
 
 import { createClient } from "@/lib/supabase/branch-server";
+import { getIncomingOrders } from "@/lib/branches/incoming-orders";
 
 const allowedStatuses = [
   "accepted",
@@ -40,36 +41,20 @@ export async function updateOnlineOrderStatus(
       };
     }
 
-    const { data: order, error: loadError } =
-      await scopedDb
-        .from("orders")
-        .select(`
-          id,
-          order_number,
-          status,
-          online_status,
-          order_source
-        `)
-        .eq("id", orderId)
-        .eq("business_id", business.id)
-        .in("order_source", ["online", "qr"])
-        .maybeSingle();
-
-    if (loadError) {
-      throw new Error(loadError.message);
-    }
+    const order = (await getIncomingOrders(business.id)).orders.find(item => item.id === orderId);
 
     if (!order) {
       throw new Error("Online order not found.");
     }
 
     const { data: updated, error: updateError } = await scopedDb.rpc(
-      "tenh_update_online_order_status",
+      "tenh_incoming_order_action",
       {
         p_business: business.id,
         p_order: orderId,
         p_status: nextStatus,
-        p_expected_status: order.online_status ?? "new",
+        p_expected: order.online_status ?? "new",
+        p_action: "status",
       },
     );
     if (updateError) {
@@ -140,41 +125,15 @@ export async function updateOnlinePaymentStatus(
       };
     }
 
-    const { data: order, error: loadError } = await scopedDb
-      .from("orders")
-      .select(`
-        id,
-        order_number,
-        order_source,
-        payment_method,
-        payment_status,
-        total
-      `)
-      .eq("id", orderId)
-      .eq("business_id", business.id)
-      .in("order_source", ["online", "qr"])
-      .maybeSingle();
-
-    if (loadError) throw new Error(loadError.message);
+    const order = (await getIncomingOrders(business.id)).orders.find(item => item.id === orderId);
     if (!order) throw new Error("Online order not found.");
     if (order.payment_method !== "khqr") {
       throw new Error("Payment verification is only used for KHQR orders.");
     }
 
-    const paid = nextStatus === "paid";
-    const { data: updated, error: updateError } = await scopedDb
-      .from("orders")
-      .update({
-        payment_status: nextStatus,
-        amount_paid: paid ? Number(order.total) : 0,
-        remaining_balance: paid ? 0 : Number(order.total),
-        change_amount: 0,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", orderId)
-      .eq("business_id", business.id)
-      .select("id")
-      .maybeSingle();
+    const { data: updated, error: updateError } = await scopedDb.rpc("tenh_incoming_order_action", {
+      p_business: business.id, p_order: orderId, p_action: "payment", p_status: nextStatus, p_expected: order.payment_status,
+    });
 
     if (updateError) throw new Error(updateError.message);
     if (!updated) throw new Error("Unable to update payment status.");
@@ -189,12 +148,14 @@ export async function updateOnlinePaymentStatus(
         new_payment_status: nextStatus,
         payment_method: order.payment_method,
       },
-    });
+    }).catch(() => console.error("Payment committed; audit refresh failed."));
 
+    try {
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/orders");
     revalidatePath("/dashboard/online-orders");
     revalidatePath(`/dashboard/orders/${orderId}`);
+    } catch { /* Payment committed; refresh errors must not imply failure. */ }
 
     return {
       success: true,
@@ -209,4 +170,22 @@ export async function updateOnlinePaymentStatus(
           : "Unable to update payment status.",
     };
   }
+}
+
+export async function setIncomingOrderScope(receiveAll: boolean) {
+  try {
+    const business = await requirePermission("orders.view");
+    if (typeof receiveAll !== "boolean") throw new Error("Choose an order scope.");
+    const db = await createClient();
+    const { error } = await db.rpc("tenh_set_online_order_scope", { p_business: business.id, p_all: receiveAll });
+    if (error) throw new Error(error.message);
+    revalidatePath("/dashboard", "layout");
+    return { success: true, message: receiveAll ? "Receiving online orders from all branches." : "Receiving orders for this branch." };
+  } catch (error) { return { success: false, message: error instanceof Error ? error.message : "Unable to save order scope." }; }
+}
+
+export async function incomingOrderSummary() {
+  const business = await requirePermission("orders.view");
+  const data = await getIncomingOrders(business.id);
+  return data.orders.filter(order => (order.online_status ?? "new") === "new").map(order => ({ id: order.id, createdAt: order.created_at }));
 }

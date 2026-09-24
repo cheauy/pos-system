@@ -67,6 +67,7 @@ export async function quoteCustomSubscriptionOrder(formData: FormData) {
   }
 
   revalidatePath("/super-admin/subscription-payments");
+  revalidatePath("/super-admin/manual-payments");
   revalidatePath("/dashboard/settings/subscription");
 }
 
@@ -205,6 +206,7 @@ export async function reviewSubscriptionPayment(formData: FormData) {
   }
 
   revalidatePath("/super-admin/subscription-payments");
+  revalidatePath("/super-admin/manual-payments");
   revalidatePath("/super-admin/businesses");
   revalidatePath("/dashboard/settings/subscription");
   revalidatePath(`/dashboard/settings/subscription/payment/${order.id}`);

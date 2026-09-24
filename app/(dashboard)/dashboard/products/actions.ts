@@ -1,11 +1,15 @@
 "use server";
 
+import { compressPhoto } from "@/lib/images/compress-photo";
+import { PUBLIC_PHOTO_CACHE_SECONDS } from "@/lib/public-photo-cache";
+
 import { revalidatePath } from "next/cache";
 import { assertBranchOperation } from "@/lib/subscriptions/branch-limits";
 import { redirect } from "next/navigation";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
+import { getBranchContext } from "@/lib/branches/context";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   requirePermission,
@@ -64,7 +68,7 @@ async function assertCategoryBelongsToBusiness(
 const PRODUCT_IMAGE_BUCKET = "product-images";
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
-function getImageFile(formData: FormData, key = "image"): File | null {
+async function getImageFile(formData: FormData, key = "image"): Promise<File | null> {
   const value = formData.get(key);
 
   if (!(value instanceof File) || value.size === 0) {
@@ -89,7 +93,7 @@ function getImageFile(formData: FormData, key = "image"): File | null {
     );
   }
 
-  return value;
+  return compressPhoto(value);
 }
 
 function getImageExtension(file: File) {
@@ -105,22 +109,12 @@ function getImageExtension(file: File) {
   }
 }
 
-function getStoragePathFromUrl(imageUrl: string) {
-  const marker = `/object/public/${PRODUCT_IMAGE_BUCKET}/`;
-  const path = imageUrl.split(marker)[1];
-
-  return path ? decodeURIComponent(path) : null;
-}
 
 export type CreateProductState = {
   success: boolean;
   message: string;
 };
 
-const emptyState: CreateProductState = {
-  success: false,
-  message: "",
-};
 
 export async function createProduct(
   previousState: CreateProductState,
@@ -268,7 +262,7 @@ export async function createProduct(
     };
   }
 
-  const imageFile = getImageFile(formData);
+  const imageFile = await getImageFile(formData);
 
   const supabase = await createClient();
 
@@ -284,7 +278,7 @@ export async function createProduct(
     data: existingProduct,
     error: skuCheckError,
   } = await supabase
-    .from("products")
+    .from("branch_products")
     .select("id")
     .eq("business_id", business.id)
     .eq("sku", sku)
@@ -306,7 +300,7 @@ export async function createProduct(
 
   if (isGeneralShop && barcode) {
     const { data: existingBarcode, error: barcodeCheckError } = await supabase
-      .from("products")
+      .from("branch_products")
       .select("id")
       .eq("business_id", business.id)
       .eq("barcode", barcode)
@@ -343,7 +337,7 @@ export async function createProduct(
           imageFile,
           {
             contentType: imageFile.type,
-            cacheControl: "3600",
+            cacheControl: PUBLIC_PHOTO_CACHE_SECONDS,
             upsert: false,
           },
         );
@@ -467,7 +461,7 @@ export async function toggleProductStatus(
 
   const { data: product, error: productError } =
     await supabase
-      .from("products")
+      .from("branch_products")
       .select("id, name, is_active")
       .eq("id", productId)
       .eq("business_id", business.id)
@@ -480,7 +474,7 @@ export async function toggleProductStatus(
   const newStatus = !product.is_active;
 
   const { error } = await supabase
-    .from("products")
+    .from("branch_products")
     .update({
       is_active: newStatus,
       updated_at: new Date().toISOString(),
@@ -599,7 +593,7 @@ export async function updateProduct(
     );
   }
 
-  const imageFile = getImageFile(formData);
+  const imageFile = await getImageFile(formData);
 
   const supabase = await createClient();
 
@@ -615,7 +609,7 @@ export async function updateProduct(
     data: existingProduct,
     error: existingProductError,
   } = await supabase
-    .from("products")
+    .from("branch_products")
     .select("id, name, image_url")
     .eq("id", productId)
     .eq("business_id", business.id)
@@ -642,7 +636,7 @@ export async function updateProduct(
       data: duplicateSkuProduct,
       error: duplicateSkuError,
     } = await supabase
-      .from("products")
+      .from("branch_products")
       .select("id")
       .eq("business_id", business.id)
       .eq("sku", sku)
@@ -683,7 +677,7 @@ export async function updateProduct(
           imageFile,
           {
             contentType: imageFile.type,
-            cacheControl: "3600",
+            cacheControl: PUBLIC_PHOTO_CACHE_SECONDS,
             upsert: false,
           },
         );
@@ -707,7 +701,7 @@ export async function updateProduct(
     data: updatedProduct,
     error,
   } = await supabase
-    .from("products")
+    .from("branch_products")
     .update({
       category_id: categoryId,
       name,
@@ -746,31 +740,6 @@ export async function updateProduct(
     throw new Error(error.message);
   }
 
-  if (
-    imageFile &&
-    existingProduct.image_url &&
-    existingProduct.image_url !==
-      newImageUrl
-  ) {
-    const oldImagePath =
-      getStoragePathFromUrl(
-        existingProduct.image_url,
-      );
-
-    if (oldImagePath) {
-      const { error: removeError } =
-        await supabase.storage
-          .from(PRODUCT_IMAGE_BUCKET)
-          .remove([oldImagePath]);
-
-      if (removeError) {
-        console.error(
-          "Unable to remove old product image:",
-          removeError.message,
-        );
-      }
-    }
-  }
 
   await createAuditLog({
     action: "update",
@@ -801,153 +770,10 @@ export async function updateProduct(
     `/dashboard/products/${productId}/edit?success=updated`,
   );
 }
-export async function adjustStock(
-  formData: FormData,
-): Promise<void> {
-  const business = await requirePermission(
-    "products.stock_adjust",
-  );
-
-  const productIdValue =
-    formData.get("productId");
-
-  const adjustmentTypeValue =
-    formData.get("adjustmentType");
-
-  const quantityValue =
-    formData.get("quantity");
-
-  const noteValue =
-    formData.get("note");
-
-  const productId =
-    typeof productIdValue === "string"
-      ? productIdValue.trim()
-      : "";
-
-  const adjustmentType =
-    typeof adjustmentTypeValue === "string"
-      ? adjustmentTypeValue
-      : "";
-
-  const quantity =
-    typeof quantityValue === "string"
-      ? Number(quantityValue)
-      : Number.NaN;
-
-  const note =
-    typeof noteValue === "string"
-      ? noteValue.trim()
-      : "";
-
-  if (!productId) {
-    throw new Error(
-      "Invalid product ID.",
-    );
-  }
-
-  if (
-    adjustmentType !== "increase" &&
-    adjustmentType !== "decrease"
-  ) {
-    throw new Error(
-      "Invalid adjustment type.",
-    );
-  }
-
-  if (
-    !Number.isInteger(quantity) ||
-    quantity <= 0
-  ) {
-    throw new Error(
-      "Quantity must be a positive whole number.",
-    );
-  }
-
-  const signedQuantity =
-    adjustmentType === "increase"
-      ? quantity
-      : -quantity;
-
-  const supabase = await createClient();
-
-  /*
-   * Verify that the product belongs to the
-   * current business before calling the RPC.
-   */
-  const {
-    data: existingProduct,
-    error: productError,
-  } = await supabase
-    .from("products")
-    .select("id, name, stock_quantity")
-    .eq("id", productId)
-    .eq("business_id", business.id)
-    .maybeSingle();
-
-  if (productError) {
-    throw new Error(
-      `Unable to load product: ${productError.message}`,
-    );
-  }
-
-  if (!existingProduct) {
-    throw new Error(
-      "Product was not found in this business.",
-    );
-  }
-
-  const {
-    data: newStock,
-    error: adjustmentError,
-  } = await supabase.rpc(
-    "adjust_product_stock",
-    {
-      p_business_id: business.id,
-      p_product_id: productId,
-      p_quantity: signedQuantity,
-      p_note: note || null,
-    },
-  );
-
-  if (adjustmentError) {
-    throw new Error(
-      adjustmentError.message,
-    );
-  }
-
-  await createAuditLog({
-    action: "stock_adjustment",
-    entityType: "product",
-    entityId: productId,
-    description:
-      adjustmentType === "increase"
-        ? `Increased ${existingProduct.name} stock by ${quantity}`
-        : `Decreased ${existingProduct.name} stock by ${quantity}`,
-    metadata: {
-      business_id: business.id,
-      adjustment_type: adjustmentType,
-      quantity,
-      signed_quantity: signedQuantity,
-      previous_stock:
-        existingProduct.stock_quantity,
-      new_stock: newStock,
-      note: note || null,
-    },
-  });
-
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/products");
-  revalidatePath(
-    `/dashboard/products/${productId}/edit`,
-  );
-  revalidatePath("/dashboard/inventory");
-  revalidatePath("/dashboard/pos");
-  revalidatePath("/dashboard/audit-logs");
-
-  redirect(
-  `/dashboard/products/${productId}/edit?success=stock-updated`,
-);
+export async function adjustStock(formData: FormData) {
+  await requirePermission("products.stock_adjust");
+  const id = getOptionalText(formData, "productId");
+  redirect(`/dashboard/inventory/adjustments${id ? `?product=${encodeURIComponent(id)}` : ""}`);
 }
 
 export async function toggleProductOnline(
@@ -972,7 +798,7 @@ export async function toggleProductOnline(
     data: product,
     error: productError,
   } = await supabase
-    .from("products")
+    .from("branch_products")
     .select("id, name, is_online")
     .eq("id", productId)
     .eq("business_id", business.id)
@@ -989,7 +815,7 @@ export async function toggleProductOnline(
     !Boolean(product.is_online);
 
   const { error } = await supabase
-    .from("products")
+    .from("branch_products")
     .update({
       is_online: newOnlineStatus,
       updated_at: new Date().toISOString(),
@@ -1036,7 +862,7 @@ export async function setProductGroupOnline(
 
   const supabase = await createClient();
   const { data: product, error: productError } = await supabase
-    .from("products")
+    .from("branch_products")
     .select("id, name, product_type, variant_group_id")
     .eq("id", productId)
     .eq("business_id", business.id)
@@ -1052,7 +878,7 @@ export async function setProductGroupOnline(
   let ids: string[] = [product.id];
   if (product.product_type === "variant" && product.variant_group_id) {
     const { data: groupRows, error: groupError } = await supabase
-      .from("products")
+      .from("branch_products")
       .select("id")
       .eq("business_id", business.id)
       .eq("variant_group_id", product.variant_group_id);
@@ -1068,7 +894,7 @@ export async function setProductGroupOnline(
   }
 
   const { error } = await supabase
-    .from("products")
+    .from("branch_products")
     .update({
       is_online: visible,
       updated_at: new Date().toISOString(),
@@ -1115,7 +941,7 @@ export async function setProductGroupActive(
 
   const supabase = await createClient();
   const { data: product, error: productError } = await supabase
-    .from("products")
+    .from("branch_products")
     .select("id, name, product_type, variant_group_id")
     .eq("id", productId)
     .eq("business_id", business.id)
@@ -1125,7 +951,7 @@ export async function setProductGroupActive(
     return { success: false, message: productError?.message ?? "Product was not found." };
   }
 
-  let query = supabase.from("products").select("id").eq("business_id", business.id);
+  let query = supabase.from("branch_products").select("id").eq("business_id", business.id);
   query = product.product_type === "variant" && product.variant_group_id
     ? query.eq("variant_group_id", product.variant_group_id)
     : query.eq("id", product.id);
@@ -1141,7 +967,7 @@ export async function setProductGroupActive(
   if (!active) payload.is_online = false;
 
   const { error } = await supabase
-    .from("products")
+    .from("branch_products")
     .update(payload)
     .eq("business_id", business.id)
     .in("id", ids);
@@ -1182,7 +1008,7 @@ export async function setProductVariantsActive(
 
   const supabase = await createClient();
   const { data: representative, error: representativeError } = await supabase
-    .from("products")
+    .from("branch_products")
     .select("id, name, product_type, variant_group_id")
     .eq("id", productId)
     .eq("business_id", business.id)
@@ -1191,7 +1017,7 @@ export async function setProductVariantsActive(
     return { success: false, message: representativeError?.message ?? "Product was not found." };
   }
 
-  let groupQuery = supabase.from("products").select("id").eq("business_id", business.id);
+  let groupQuery = supabase.from("branch_products").select("id").eq("business_id", business.id);
   groupQuery = representative.product_type === "variant" && representative.variant_group_id
     ? groupQuery.eq("variant_group_id", representative.variant_group_id)
     : groupQuery.eq("id", representative.id);
@@ -1208,7 +1034,7 @@ export async function setProductVariantsActive(
   };
   if (!active) payload.is_online = false;
   const { error } = await supabase
-    .from("products")
+    .from("branch_products")
     .update(payload)
     .eq("business_id", business.id)
     .in("id", uniqueIds);
@@ -1246,7 +1072,7 @@ export async function deleteProductVariants(
 
   const supabase = await createClient();
   const { data: representative, error: representativeError } = await supabase
-    .from("products")
+    .from("branch_products")
     .select("id, name, product_type, variant_group_id")
     .eq("id", productId)
     .eq("business_id", business.id)
@@ -1256,7 +1082,7 @@ export async function deleteProductVariants(
   }
 
   let groupQuery = supabase
-    .from("products")
+    .from("branch_products")
     .select("id, image_url, variant_image_url")
     .eq("business_id", business.id);
   groupQuery = representative.product_type === "variant" && representative.variant_group_id
@@ -1273,16 +1099,8 @@ export async function deleteProductVariants(
     return { success: false, message: "Keep at least one variant. Use Delete Product to remove the whole style." };
   }
 
-  const imageUrls = Array.from(
-    new Set(
-      rows
-        .filter((row) => uniqueIds.includes(row.id))
-        .flatMap((row) => [row.image_url, row.variant_image_url])
-        .filter((value): value is string => Boolean(value)),
-    ),
-  );
   const { error: deleteError } = await supabase
-    .from("products")
+    .from("branch_products")
     .delete()
     .eq("business_id", business.id)
     .in("id", uniqueIds);
@@ -1293,17 +1111,6 @@ export async function deleteProductVariants(
     return { success: false, message: deleteError.message };
   }
 
-  for (const imageUrl of imageUrls) {
-    const { data: remaining } = await supabase
-      .from("products")
-      .select("id")
-      .eq("business_id", business.id)
-      .or(`image_url.eq.${imageUrl},variant_image_url.eq.${imageUrl}`)
-      .limit(1);
-    if ((remaining ?? []).length > 0) continue;
-    const storagePath = getStoragePathFromUrl(imageUrl);
-    if (storagePath) await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([storagePath]);
-  }
 
   await createAuditLog({
     action: "delete",
@@ -1333,7 +1140,7 @@ export async function deleteProductGroup(
 
   const supabase = await createClient();
   const { data: product, error: productError } = await supabase
-    .from("products")
+    .from("branch_products")
     .select("id, name, product_type, variant_group_id")
     .eq("id", productId)
     .eq("business_id", business.id)
@@ -1347,7 +1154,7 @@ export async function deleteProductGroup(
   }
 
   let groupQuery = supabase
-    .from("products")
+    .from("branch_products")
     .select("id, image_url, variant_image_url")
     .eq("business_id", business.id);
 
@@ -1366,16 +1173,8 @@ export async function deleteProductGroup(
     return { success: false, message: "Product was not found." };
   }
 
-  const imageUrls = Array.from(
-    new Set(
-      (groupRows ?? [])
-        .flatMap((row) => [row.image_url, row.variant_image_url])
-        .filter((value): value is string => Boolean(value)),
-    ),
-  );
-
   const { error: deleteError } = await supabase
-    .from("products")
+    .from("branch_products")
     .delete()
     .eq("business_id", business.id)
     .in("id", ids);
@@ -1391,20 +1190,6 @@ export async function deleteProductGroup(
     return { success: false, message: deleteError.message };
   }
 
-  for (const imageUrl of imageUrls) {
-    const { data: remaining } = await supabase
-      .from("products")
-      .select("id")
-      .eq("business_id", business.id)
-      .or(`image_url.eq.${imageUrl},variant_image_url.eq.${imageUrl}`)
-      .limit(1);
-
-    if ((remaining ?? []).length > 0) continue;
-    const storagePath = getStoragePathFromUrl(imageUrl);
-    if (storagePath) {
-      await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([storagePath]);
-    }
-  }
 
   await createAuditLog({
     action: "delete",
@@ -1584,7 +1369,7 @@ export async function createVariantProduct(
     };
   }
 
-  const imageFile = getImageFile(formData);
+  const imageFile = await getImageFile(formData);
   const imageSlots = Array.from(
     new Set(
       variants
@@ -1603,7 +1388,7 @@ export async function createVariantProduct(
       .from(PRODUCT_IMAGE_BUCKET)
       .upload(path, file, {
         contentType: file.type,
-        cacheControl: "3600",
+        cacheControl: PUBLIC_PHOTO_CACHE_SECONDS,
         upsert: false,
       });
     if (uploadError) {
@@ -1616,7 +1401,7 @@ export async function createVariantProduct(
   try {
     if (imageFile) imageUrl = await uploadVariantImage(imageFile, "product image");
     for (const slot of imageSlots) {
-      const runImageFile = getImageFile(formData, `runImage_${slot}`);
+      const runImageFile = await getImageFile(formData, `runImage_${slot}`);
       if (!runImageFile) continue;
       runImageUrls.set(
         slot,
@@ -1833,7 +1618,7 @@ export async function createConfigurableProduct(
   if (skuError) return { success: false, message: skuError.message };
   if (existingSku) return { success: false, message: "This SKU is already in use." };
 
-  const imageFile = getImageFile(formData);
+  const imageFile = await getImageFile(formData);
   let imageUrl: string | null = null;
   let uploadedImagePath: string | null = null;
 
@@ -1844,7 +1629,7 @@ export async function createConfigurableProduct(
       .from(PRODUCT_IMAGE_BUCKET)
       .upload(uploadedImagePath, imageFile, {
         contentType: imageFile.type,
-        cacheControl: "3600",
+        cacheControl: PUBLIC_PHOTO_CACHE_SECONDS,
         upsert: false,
       });
     if (uploadError) {
@@ -2069,7 +1854,7 @@ export async function updateProductGroup(
   const userId = user.id;
 
   const { data: representative, error: representativeError } = await supabase
-    .from("products")
+    .from("branch_products")
     .select("id, name, product_type, variant_group_id, image_url, is_online")
     .eq("id", productId)
     .eq("business_id", business.id)
@@ -2083,7 +1868,7 @@ export async function updateProductGroup(
   }
 
   let currentQuery = supabase
-    .from("products")
+    .from("branch_products")
     .select("id, sku, stock_quantity, image_url, variant_image_url")
     .eq("business_id", business.id);
 
@@ -2120,7 +1905,7 @@ export async function updateProductGroup(
 
   if (isGeneralShop && !supportsVariants && generalBarcode) {
     const { data: barcodeMatches, error: barcodeCheckError } = await supabase
-      .from("products")
+      .from("branch_products")
       .select("id")
       .eq("business_id", business.id)
       .eq("barcode", generalBarcode)
@@ -2145,7 +1930,7 @@ export async function updateProductGroup(
   }
 
   const { data: duplicateRows, error: duplicateError } = await supabase
-    .from("products")
+    .from("branch_products")
     .select("id, sku")
     .eq("business_id", business.id)
     .in("sku", variants.map((variant) => variant.sku));
@@ -2162,7 +1947,7 @@ export async function updateProductGroup(
     };
   }
 
-  const imageFile = getImageFile(formData);
+  const imageFile = await getImageFile(formData);
   const imageSlots = Array.from(
     new Set(
       variants
@@ -2181,7 +1966,7 @@ export async function updateProductGroup(
       .from(PRODUCT_IMAGE_BUCKET)
       .upload(path, file, {
         contentType: file.type,
-        cacheControl: "3600",
+        cacheControl: PUBLIC_PHOTO_CACHE_SECONDS,
         upsert: false,
       });
     if (uploadError) throw new Error(`Unable to upload ${label}: ${uploadError.message}`);
@@ -2192,7 +1977,7 @@ export async function updateProductGroup(
   try {
     if (imageFile) newImageUrl = await uploadEditImage(imageFile, "product image");
     for (const slot of imageSlots) {
-      const runImageFile = getImageFile(formData, `runImage_${slot}`);
+      const runImageFile = await getImageFile(formData, `runImage_${slot}`);
       if (!runImageFile) continue;
       runImageUrls.set(
         slot,
@@ -2238,30 +2023,20 @@ export async function updateProductGroup(
         };
 
         const { error: updateError } = await supabase
-          .from("products")
+          .from("branch_products")
           .update(updatePayload)
           .eq("id", variant.id)
           .eq("business_id", business.id);
 
         if (updateError) throw new Error(updateError.message);
 
-        const currentStock = Number(existing.stock_quantity ?? 0);
-        const delta = variant.stockQuantity - currentStock;
-        if (delta !== 0) {
-          const { error: stockError } = await supabase.rpc("adjust_product_stock", {
-            p_business_id: business.id,
-            p_product_id: variant.id,
-            p_quantity: delta,
-            p_note: "Product edit",
-          });
-          if (stockError) throw new Error(stockError.message);
-        }
+
       } else {
         if (!supportsVariants || !representative.variant_group_id) {
           throw new Error("This product does not support adding variants.");
         }
 
-        const { error: insertError } = await supabaseAdmin
+        const { data: newVariant, error: insertError } = await supabaseAdmin
           .from("products")
           .insert({
             owner_id: userId,
@@ -2285,18 +2060,20 @@ export async function updateProductGroup(
             variant_group_id: representative.variant_group_id,
             is_active: variant.isActive,
             is_online: isOnline,
-          });
+          }).select("id").single();
 
         if (insertError) throw new Error(insertError.message);
+        const context = await getBranchContext();
+        const assignment = await assignCreatedProducts(business.id, context.branchId, [newVariant.id]);
+        if (assignment) throw new Error(assignment);
       }
     }
   } catch (error) {
-    if (uploadedImagePaths.length > 0) {
-      await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(uploadedImagePaths);
-    }
+    // Earlier variants may already reference these uploads. Never delete a
+    // potentially committed photo after a partial or interrupted save.
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Unable to update product.",
+      message: `${error instanceof Error ? error.message : "Unable to update product."} Refresh to review saved variants before retrying.`,
     };
   }
 
@@ -2307,15 +2084,12 @@ export async function updateProductGroup(
 
     if (primaryTargetIds.length > 0) {
       const { error: imageUpdateError } = await supabase
-        .from("products")
+        .from("branch_products")
         .update({ image_url: newImageUrl, updated_at: now })
         .eq("business_id", business.id)
         .in("id", primaryTargetIds);
 
       if (imageUpdateError) {
-        if (uploadedImagePaths.length > 0) {
-          await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(uploadedImagePaths);
-        }
         return {
           success: false,
           message: `Unable to update product image: ${imageUpdateError.message}`,
@@ -2323,19 +2097,7 @@ export async function updateProductGroup(
       }
     }
 
-    if (representative.image_url && representative.image_url !== newImageUrl) {
-      const { data: remaining } = await supabase
-        .from("products")
-        .select("id")
-        .eq("business_id", business.id)
-        .or(`image_url.eq.${representative.image_url},variant_image_url.eq.${representative.image_url}`)
-        .limit(1);
 
-      if ((remaining ?? []).length === 0) {
-        const storagePath = getStoragePathFromUrl(representative.image_url);
-        if (storagePath) await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([storagePath]);
-      }
-    }
   }
 
   await createAuditLog({
@@ -2368,13 +2130,13 @@ export async function updateProductGroup(
 }
 
 async function initialProductBranch(businessId:string,form:FormData){
+ const context=await getBranchContext();
+ if(context.business.id!==businessId)throw new Error("The business changed. Reload this page.");
  const requested=getOptionalText(form,"locationId");
- const {data,error}=await supabaseAdmin.from("business_locations").select("id").eq("business_id",businessId).eq("is_active",true).order("is_default",{ascending:false}).limit(1);
- if(error)throw new Error("Unable to load product branches.");
- const id=requested||data?.[0]?.id;
- if(!id)throw new Error("Create an active branch before adding products.");
- await assertBranchOperation(businessId,id);return id;
+ if(requested && requested!==context.branchId)throw new Error("Switch the workspace branch before adding products there.");
+ await assertBranchOperation(businessId,context.branchId);return context.branchId;
 }
+
 async function assignCreatedProducts(businessId:string,branchId:string,ids:string[]):Promise<string>{
  try{
   const {data,error}=await supabaseAdmin.from("products").select("id,stock_quantity,low_stock_quantity").eq("business_id",businessId).in("id",ids);

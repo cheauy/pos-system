@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ReturnItemsForm from "./[id]/return-items-form";
 import OrderPrintMenu from "@/components/order-print-menu";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
@@ -22,14 +23,14 @@ import {
 } from "./order-workspace-types";
 import styles from "./orders-workspace.module.css";
 
-type Props = { businessId: string; businessName: string; data: WorkspaceData; filters: WorkspaceFilters; permissions: WorkspacePermissions };
+type Props = { businessId: string; businessName: string; showTableQr?: boolean; data: WorkspaceData; filters: WorkspaceFilters; permissions: WorkspacePermissions };
 type ActionDialog = { type: "edit" | "status" | "delete"; order: OrderRow };
 type QueueItem = { id: string; number: string };
 const statusTabs = ["all", "new", "pending", "completed", "cancelled", "refunded"];
 const receiptHref = (id: string) => `/dashboard/orders/${encodeURIComponent(id)}/receipt`;
 const orderHref = (id: string) => `/dashboard/orders/${encodeURIComponent(id)}`;
 
-export default function OrdersWorkspace({ businessId, businessName, data, filters, permissions }: Props) {
+export default function OrdersWorkspace({ businessId, businessName, showTableQr = false, data, filters, permissions }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [selectedId, setSelectedId] = useState<string | null>(data.rows[0]?.id ?? null);
@@ -105,7 +106,7 @@ export default function OrdersWorkspace({ businessId, businessName, data, filter
   const lastShown = Math.min(data.page * filters.limit, data.total);
   const activeFilters = !!(filters.search || filters.from || filters.to || [filters.branch, filters.source, filters.fulfillment, filters.payment, filters.status].some((value) => value !== "all"));
   const detailContent = <DetailPanel detail={detail} loading={detailLoading} error={detailError} currency={data.currency} timezone={data.timezone} permissions={permissions}
-    onClose={() => { setPanelClosed(true); setMobileOpen(false); }} onRetry={() => setDetailReload((value) => value + 1)} onAction={openAction} />;
+    onClose={() => { setPanelClosed(true); setMobileOpen(false); }} onRetry={() => setDetailReload((value) => value + 1)} onAction={openAction} onReturned={() => { setDetailReload(value => value + 1); refresh(); }} />;
 
   return <div className={styles.workspace}>
     <header className={styles.header}>
@@ -135,7 +136,7 @@ export default function OrdersWorkspace({ businessId, businessName, data, filter
           <div className={styles.filterBottom}>
             <select name="branch" defaultValue={filters.branch} aria-label="Filter by branch" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Branches</option>{data.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>
             <select name="fulfillment" defaultValue={filters.fulfillment} aria-label="Filter by fulfillment" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Fulfillment Types</option>{Object.entries(fulfillmentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-            <select name="source" defaultValue={filters.source} aria-label="Filter by source" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Sources</option>{Object.entries(sourceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+            <select name="source" defaultValue={filters.source} aria-label="Filter by source" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Sources</option>{Object.entries(sourceLabels).filter(([value]) => value !== 'qr' || showTableQr).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             <select name="payment" defaultValue={filters.payment} aria-label="Filter by payment status" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Payment Statuses</option>{Object.entries(paymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             <select name="status" defaultValue={filters.status} aria-label="Filter by order status" onChange={() => filterForm.current?.requestSubmit()}>{statusTabs.map((status) => <option key={status} value={status}>{status === "all" ? "All Order Statuses" : statusLabels[status]}</option>)}</select>
           </div>
@@ -169,7 +170,7 @@ export default function OrdersWorkspace({ businessId, businessName, data, filter
               </tr>)}</tbody>
             </table>
           </div>
-          {!data.rows.length && <div className={styles.empty}><ShoppingBag size={40} /><h3>{activeFilters ? "No orders match your filters" : "No orders yet"}</h3><p>{activeFilters ? "Try a different customer, date range, branch, or status." : "Orders from your POS, public store, and table QR codes appear here."}</p>{activeFilters && <button type="button" className={styles.button} onClick={() => navigate({ search: "", branch: "all", source: "all", fulfillment: "all", payment: "all", status: "all", from: "", to: "", page: 1 })}>Reset filters</button>}</div>}
+          {!data.rows.length && <div className={styles.empty}><ShoppingBag size={40} /><h3>{activeFilters ? "No orders match your filters" : "No orders yet"}</h3><p>{activeFilters ? "Try a different customer, date range, branch, or status." : (showTableQr ? "Orders from your POS, public store, and table QR codes appear here." : "Orders from your POS and online store appear here.")}</p>{activeFilters && <button type="button" className={styles.button} onClick={() => navigate({ search: "", branch: "all", source: "all", fulfillment: "all", payment: "all", status: "all", from: "", to: "", page: 1 })}>Reset filters</button>}</div>}
           <footer className={styles.pagination}>
             <span>{pending ? "Updating orders…" : `Showing ${firstShown}–${lastShown} of ${data.total} orders`}</span>
             <div><button type="button" className={styles.pageButton} disabled={data.page <= 1 || pending} onClick={() => navigate({ page: data.page - 1 })} aria-label="Previous page"><ChevronLeft size={14} /></button>
@@ -209,7 +210,8 @@ function pageButtons(current: number, total: number): (number | "gap")[] {
   return output;
 }
 
-function DetailPanel({ detail, loading, error, currency, timezone, permissions, onClose, onRetry, onAction }: {
+function DetailPanel({ detail, loading, error, currency, timezone, permissions, onClose, onRetry, onAction, onReturned }: {
+  onReturned: () => void;
   detail: OrderDetail | null; loading: boolean; error: string; currency: string; timezone: string; permissions: WorkspacePermissions;
   onClose: () => void; onRetry: () => void; onAction: (type: ActionDialog["type"], row: OrderRow) => void;
 }) {
@@ -221,12 +223,14 @@ function DetailPanel({ detail, loading, error, currency, timezone, permissions, 
   const canStatus = permissions.edit && nextStatuses(order, permissions.cancel).length > 0;
   const blockedDelete = deleteReason(order);
   const paid = Math.max(0, order.amountPaid - order.changeAmount);
+  const returnedQuantity = order.items.reduce((total, item) => total + item.returnedQuantity, 0);
+  const allReturned = order.items.length > 0 && order.items.every(item => item.returnedQuantity >= item.quantity);
   return <section className={styles.detailCard} aria-label={`Order ${order.orderNumber} details`}>
-    <div className={styles.detailHeading}><div><h2>Order {order.orderNumber}</h2><div><Badge value={order.status} /><small>{dateText(order.createdAt, timezone)} at {dateText(order.createdAt, timezone, true)}</small></div></div><button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close order details"><X size={16} /></button></div>
+    <div className={styles.detailHeading}><div><h2>Order {order.orderNumber}</h2><div><Badge value={order.status} />{returnedQuantity > 0 && <span className={`${styles.badge} ${styles.orange}`}>{allReturned ? "Items returned" : "Partially returned"} · Refund recorded</span>}<small>{dateText(order.createdAt, timezone)} at {dateText(order.createdAt, timezone, true)}</small></div></div><button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close order details"><X size={16} /></button></div>
     <div className={styles.detailActions}>
       <Link className={styles.miniButton} href={orderHref(order.id)}><Eye size={13} />View</Link>
       <OrderPrintMenu orderId={order.id} className={styles.miniButton}/>
-      {permissions.refund && !["cancelled", "refunded"].includes(order.status) && <Link className={styles.miniButton} href={orderHref(order.id)} title="Open the order’s existing return/refund form"><RotateCcw size={13} />Refund / Return</Link>}
+      {permissions.refund && !order.returnsUnavailable && ["new", "pending", "completed"].includes(order.status) && <ReturnItemsForm key={order.id} orderId={order.id} orderNumber={order.orderNumber} triggerClassName={styles.miniButton} onReturned={onReturned} currency={currency} items={order.items.map(item => ({ id: item.id, product_name: [item.name, item.variant, ...item.options].filter(Boolean).join(" · "), quantity: item.quantity, unit_price: item.unitPrice, returned_quantity: item.returnedQuantity }))} />}
     </div>
     <div className={styles.manageActions}>
       <button type="button" className={styles.miniButton} disabled={!permissions.edit} title={!permissions.edit ? "Order update permission is required." : "Edit order details"} onClick={() => onAction("edit", order)}><Pencil size={13} />Edit</button>
@@ -238,7 +242,7 @@ function DetailPanel({ detail, loading, error, currency, timezone, permissions, 
     {order.requestedFor && <p className={styles.scheduled}><Clock3 size={13} />Scheduled: {dateText(order.requestedFor, timezone)} · {dateText(order.requestedFor, timezone, true)}</p>}
     <section className={styles.detailSection}><h3>Items ({order.items.length})</h3><div className={styles.items}>{order.items.map((item) => <div key={item.id} className={styles.item}>
       <div className={styles.itemImage}>{item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <Package size={19} />}</div>
-      <div className={styles.itemText}><strong>{item.name}</strong>{item.variant && <small>{item.variant}</small>}{item.options.length > 0 && <small>{item.options.join(", ")}</small>}<small>{money(item.unitPrice, currency)} × {item.quantity}</small></div><span>{money(item.subtotal, currency)}</span>
+      <div className={styles.itemText}><strong>{item.name}</strong>{item.variant && <small>{item.variant}</small>}{item.options.length > 0 && <small>{item.options.join(", ")}</small>}<small>{money(item.unitPrice, currency)} × {item.quantity}</small>{item.returnedQuantity > 0 && <small>Returned: {item.returnedQuantity} · Refund recorded</small>}</div><span>{money(item.subtotal, currency)}</span>
     </div>)}</div></section>
     <div className={styles.totals}><div><span>Subtotal</span><span>{money(order.subtotal, currency)}</span></div><div><span>Discount{order.couponCode ? ` · ${order.couponCode}` : ""}</span><span>−{money(order.discount, currency)}</span></div><div><span>Delivery fee</span><span>{money(order.deliveryFee, currency)}</span></div><div className={styles.grandTotal}><strong>Total</strong><strong>{money(order.total, currency)}</strong></div></div>
     <section className={styles.detailSection}><div className={styles.sectionHeading}><h3>Payment</h3><Badge value={order.paymentState} payment /></div><div className={styles.paymentRow}><CreditCard size={20} /><div><strong>{methodLabel(order.paymentMethod)}</strong>{order.paymentReference && <small>Reference: {order.paymentReference}</small>}</div><strong>{money(paid, currency)}</strong></div>{order.changeAmount > 0 && <p className={styles.paymentExtra}>Change given <span>{money(order.changeAmount, currency)}</span></p>}{order.remainingBalance > 0 && <p className={styles.paymentExtra}>Balance due <strong>{money(order.remainingBalance, currency)}</strong></p>}</section>

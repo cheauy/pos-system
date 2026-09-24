@@ -1,0 +1,77 @@
+import Link from "next/link";
+import { Building2, Users, MapPin, BadgeDollarSign, ArrowUpRight, HeartPulse, TrendingUp, ClipboardCheck, Clock3, TriangleAlert, ChevronRight, Headphones, Bell } from "lucide-react";
+import { requireSuperAdmin } from "@/lib/auth/require-super-admin";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { readAllRows } from "@/lib/supabase/read-all-rows";
+import { getSubscriptionPlanLabel } from "@/lib/subscriptions/plans";
+import { businessListStatus } from "@/lib/super-admin/business-list";
+import { dashboardMetrics, paymentDate, type DashboardBusiness, type DashboardPayment } from "@/lib/super-admin/dashboard";
+import DashboardTrend from "./dashboard-trend";
+
+const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2}).format(n);
+const panel="min-w-0 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_2px_6px_#0f172a02] sm:p-5";
+const colors=["#2563eb","#60a5fa","#94a3b8","#14b8a6","#a78bfa","#f59e0b"];
+type Branch={id:string;business_id:string;name:string;is_active:boolean;created_at:string};
+function planName(key:string){return key==="legacy"?"Legacy":key==="trial"?"Trial":getSubscriptionPlanLabel(key);}
+function shortDate(value:string){return new Date(value).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"});}
+
+export default async function SuperAdminDashboard(){
+  await requireSuperAdmin();
+  const [businesses,payments,members,branches,changes]=await Promise.all([
+    readAllRows<DashboardBusiness>((from,to)=>supabaseAdmin.from("businesses").select("id,name,business_code,slug,owner_id,product_mode,max_staff,is_active,disabled_reason,subscription_plan_key,subscription_user_limit,subscription_branch_limit,subscription_expires_at,created_at,subscription_status,trial_expires_at,subscription_monthly_price,subscription_discount_percent,subscription_cycle_value,subscription_months").order("created_at",{ascending:false}).order("id").range(from,to)),
+    readAllRows<DashboardPayment>((from,to)=>supabaseAdmin.from("subscription_orders").select("id,business_id,status,total_amount,currency,approved_at,reviewed_at,payway_verified_at").order("id").range(from,to)),
+    supabaseAdmin.from("business_members").select("id",{count:"exact",head:true}).eq("is_active",true),
+    readAllRows<Branch>((from,to)=>supabaseAdmin.from("business_locations").select("id,business_id,name,is_active,created_at").order("id").range(from,to)),
+    supabaseAdmin.from("business_change_orders").select("id",{count:"exact",head:true}).eq("status","payment_submitted"),
+  ]);
+  if(businesses.error||payments.error||members.error||branches.error||changes.error)return <main role="alert" className="rounded-2xl border border-red-200 bg-white p-6">Analytics could not be loaded. Refresh to try again.</main>;
+  const rows=businesses.data??[],orders=payments.data??[],locations=branches.data??[],now=new Date();
+  const data=dashboardMetrics(rows,orders,now),pending=data.pending+(changes.count??0);
+  const current=data.months[5],previous=data.months[4];
+  const recent=rows.slice(0,5),ownerIds=[...new Set(recent.map(b=>b.owner_id).filter((id):id is string=>Boolean(id)))];
+  const owners=ownerIds.length?await supabaseAdmin.from("profiles").select("id,full_name,email").in("id",ownerIds):{data:[],error:null};
+  const ownerMap=new Map((owners.data??[]).map(o=>[o.id,o]));
+  const businessMap=new Map(rows.map(b=>[b.id,b.name]));
+  const events=[
+    ...rows.map(b=>({id:`business-${b.id}`,title:"New business created",detail:b.name,date:b.created_at,href:`/super-admin/businesses/${b.id}`,type:"business"})),
+    ...locations.map(b=>({id:`branch-${b.id}`,title:"Branch added",detail:`${businessMap.get(b.business_id)||"Business"} · ${b.name}`,date:b.created_at,href:`/super-admin/businesses/${b.business_id}`,type:"branch"})),
+    ...orders.filter(p=>p.status==="approved"&&paymentDate(p)).map(p=>({id:`payment-${p.id}`,title:"Subscription approved",detail:`${p.currency==="USD"?`${money(Number(p.total_amount)||0)} · `:""}${businessMap.get(p.business_id)||"Business"}`,date:paymentDate(p)!,href:"/super-admin/manual-payments",type:"payment"})),
+  ].filter(e=>Number.isFinite(Date.parse(e.date))&&Date.parse(e.date)<=now.getTime()).sort((a,b)=>Date.parse(b.date)-Date.parse(a.date)).slice(0,5);
+  const stops=data.plans.map((p,i)=>{
+    const start=data.plans.slice(0,i).reduce((total,plan)=>total+plan.value,0)/Math.max(1,rows.length)*360;
+    const end=start+p.value/Math.max(1,rows.length)*360;
+    return `${colors[i%colors.length]} ${start}deg ${end}deg`;
+  }).join(",");
+  const metrics=[
+    {label:"Businesses",value:rows.length,detail:`${data.active} active`,icon:Building2},
+    {label:"Active memberships",value:members.count??0,detail:"Owner and staff access",icon:Users},
+    {label:"Active branches",value:locations.filter(b=>b.is_active).length,detail:"Across all businesses",icon:MapPin},
+    {label:"Approved subscriptions",value:money(data.approvedValue),detail:"All-time USD order value",icon:BadgeDollarSign},
+    {label:"Estimated monthly revenue",value:money(data.mrr),detail:data.unpriced?`${data.unpriced} plans missing pricing`:"Active paid plans · normalized / month",icon:TrendingUp},
+    {label:"Pending payment reviews",value:pending,detail:pending?"Payments and quotes to review":"All caught up",icon:ClipboardCheck},
+  ];
+  const attention=[
+    {label:"Pending payments",detail:"Payments and quotes awaiting review",value:pending,href:"/super-admin/manual-payments",icon:Clock3,color:"bg-amber-50 text-amber-600"},
+    {label:"Expired subscriptions",detail:"Subscriptions that need renewal",value:data.expired,href:"/super-admin/businesses?status=expired",icon:ClipboardCheck,color:"bg-rose-50 text-rose-600"},
+    {label:"Inactive / suspended businesses",detail:"Businesses with restricted access",value:data.restricted,href:"/super-admin/businesses?status=restricted",icon:TriangleAlert,color:"bg-slate-100 text-slate-500"},
+    {label:"Payment callback health",detail:"Run signature and connection checks",value:"Check",href:"/super-admin/health",icon:HeartPulse,color:"bg-rose-50 text-rose-600"},
+    {label:"Trials expiring soon",detail:"Trials ending in the next 7 days",value:data.trialsEnding,href:"/super-admin/businesses?status=trial_ending",icon:Clock3,color:"bg-amber-50 text-amber-600"},
+  ];
+  return <main className="space-y-4 pb-6">
+    <header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold tracking-tight text-slate-950">Dashboard</h1><p className="mt-1 text-xs text-slate-500">Your platform at a glance</p></div><Link href="/super-admin/health" className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500"><HeartPulse size={14}/>Check service health<ChevronRight size={13}/></Link></header>
+    <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">{metrics.map(({label,value,detail,icon:Icon})=><article key={label} className="min-w-0 rounded-xl border border-slate-200/80 bg-white p-3.5"><div className="flex items-center gap-2"><span className="rounded-lg bg-blue-50 p-2 text-blue-600"><Icon size={16}/></span><h2 className="text-[11px] font-medium leading-4 text-slate-500">{label}</h2></div><p className="mt-2 break-words text-2xl font-bold tracking-tight text-slate-950">{value}</p><p className="mt-1 text-[10px] leading-4 text-slate-400">{detail}</p></article>)}</section>
+    <section className="grid items-stretch gap-4 xl:grid-cols-[1.65fr_1fr]">
+      <article className={panel}><DashboardTrend months={data.months}/><div className="mt-3 grid gap-3 sm:grid-cols-2"><div className="flex gap-3 rounded-xl bg-blue-50/70 p-3"><TrendingUp size={18} className="mt-1 shrink-0 text-blue-600"/><div><p className="text-xs font-bold text-blue-800">{current.businesses} new businesses this month</p><p className="mt-1 text-[10px] text-slate-500">{current.businesses-previous.businesses>=0?"+":""}{current.businesses-previous.businesses} compared with last month</p></div></div><div className="flex gap-3 rounded-xl bg-emerald-50/70 p-3"><BadgeDollarSign size={18} className="mt-1 shrink-0 text-emerald-600"/><div><p className="text-xs font-bold text-emerald-800">{money(current.revenue)} approved this month</p><p className="mt-1 text-[10px] text-slate-500">Based on payment approval dates</p></div></div></div>{data.undatedApprovals>0&&<p className="mt-2 text-[10px] text-amber-700">{data.undatedApprovals} approvals have no date and are excluded from monthly trends.</p>}</article>
+      <article className={panel}><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-bold text-slate-900">Needs attention</h2><Link href="/super-admin/manual-payments" className="text-[11px] font-semibold text-blue-600">Review payments</Link></div><div className="space-y-2">{attention.map(({label,detail,value,href,icon:Icon,color})=><Link key={label} href={href} className="flex items-center gap-3 rounded-xl border border-slate-100 px-3 py-3 hover:bg-slate-50"><span className={`rounded-lg p-2 ${color}`}><Icon size={16}/></span><strong className="min-w-6 text-center text-sm text-slate-900">{value}</strong><span className="min-w-0 flex-1"><span className="block text-xs font-semibold text-slate-700">{label}</span><span className="mt-1 block text-[10px] text-slate-400">{detail}</span></span><ChevronRight className="shrink-0 text-slate-400" size={14}/></Link>)}</div></article>
+    </section>
+    <section className="grid gap-4 xl:grid-cols-[1.65fr_1fr]">
+      <article className={panel}><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-bold">Recent businesses</h2><Link href="/super-admin/businesses" className="text-[11px] font-semibold text-blue-600">View all</Link></div><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-[10px] font-medium text-slate-400"><tr>{["Business name","Owner","Plan","Branches","Status"].map(h=><th key={h} className="px-2 py-2.5">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{recent.map(b=>{const status=businessListStatus(b,now.getTime());return <tr key={b.id}><td className="px-2 py-3"><Link href={`/super-admin/businesses/${b.id}`} className="flex items-center gap-2 font-semibold"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">{b.name.slice(0,1).toUpperCase()}</span><span className="break-words">{b.name}</span></Link></td><td className="max-w-32 break-words px-2 py-3 text-[11px] text-slate-500">{ownerMap.get(b.owner_id??"")?.full_name||ownerMap.get(b.owner_id??"")?.email||"Unavailable"}</td><td className="px-2 py-3"><span className="rounded bg-blue-50 px-1.5 py-1 text-[10px] font-semibold text-blue-600">{planName(b.subscription_plan_key||(b.subscription_status==="trialing"?"trial":"legacy"))}</span></td><td className="px-2 py-3 text-center text-slate-500">{locations.filter(l=>l.business_id===b.id&&l.is_active).length}</td><td className="px-2 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold capitalize ${status==="active"?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500"}`}>{status}</span></td></tr>;})}</tbody></table>{!recent.length&&<p className="py-10 text-center text-xs text-slate-400">No businesses yet.</p>}</div></article>
+      <article className={panel}><h2 className="mb-3 text-sm font-bold">Recent activity</h2><div className="divide-y divide-slate-100">{events.map(e=><Link key={e.id} href={e.href} className="flex items-start gap-3 py-3"><span className={`rounded-full p-2 ${e.type==="payment"?"bg-emerald-50 text-emerald-600":e.type==="branch"?"bg-blue-50 text-blue-600":"bg-violet-50 text-violet-600"}`}>{e.type==="payment"?<BadgeDollarSign size={15}/>:e.type==="branch"?<MapPin size={15}/>:<Building2 size={15}/>}</span><span className="min-w-0 flex-1"><span className="block text-xs font-semibold text-slate-700">{e.title}</span><span className="mt-1 block truncate text-[10px] text-slate-400">{e.detail}</span></span><time dateTime={e.date} className="shrink-0 text-[10px] text-slate-400">{shortDate(e.date)}</time></Link>)}{!events.length&&<p className="py-10 text-center text-xs text-slate-400">No recent activity.</p>}</div></article>
+    </section>
+    <section className="grid gap-4 lg:grid-cols-3">
+      <article className={panel}><h2 className="mb-5 text-sm font-bold">Top plans by businesses</h2><div className="space-y-4">{data.plans.slice(0,5).map((p,i)=><div key={p.key} className="flex items-center gap-3 text-[11px]"><span className="w-20 shrink-0 truncate text-slate-500" title={planName(p.key)}>{planName(p.key)}</span><div className="h-2 flex-1 rounded-full bg-slate-100"><div className="h-2 rounded-full" style={{width:`${p.value/Math.max(1,data.plans[0]?.value??1)*100}%`,background:colors[i%colors.length]}}/></div><strong className="text-slate-600">{p.value}</strong><span className="w-9 text-right text-slate-400">{Math.round(p.value/Math.max(1,rows.length)*100)}%</span></div>)}{!data.plans.length&&<p className="text-xs text-slate-400">No plan data.</p>}</div></article>
+      <article className={panel}><h2 className="mb-4 text-sm font-bold">Plan distribution</h2><div className="flex flex-wrap items-center justify-center gap-5"><div role="img" aria-label={data.plans.map(p=>`${planName(p.key)}: ${p.value}`).join(', ')||"No businesses"} className="flex h-28 w-28 shrink-0 items-center justify-center rounded-full" style={{background:stops?`conic-gradient(${stops})`:"#e2e8f0"}}><div className="flex h-20 w-20 flex-col items-center justify-center rounded-full bg-white"><strong className="text-xl">{rows.length}</strong><span className="text-[9px] text-slate-400">Businesses</span></div></div><div className="min-w-0 flex-1 space-y-2.5">{data.plans.map((p,i)=><div key={p.key} className="flex items-center gap-2 text-[10px] text-slate-500"><span className="h-2 w-2 shrink-0 rounded-full" style={{background:colors[i%colors.length]}}/><span className="flex-1">{planName(p.key)}</span><span>{p.value} ({Math.round(p.value/Math.max(1,rows.length)*100)}%)</span></div>)}</div></div></article>
+      <article className={panel}><h2 className="mb-4 text-sm font-bold">Quick actions</h2><div className="grid grid-cols-2 gap-2">{[{label:"Businesses",detail:"Manage workspaces",href:"/super-admin/businesses",icon:Building2},{label:"Review payments",detail:"Check pending items",href:"/super-admin/manual-payments",icon:BadgeDollarSign},{label:"User updates",detail:"Publish an update",href:"/super-admin/update-alerts",icon:Bell},{label:"System health",detail:"Check platform status",href:"/super-admin/health",icon:HeartPulse},{label:"Support",detail:"Review bug reports",href:"/super-admin/support",icon:Headphones}].map(({label,detail,href,icon:Icon})=><Link key={href} href={href} className="flex items-center gap-2 rounded-xl border border-slate-100 p-2.5 hover:bg-blue-50/50"><Icon size={16} className="shrink-0 text-blue-500"/><span className="min-w-0 flex-1"><span className="block text-[11px] font-semibold text-slate-700">{label}</span><span className="mt-0.5 block text-[9px] text-slate-400">{detail}</span></span><ArrowUpRight size={12} className="shrink-0 text-slate-400"/></Link>)}</div></article>
+    </section>
+  </main>;
+}

@@ -80,7 +80,7 @@ function createResponse(
   // application host. It is reserved and redirects to the centralized app.
   if (productionDomains && subdomain === "admin") {
     return NextResponse.redirect(
-      getAppUrl(pathname === "/" ? "/super-admin/businesses" : pathWithSearch),
+      getAppUrl(pathname === "/" ? "/super-admin" : pathWithSearch),
     );
   }
 
@@ -275,6 +275,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|photo-cache-sw.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

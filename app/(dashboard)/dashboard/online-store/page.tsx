@@ -1,4 +1,3 @@
-import FulfillmentBranch from "./fulfillment-branch";
 import CatalogDialog from "./catalog-dialog";
 import QRCode from "qrcode";
 import QrSection from "./qr-section";
@@ -23,9 +22,6 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export default async function OnlineStorePage() {
   const business = await requirePermission("storefront.view");
-  const branchResult=await supabaseAdmin.from("business_locations").select("id,name,is_default").eq("business_id",business.id).eq("is_active",true).order("is_default",{ascending:false}).order("name");
-  const fulfillment=await supabaseAdmin.from("business_storefronts").select("fulfillment_location_id").eq("business_id",business.id).maybeSingle();
-  if(branchResult.error || fulfillment.error)throw new Error("Apply the operating branch migration to configure online fulfilment.");
   const settings = await getStorefrontSettings(business.id);
   const storeUrl = getSubdomainUrl(business.slug);
   const canEdit = await businessHasPermission(business, "storefront.update");
@@ -114,7 +110,7 @@ export default async function OnlineStorePage() {
         </div>
       </section>
 
-      <FulfillmentBranch branches={branchResult.data ?? []} branchId={fulfillment.data?.fulfillment_location_id ?? branchResult.data?.[0]?.id ?? ""} canEdit={canEdit}/>
+      <p className="text-xs text-slate-500">One online store for all active branches. Orders are assigned automatically to a branch with available stock.</p>
       <StorefrontSettingsForm
         settings={settings}
         storeUrl={storeUrl}

@@ -74,10 +74,7 @@ export default function LanguageProvider({
     setLanguageState(next);
 
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        LANGUAGE_STORAGE_KEY,
-        next,
-      );
+      try { window.localStorage.setItem(LANGUAGE_STORAGE_KEY, next); } catch { /* The cookie remains the language source of truth. */ }
 
       const host = window.location.hostname.toLowerCase();
       const sharedDomain =
@@ -99,7 +96,7 @@ export default function LanguageProvider({
   useEffect(() => {
     // The server cookie is the source of truth so the preference follows the
     // owner between tenh-pos.com and business subdomains.
-    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, initialLanguage);
+    try { window.localStorage.setItem(LANGUAGE_STORAGE_KEY, initialLanguage); } catch { /* Cookie-backed language still works without device storage. */ }
     document.documentElement.lang = initialLanguage;
     document.documentElement.dataset.language = initialLanguage;
   }, [initialLanguage]);
@@ -114,10 +111,12 @@ export default function LanguageProvider({
 
       if (language === "en") {
         const original = textOriginals.current.get(node);
-        if (original !== undefined && current !== original) {
+        if (original !== undefined && current !== original && current === translateUiText(original, "km")) {
           applying.current = true;
           node.nodeValue = original;
           applying.current = false;
+        } else {
+          textOriginals.current.set(node, current);
         }
         return;
       }
@@ -169,10 +168,12 @@ export default function LanguageProvider({
         let original = originals.get(attribute);
 
         if (language === "en") {
-          if (original !== undefined && current !== original) {
+          if (original !== undefined && current !== original && current === translateUiText(original, "km")) {
             applying.current = true;
             element.setAttribute(attribute, original);
             applying.current = false;
+          } else {
+            originals.set(attribute, current);
           }
           continue;
         }

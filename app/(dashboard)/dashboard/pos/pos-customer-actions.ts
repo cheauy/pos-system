@@ -23,7 +23,7 @@ function failure(error: unknown): { message: string; uncertain: boolean } {
 
 async function customerFields(businessId:string) {
   const db=await createClient();
-  const {data,error}=await db.from('business_customer_settings').select('email_enabled,birthday_enabled').eq('business_id',businessId).maybeSingle();
+  const {data,error}=await db.from('branch_customer_settings').select('email_enabled,birthday_enabled').eq('business_id',businessId).maybeSingle();
   if(error) throw new Error('Customer field settings could not be loaded. Please retry.');
   return {emailEnabled:data?.email_enabled ?? true,birthdayEnabled:data?.birthday_enabled ?? true};
 }
@@ -57,7 +57,9 @@ export async function createPosCustomer(businessId: string, input: CustomerInput
     try { await assertOperatingBranch(input.branchId); }
     catch { return {success:false,uncertain:true,message:'The operating branch changed. Check this customer request in its original branch before retrying.'}; }
     const fields=await customerFields(business.id);
-    const invalid=customerInputIssue(input,fields);
+    // The database requires addresses for new records but still confirms older
+    // idempotent requests that may have committed before addresses were required.
+    const invalid=customerInputIssue(input,fields,true);
     if(invalid)return {success:false,message:invalid};
     const db=await createClient();
     const {data,error}=await db.rpc('tenh_pos_customer_create',{

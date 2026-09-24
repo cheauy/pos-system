@@ -1,0 +1,14 @@
+"use client";
+import { useState } from "react";
+import { HeartPulse, Play, CheckCircle2, AlertTriangle, XCircle, LoaderCircle } from "lucide-react";
+import { runWebsiteHealth } from "./actions";
+import type { HealthResult } from "@/lib/super-admin/health";
+const names=["Supabase","Database","Storage","Vercel","ABA PayWay","Webhooks","Background jobs","Email · Resend","OAuth · Google / Facebook","External services"];
+export default function HealthClient() {
+  const [results,setResults]=useState<HealthResult[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(""),[checked,setChecked]=useState("");
+  async function run(){if(busy)return;setBusy(true);setError("");try{const data=await runWebsiteHealth();setResults(data.results);setChecked(data.checkedAt);}catch{setError("Unable to run checks. Refresh your session and try again.");}finally{setBusy(false);}}
+  return <main className="space-y-6 pb-8"><header className="flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-3"><HeartPulse className="text-blue-600"/><h1 className="text-3xl font-bold">Website Health</h1></div><p className="mt-2 text-sm text-slate-500">Check connected services without creating payments or sending messages.</p></div><button onClick={run} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-60">{busy?<LoaderCircle size={17} className="animate-spin"/>:<Play size={17}/>} {busy?"Checking…":"Run checks"}</button></header>
+    <div aria-live="polite" className="text-sm text-slate-500">{busy?"Running checks. Previous results remain below.":checked?`Last checked ${new Date(checked).toLocaleString()}`:"Run checks to see the current status."}</div>{error&&<p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">{error}</p>}
+    <section className="grid gap-4 md:grid-cols-2">{names.map(name=>{const result=results.find(r=>r.name===name);const Icon=result?.status==="ok"?CheckCircle2:result?.status==="error"?XCircle:AlertTriangle;return <article key={name} className="rounded-2xl border border-slate-200 bg-white p-5"><div className="flex items-center justify-between gap-3"><h2 className="font-bold">{name}</h2><span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${result?.status==="ok"?"bg-emerald-50 text-emerald-700":result?.status==="error"?"bg-red-50 text-red-700":"bg-slate-100 text-slate-600"}`}>{result&&<Icon size={14}/>} {result?result.status==="ok"?"Verified":result.status==="error"?"Failed":"Needs review":"Not checked"}</span></div><p className="mt-3 text-sm leading-6 text-slate-500">{result?.detail??"Waiting for a check."}</p>{result&&<p className="mt-3 text-xs text-slate-400">{result.durationMs} ms</p>}</article>})}</section>
+  </main>;
+}

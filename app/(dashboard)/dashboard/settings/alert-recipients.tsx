@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/branch-server";
 import { saveNotificationRoleSettings } from "../notifications/actions";
 export default async function AlertRecipients({businessId}: {businessId:string}) {
  const supabase=await createClient();
- const {data:roleSettings,error}=await supabase.from("business_notification_role_settings").select("notification_type,target_roles").eq("business_id",businessId);
+ const {data:roleSettings,error}=await supabase.from("branch_notification_role_settings").select("notification_type,target_roles").eq("business_id",businessId);
  if(error) return <p role="alert" className="text-red-600">Unable to load alert recipients. Please refresh.</p>;
  const defaults:Record<string,string[]>={new_order:["owner","admin","manager","cashier"],khqr_pending:["owner","admin","manager","cashier"],low_stock:["owner","admin","manager"],purchase_order:["owner","admin","manager"],stock_transfer:["owner","admin","manager"],register_variance:["owner","admin","manager"],credit_overdue:["owner","admin","manager"],scheduled_order:["owner","admin","manager","cashier"]};
  const currentRoles=new Map((roleSettings??[]).map((r:{notification_type:string;target_roles:string[]})=>[r.notification_type,r.target_roles as string[]]));

@@ -8,14 +8,14 @@ const { PGlite } = require(path.join(process.env.TEMP, 'tenh-branch-sql-check/no
 (async () => {
  const db = new PGlite();
  try {
-  await db.exec(`create role anon; create role authenticated; create schema auth;
+  await db.exec(`create role anon; create role authenticated; create schema auth; create schema storage; create table storage.objects(bucket_id text,name text);
    create function auth.uid() returns uuid language sql as $$select current_setting('test.user')::uuid$$;
    create function tenh_request_branch(b uuid) returns uuid language sql as $$select nullif(current_setting('test.branch',true),'')::uuid$$;
    create table businesses(id uuid primary key);
    create table members(business_id uuid,user_id uuid,can_create boolean,can_pack boolean);
    create table business_locations(id uuid primary key,business_id uuid,is_active boolean);
    create table categories(id uuid primary key,business_id uuid);
-   create table products(id uuid primary key,business_id uuid,owner_id uuid,name text,sku text,description text,category_id uuid,product_type text,cost_price numeric,selling_price numeric,stock_quantity int,low_stock_quantity int,is_active boolean,is_online boolean,updated_at timestamptz);
+   create table products(id uuid primary key,business_id uuid,owner_id uuid,name text,sku text,image_url text,description text,category_id uuid,product_type text,cost_price numeric,selling_price numeric,stock_quantity int,low_stock_quantity int,is_active boolean,is_online boolean,updated_at timestamptz);
    create table bundle_items(id uuid primary key default gen_random_uuid(),business_id uuid,bundle_product_id uuid references products(id) on delete cascade,component_product_id uuid references products(id),quantity int);
    create table product_location_stock(business_id uuid,location_id uuid,product_id uuid references products(id) on delete cascade,quantity int,low_stock_threshold int,updated_at timestamptz,primary key(location_id,product_id));
    create table product_option_groups(id uuid primary key,business_id uuid,product_id uuid,name text,selection_type text,is_required boolean,min_selections int,max_selections int);
@@ -40,7 +40,20 @@ const { PGlite } = require(path.join(process.env.TEMP, 'tenh-branch-sql-check/no
   for(const routine of JSON.parse(fs.readFileSync('tests/fixtures/packed-bundle-functions.json','utf8')))await db.exec(routine.definition);
   await db.exec(`create trigger tenh_freeze_packed_recipe before insert or update or delete on bundle_items for each row execute function tenh_freeze_packed_recipe();
    create trigger tenh_keep_packed_bundle_type before update of product_type,bundle_stock_mode on products for each row execute function tenh_keep_packed_bundle_type();`);
-  await db.exec(fs.readFileSync('supabase/migrations/20260924003000_bundle_management.sql','utf8'));
+  await db.exec(fs.readFileSync('tests/fixtures/bundle-management.sql','utf8'));
+  await db.exec(fs.readFileSync('supabase/migrations/20260924004000_bundle_image.sql','utf8'));
+  // Minimal dependencies for the narrowly patched customer/order predicates.
+  await db.exec(`create table test_customer_requests(id uuid primary key, address text);
+    create function tenh_pos_customer_create(p_business_id uuid,p_id uuid,p_input jsonb) returns jsonb language plpgsql as $$
+    declare v_address text:=btrim(p_input->>'address'); begin
+    if exists(select 1 from test_customer_requests where id=p_id) then return jsonb_build_object('id',p_id); else
+    -- Same phone lock
+    insert into test_customer_requests values(p_id,v_address); return jsonb_build_object('id',p_id); end if; end;$$;
+    create function tenh_orders_workspace(p_business_id uuid,p_filters jsonb) returns jsonb language sql as $$
+    select coalesce(jsonb_agg(jsonb_build_object('fulfillment',o.fulfillment_type)),'[]')
+    from (values(null::text),('dine_in'),('pickup'),('delivery')) o(fulfillment_type) where true
+    and (coalesce(p_filters->>'fulfillment','all')='all' or o.fulfillment_type::text=p_filters->>'fulfillment');$$;`);
+  await db.exec(fs.readFileSync('supabase/migrations/20260924006000_bundle_edit_and_pos_choices.sql','utf8'));
   const b=randomUUID(), user=randomUUID(), branch=randomUUID(), otherBranch=randomUUID(), foreign=randomUUID(), a=randomUUID(), v=randomUUID(), c=randomUUID(), g=randomUUID(), o=randomUUID();
   await db.query("select set_config('test.user',$1,false)",[user]);
   await db.query('insert into businesses values($1),($2)',[b,foreign]);
@@ -55,6 +68,20 @@ const { PGlite } = require(path.join(process.env.TEMP, 'tenh-branch-sql-check/no
   const input = {name:'Starter Set',sku:'SET-1',sellingPrice:'12.50',items:[{productId:a,quantity:2,optionIds:[]},{productId:v,quantity:1,optionIds:[]},{productId:c,quantity:1,optionIds:[o]}]};
   const create=async(payload=input,request=randomUUID(),business=b,location=branch)=>(await db.query('select tenh_create_packed_bundle($1,$2,$3,$4) id',[business,location,request,JSON.stringify(payload)])).rows[0].id;
   const snapshot=async()=>JSON.stringify((await db.query('select id,stock_quantity from products order by id')).rows)+JSON.stringify((await db.query('select * from product_location_stock order by location_id,product_id')).rows);
+  const imageRequest=randomUUID(), imagePath=`${b}/${user}/${imageRequest}-${'a'.repeat(64)}.png`;
+  const imagePayload={...input,sku:'IMAGE-SET',imagePath,imageUrl:`https://example.supabase.co/storage/v1/object/public/product-images/${imagePath}`};
+  const createImage=async(payload=imagePayload,request=imageRequest)=>(await db.query('select tenh_create_packed_bundle_with_image($1,$2,$3,$4) id',[b,branch,request,JSON.stringify(payload)])).rows[0].id;
+  await assert.rejects(createImage(),/Upload the bundle image/);
+  assert.equal((await db.query("select count(*)::int n from products where sku='IMAGE-SET'")).rows[0].n,0);
+  await db.query("insert into storage.objects values('product-images',$1)",[imagePath]);
+  const imageBundle=await createImage();
+  assert.equal((await db.query('select image_url from products where id=$1',[imageBundle])).rows[0].image_url,imagePayload.imageUrl);
+  await db.query("update products set image_url='later-image' where id=$1",[imageBundle]);
+  assert.equal(await createImage(),imageBundle);
+  assert.equal((await db.query('select image_url from products where id=$1',[imageBundle])).rows[0].image_url,'later-image','retry preserves later edits');
+  await assert.rejects(createImage({...imagePayload,imageUrl:'https://evil.example/image.png'}),/Invalid bundle image/);
+  await assert.rejects(createImage({...imagePayload,imagePath:imagePath.replace(user,randomUUID())}),/Invalid bundle image/);
+  await assert.rejects(createImage({...imagePayload,name:'Changed retry'}),/already used/);
   const request=randomUUID(); const bundle=await create(input,request);
   assert.equal(await create(input,request),bundle,'create retries must not duplicate');
   assert.equal((await db.query('select stock_quantity from products where id=$1',[bundle])).rows[0].stock_quantity,0);
@@ -98,9 +125,48 @@ const { PGlite } = require(path.join(process.env.TEMP, 'tenh-branch-sql-check/no
   await assert.rejects(manage(bundle,'delete'),/remaining stock/);
   await pack(-2);await assert.rejects(manage(bundle,'delete'),/transaction history/);
   const unused=await create({...input,sku:'UNUSED'});
-  await manage(unused,'delete');assert.equal((await db.query('select count(*)::int n from products where id=$1',[unused])).rows[0].n,0);
-  assert.equal((await db.query('select count(*)::int n from bundle_items where bundle_product_id=$1',[unused])).rows[0].n,0);
-  assert.equal((await db.query('select count(*)::int n from product_location_stock where product_id=$1',[unused])).rows[0].n,0);
+  await manage(unused,'pos',{enabled:false});
+  assert.equal((await db.query('select is_active from products where id=$1',[unused])).rows[0].is_active,false,'both hidden means inactive');
+  await manage(unused,'online',{enabled:true});
+  assert.equal((await db.query('select is_active from products where id=$1',[unused])).rows[0].is_active,true,'enabling either channel reactivates');
+  await manage(unused,'pos',{enabled:true}); await manage(unused,'online',{enabled:false});
+  assert.equal((await db.query('select is_active from products where id=$1',[unused])).rows[0].is_active,true);
+  const editInput={name:'Editable Set',sku:'UNUSED',price:'14',items:[{productId:a,quantity:1,optionIds:[]},{productId:v,quantity:2,optionIds:[]}]};
+  await manage(unused,'edit',editInput);
+  assert.equal((await db.query('select count(*)::int n from bundle_items where bundle_product_id=$1',[unused])).rows[0].n,2);
+  assert.equal((await db.query('select cost_price from products where id=$1',[unused])).rows[0].cost_price,'6');
+  await assert.rejects(db.query('delete from bundle_items where bundle_product_id=$1',[unused]),/components are fixed/);
+  assert.equal((await db.query('select count(*)::int n from bundle_recipe_edit_sessions')).rows[0].n,0);
+  await db.exec('set role authenticated');
+  await assert.rejects(db.query('insert into bundle_recipe_edit_sessions values($1,txid_current(),$2)',[unused,user]),/permission denied/);
+  await assert.rejects(db.query('select tenh_edit_bundle_contents($1,$2,$3,$4)',[b,branch,unused,'{}']),/permission denied/);
+  await db.exec('reset role');
+  const recipe=JSON.stringify((await db.query('select component_product_id,quantity from bundle_items where bundle_product_id=$1 order by component_product_id',[unused])).rows);
+  await assert.rejects(manage(unused,'edit',{...editInput,items:[{productId:a,quantity:1,optionIds:[]},{productId:c,quantity:1,optionIds:[]}]}),/required options/);
+  assert.equal(JSON.stringify((await db.query('select component_product_id,quantity from bundle_items where bundle_product_id=$1 order by component_product_id',[unused])).rows),recipe,'invalid recipe rolls back old contents');
+  await db.query('select tenh_pack_bundle($1,$2,$3,1,$4)',[b,branch,unused,randomUUID()]);
+  await assert.rejects(manage(unused,'edit',{...editInput,items:input.items}),/Unpack all sets/);
+  await manage(unused,'edit',{...editInput,...imageDataForEdit()});
+  assert.ok((await db.query('select image_url from products where id=$1',[unused])).rows[0].image_url,'image can change even while stock is packed');
+  await manage(unused,'edit',{...editInput,removeImage:true});
+  assert.equal((await db.query('select image_url from products where id=$1',[unused])).rows[0].image_url,null);
+  await db.query('select tenh_pack_bundle($1,$2,$3,-1,$4)',[b,branch,unused,randomUUID()]);
+  await manage(unused,'edit',{...editInput,items:input.items});
+  await assert.rejects(manage(bundle,'edit',{...editInput,sku:'HISTORY',items:editInput.items}),/transaction history/);
+  function imageDataForEdit(){return {imagePath,imageUrl:imagePayload.imageUrl};}
+  const legacyCustomer=randomUUID();await db.query("insert into test_customer_requests values($1,'')",[legacyCustomer]);
+  await db.query('select tenh_pos_customer_create($1,$2,$3)',[b,legacyCustomer,'{"address":""}']);
+  await assert.rejects(db.query('select tenh_pos_customer_create($1,$2,$3)',[b,randomUUID(),'{"address":" "}']),/address is required/);
+  await db.query('select tenh_pos_customer_create($1,$2,$3)',[b,randomUUID(),'{"address":"Street 1"}']);
+  const walkins=(await db.query('select tenh_orders_workspace($1,$2) result',[b,'{"fulfillment":"walk_in"}'])).rows[0].result;
+  assert.equal(walkins.length,2);assert.ok(walkins.every(row=>row.fulfillment==='walk_in'));
+  // This edited bundle has packing history, so it must remain in the audit trail.
+  await assert.rejects(manage(unused,'delete'),/transaction history/);
+  const deletable=await create({...input,sku:'DELETE-UNUSED'});
+  await manage(deletable,'delete');
+  assert.equal((await db.query('select count(*)::int n from products where id=$1',[deletable])).rows[0].n,0);
+  assert.equal((await db.query('select count(*)::int n from bundle_items where bundle_product_id=$1',[deletable])).rows[0].n,0);
+  assert.equal((await db.query('select count(*)::int n from product_location_stock where product_id=$1',[deletable])).rows[0].n,0);
   console.log('PASS: pack/unpack, options, retries, branch/permission isolation, editing, independent visibility, hidden POS sale guard, stale updates and safe deletion.');
  } finally { await db.close(); }
 })().catch(error=>{console.error(error.message, error.where ?? '', error.position ?? '');process.exitCode=1;});

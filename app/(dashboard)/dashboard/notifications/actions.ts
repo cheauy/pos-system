@@ -29,7 +29,7 @@ export async function saveNotificationRoleSettings(formData: FormData) {
       updated_at: new Date().toISOString(),
     };
   });
-  const { error } = await supabase.from("business_notification_role_settings").upsert(rows, { onConflict: "business_id,notification_type" });
+  const { error } = await supabase.from("branch_notification_role_settings").upsert(rows, { onConflict: "business_id,location_id,notification_type" });
   if (error) throw new Error(error.message);
   await supabase.rpc("refresh_business_notifications", { p_business_id: business.id });
   revalidatePath("/dashboard/notifications");

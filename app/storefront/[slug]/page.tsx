@@ -9,6 +9,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { formatBusinessType } from "@/lib/storefront/types";
 import { getSubdomainUrl, normalizeTenantSlug } from "@/lib/tenancy/domain";
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const slug = normalizeTenantSlug((await params).slug);
   const { data: business } = await supabaseAdmin.from("businesses")

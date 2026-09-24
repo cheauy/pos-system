@@ -1,6 +1,6 @@
 import { getBranchContext } from "@/lib/branches/context";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 import BarcodeLabelsClient from "./barcode-labels-client";
 
 type ProductRow = {
@@ -34,7 +34,7 @@ export default async function BarcodeLabelsPage() {
 
   const [productResult, categoryResult, settingsResult] = await Promise.all([
     supabase
-      .from("products")
+      .from("branch_products")
       .select(
         "id,name,sku,barcode,image_url,variant_image_url,cost_price,selling_price,stock_quantity,size,color,category_id,is_active",
       )
@@ -47,7 +47,7 @@ export default async function BarcodeLabelsPage() {
       .eq("business_id", business.id)
       .order("name"),
     supabase
-      .from("business_receipt_settings")
+      .from("branch_receipt_settings")
       .select("*")
       .eq("business_id", business.id)
       .maybeSingle(),

@@ -10,12 +10,13 @@ export function paymentHiddenForWalkIn(method: PaymentMethod, isWalkIn: boolean)
   return isWalkIn && (method === 'cod' || method === 'deposit' || method === 'other');
 }
 
-export function customerInputIssue(value: CustomerInput, fields:CustomerFieldFlags={emailEnabled:true,birthdayEnabled:true}): string | null {
+export function customerInputIssue(value: CustomerInput, fields:CustomerFieldFlags={emailEnabled:true,birthdayEnabled:true}, allowLegacyRetry = false): string | null {
   if (!value || typeof value !== 'object' || typeof value.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.id)) return 'Invalid customer request. Reopen Add customer.';
   if (value.branchId !== undefined && (typeof value.branchId !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.branchId))) return 'Invalid customer branch.';
   if (typeof value.name !== 'string' || value.name.trim().length < 2 || value.name.trim().length > 120) return 'Customer name must contain 2–120 characters.';
   if (typeof value.phone !== 'string' || !/^[+0-9() .-]{5,40}$/.test(value.phone.trim()) || value.phone.replace(/\D/g,'').length < 5 || value.phone.replace(/\D/g,'').length > 20) return 'Enter a phone number with 5–20 digits.';
   if (typeof value.address !== 'string' || value.address.trim().length > 500) return 'Address must be 500 characters or fewer.';
+  if (!allowLegacyRetry && !value.address.trim()) return 'Customer address is required.';
   if(fields.emailEnabled && value.email) {
     if(typeof value.email!=='string' || value.email.length>254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email.trim())) return 'Enter a valid email address.';
   }

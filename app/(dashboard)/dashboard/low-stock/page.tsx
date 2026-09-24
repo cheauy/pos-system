@@ -1,3 +1,4 @@
+import { readAllRows } from "@/lib/supabase/read-all-rows";
 import { getBranchContext } from "@/lib/branches/context";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/branch-server";
@@ -104,14 +105,14 @@ export default async function LowStockPage() {
     poItemsResult,
     adjustmentsResult,
   ] = await Promise.all([
-    supabase
-      .from("products")
+    readAllRows<ProductRow>((from, to) => supabase
+      .from("branch_products")
       .select(
         "id, name, sku, image_url, stock_quantity, low_stock_quantity, cost_price",
       )
       .eq("business_id", business.id)
       .eq("is_active", true)
-      .order("name", { ascending: true }),
+      .order("name", { ascending: true }).order("id").range(from, to)),
     supabase
       .from("business_locations")
       .select("id, name, is_default")
@@ -119,10 +120,10 @@ export default async function LowStockPage() {
       .eq("is_active", true)
       .order("is_default", { ascending: false })
       .order("name", { ascending: true }),
-    supabase
+    readAllRows<LocationStockRow>((from, to) => supabase
       .from("product_location_stock")
       .select("location_id, product_id, quantity, low_stock_threshold, updated_at")
-      .eq("business_id", business.id),
+      .eq("business_id", business.id).eq("location_id", branchId).order("product_id").range(from, to)),
     supabase
       .from("suppliers")
       .select("id, name")
@@ -145,6 +146,11 @@ export default async function LowStockPage() {
       .order("created_at", { ascending: false })
       .eq("location_id",branchId).limit(12),
   ]);
+
+  if (productsResult.error || locationsResult.error || locationStockResult.error) {
+    console.error("Low stock data failed", productsResult.error || locationsResult.error || locationStockResult.error);
+    return <main role="alert" className="rounded-xl border border-red-200 p-6">Unable to load branch inventory. Refresh to try again.</main>;
+  }
 
   const products = (productsResult.data ?? []) as ProductRow[];
   const locations = ((locationsResult.data ?? []) as LocationRow[]).filter(b=>b.id===branchId);
@@ -253,9 +259,6 @@ export default async function LowStockPage() {
   });
 
   const loadError =
-    productsResult.error?.message ||
-    locationsResult.error?.message ||
-    locationStockResult.error?.message ||
     suppliersResult.error?.message ||
     poItemsResult.error?.message ||
     adjustmentsResult.error?.message ||

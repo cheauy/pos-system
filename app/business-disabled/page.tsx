@@ -6,6 +6,7 @@ import { Ban, Loader2, LogOut } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { getAppUrl } from "@/lib/tenancy/domain";
+import UpdateAlertBanner from "@/components/update-alert-banner";
 
 const COPY: Record<string, { title: string; body: string; note: string }> = {
   subscription_expired: {
@@ -66,6 +67,7 @@ export default function BusinessDisabledPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
       <section className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-lg">
+        <UpdateAlertBanner />
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100 text-red-600">
           <Ban size={32} />
         </div>

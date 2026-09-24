@@ -123,7 +123,6 @@ export default async function DashboardPage({
   };
   if (branchId) analyticsHeaders["x-tenh-branch-id"] = branchId;
   const supabase = await createClient(analyticsHeaders);
-  const { data: { user } } = await supabase.auth.getUser();
 
   const period = resolvePeriod(params);
   const previousPeriod = previousComparablePeriod(period);
@@ -258,37 +257,7 @@ export default async function DashboardPage({
 
   return (
     <main className="mx-auto w-full max-w-[1900px] space-y-6 pb-10">
-      <header className="-mx-4 -mt-4 flex min-h-20 items-center border-b border-slate-200 bg-white px-5 py-4 sm:-mx-6 sm:-mt-6 sm:px-6 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 ring-1 ring-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:ring-blue-900">
-            <Store size={22} strokeWidth={2.1} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">
-              TENH POS workspace
-            </p>
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-              <p className="max-w-[14rem] truncate text-sm font-black text-slate-950 sm:max-w-[24rem] sm:text-base dark:text-white">
-                {business.name}
-              </p>
-            </div>
-          </div>
-        </div>
 
-        <div className="ml-auto hidden items-center gap-3 sm:flex">
-          <div className="hidden text-right xl:block">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-              Signed in as
-            </p>
-            <p className="max-w-52 truncate text-xs font-semibold text-slate-600 dark:text-slate-300">
-              {user?.email ?? "Account"}
-            </p>
-          </div>
-          <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black capitalize text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-            {business.role}
-          </span>
-        </div>
-      </header>
 
       {analyticsErrors.length > 0 ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">

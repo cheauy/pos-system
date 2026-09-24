@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from '@/lib/supabase/server';
+import { getBranchContext } from '@/lib/branches/context';
 import type { BusinessRole, CurrentBusiness } from "@/lib/business/types";
 import {
   permissions,
@@ -17,14 +18,16 @@ function fallback(role: BusinessRole): Permission[] {
 }
 
 export const getRolePermissions = cache(
-  async (businessId: string, role: BusinessRole): Promise<Permission[]> => {
+  async (businessId: string, role: BusinessRole, locationId?: string): Promise<Permission[]> => {
     if (role === "owner") return [...permissions];
     if (role === "admin") return fallback(role);
 
+    const branchId = locationId ?? (await getBranchContext()).branchId;
     const { data, error } = await supabaseAdmin
-      .from("business_role_permissions")
+      .from("branch_role_permissions")
       .select("permission,enabled")
       .eq("business_id", businessId)
+      .eq("location_id", branchId)
       .eq("role", role);
 
     // Older databases fall back to the existing role defaults until the
@@ -61,11 +64,11 @@ const currentUserId = cache(async () => {
 export const getEffectivePermissions = cache(async (businessId: string, role: BusinessRole) => {
   const userId = await currentUserId();
   const { data: member, error } = await supabaseAdmin.from('business_members')
-    .select('id,role,is_active,team_password_required').eq('business_id',businessId).eq('user_id',userId).maybeSingle();
+    .select('id,role,is_active,team_password_required,default_location_id').eq('business_id',businessId).eq('user_id',userId).maybeSingle();
   if (error) throw new Error('Unable to verify user permissions.');
   if (!member?.is_active || member.team_password_required || member.role !== role) return [];
   if (role === 'owner') return [...permissions];
-  const baseline = await getRolePermissions(businessId, role);
+  const baseline = await getRolePermissions(businessId, role, member.default_location_id ?? undefined);
   const result = await supabaseAdmin.from('business_member_permissions').select('permission,enabled').eq('member_id',member.id);
   if (result.error) throw new Error('Unable to load individual permissions. Apply the user-permissions migration.');
   const overrides = new Map<string, boolean>((result.data ?? []).map(row => [row.permission, row.enabled === true]));

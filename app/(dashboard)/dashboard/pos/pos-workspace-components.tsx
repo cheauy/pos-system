@@ -5,6 +5,7 @@ import { Barcode, Camera, Package, X } from 'lucide-react';
 import type { SaleReceipt } from './pos-workspace-types';
 import { money } from './pos-workspace-helpers';
 import s from './pos-workspace.module.css';
+import ProductPhoto from '@/components/product-photo';
 
 export function Modal({ title, children, onClose, wide = false, locked = false, paper = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean; locked?: boolean; paper?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -25,7 +26,7 @@ export function Modal({ title, children, onClose, wide = false, locked = false, 
 export function ProductImage({ src, alt, className = '' }: { src: string | null; alt: string; className?: string }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
-  return src && !failed ? <img className={className} src={src} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(true)} /> : <span className={`${s.imageFallback} ${className}`} role="img" aria-label={`${alt} — no image`}><Package size={32} /></span>;
+  return src && !failed ? <ProductPhoto className={className} src={src} alt={alt} sizes="(max-width: 640px) 45vw, 200px" onError={() => setFailed(true)} /> : <span className={`${s.imageFallback} ${className}`} role="img" aria-label={`${alt} — no image`}><Package size={32} /></span>;
 }
 
 type DetectorInstance = { detect: (video: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>> };

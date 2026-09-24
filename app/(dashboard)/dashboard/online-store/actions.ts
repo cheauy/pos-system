@@ -1,5 +1,8 @@
 "use server";
 
+import { compressPhoto } from "@/lib/images/compress-photo";
+import { PUBLIC_PHOTO_CACHE_SECONDS } from "@/lib/public-photo-cache";
+
 import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit/create-audit-log";
@@ -123,6 +126,7 @@ async function uploadStorefrontImage({
   kind: "logo" | "banner" | "khqr";
   file: File;
 }) {
+  if (kind === 'banner') file = await compressPhoto(file);
   const path = `${businessId}/${kind}/${crypto.randomUUID()}.${getExtension(
     file,
   )}`;
@@ -131,7 +135,7 @@ async function uploadStorefrontImage({
     .from(STOREFRONT_MEDIA_BUCKET)
     .upload(path, file, {
       contentType: file.type,
-      cacheControl: "31536000",
+      cacheControl: PUBLIC_PHOTO_CACHE_SECONDS,
       upsert: false,
     });
 

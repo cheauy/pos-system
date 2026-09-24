@@ -4,7 +4,8 @@ import { assertBranchOperation } from "@/lib/subscriptions/branch-limits";
 import { revalidatePath } from "next/cache";
 
 import { requirePermission } from "@/lib/auth/require-permission";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
+import { assertOperatingBranch } from "@/lib/branches/context";
 
 import {
   initialStockAdjustmentState,
@@ -20,10 +21,12 @@ export async function submitStockAdjustment(
   _previousState: StockAdjustmentActionState,
   formData: FormData,
 ): Promise<StockAdjustmentActionState> {
+  let requestSent = false;
   try {
     const business = await requirePermission("products.stock_adjust");
 
     const locationId = textField(formData, "locationId");
+    await assertOperatingBranch(locationId);
     await assertBranchOperation(business.id, locationId);
     const productId = textField(formData, "productId");
     const mode = textField(formData, "mode");
@@ -32,6 +35,13 @@ export async function submitStockAdjustment(
     const notes = textField(formData, "notes");
     const quantityValue = textField(formData, "quantity");
     const quantity = Number(quantityValue);
+    const requestId = textField(formData, "requestId");
+    const expectedValue = textField(formData, "expectedQuantity");
+    const expectedQuantity = Number(expectedValue);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)
+      || !expectedValue || !Number.isSafeInteger(expectedQuantity) || expectedQuantity < 0) {
+      return { success: false, message: "Reload the adjustment form before saving.", submittedAt: Date.now() };
+    }
 
     if (!productId) {
       return {
@@ -50,7 +60,7 @@ export async function submitStockAdjustment(
     }
 
     const quantityIsValid =
-      Number.isInteger(quantity) &&
+      quantityValue.length > 0 && Number.isSafeInteger(quantity) && quantity <= 2147483647 &&
       (mode === "set" ? quantity >= 0 : quantity > 0);
 
     if (!quantityIsValid) {
@@ -72,7 +82,7 @@ export async function submitStockAdjustment(
       };
     }
 
-    if (notes.length > 500) {
+    if (notes.length > 500 || (reference?.length ?? 0) > 200 || reason.length > 100) {
       return {
         success: false,
         message: "Notes must be 500 characters or fewer.",
@@ -83,7 +93,7 @@ export async function submitStockAdjustment(
     const supabase = await createClient();
 
     const { data: product, error: productError } = await supabase
-      .from("products")
+      .from("branch_products")
       .select("id, name, stock_quantity")
       .eq("id", productId)
       .eq("business_id", business.id)
@@ -106,18 +116,10 @@ export async function submitStockAdjustment(
       };
     }
 
-    const currentStock = Number(product.stock_quantity ?? 0);
-    if (mode === "decrease" && quantity > currentStock) {
-      return {
-        success: false,
-        message: `Cannot decrease ${quantity}. Only ${currentStock} unit${currentStock === 1 ? " is" : "s are"} currently in stock.`,
-        submittedAt: Date.now(),
-      };
-    }
-
     const auditReason = notes ? `${reason} — ${notes}` : reason;
 
-    let { error } = await supabase.rpc("adjust_branch_product_stock", {
+    requestSent = true;
+    const { error } = await supabase.rpc("tenh_adjust_branch_stock", {
       p_business_id: business.id,
       p_location_id: locationId,
       p_product_id: productId,
@@ -125,24 +127,25 @@ export async function submitStockAdjustment(
       p_quantity: quantity,
       p_reason: auditReason,
       p_reference: reference,
+      p_request_id: requestId,
+      p_expected_quantity: expectedQuantity,
     });
-
-    if (error?.code === "PGRST202") {
-      const { count, error: countError } = await supabase.from("business_locations").select("id", { count: "exact", head: true }).eq("business_id", business.id);
-      if (!countError && count === 1) ({ error } = await supabase.rpc("adjust_product_stock", { p_product_id: productId, p_mode: mode, p_quantity: quantity, p_reason: auditReason, p_reference: reference }));
-    }
     if (error) {
       return {
         success: false,
-        message: error.message,
+        message: error.code === "PGRST202" ? "Stock adjustment update is not installed yet." : error.message,
+        uncertain: !error.code || !/^(22|23|42|P0001|PGRST202)/.test(error.code),
         submittedAt: Date.now(),
       };
     }
 
+    try {
     revalidatePath("/dashboard/inventory");
     revalidatePath("/dashboard/inventory/adjustments");
     revalidatePath("/dashboard/low-stock");
     revalidatePath("/dashboard/products");
+    revalidatePath("/dashboard/pos");
+    } catch { /* The transaction committed. A refresh failure must not report a failed save. */ }
 
     return {
       success: true,
@@ -152,6 +155,7 @@ export async function submitStockAdjustment(
   } catch (error) {
     return {
       success: false,
+      uncertain: requestSent,
       message:
         error instanceof Error
           ? error.message

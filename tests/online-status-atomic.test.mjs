@@ -12,7 +12,7 @@ function statusHarness(options={}) {
   const api=loadTs('app/(dashboard)/dashboard/online-orders/actions.ts',{
     'next/cache':{revalidatePath(p){paths.push(p);if(options.cacheError)throw Error('cache');}},
     '@/lib/audit/create-audit-log':{createAuditLog:async a=>{audits.push(a);if(options.auditError)throw Error('audit');}},
-    '@/lib/auth/require-permission':{requirePermission:async p=>{assert.equal(p,'orders.update');return{id:'business'};}},
+    '@/lib/auth/require-permission':{requirePermission:async p=>{assert.equal(p,options.target==='rejected'?'orders.cancel':'orders.update');return{id:'business'};}},
     '@/lib/supabase/branch-server':{createClient:async()=>db},
   });return{api,queries,calls,audits,paths};
 }

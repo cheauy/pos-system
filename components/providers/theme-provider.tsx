@@ -1,154 +1,90 @@
-"use client";
+'use client';
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { APPEARANCE_STORAGE_KEY, appearancePalette, defaultAppearance, normalizeAppearance, type Appearance, type ThemeValue } from '@/lib/appearance';
+export { accentColors, accentTextColors, type AccentColor, type ThemeValue } from '@/lib/appearance';
 
-export type ThemeValue = "light" | "dark" | "system";
-export const accentColors = { white: '#ffffff', blue: '#2563eb', violet: '#7c3aed', emerald: '#047857', rose: '#be123c', amber: '#b45309' } as const;
-export type AccentColor = keyof typeof accentColors;
-type ResolvedTheme = "light" | "dark";
-
-type ThemeContextValue = {
-  theme: ThemeValue;
-  resolvedTheme: ResolvedTheme;
-  setTheme: (theme: ThemeValue) => void;
-  accent: AccentColor;
-  setAccent: (accent: AccentColor) => void;
+type ThemeContextValue = Appearance & {
+  ready: boolean;
+  resolvedTheme: 'light' | 'dark';
+  systemTheme: 'light' | 'dark';
+  saveAppearance: (next: Appearance) => void;
+  setScope: (scope: string) => void;
 };
-
-type ThemeProviderProps = {
-  children: ReactNode;
-  defaultTheme?: ThemeValue;
-  enableSystem?: boolean;
-  disableTransitionOnChange?: boolean;
-  attribute?: "class" | string;
-};
-
 const ThemeContext = createContext<ThemeContextValue | null>(null);
-const STORAGE_KEY = "theme";
 
-function isTheme(value: string | null): value is ThemeValue {
-  return value === "light" || value === "dark" || value === "system";
-}
-
-function systemTheme(): ResolvedTheme {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-}
-
-function applyTheme(theme: ThemeValue, disableTransition: boolean): ResolvedTheme {
-  const resolved = theme === "system" ? systemTheme() : theme;
+function applyAppearance(value: Appearance, systemDark: boolean) {
   const root = document.documentElement;
-
-  let transitionStyle: HTMLStyleElement | null = null;
-  if (disableTransition) {
-    transitionStyle = document.createElement("style");
-    transitionStyle.textContent =
-      "*,*::before,*::after{transition:none!important;animation-duration:0s!important}";
-    document.head.appendChild(transitionStyle);
-  }
-
-  root.classList.toggle("dark", resolved === "dark");
+  const resolved = value.theme === 'system' ? systemDark ? 'dark' : 'light' : value.theme;
+  const palette = appearancePalette(value, resolved);
+  root.classList.toggle('dark', resolved === 'dark');
   root.style.colorScheme = resolved;
-
-  if (transitionStyle) {
-    // Force the style to take effect for this paint, then remove it immediately.
-    void window.getComputedStyle(transitionStyle).opacity;
-    window.setTimeout(() => transitionStyle?.remove(), 0);
-  }
-
+  root.style.setProperty('--app-accent', palette.action);
+  root.style.setProperty('--sidebar-background', palette.background);
+  root.style.setProperty('--sidebar-foreground', palette.foreground);
+  root.dataset.workspaceColor = value.accent;
+  root.dataset.textSize = value.textSize;
+  root.dataset.density = value.density;
+  root.dataset.highContrast = String(value.highContrast);
   return resolved;
 }
 
-export default function ThemeProvider({
-  children,
-  defaultTheme = "system",
-  enableSystem = true,
-  disableTransitionOnChange = false,
-}: ThemeProviderProps) {
-  const safeDefault = enableSystem ? defaultTheme : defaultTheme === "system" ? "light" : defaultTheme;
-  const [theme, setThemeState] = useState<ThemeValue>(safeDefault);
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
-  const [accent, setAccentState] = useState<AccentColor>('white');
-  const setAccent = useCallback((next: AccentColor) => {
-    if (!(next in accentColors)) return;
-    setAccentState(next);
-    document.documentElement.style.setProperty('--app-accent', next === 'white' ? '#2563eb' : accentColors[next]);
-    document.documentElement.dataset.workspaceColor = next;
-    try { localStorage.setItem('tenh-accent', next); } catch { /* Device storage unavailable. */ }
-  }, []);
-  useEffect(() => {
-    const restore = () => {
-      try { const value = localStorage.getItem('tenh-accent'); setAccent(value && value in accentColors ? value as AccentColor : 'white'); } catch { /* Keep white. */ }
-    };
-    restore();
-    window.addEventListener('storage', restore);
-    return () => window.removeEventListener('storage', restore);
-  }, [setAccent]);
+export default function ThemeProvider({ children, defaultTheme = 'system', enableSystem = true }: {
+  children: ReactNode; defaultTheme?: ThemeValue; enableSystem?: boolean; disableTransitionOnChange?: boolean; attribute?: string;
+}) {
+  const [preferences, setPreferences] = useState<Appearance>({ ...defaultAppearance, theme: defaultTheme });
+  const [ready, setReady] = useState(false);
+  const [scope, setScope] = useState(APPEARANCE_STORAGE_KEY);
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
+  const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>('light');
+  const apply = useCallback((value: Appearance) => {
+    const next = normalizeAppearance(value);
+    if (!enableSystem && next.theme === 'system') next.theme = 'light';
+    setPreferences(next);
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    setSystemTheme(systemDark ? 'dark' : 'light');
+    setResolvedTheme(applyAppearance(next, systemDark));
+  }, [enableSystem]);
 
-  const setTheme = useCallback(
-    (next: ThemeValue) => {
-      const safeNext = enableSystem ? next : next === "system" ? "light" : next;
+  useEffect(() => {
+    function restore() {
+      let value: Appearance = { ...defaultAppearance, theme: defaultTheme };
       try {
-        window.localStorage.setItem(STORAGE_KEY, safeNext);
-      } catch {
-        // Local storage may be unavailable in private/restricted browser contexts.
-      }
-      setThemeState(safeNext);
-      setResolvedTheme(applyTheme(safeNext, disableTransitionOnChange));
-    },
-    [disableTransitionOnChange, enableSystem],
-  );
-
-  useEffect(() => {
-    let stored: string | null = null;
-    try {
-      stored = window.localStorage.getItem(STORAGE_KEY);
-    } catch {
-      // Fall back to the configured default.
+        const saved = localStorage.getItem(scope);
+        value = normalizeAppearance(saved ? JSON.parse(saved) : scope === APPEARANCE_STORAGE_KEY ? { theme: localStorage.getItem('theme') ?? defaultTheme, accent: localStorage.getItem('tenh-accent') } : defaultAppearance);
+      } catch { /* Use safe defaults when storage is blocked or invalid. */ }
+      apply(value);
+      setReady(true);
     }
-
-    const initial = isTheme(stored)
-      ? enableSystem
-        ? stored
-        : stored === "system"
-          ? "light"
-          : stored
-      : safeDefault;
-
-    setThemeState(initial);
-    setResolvedTheme(applyTheme(initial, false));
-  }, [enableSystem, safeDefault]);
+    restore();
+    const sync = (event: StorageEvent) => { if (event.key === scope || event.key === null) restore(); };
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, [apply, defaultTheme, scope]);
 
   useEffect(() => {
-    if (theme !== "system" || !enableSystem) return;
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const change = () => setResolvedTheme(applyTheme("system", disableTransitionOnChange));
-    media.addEventListener("change", change);
-    return () => media.removeEventListener("change", change);
-  }, [disableTransitionOnChange, enableSystem, theme]);
+    if (!enableSystem) return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const change = () => {
+      setSystemTheme(media.matches ? 'dark' : 'light');
+      setResolvedTheme(applyAppearance(preferences, media.matches));
+    };
+    media.addEventListener('change', change);
+    return () => media.removeEventListener('change', change);
+  }, [preferences, enableSystem]);
 
-  const value = useMemo(
-    () => ({ theme, resolvedTheme, setTheme, accent, setAccent }),
-    [resolvedTheme, setTheme, theme, accent, setAccent],
-  );
-
+  const saveAppearance = useCallback((value: Appearance) => {
+    const next = normalizeAppearance(value);
+    // A single write commits the whole draft. If storage fails, leave the saved UI intact.
+    localStorage.setItem(scope, JSON.stringify(next));
+    apply(next);
+  }, [apply, scope]);
+  const value = useMemo(() => ({ ...preferences, ready, resolvedTheme, systemTheme, saveAppearance, setScope }), [preferences, ready, resolvedTheme, systemTheme, saveAppearance]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {
-  const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error("useTheme must be used inside ThemeProvider.");
-  }
-  return context;
+  const value = useContext(ThemeContext);
+  if (!value) throw new Error('useTheme must be used inside ThemeProvider.');
+  return value;
 }

@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import OnlineOrderListener from "@/components/online-order-listener";
+import UpdateAlertBanner from "@/components/update-alert-banner";
 import { getCurrentBusinessForSubscription } from "@/lib/business/get-current-business";
 import { createClient } from "@/lib/supabase/server";
 import { getBranchContext } from "@/lib/branches/context";
@@ -85,6 +86,7 @@ export default async function DashboardLayout({
     return (
       <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
         <main className="mx-auto min-h-screen w-full max-w-[1600px] p-4 sm:p-6">
+          <UpdateAlertBanner />
           {children}
         </main>
       </div>
@@ -95,15 +97,17 @@ export default async function DashboardLayout({
     getBranchContext(),
     getEffectivePermissions(business.id, business.role),
   ]);
+  const onlineScope = effectivePermissions.includes("orders.view")
+    ? await supabase.rpc("tenh_receive_all_online_orders", { p_business: business.id }) : null;
   return (
     <div className="workspace-theme min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <WorkspaceBranchProvider businessId={business.id} userId={branchContext.userId} branchId={branchContext.branchId} branches={branchContext.branches}>
+      <WorkspaceBranchProvider businessId={business.id} businessName={business.name} role={business.role} userId={branchContext.userId} branchId={branchContext.branchId} branches={branchContext.branches}>
       <SidebarClient businessId={business.id} branchId={branchContext.branchId} effectivePermissions={effectivePermissions} />
       <PermissionRefresh businessId={business.id} userId={branchContext.userId} role={business.role} />
-      <OnlineOrderListener businessId={business.id} branchId={branchContext.branchId} />
+      {effectivePermissions.includes("orders.view") && <OnlineOrderListener businessId={business.id} branchId={branchContext.branchId} receiveAll={onlineScope?.data === true} />}
 
       <div className="lg:pl-16">
-        <main className="p-4 sm:p-6"><div key={branchContext.branchId}>{children}</div></main>
+        <main className="p-4 sm:p-6"><UpdateAlertBanner /><div key={branchContext.branchId}>{children}</div></main>
       </div>
       </WorkspaceBranchProvider>
     </div>

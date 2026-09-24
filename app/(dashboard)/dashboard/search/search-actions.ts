@@ -2,7 +2,7 @@
 
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
 import { getEffectivePermissions } from "@/lib/auth/effective-permissions";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 import type {
   GlobalSearchBranch,
   GlobalSearchInput,
@@ -171,7 +171,7 @@ export async function runGlobalSearch(
     tasks.push(
       (async () => {
         const productQuery = db
-          .from("products")
+          .from("branch_products")
           .select(
             "id,name,sku,barcode,size,color,selling_price,stock_quantity,low_stock_quantity,is_active,created_at",
           )

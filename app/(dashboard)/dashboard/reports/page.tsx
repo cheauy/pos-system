@@ -16,7 +16,6 @@ import {
   ShoppingCart,
   TrendingDown,
   TrendingUp,
-  WalletCards,
 } from "lucide-react";
 import ReportCharts from "./report-charts";
 import { createClient } from "@/lib/supabase/server";
@@ -240,13 +239,7 @@ export default async function ReportsPage({
         </div>
 
         <div className="flex flex-wrap items-end gap-3"><ViewBranchSelect branches={branches ?? []} branchId={branch?.id ?? ""}/>
-        <Link
-          href="/dashboard/expenses"
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-        >
-          <WalletCards size={18} />
-          Manage Expenses
-        </Link></div>
+</div>
       </div>
 
       <ReportFilters

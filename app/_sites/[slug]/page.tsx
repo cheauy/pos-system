@@ -265,19 +265,29 @@ export default async function StorefrontPage({
     (product) => !product.category_id || categoryIds.has(product.category_id),
   );
 
-  const { data: inventoryBranches, error: inventoryBranchError } = await supabaseAdmin.from("business_locations").select("id,is_default,is_active").eq("business_id", business.id);
-  if (inventoryBranchError) throw new Error("Unable to load fulfillment branch.");
-  const fulfillmentBranch = inventoryBranches?.find(branch => branch.id === storefrontData?.fulfillment_location_id && branch.is_active)
-    ?? (!storefrontData?.fulfillment_location_id ? inventoryBranches?.find(branch => branch.is_default && branch.is_active) : undefined);
-  if (!fulfillmentBranch) { productRows=[]; categories=[]; }
-  else {
-    categories=categories.filter(c=>c.branch_ids===null || c.branch_ids.includes(fulfillmentBranch.id));
-    const visibleCategories=new Set(categories.map(c=>c.id));
-    const {data: branchStock,error:branchStockError}=await supabaseAdmin.from("product_location_stock").select("product_id,quantity").eq("business_id",business.id).eq("location_id",fulfillmentBranch.id);
-    if(branchStockError) throw new Error("Unable to load fulfillment stock.");
-    const stockByProduct=new Map((branchStock ?? []).map(r=>[r.product_id,Number(r.quantity)]));
-    productRows=productRows.filter(p=>stockByProduct.has(p.id) && (!p.category_id || visibleCategories.has(p.category_id))).map(p=>({...p,stock_quantity:Math.min(p.stock_quantity,stockByProduct.get(p.id) ?? 0)}));
+  const { data: inventoryBranches, error: inventoryBranchError } = await supabaseAdmin.from("business_locations").select("id").eq("business_id", business.id).eq("is_active", true).eq("plan_disable_pending", false);
+  if (inventoryBranchError) throw new Error("Unable to load store branches.");
+  const branchIds = (inventoryBranches ?? []).map(branch => branch.id);
+  categories = categories.filter(category => category.branch_ids === null || category.branch_ids.some(id => branchIds.includes(id)));
+  const categoriesById = new Map(categories.map(category => [category.id, category]));
+  const stockByProduct = new Map<string, number>();
+  const productsById = new Map(productRows.map(product => [product.id, product]));
+  if (branchIds.length) {
+    for (let offset = 0; ; offset += 1000) {
+      const { data: branchStock, error } = await supabaseAdmin.from("product_location_stock").select("product_id,location_id,quantity").eq("business_id", business.id).in("location_id", branchIds).order("product_id").order("location_id").range(offset, offset + 999);
+      if (error) throw new Error("Unable to load store stock.");
+      for (const row of branchStock ?? []) {
+        const product = productsById.get(row.product_id);
+        if (!product) continue;
+        const category = product.category_id ? categoriesById.get(product.category_id) : null;
+        if (product.category_id && (!category || (category.branch_ids !== null && !category.branch_ids.includes(row.location_id)))) continue;
+        // One branch fulfils each checkout, so do not promise combined stock.
+        stockByProduct.set(row.product_id, Math.max(stockByProduct.get(row.product_id) ?? 0, Number(row.quantity)));
+      }
+      if (!branchStock || branchStock.length < 1000) break;
+    }
   }
+  productRows = productRows.filter(product => stockByProduct.has(product.id)).map(product => ({ ...product, stock_quantity: Math.max(0, Math.min(product.stock_quantity, stockByProduct.get(product.id) ?? 0)) }));
   const configurableProductIds = productRows
     .filter((product) => product.product_type === "configurable")
     .map((product) => product.id);

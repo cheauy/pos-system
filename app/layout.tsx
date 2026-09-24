@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 
 import LanguageProvider from "@/components/providers/language-provider";
 import ThemeProvider from "@/components/providers/theme-provider";
+import PhotoCache from "@/components/providers/photo-cache";
 import {
   LANGUAGE_COOKIE,
   normalizeLanguage,
@@ -23,12 +24,15 @@ const hanuman = Hanuman({
   weight: ["400", "700"],
   variable: "--font-hanuman",
   display: "swap",
+  preload: false,
 });
 
 
 const THEME_BOOTSTRAP = `(() => {
   try {
-    const saved = localStorage.getItem("theme");
+    let appearance = {};
+    try { appearance = JSON.parse(localStorage.getItem("tenh-appearance") || "{}") || {}; } catch {}
+    const saved = appearance.theme || localStorage.getItem("theme");
     const theme = saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
     const resolved = theme === "system"
       ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
@@ -80,6 +84,7 @@ export default async function RootLayout({
         />
       </head>
       <body>
+        <PhotoCache />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

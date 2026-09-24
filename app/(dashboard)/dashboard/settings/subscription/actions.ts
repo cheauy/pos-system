@@ -786,5 +786,6 @@ export async function submitSubscriptionPayment(formData: FormData) {
     revalidatePath(`/dashboard/settings/subscription/payment/${order.id}`);
     revalidatePath("/dashboard/settings/subscription");
     revalidatePath("/super-admin/subscription-payments");
+    revalidatePath("/super-admin/manual-payments");
   } catch { /* Proof is committed. Never report a failed payment after refresh fails. */ }
 }

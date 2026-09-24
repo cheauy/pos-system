@@ -2,9 +2,11 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
-import { AlertTriangle, ArrowRightLeft, Check, ChevronDown, Loader2, Store, X } from 'lucide-react';
+import { AlertTriangle, ArrowRightLeft, Check, ChevronDown, Loader2, ShieldCheck, Store, X } from 'lucide-react';
 import { branchChannelKey, branchDestination } from '@/lib/branches/switch-model';
 import { getOperatingBranchStatus, switchOperatingBranch } from './branch-actions';
+import { useTheme } from '@/components/providers/theme-provider';
+import { APPEARANCE_STORAGE_KEY } from '@/lib/appearance';
 
 type Guard=(targetId?:string)=>string|null;
 type SwitchContext={requestSwitch:(id:string)=>Promise<void>;registerGuard:(guard:Guard)=>()=>void};
@@ -20,9 +22,12 @@ export function useBranchSwitchGuard(guard:Guard) {
   useEffect(()=>registerGuard(target=>latest.current(target)),[registerGuard]);
 }
 
-type Props={businessId:string;userId:string;branchId:string;branches:{id:string;name:string}[];children:ReactNode};
+type Props={businessId:string;businessName:string;role:string;userId:string;branchId:string;branches:{id:string;name:string}[];children:ReactNode};
 export default function WorkspaceBranchProvider(p:Props) {
+  const {setScope}=useTheme();
+  useEffect(()=>{setScope(`${APPEARANCE_STORAGE_KEY}:${p.businessId}:${p.branchId}`);return()=>setScope(APPEARANCE_STORAGE_KEY);},[p.businessId,p.branchId,setScope]);
   const pathname=usePathname();
+  const sharedOnlineStore=pathname === "/dashboard/online-store" || pathname.startsWith("/dashboard/online-store/");
   const [open,setOpen]=useState(false),[selected,setSelected]=useState(p.branchId);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[stale,setStale]=useState('');
   const guards=useRef(new Set<Guard>()),dirty=useRef(false),saving=useRef(false);
@@ -96,16 +101,19 @@ export default function WorkspaceBranchProvider(p:Props) {
   return <Context.Provider value={{requestSwitch,registerGuard}}>
     <div ref={content} inert={busy || Boolean(stale)} onInputCapture={()=>{dirty.current=true;}} onChangeCapture={()=>{dirty.current=true;}}>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 sm:px-6 lg:ml-16 dark:border-slate-800 dark:bg-slate-900" data-workspace-branch-header>
-        <div className="flex min-w-0 items-center gap-2 text-sm"><Store size={18} className="shrink-0 text-blue-600"/><span className="text-slate-500">Workspace:</span><strong className="truncate text-slate-900 dark:text-white">{currentName}</strong></div>
-        <button type="button" aria-label="Switch Branches" aria-haspopup="dialog" disabled={busy||Boolean(stale)||p.branches.length<2} onClick={()=>{setSelected(p.branchId);setOpen(true);setError('');}} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
+        <div className="flex min-w-0 items-center gap-3"><Store size={22} className="shrink-0 text-blue-600"/><div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-widest text-blue-600">TENH POS workspace</p><p className="truncate font-bold text-slate-900 dark:text-white">{p.businessName}</p></div></div>
+        <div className="flex flex-wrap items-center gap-3">
+        {!sharedOnlineStore && <><span className="text-sm text-slate-500">{currentName}</span><button type="button" aria-label="Switch Branches" aria-haspopup="dialog" disabled={busy||Boolean(stale)||p.branches.length<2} onClick={()=>{setSelected(p.branchId);setOpen(true);setError('');}} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
           <ArrowRightLeft size={16}/>Switch Branches<ChevronDown size={15}/>
-        </button>
+        </button></>}
+        <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700"><ShieldCheck size={16}/><span>Role: <span className="capitalize">{p.role}</span></span></span>
+        </div>
       </div>
       {p.children}
     </div>
     <dialog ref={modal} aria-label="Switch workspace branch" onCancel={e=>{if(busy)e.preventDefault();else setOpen(false);}} className="m-auto w-[min(94vw,520px)] rounded-2xl border-0 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/50 dark:bg-slate-900 dark:text-white">
       <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-700"><h2 className="text-lg font-bold">Switch Branches</h2><button type="button" aria-label="Close branch switcher" disabled={busy} onClick={()=>setOpen(false)}><X size={20}/></button></header>
-      <div className="space-y-4 p-5"><p className="text-sm text-slate-500">Switch POS, register, customers, orders, purchases and default report views together. Business settings and shared product definitions stay with this business.</p>
+      <div className="space-y-4 p-5"><p className="text-sm text-slate-500">Switch products, settings, POS, customers, orders and reports together. Online Store and subscription remain shared.</p>
         <div role="radiogroup" aria-label="Workspace branch" className="max-h-72 space-y-2 overflow-auto">{p.branches.map(b=><label key={b.id} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 ${selected===b.id?'border-blue-500 bg-blue-50 dark:bg-blue-950':'border-slate-200 dark:border-slate-700'}`}><input type="radio" name="workspace-branch" disabled={busy} checked={selected===b.id} onChange={()=>setSelected(b.id)}/><span className="flex-1">{b.name}</span>{b.id===p.branchId&&<span className="flex items-center gap-1 text-xs text-blue-600"><Check size={13}/>Current</span>}</label>)}</div>
         {error&&<p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{error}</p>}
         <div className="flex justify-end gap-2"><button type="button" disabled={busy} onClick={()=>setOpen(false)} className="rounded-xl border px-4 py-2">Cancel</button><button type="button" disabled={busy||selected===p.branchId} onClick={()=>void requestSwitch(selected)} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white disabled:opacity-50">{busy&&<Loader2 size={16} className="animate-spin"/>}Switch workspace</button></div>

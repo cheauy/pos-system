@@ -50,7 +50,7 @@ export function PosCustomerPicker(p:Props) {
   useEffect(()=>{
     try {
       const saved=JSON.parse(sessionStorage.getItem(key)||'null');
-      if(saved && !customerInputIssue(saved)) {setPending(saved);setForm({name:saved.name,phone:saved.phone,address:saved.address,email:saved.email || '',birthday:saved.birthday || ''});setShowForm(true);setFormError('A previous customer save needs confirmation. Retry the same request.');}
+      if(saved && !customerInputIssue(saved,undefined,true)) {setPending(saved);setForm({name:saved.name,phone:saved.phone,address:saved.address,email:saved.email || '',birthday:saved.birthday || ''});setShowForm(true);setFormError('A previous customer save needs confirmation. Retry the same request.');}
     } catch { /* Unavailable storage is handled before any create call. */ }
   },[key]);
 
@@ -89,7 +89,7 @@ export function PosCustomerPicker(p:Props) {
       setFormError('This unconfirmed customer request belongs to another or an older branch context. Check Customers at the original branch before creating a new request. The saved request has not been discarded.');
       return;
     }
-    const invalid=customerInputIssue(input,fields);
+    const invalid=customerInputIssue(input,fields,Boolean(pending));
     if(invalid){setFormError(invalid);return;}
     // Persist before sending so a network failure never creates a second request ID.
     try{sessionStorage.setItem(key,JSON.stringify(input));}catch{setFormError('Enable browser session storage before saving, so a retry cannot create a duplicate.');return;}
@@ -112,20 +112,20 @@ export function PosCustomerPicker(p:Props) {
   }
 
   if(showForm)return <div className={s.customerCreateForm}>
-    <div className={s.between}><h3>Add customer</h3><button type="button" className={s.textButton} disabled={saving} onClick={back}><ChevronLeft size={15}/>Back to customers</button></div>
+    <div className={s.between}><h3>Quick Add customer</h3><button type="button" className={s.textButton} disabled={saving} onClick={back}><ChevronLeft size={15}/>Back to customers</button></div>
     <p className={s.muted}>Saves a customer to this business now. It does not create a sale, record a payment, or change the current cart.</p>
     {pending && <p className={s.paymentInfo}>Retry uses the same saved details to avoid a duplicate customer.</p>}
     {formError && <p role="alert" className={`${s.notice} ${s.error}`}>{formError}</p>}
     <fieldset className={s.customerFormFields} disabled={saving || Boolean(pending)}>
       <label className={s.field}>Customer name *<input autoFocus aria-label="New customer name" autoComplete="off" maxLength={120} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/></label>
       <label className={s.field}>Phone *<input type="tel" aria-label="New customer phone" autoComplete="off" maxLength={40} value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))}/></label>
-      <label className={s.field}>Address (optional)<textarea aria-label="New customer address" autoComplete="off" maxLength={500} rows={3} value={form.address} onChange={e=>setForm(f=>({...f,address:e.target.value}))}/></label>
+      <label className={s.field}>Address *<textarea required aria-label="New customer address" autoComplete="off" maxLength={500} rows={3} value={form.address} onChange={e=>setForm(f=>({...f,address:e.target.value}))}/></label>
       {fields?.emailEnabled && <label className={s.field}>Email (optional)<input type="email" aria-label="New customer email" maxLength={254} autoComplete="off" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))}/></label>}
       {fields?.birthdayEnabled && <label className={s.field}>Birthday (optional)<input type="date" aria-label="New customer birthday" max={new Date().toISOString().slice(0,10)} value={form.birthday} onChange={e=>setForm(f=>({...f,birthday:e.target.value}))}/></label>}
     </fieldset>
     {!fields && <p role="status" className={s.muted}>Loading Customer Settings…</p>}
     {error && <p role="alert" className={s.orangeText}>{error}</p>}
-    <div className={s.customerPickerFooter}><span className={s.muted}>Name and phone are required.</span><button type="button" className={s.primary} disabled={saving || !canCreate || !fields || loading} onClick={()=>void save()}>{saving?<RefreshCw size={16} className={s.spin}/>:<Plus size={16}/>} {saving?'Saving…':pending?'Retry same customer':'Save customer'}</button></div>
+    <div className={s.customerPickerFooter}><span className={s.muted}>Name, phone and address are required.</span><button type="button" className={s.primary} disabled={saving || !canCreate || !fields || loading} onClick={()=>void save()}>{saving?<RefreshCw size={16} className={s.spin}/>:<Plus size={16}/>} {saving?'Saving…':pending?'Retry same customer':'Save customer'}</button></div>
   </div>;
 
   return <div className={s.customerPicker}>
@@ -153,7 +153,7 @@ export function PosCustomerPicker(p:Props) {
     {hasMore && <button type="button" className={s.button} disabled={loading} onClick={()=>void more()}>{loading?'Loading…':'Load more customers'}</button>}
     <footer className={s.customerPickerFooter}>
       <span className={s.muted}>Only customers from this business are shown.</span>
-      <button type="button" className={s.customerAddButton} disabled={!canCreate} title={!canCreate?'Customer creation permission required':undefined} onClick={()=>{setShowForm(true);setFormError('');}}><Plus size={16}/>Add customer</button>
+      <button type="button" className={s.customerAddButton} disabled={!canCreate} title={!canCreate?'Customer creation permission required':undefined} onClick={()=>{setShowForm(true);setFormError('');}}><Plus size={16}/>Quick Add</button>
     </footer>
   </div>;
 }

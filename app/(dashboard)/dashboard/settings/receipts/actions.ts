@@ -1,7 +1,9 @@
  'use server';
+
+import { PUBLIC_PHOTO_CACHE_SECONDS } from "@/lib/public-photo-cache";
 import { revalidatePath } from 'next/cache';
 import { requirePermission } from '@/lib/auth/require-permission';
-import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/branch-server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { receiptSettingsIssue, type ReceiptAppearance } from '@/lib/receipts/receipt-model';
@@ -16,10 +18,10 @@ async function persistAppearance(businessId:string, a:ReceiptAppearance):Promise
   show_discount:a.showDiscount,show_payment:a.showPayment,show_fulfillment:a.showFulfillment,show_notes:a.showNotes,
   show_order_number:a.showOrderNumber,show_loyalty:a.showLoyalty,show_cashier:a.showCashier,updated_at:new Date().toISOString(),
  };
- let {error}=await db.from('business_receipt_settings').upsert(values,{onConflict:'business_id'});
+ let {error}=await db.from('branch_receipt_settings').upsert(values,{onConflict:'business_id,location_id'});
  if(error && ['42703','PGRST204'].includes(error.code) && /receipt_qr_url|show_receipt_qr/.test(error.message) && !a.qrUrl) {
   const legacyValues:Record<string,unknown>={...values};delete legacyValues.receipt_qr_url;delete legacyValues.show_receipt_qr;
-  ({error}=await db.from('business_receipt_settings').upsert(legacyValues,{onConflict:'business_id'}));
+  ({error}=await db.from('branch_receipt_settings').upsert(legacyValues,{onConflict:'business_id,location_id'}));
  }
  if(error) throw new Error(['42703','PGRST204'].includes(error.code)?'Apply the printer paper and receipt QR migration first.':error.message);
  // Receipt save has committed: cache/audit failure must not claim the save failed.
@@ -63,7 +65,7 @@ async function uploadReceiptImage(expectedBusinessId:string, form:FormData) {
   if(!png && !jpg && !webp)return {success:false as const,message:'The file is not a supported image. SVG and HTML are not accepted.'};
   const ext=png?'png':jpg?'jpg':'webp';const contentType=png?'image/png':jpg?'image/jpeg':'image/webp';
   const db=supabaseAdmin;const path=`${business.id}/${crypto.randomUUID()}.${ext}`;
-  const {error}=await db.storage.from('tenh-receipt-logos').upload(path,bytes,{contentType,upsert:false,cacheControl:'31536000'});
+  const {error}=await db.storage.from('tenh-receipt-logos').upload(path,bytes,{contentType,upsert:false,cacheControl:PUBLIC_PHOTO_CACHE_SECONDS});
   if(error) throw new Error(`Image upload failed: ${error.message}`);
   const {data}=db.storage.from('tenh-receipt-logos').getPublicUrl(path);
   return {success:true as const,url:data.publicUrl};
@@ -82,13 +84,13 @@ async function upsertLabelSettings(values: Record<string, unknown>): Promise<voi
   // submitted in the browser's FormData.
   const business = await requirePermission('business.update');
   const supabase = await createClient();
-  const { error } = await supabase.from('business_receipt_settings').upsert(
+  const { error } = await supabase.from('branch_receipt_settings').upsert(
     {
       ...values,
       business_id: business.id,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: 'business_id' },
+    { onConflict: 'business_id,location_id' },
   );
 
   if (error) throw new Error(error.message);

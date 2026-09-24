@@ -2,6 +2,7 @@ import { getBranchContext } from "@/lib/branches/context";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
 import { headers } from "next/headers";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type AuditAction =
   | "create"
@@ -59,9 +60,13 @@ export async function createAuditLog({
   // isolated correctly when one user belongs to multiple businesses.
   const business = await getCurrentBusiness();
 
-  if (["order","purchase","customer","supplier","coupon","register_shift"].includes(entityType)) {
+  if (["order","product","expense","inventory","purchase","customer","supplier","coupon","register_shift","user"].includes(entityType)) {
     const {branchId}=await getBranchContext();
-    metadata={...metadata,branch_id:branchId};
+    const branchTables:Partial<Record<AuditEntity,string>>={order:'orders',expense:'expenses',purchase:'purchases',customer:'customers',supplier:'suppliers',coupon:'business_coupons',register_shift:'cash_register_shifts'};
+    const table=branchTables[entityType];
+    const record=table && entityId?await supabaseAdmin.from(table).select('location_id').eq('business_id',business.id).eq('id',entityId).maybeSingle():null;
+    if(record?.error)console.error('Unable to determine the audit branch:',record.error.message);
+    metadata={...metadata,branch_id:record?.error?null:record?.data?.location_id || branchId};
   }
   const requestHeaders = await headers();
   const forwardedFor = requestHeaders.get("x-forwarded-for");

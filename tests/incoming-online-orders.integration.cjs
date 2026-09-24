@@ -1,0 +1,42 @@
+const {PGlite}=require('./helpers/pglite.cjs');
+const fs=require('node:fs'),assert=require('node:assert/strict');
+const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
+(async()=>{
+ const db=new PGlite(),[business,a,b,user,otherBusiness,foreign]=[1,2,3,4,5,6].map(id);
+ await db.exec(`create role anon;create role authenticated;create schema auth;
+ create table auth.users(id uuid primary key);insert into auth.users values('${user}');
+ create function auth.uid() returns uuid language sql as $$select '${user}'::uuid$$;
+ create table businesses(id uuid primary key);insert into businesses values('${business}'),('${otherBusiness}');
+ create table business_members(business_id uuid,user_id uuid,role text,default_location_id uuid,is_active boolean,team_password_required boolean);
+ insert into business_members values('${business}','${user}','staff','${a}',true,false);
+ create table business_locations(id uuid primary key,business_id uuid,name text,is_active boolean,plan_disable_pending boolean);
+ insert into business_locations values('${a}','${business}','Main',true,false),('${b}','${business}','Second',true,false),('${foreign}','${otherBusiness}','Foreign',true,false);
+ create function tenh_user_permission_allowed(uuid,uuid,text) returns boolean language sql as $$select $1='${business}' and current_setting('test.allowed',true) is distinct from 'false'$$;
+ create function tenh_assert_effective_permission(uuid,text) returns void language plpgsql as $$begin if not public.tenh_user_permission_allowed($1,auth.uid(),$2) then raise exception 'Denied';end if;end$$;
+ create function tenh_lock_checkout_branch(uuid,uuid) returns void language plpgsql as $$begin perform 1 from public.businesses where id=$1 for update;end$$;
+ create function tenh_run_branch_stock(uuid,text,jsonb) returns jsonb language plpgsql as $$begin if $2<>'reject_online' then raise exception 'unexpected';end if;return '{}'::jsonb;end$$;`);
+ const definitions=JSON.parse(fs.readFileSync('tests/fixtures/shared-storefront-columns.json'));
+ for(const table of ['orders','order_items','products']){
+   await db.exec(`create table ${table}(${definitions.find(item=>item.name===table).columns});`);
+ }
+ await db.exec('alter table orders add column if not exists location_id uuid;alter table products add column if not exists variant_image_url text;');
+ await db.exec(fs.readFileSync('supabase/migrations/20260924010000_online_order_incoming_scope.sql','utf8'));
+ await db.exec(fs.readFileSync('tests/fixtures/online-status-before-incoming-scope.sql','utf8'));
+ for(const [n,branch,biz,source] of [[10,a,business,'online'],[11,b,business,'online'],[12,b,business,'qr'],[13,foreign,otherBusiness,'online']]) await db.query('insert into orders(id,business_id,location_id,order_number,order_source,online_status,status,payment_status,payment_method,total,amount_paid,change_amount,created_at)values($1,$2,$3,$4,$5,\'new\',\'pending\',\'unpaid\',\'khqr\',12,0,0,now())',[id(n),biz,branch,'WEB-'+n,source]);
+ await db.exec(`select set_config('request.headers','{"x-tenh-business-id":"${business}","x-tenh-branch-id":"${a}"}',false);grant usage on schema public,auth to authenticated;set role authenticated;`);
+ const queue=async()=> (await db.query('select tenh_incoming_online_orders($1) data',[business])).rows[0].data;
+ assert.deepEqual((await queue()).orders.map(o=>o.id),[id(10)]);
+ const action=(order,status,operation='status',expected='new')=>db.query('select tenh_incoming_order_action($1,$2,$3,$4,$5) result',[business,id(order),operation,status,expected]);
+ await assert.rejects(action(11,'accepted'),/another branch/);
+ await db.query('select tenh_set_online_order_scope($1,true)',[business]);
+ assert.deepEqual(new Set((await queue()).orders.map(o=>o.id)),new Set([id(10),id(11)]),'all scope excludes foreign businesses and other branch table QR orders');
+ assert.equal((await action(11,'accepted')).rows[0].result.onlineStatus,'accepted');
+ assert.equal((await action(11,'accepted')).rows[0].result.alreadyApplied,true);
+ assert.equal((await db.query('select tenh_request_branch($1) b',[business])).rows[0].b,a,'working branch remains unchanged');
+ await action(11,'paid','payment','unpaid');await assert.rejects(action(11,'unpaid','payment','paid'),/refund workflow/);
+ await assert.rejects(action(11,'rejected','status','accepted'),/recorded payment/);
+ await assert.rejects(action(12,'accepted'),/another branch/);await assert.rejects(action(13,'accepted'),/not found/);
+ await db.query('select tenh_set_online_order_scope($1,false)',[business]);await assert.rejects(action(11,'preparing','status','accepted'),/another branch/);
+ await db.exec("select set_config('test.allowed','false',false)");await assert.rejects(queue(),/Denied/);
+ await db.close();console.log('PASS incoming scope: staff opt-in, tenant/QR isolation, payment protection, idempotent status, unchanged working branch');
+})().catch(e=>{console.error(e);process.exitCode=1;});

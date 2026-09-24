@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/branch-server";
 
 import EditProductClient from "./edit-product-client";
 
@@ -48,7 +48,7 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
   const [{ data: productData, error: productError }, { data: categoryData, error: categoryError }] =
     await Promise.all([
       supabase
-        .from("products")
+        .from("branch_products")
         .select(`
           id,
           category_id,
@@ -92,7 +92,7 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
 
   if (representative.product_type === "variant" && representative.variant_group_id) {
     const { data: groupData, error: groupError } = await supabase
-      .from("products")
+      .from("branch_products")
       .select(`
         id,
         category_id,

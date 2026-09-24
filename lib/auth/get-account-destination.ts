@@ -104,7 +104,7 @@ export async function getAccountDestination(
   }
 
   if (profile.role === "super_admin") {
-    return getAdminUrl("/super-admin/businesses");
+    return getAdminUrl("/super-admin");
   }
 
   const { data: membership, error: membershipError } = await supabase

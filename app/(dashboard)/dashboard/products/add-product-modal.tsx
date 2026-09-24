@@ -3,12 +3,14 @@
 import { Package, Plus, Settings2, Shirt, SlidersHorizontal, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from 'next/dynamic';
 
 import { getProductExperience } from "@/lib/business/product-experience";
 import type { ProductMode } from "@/lib/business/types";
-import ConfigurableProductForm from "./configurable-product-form";
-import StandardProductForm from "./standard-product-form";
-import VariantProductForm from "./variant-product-form";
+const loading = () => <p role="status" className="py-8 text-center text-sm text-slate-500">Loading product form…</p>;
+const ConfigurableProductForm = dynamic(() => import('./configurable-product-form'), { loading });
+const StandardProductForm = dynamic(() => import('./standard-product-form'), { loading });
+const VariantProductForm = dynamic(() => import('./variant-product-form'), { loading });
 
 type Category = {
   id: string;

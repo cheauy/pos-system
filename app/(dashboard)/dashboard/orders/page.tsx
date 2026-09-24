@@ -5,10 +5,14 @@ import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { loadWorkspace } from "./order-workspace-data";
 import { parseFilters } from "./order-workspace-types";
 import OrdersWorkspace from "./orders-workspace";
+import { getCurrentBusinessMode } from '@/lib/business/get-current-business-mode';
 
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const business = await requirePermission("orders.view");
   const filters = parseFilters(await searchParams);
+  const currentMode = await getCurrentBusinessMode({ businessId: business.id, productMode: business.productMode });
+  const showTableQr = !['fashion', 'shoes', 'general'].includes(currentMode.value);
+  if (!showTableQr && filters.source === 'qr') filters.source = 'all';
   let workspace;
   try { workspace = await loadWorkspace(business.id, filters); }
   catch (error) {
@@ -24,7 +28,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
     businessHasPermission(business,"orders.return"),
     businessHasPermission(business,"pos.access"),
   ]);
-  return <OrdersWorkspace key={business.id} businessId={business.id} businessName={business.name} data={workspace} filters={filters} permissions={{
+  return <OrdersWorkspace key={business.id} businessId={business.id} businessName={business.name} showTableQr={showTableQr} data={workspace} filters={filters} permissions={{
     edit, cancel, delete: cancel, refund, create,
   }} />;
 }

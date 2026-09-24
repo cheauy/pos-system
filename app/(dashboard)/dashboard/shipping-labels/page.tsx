@@ -8,7 +8,7 @@ export default async function Page(){
  const [{data:orders,error},context,{data:settings},design]=await Promise.all([
   supabase.from("orders").select("id,order_number,total,payment_method,payment_status,guest_name,guest_phone,guest_address,fulfillment_type,created_at,customers(name,phone,address),order_items(quantity)").eq("business_id",business.id).or("fulfillment_type.eq.delivery,guest_address.not.is.null").order("created_at",{ascending:false}).limit(100),
   loadReceiptContext(business.id,business.name),
-  supabase.from("business_receipt_settings").select("shipping_label_size,shipping_show_sender,shipping_show_phone,shipping_show_order_number,shipping_show_cod,shipping_show_item_count,shipping_show_barcode").eq("business_id",business.id).maybeSingle(),
+  supabase.from("branch_receipt_settings").select("shipping_label_size,shipping_show_sender,shipping_show_phone,shipping_show_order_number,shipping_show_cod,shipping_show_item_count,shipping_show_barcode").eq("business_id",business.id).maybeSingle(),
   loadShippingSettings(business.id),
  ]);
  if(error) throw new Error(error.message);

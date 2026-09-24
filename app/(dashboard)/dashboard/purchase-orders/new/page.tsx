@@ -1,6 +1,8 @@
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/branch-server";
 
+import { readAllRows } from "@/lib/supabase/read-all-rows";
+
 import PurchaseOrderForm from "./purchase-order-form";
 
 type SupplierRow = {
@@ -28,7 +30,7 @@ export default async function NewPurchaseOrderPage() {
   const business = await requirePermission("purchases.create");
   const supabase = await createClient();
 
-  const [{ data: suppliers }, { data: products }] = await Promise.all([
+  const [suppliersResult, productsResult] = await Promise.all([
     supabase
       .from("suppliers")
       .select(
@@ -37,19 +39,25 @@ export default async function NewPurchaseOrderPage() {
       .eq("business_id", business.id)
       .eq("is_active", true)
       .order("name"),
-    supabase
-      .from("products")
+    readAllRows<ProductRow>((from, to) => supabase
+      .from("branch_products")
       .select("id,name,sku,barcode,cost_price,size,color")
       .eq("business_id", business.id)
       .eq("is_active", true)
-      .order("name"),
+      .order("name").order("id").range(from, to)),
   ]);
+
+  if (suppliersResult.error || productsResult.error) {
+    console.error("Purchase order catalog failed", suppliersResult.error || productsResult.error);
+    return <main role="alert" className="rounded-xl border border-red-200 p-6">Unable to load purchase order products or suppliers. Refresh to try again.</main>;
+  }
 
   return (
     <main>
+      {!productsResult.data?.length && <p role="status" className="mb-4 rounded-xl border border-amber-200 p-4">No active products in this branch. Add or assign products in Products before creating a purchase order.</p>}
       <PurchaseOrderForm
-        suppliers={(suppliers ?? []) as SupplierRow[]}
-        products={(products ?? []) as ProductRow[]}
+        suppliers={(suppliersResult.data ?? []) as SupplierRow[]}
+        products={(productsResult.data ?? []) as ProductRow[]}
       />
     </main>
   );

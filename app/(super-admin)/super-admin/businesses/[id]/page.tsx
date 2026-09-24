@@ -1,19 +1,16 @@
 import Link from "next/link";
+import { getSubscriptionPlanLabel } from "@/lib/subscriptions/plans";
 import ExpiryTestControls from './expiry-test-controls';
 import { expiryTestsEnabled } from '@/lib/subscriptions/expiry-test-controls';
-import { ExtendSubscriptionForm } from "./extend-subscription-form";
 import { expireDueBusinesses } from "@/lib/subscriptions/expire-businesses";
-import { BusinessActivityHistory } from "./business-activity-history";
-import {
-  extendBusinessSubscription,
-} from "../actions";
 import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   Building2,
   CalendarDays,
   Mail,
-  Package,
+  MapPin,
+  ShoppingBag,
   Users,
 } from "lucide-react";
 import {
@@ -38,6 +35,7 @@ type OwnerProfile = {
 };
 
 type BusinessMember = {
+  default_location_id: string | null;
   id: string;
   user_id: string;
   role: string;
@@ -253,6 +251,9 @@ export default async function BusinessDetailsPage({
       owner_id,
       product_mode,
       max_staff,
+      subscription_plan_key,
+      subscription_user_limit,
+      subscription_branch_limit,
       is_active,
       disabled_at,
       subscription_months,
@@ -273,6 +274,15 @@ export default async function BusinessDetailsPage({
   if (!business) {
     notFound();
   }
+
+  const [branchResult, productResult, orderResult] = await Promise.all([
+    supabaseAdmin.from("business_locations").select("id,name,is_active").eq("business_id", id).order("created_at"),
+    supabaseAdmin.from("products").select("id", { count: "exact", head: true }).eq("business_id", id),
+    supabaseAdmin.from("orders").select("id", { count: "exact", head: true }).eq("business_id", id),
+  ]);
+  const branches = branchResult.data ?? [];
+  const branchLimit = Number(business.subscription_branch_limit ?? 1);
+  const activeBranches = branches.filter(branch => branch.is_active).length;
 
   const showExpiryTest = expiryTestsEnabled();
   const expiryTest = showExpiryTest
@@ -312,6 +322,7 @@ export default async function BusinessDetailsPage({
     .select(`
       id,
       user_id,
+      default_location_id,
       role,
       is_active,
       created_at
@@ -366,11 +377,6 @@ export default async function BusinessDetailsPage({
     ]),
   );
 
-  const activeStaffCount = members.filter(
-    (member) =>
-      member.is_active &&
-      member.role !== "owner",
-  ).length;
 
   const disabledStaffCount = members.filter(
   (member) =>
@@ -382,13 +388,6 @@ export default async function BusinessDetailsPage({
     business.max_staff ?? 3,
   );
 
-  const availableSlots = Math.max(
-    0,
-    maxStaff - activeStaffCount,
-  );
-  const subscriptionMonths = Number(
-  business.subscription_months ?? 0,
-);
 
 const expiryDate = business.subscription_expires_at
   ? new Date(business.subscription_expires_at)
@@ -398,17 +397,6 @@ const today = new Date();
 const businessStatus =
   getBusinessStatus(business);
 
-  const deletionDaysRemaining =
-  getDeletionDaysRemaining(
-    business.scheduled_deletion_at,
-  );
-
-const subscriptionLabel =
-  formatRemainingSubscription(
-    new Date(
-      business.subscription_expires_at!,
-    ),
-  );
 
 const daysRemaining = expiryDate
   ? Math.max(
@@ -423,9 +411,9 @@ const daysRemaining = expiryDate
 
 
   return (
-    <main className="min-h-screen bg-slate-100 p-6">
-      <div className="mx-auto max-w-7xl space-y-8">
-        <header>
+    <main className="pb-8">
+      <div className="w-full space-y-6">
+        <header className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
           <Link
             href="/super-admin/businesses"
             className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-blue-600"
@@ -446,14 +434,14 @@ const daysRemaining = expiryDate
                 </h1>
 
                 <p className="mt-1 text-slate-500">
-                  View business information, users,
-                  limits and account status.
+                  {business.business_code || business.slug} · {formatProductMode(business.product_mode)}
+                  <span className="ml-2 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold capitalize text-slate-700">{businessStatus}</span>
                 </p>
               </div>
             </div>
 
 
-         <div className="flex items-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+         <div className="flex flex-wrap items-center rounded-xl border border-slate-200 bg-white">
         <BusinessStatusActions
   businessId={business.id}
   businessName={business.name}
@@ -490,48 +478,15 @@ const daysRemaining = expiryDate
           
         </header>
          
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-       <SummaryCard
-  icon={<Users size={22} />}
-  label="Staff usage"
-  value={`${activeStaffCount} / ${maxStaff}`}
-  description={
-    disabledStaffCount > 0
-      ? `${availableSlots} slots available · ${disabledStaffCount} disabled`
-      : `${availableSlots} slots available`
-  }
-/>
-
-          <SummaryCard
-            icon={<Package size={22} />}
-            label="Product mode"
-            value={formatProductMode(
-              business.product_mode,
-            )}
-            description="Products are unlimited"
-          />
-
-          <SummaryCard
-            icon={<Package size={22} />}
-            label="Products"
-            value="Unlimited"
-            description="No product limit"
-          />
-
-  <SummaryCard
-  icon={<Package size={22} />}
-  label="Subscription Package"
-  value={subscriptionLabel}
-  description={
-    daysRemaining > 0
-      ? `${daysRemaining} day${
-          daysRemaining === 1 ? "" : "s"
-        } remaining`
-      : "Subscription expired"
-  }
-/>
+        <nav aria-label="Business sections" className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2">
+          {[["overview","Overview"],["branches","Branches"],["team","Team"],["subscription","Subscription"]].map(([anchor,label])=><a key={anchor} href={`#${anchor}`} className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-blue-50 hover:text-blue-700">{label}</a>)}
+        </nav>
+        <section id="overview" className="grid scroll-mt-6 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard icon={<Users size={22}/>} label="User seats" value={`${members.filter(m=>m.is_active).length} / ${business.subscription_user_limit ?? maxStaff + 1}`} description={`${disabledStaffCount} inactive staff · owner included`}/>
+          <SummaryCard icon={<MapPin size={22}/>} label="Branch allowance" value={branchResult.error?"Unavailable":`${activeBranches} / ${branchLimit}`} description={`${Math.max(0,branchLimit-activeBranches)} available branches`}/>
+          <SummaryCard icon={<ShoppingBag size={22}/>} label="Catalog & orders" value={productResult.error?"Unavailable":String(productResult.count ?? 0)} description={orderResult.error?"Order count unavailable":`catalog products · ${orderResult.count ?? 0} orders`}/>
+          <SummaryCard icon={<CalendarDays size={22}/>} label="Subscription" value={business.subscription_plan_key?getSubscriptionPlanLabel(business.subscription_plan_key):"Legacy plan"} description={daysRemaining>0?`${daysRemaining} days remaining`:"Expired or not configured"}/>
         </section>
- 
 
         <section className="grid gap-6 xl:grid-cols-2">
           <BusinessInformationCard
@@ -566,45 +521,15 @@ const daysRemaining = expiryDate
           />
         </section>
             
+
+        <section id="branches" className="scroll-mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="flex items-center justify-between border-b border-slate-100 p-5"><div><h2 className="text-lg font-bold">Branches</h2><p className="mt-1 text-sm text-slate-500">{activeBranches} active of {branchLimit} allowed</p></div><MapPin className="text-blue-600" size={21}/></div>
+          {branchResult.error?<p role="alert" className="p-5 text-sm text-red-600">Branch details could not be loaded.</p>:branches.length?branches.map(branch=><div key={branch.id} className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 last:border-0"><p className="font-semibold">{branch.name}</p><span className={branch.is_active?"rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700":"rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500"}>{branch.is_active?"Active":"Inactive"}</span></div>):<p className="p-6 text-sm text-slate-500">No branches created.</p>}
+        </section>
+
 {showExpiryTest && <ExpiryTestControls businessId={id} active={Boolean(expiryTest?.data)} originalExpiry={expiryTest?.data?.original_expiry ?? null} available={!expiryTest?.error} />}
 
-{businessStatus === "suspended" ? (
-  <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
-    <h2 className="text-xl font-bold text-amber-900">
-      Subscription changes unavailable
-    </h2>
-
-    <p className="mt-1 text-sm text-amber-700">
-      Restore this business before extending its subscription.
-    </p>
-  </section>
-) : (
-  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-    <h2 className="text-xl font-bold text-slate-900">
-      Extend Subscription
-    </h2>
-
-    <p className="mt-1 text-sm text-slate-500">
-      Selected months will be added to the current expiry date.
-    </p>
-
-   
-
-    <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {[1, 3, 5, 12].map((months) => (
-        <ExtendSubscriptionForm
-          key={months}
-          businessId={business.id}
-          businessName={business.name}
-          months={months}
-          action={extendBusinessSubscription}
-        />
-      ))}
-    </div>
-  </section>
-)}
-
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <section id="team" className="scroll-mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 p-6">
             <h2 className="text-xl font-bold text-slate-900">
               Business Users
@@ -635,6 +560,7 @@ const daysRemaining = expiryDate
                   <th className="px-6 py-4">
                     Added
                   </th>
+                  <th className="px-6 py-4">Default branch</th>
                 </tr>
               </thead>
 
@@ -684,6 +610,7 @@ const daysRemaining = expiryDate
                           member.created_at,
                         )}
                       </td>
+                      <td className="px-6 py-4 text-sm text-slate-600">{branches.find(b=>b.id===member.default_location_id)?.name ?? "Not assigned"}</td>
                     </tr>
                   );
                 })}
@@ -691,7 +618,7 @@ const daysRemaining = expiryDate
                 {members.length === 0 && (
                   <tr>
                     <td
-                      colSpan={4}
+                      colSpan={5}
                       className="px-6 py-12 text-center text-slate-500"
                     >
                       No users found for this
@@ -704,13 +631,8 @@ const daysRemaining = expiryDate
           </div>
   
         </section>
-         <BusinessActivityHistory
-  businessId={business.id}
-/>
 
-               <SubscriptionHistory
-  businessId={business.id}
-/>
+         <details id="subscription" className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-5"><summary className="cursor-pointer text-lg font-bold">Subscription history</summary><div className="mt-5"><SubscriptionHistory businessId={business.id}/></div></details>
       </div>
     </main>
   );

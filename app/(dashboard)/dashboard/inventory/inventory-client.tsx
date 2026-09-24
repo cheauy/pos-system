@@ -126,7 +126,7 @@ export default function InventoryClient({ products, categories, locations, locat
 
   const resolvedProducts = useMemo<ResolvedProduct[]>(
     () =>
-      products.map((product) => {
+      products.filter(product => locationId === "all" || branchStock.has(`${locationId}:${product.id}`)).map((product) => {
         const branch =
           locationId === "all"
             ? null
@@ -246,7 +246,7 @@ export default function InventoryClient({ products, categories, locations, locat
   function resetFilters() {
     setSearch("");
     setCategoryId("all");
-    setLocationId("all");
+    setLocationId(defaultBranchId);
     setStatusFilter("all");
     setTab("all");
     setPage(1);
@@ -363,7 +363,6 @@ export default function InventoryClient({ products, categories, locations, locat
             }}
             className={selectClass}
           >
-            <option value="all">All Branches</option>
             {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
           </select>
           <select
@@ -544,7 +543,7 @@ function InventoryRow({
           <div className="absolute right-0 z-30 mt-1 w-40 rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
             <button type="button" onClick={onSelect} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50">View details</button>
             <Link href={`/dashboard/products/${product.id}/edit`} className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Edit product</Link>
-            <Link href="/dashboard/inventory/adjustments" className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Adjust stock</Link>
+            <Link href={`/dashboard/inventory/adjustments?product=${product.id}`} className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Adjust stock</Link>
           </div>
         </details>
       </td>
@@ -660,7 +659,7 @@ function InventoryDetailDrawer({
             <Link href={`/dashboard/products/${product.id}/edit`} className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 font-semibold text-slate-700 hover:bg-slate-50">
               Edit Product
             </Link>
-            <Link href="/dashboard/inventory/adjustments" className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 font-semibold text-white hover:bg-blue-700">
+            <Link href={`/dashboard/inventory/adjustments?product=${product.id}`} className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 font-semibold text-white hover:bg-blue-700">
               Adjust Stock
             </Link>
           </div>

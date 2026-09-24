@@ -54,7 +54,7 @@ export async function createPurchaseOrder(formData: FormData) {
   }
 
   const { data: products, error: productError } = await supabase
-    .from("products")
+    .from("branch_products")
     .select("id,name,sku")
     .eq("business_id", business.id)
     .in("id", ids);

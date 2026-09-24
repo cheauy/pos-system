@@ -45,7 +45,7 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
     const { data, error } = await db.rpc('tenh_pos_catalog_scoped', { p_business_id: business.id });
     if (error) return { success: false, message: errorMessage(error) };
     if (!data || data.businessId !== business.id || !Array.isArray(data.products)) return { success: false, message: 'The POS catalog returned incomplete data. Please refresh.' };
-    const formatting = await db.from('business_storefronts').select('currency_format').eq('business_id',business.id).maybeSingle();
+    const formatting = await db.from('branch_pos_settings').select('currency_format').eq('business_id',business.id).maybeSingle();
     if (formatting.error) return {success:false,message:'Unable to load currency settings. Please refresh.'};
     data.settings.currencyFormat = currencyFormat(formatting.data?.currency_format, data.settings.currency);
     if (data.inventoryVersion !== 2) return { success:false,message:'Apply 20260919_pos_stock_variants_continue_checkout.sql in Supabase before using this POS update.' };

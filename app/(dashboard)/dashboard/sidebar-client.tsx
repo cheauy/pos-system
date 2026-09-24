@@ -378,7 +378,7 @@ function SidebarShell({
       ) : null}
 
       {mobile ? (
-        <div className="absolute inset-y-0 left-16 right-0 border-l border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+        <div className="sidebar-surface absolute inset-y-0 left-16 right-0 border-l border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
           {specialPanel === "search" ? (
             <GlobalSearchPanel
               query={query}
@@ -396,8 +396,6 @@ function SidebarShell({
             <NavigationPanel
               group={openGroup}
               pathname={pathname}
-              query={query}
-              onQueryChange={setQuery}
               onNavigate={onNavigate}
               mobile
             />
@@ -406,7 +404,7 @@ function SidebarShell({
           )}
         </div>
       ) : specialPanel === "search" ? (
-        <div className="fixed bottom-3 left-[72px] top-3 z-[60] w-[330px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.18)] dark:border-slate-700 dark:bg-slate-900">
+        <div className="sidebar-surface fixed bottom-3 left-[72px] top-3 z-[60] w-[330px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.18)] dark:border-slate-700 dark:bg-slate-900">
           <GlobalSearchPanel
             query={query}
             onQueryChange={setQuery}
@@ -414,19 +412,17 @@ function SidebarShell({
           />
         </div>
       ) : specialPanel === "notifications" ? (
-        <div className="fixed bottom-[84px] left-[72px] z-[70] w-[390px] max-w-[calc(100vw-92px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.20)] dark:border-slate-700 dark:bg-slate-900">
+        <div className="sidebar-surface fixed bottom-[84px] left-[72px] z-[70] w-[390px] max-w-[calc(100vw-92px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.20)] dark:border-slate-700 dark:bg-slate-900">
           <NotificationPanel
             notifications={notifications}
             onClose={() => setSpecialPanel(null)}
           />
         </div>
       ) : openGroup ? (
-        <div className="fixed bottom-3 left-[72px] top-3 z-[60] w-[270px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.18)] dark:border-slate-700 dark:bg-slate-900">
+        <div className="sidebar-surface fixed bottom-3 left-[72px] top-3 z-[60] w-[270px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.18)] dark:border-slate-700 dark:bg-slate-900">
           <NavigationPanel
             group={openGroup}
             pathname={pathname}
-            query={query}
-            onQueryChange={setQuery}
             onClose={() => setOpenGroupTitle(null)}
             onNavigate={onNavigate}
           />
@@ -466,7 +462,7 @@ function IconRail({
 
   return (
     <aside data-sidebar="true"
-      className={`sidebar-accent relative flex h-full shrink-0 flex-col items-center border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 ${
+      className={`sidebar-surface sidebar-accent relative flex h-full shrink-0 flex-col items-center border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 ${
         mobile ? "w-16" : "w-16 shadow-[4px_0_18px_rgba(15,23,42,0.03)]"
       }`}
     >
@@ -740,7 +736,7 @@ function RailSignOutButton({
 
       {confirmOpen ? (
         <div
-          className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+          className="sidebar-neutral fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget && !pending) setConfirmOpen(false);
@@ -1064,27 +1060,18 @@ function MobileRailHome() {
 function NavigationPanel({
   group,
   pathname,
-  query,
-  onQueryChange,
   onClose,
   onNavigate,
   mobile = false,
 }: {
   group: MenuGroup;
   pathname: string;
-  query: string;
-  onQueryChange: (value: string) => void;
   onClose?: () => void;
   onNavigate?: () => void;
   mobile?: boolean;
 }) {
   const GroupIcon = group.icon;
-  const normalizedQuery = query.trim().toLowerCase();
-  const visibleItems = normalizedQuery
-    ? group.items.filter((item) =>
-        item.name.toLowerCase().includes(normalizedQuery),
-      )
-    : group.items;
+  const visibleItems = group.items;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -1116,19 +1103,6 @@ function NavigationPanel({
           ) : null}
         </div>
 
-        <label className="relative mt-4 block">
-          <Search
-            size={15}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-          />
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder={`Search ${group.title.toLowerCase()}...`}
-            className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:border-blue-500 dark:focus:bg-slate-900 dark:focus:ring-blue-950"
-          />
-        </label>
       </div>
 
       <nav className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -1457,6 +1431,9 @@ function useBusinessNotifications(businessId: string, branchId: string) {
     readIds,
     prefs,
     unread,
+    subscriptionUnread,
+    toast,
+    dismissToast: () => setToast(null),
     markRead,
     markAllRead,
     toggleSound,

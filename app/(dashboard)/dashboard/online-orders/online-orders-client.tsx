@@ -43,6 +43,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   updateOnlineOrderStatus,
   updateOnlinePaymentStatus,
+  setIncomingOrderScope,
 } from "./actions";
 
 type OrderItem = {
@@ -59,6 +60,8 @@ type OrderItem = {
 };
 
 export type OnlineOrder = {
+  location_id: string;
+  branch_name: string;
   id: string;
   order_number: string;
   order_source: string;
@@ -100,7 +103,7 @@ type ViewMode = "split" | "grid";
 const ACTIVE_STATUSES = new Set(["new", "accepted", "preparing", "ready"]);
 
 export default function OnlineOrdersClient({
-  businessId, branchId,
+  businessId, branchId, receiveAll,
   initialOrders,
   currency,
   canUpdate,
@@ -108,6 +111,7 @@ export default function OnlineOrdersClient({
 }: {
   businessId: string;
   branchId: string;
+  receiveAll: boolean;
   initialOrders: OnlineOrder[];
   currency: string;
   canUpdate: boolean;
@@ -266,7 +270,7 @@ export default function OnlineOrdersClient({
           filter: `business_id=eq.${businessId}`,
         },
         (payload) => {
-          if ((payload.new as Record<string,unknown>).location_id !== branchId) return;
+          if (!receiveAll && (payload.new as Record<string,unknown>).location_id !== branchId) return;
           const row = payload.new as Record<string, unknown>;
           if (
             payload.eventType === "INSERT" &&
@@ -293,7 +297,7 @@ export default function OnlineOrdersClient({
       if (poll) window.clearInterval(poll);
       void supabase.removeChannel(channel);
     };
-  }, [businessId, branchId, router, alertsEnabled, soundEnabled, autoRefresh]);
+  }, [businessId, branchId, receiveAll, router, alertsEnabled, soundEnabled, autoRefresh]);
 
   useEffect(() => {
     const newestId = initialOrders[0]?.id ?? null;
@@ -478,6 +482,18 @@ export default function OnlineOrdersClient({
 
         </div>
       </header>
+
+      <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold">
+        <input type="checkbox" role="switch" checked={receiveAll} disabled={pending} onChange={event => {
+          const checked = event.target.checked;
+          startTransition(async () => {
+            const result = await setIncomingOrderScope(checked);
+            if (!result.success) toast.error(result.message); else { toast.success(result.message); router.refresh(); }
+          });
+        }} />
+        Receive online orders from all branches
+        <span className="ml-auto text-xs font-normal text-slate-500">{receiveAll ? "All branches" : "Current branch only"}</span>
+      </label>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard
@@ -878,6 +894,7 @@ function OrderListItem({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-[15px] font-bold text-slate-950">{order.order_number}</h3>
+            <p className="text-xs text-slate-500">{order.branch_name}</p>
             <StatusBadge status={status} compact />
             {minutesSince(order.created_at) >= 15 && ["new", "accepted"].includes(status) && (
               <span className="rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600">
@@ -969,6 +986,7 @@ function QueueOrderCard({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-bold text-slate-950">{order.order_number}</h3>
+            <p className="text-xs text-slate-500">{order.branch_name}</p>
             <StatusBadge status={status} compact />
           </div>
           <p className="mt-1 text-sm font-medium text-slate-700">{order.guest_name ?? "Guest customer"}</p>
@@ -1042,6 +1060,7 @@ function OrderDetails({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-[18px] font-bold text-slate-950">Order {order.order_number}</h2>
+              <p className="text-xs text-slate-500">{order.branch_name}</p>
               <StatusBadge status={status} compact />
             </div>
             <p className="mt-1 text-xs text-slate-500">

@@ -150,16 +150,18 @@ export async function POST(
       );
     }
 
+    const { data: business, error: businessError } = await supabaseAdmin.from("businesses").select("id,is_active,subscription_expires_at").eq("slug", slug).maybeSingle();
+    if (businessError || !business?.is_active) return NextResponse.json({ success: false, message: "Store not found." }, { status: 404 });
+    const { data: store, error: storeError } = await supabaseAdmin.from("business_storefronts").select("is_published,accept_online_orders,accept_cod,accept_khqr").eq("business_id", business.id).maybeSingle();
+    if (storeError || !store?.is_published || !store.accept_online_orders || (business.subscription_expires_at && new Date(business.subscription_expires_at).getTime() <= Date.now())) return NextResponse.json({ success: false, message: "This store is not accepting online orders right now." }, { status: 400 });
+    if ((paymentMethod === "cod" && !store.accept_cod) || (paymentMethod === "khqr" && !store.accept_khqr)) return NextResponse.json({ success: false, message: "This payment method is unavailable." }, { status: 400 });
+
     if (paymentMethod === "khqr") {
       const file = form?.get("paymentProof");
       if (!(file instanceof File) || !file.size || file.size > 5 * 1024 * 1024) return NextResponse.json({ success: false, message: "Upload payment proof (up to 5 MB) to continue." }, { status: 400 });
       const bytes = new Uint8Array(await file.arrayBuffer());
       const mime = bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 ? "image/jpeg" : bytes.slice(0,8).join(",") === "137,80,78,71,13,10,26,10" ? "image/png" : new TextDecoder().decode(bytes.slice(0,4)) === "RIFF" && new TextDecoder().decode(bytes.slice(8,12)) === "WEBP" ? "image/webp" : null;
       if (!mime || mime !== file.type) return NextResponse.json({ success: false, message: "Upload a valid JPG, PNG or WebP payment image." }, { status: 400 });
-      const { data: business } = await supabaseAdmin.from("businesses").select("id").eq("slug", slug).eq("is_active", true).maybeSingle();
-      if (!business) return NextResponse.json({ success: false, message: "Store not found." }, { status: 404 });
-      const { data: store } = await supabaseAdmin.from("business_storefronts").select("is_published,accept_online_orders,accept_khqr").eq("business_id", business.id).maybeSingle();
-      if (!store?.is_published || !store.accept_online_orders || !store.accept_khqr) return NextResponse.json({ success: false, message: "KHQR ordering is unavailable." }, { status: 400 });
       const { data: bucket } = await supabaseAdmin.storage.getBucket(PAYMENT_PROOF_BUCKET);
       if (!bucket) {
         const { error: bucketError } = await supabaseAdmin.storage.createBucket(PAYMENT_PROOF_BUCKET, { public: false, fileSizeLimit: 5 * 1024 * 1024, allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"] });

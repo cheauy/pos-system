@@ -489,7 +489,7 @@ export default function EditProductClient({
           color: bulkColor.trim() ? bulkColor.trim() : row.color,
           costPrice: bulkCost.trim() ? bulkCost : row.costPrice,
           sellingPrice: bulkPrice.trim() ? bulkPrice : row.sellingPrice,
-          stockQuantity: bulkStock.trim() ? bulkStock : row.stockQuantity,
+          stockQuantity: !row.id && bulkStock.trim() ? bulkStock : row.stockQuantity,
           lowStockQuantity: bulkLowStock.trim() ? bulkLowStock : row.lowStockQuantity,
         };
       }),
@@ -904,7 +904,7 @@ export default function EditProductClient({
                         <td className="p-2 min-w-40"><CellInput value={row.sku} placeholder={isGeneralShop ? "ITEM-001" : "STYLE-BLK-M"} onChange={(value) => updateVariant(row.localId, "sku", value)} /></td>
                         <td className="p-2"><CellInput type="number" value={row.costPrice} onChange={(value) => updateVariant(row.localId, "costPrice", value)} /></td>
                         <td className="p-2"><CellInput type="number" value={row.sellingPrice} onChange={(value) => updateVariant(row.localId, "sellingPrice", value)} /></td>
-                        <td className="p-2"><CellInput type="number" value={row.stockQuantity} onChange={(value) => updateVariant(row.localId, "stockQuantity", value)} /></td>
+                        <td className="p-2">{row.id ? <a href={`/dashboard/inventory/adjustments?product=${row.id}`} className="text-sm font-semibold text-blue-600 underline" title="Adjust stock with a reason">{row.stockQuantity} · Adjust</a> : <CellInput type="number" value={row.stockQuantity} onChange={(value) => updateVariant(row.localId, "stockQuantity", value)} />}</td>
                         <td className="p-2"><CellInput type="number" value={row.lowStockQuantity} onChange={(value) => updateVariant(row.localId, "lowStockQuantity", value)} /></td>
                         <td className="p-2">
                           <button

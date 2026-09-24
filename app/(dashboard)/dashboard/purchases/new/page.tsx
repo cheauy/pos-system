@@ -53,7 +53,7 @@ export default async function NewPurchasePage() {
       }),
 
     supabase
-      .from("products")
+      .from("branch_products")
       .select(`
         id,
         name,

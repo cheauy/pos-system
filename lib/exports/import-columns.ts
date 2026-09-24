@@ -1,5 +1,8 @@
 // Template column names only; no business records or credentials.
 export const importColumns: Record<string, string[]> = {
+  "branch_pos_settings": ["business_id","location_id","currency","currency_format","pos_tax_rate","pos_point_value","pos_dual_currency_enabled","pos_usd_khr_rate","loyalty_enabled","loyalty_spend_per_point","loyalty_minimum_order","updated_at"],
+  "branch_role_permissions": ["business_id","location_id","role","permission","enabled","updated_at","updated_by"],
+  "branch_notification_role_settings": ["business_id","location_id","notification_type","target_roles","updated_at","updated_by"],
   "businesses": ["id","name","slug","owner_id","phone","email","address","logo_url","product_mode","is_active","created_at","updated_at","disabled_at","scheduled_deletion_at","max_staff","subscription_started_at","subscription_expires_at","subscription_months","disabled_reason","business_code","last_extension_months","subscription_logs","archived_at","released_slug","subscription_status","trial_started_at","trial_expires_at","expired_at","deletion_scheduled_at","trial_block_reason","subscription_plan_key","subscription_user_limit","subscription_team_enabled","free_url_changes_per_month","free_business_mode_changes_per_month","subscription_monthly_price","subscription_discount_percent","subscription_cycle_value","subscription_branch_limit","subscription_base_plan_key"],
   "business_locations": ["id","business_id","name","code","address","phone","is_default","is_active","created_at","updated_at","city","state_region","timezone","opening_hours","notes","manager_user_id","plan_disable_pending","plan_disabled_at"],
   "business_storefronts": ["business_id","business_type","is_published","accept_online_orders","template_key","display_name","description","logo_url","banner_url","primary_color","phone","address","currency","allow_pickup","allow_delivery","allow_dine_in","minimum_order","estimated_minutes","created_at","updated_at","delivery_fee","checkout_message","accept_cod","accept_khqr","khqr_image_url","khqr_account_name","khqr_instructions","allow_scheduled_orders","min_schedule_lead_minutes","max_schedule_days","enable_coupons","loyalty_enabled","loyalty_spend_per_point","loyalty_minimum_order","social_links","pos_tax_rate","pos_point_value","pos_dual_currency_enabled","pos_usd_khr_rate","fulfillment_location_id","currency_format"],
@@ -41,3 +44,9 @@ export const importColumns: Record<string, string[]> = {
   "audit_logs": ["id","user_id","action","entity_type","entity_id","description","metadata","created_at","business_id","ip_address","user_agent","location_id"],
   "business_activity_history": ["id","business_id","action","title","description","previous_values","new_values","metadata","reason","created_by","created_at"],
 };
+importColumns.branch_product_details=[...importColumns.products,'location_id','branch_archived'];
+importColumns.branch_bundle_recipes=[...importColumns.bundle_items,'location_id'];
+importColumns.branch_receipt_settings=[...importColumns.business_receipt_settings,'location_id'];
+importColumns.branch_customer_settings=[...importColumns.business_customer_settings,'location_id'];
+importColumns.business_receipt_settings.push('location_id');
+importColumns.business_customer_settings.push('location_id');
