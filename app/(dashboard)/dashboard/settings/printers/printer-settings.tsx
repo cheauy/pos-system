@@ -30,13 +30,13 @@ export default function PrinterSettings({ businessId, context, settings }: {
         ))}
       </div>
       <section id="printer-receipt" hidden={tab !== "receipt"} aria-label="Receipt settings">
-        <ReceiptSettingsEditor businessId={businessId} initial={context} />
+        <ReceiptSettingsEditor businessId={businessId} key={context.branchId} initial={context} />
       </section>
       <section id="printer-barcode" hidden={tab !== "barcode"} aria-label="Barcode label settings">
-        <LabelSettings kind="barcode" settings={settings} store={context.store} />
+        <LabelSettings key={context.branchId} branchId={context.branchId} kind="barcode" settings={settings} store={context.store} />
       </section>
       <section id="printer-shipping" hidden={tab !== "shipping"} aria-label="Shipping label settings">
-        <LabelSettings kind="shipping" settings={settings} store={context.store} />
+        <LabelSettings key={context.branchId} branchId={context.branchId} kind="shipping" settings={settings} store={context.store} />
       </section>
     </main>
   );

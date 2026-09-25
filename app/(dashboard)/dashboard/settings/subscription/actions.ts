@@ -518,7 +518,7 @@ export async function selectSubscriptionPaymentMethod(formData: FormData) {
   redirect(`/dashboard/settings/subscription/payment/${targetOrderId}`);
 }
 
-export async function expireSubscriptionPaymentRequest(orderId: string) {
+export async function expireSubscriptionPaymentRequest(orderId: string,kind: "subscription"|"business_change"="subscription") {
   const business = await getCurrentBusinessForSubscription({ startTrial: false });
   if (business.role !== "owner") {
     throw new Error("Only the business owner can expire a subscription payment request.");
@@ -530,11 +530,13 @@ export async function expireSubscriptionPaymentRequest(orderId: string) {
   const result = await expireSubscriptionPaymentRequestSafely({
     businessId: business.id,
     orderId,
+    kind,
   });
 
   try {
-    revalidatePath(`/dashboard/settings/subscription/payment/${orderId}`);
-    revalidatePath("/dashboard/settings/subscription");
+    const section=kind==="business_change"?"business":"subscription";
+    revalidatePath(`/dashboard/settings/${section}/payment/${orderId}`);
+    revalidatePath(`/dashboard/settings/${section}`);
   } catch { /* Expiry/verification is already committed. */ }
 
   return result;

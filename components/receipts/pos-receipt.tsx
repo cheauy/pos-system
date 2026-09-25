@@ -1,8 +1,8 @@
  'use client';
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { code39Bars } from '@/lib/barcode/code39';
 import type { SaleReceipt } from '@/app/(dashboard)/dashboard/pos/pos-workspace-types';
-import { DEFAULT_RECEIPT, type ReceiptContext } from '@/lib/receipts/receipt-model';
+import { DEFAULT_RECEIPT, printTextScale, type ReceiptContext } from '@/lib/receipts/receipt-model';
 import { money } from '@/app/(dashboard)/dashboard/pos/pos-workspace-helpers';
 import s from './pos-receipt.module.css';
 export function PosReceipt({receipt:r,context}:{receipt:SaleReceipt;context?:ReceiptContext}) {
@@ -12,13 +12,13 @@ export function PosReceipt({receipt:r,context}:{receipt:SaleReceipt;context?:Rec
  const shipping=r.shipping;
  const printWidth=`${parseInt(a.paperSize,10)-6}mm`;
  const barcode=code39Bars(r.orderNumber.toUpperCase().replace(/[^A-Z0-9 .\-\$\/%+]/g,'-').slice(0,40));
- return <article className={`${s.receipt} ${s.classic} receipt`} data-paper={a.paperSize}>
+ return <article className={`${s.receipt} ${s.classic} receipt`} data-paper={a.paperSize} data-density={a.density} style={{"--receipt-font-scale":printTextScale(a.fontSize),"--receipt-alignment":a.alignment} as CSSProperties}>
   <style media="print">{`@page{size:auto;margin:3mm}html,body{width:${printWidth}!important;min-width:${printWidth}!important}.receipt{width:${printWidth}!important;max-width:${printWidth}!important}`}</style>
   <header>
    {a.showLogo && a.logoUrl && <ReceiptLogo key={a.logoUrl} src={a.logoUrl}/>}
    <h2>{r.businessName || context?.store.name}</h2>
-   {context?.store.address && <p className={s.pre}>{context.store.address}</p>}
-   {context?.store.phone && <p>Tel: {context.store.phone}</p>}
+   {a.showAddress && context?.store.address && <p className={s.pre}>{context.store.address}</p>}
+   {a.showPhone && context?.store.phone && <p>Tel: {context.store.phone}</p>}
    {a.header && <p className={s.pre}>{a.header}</p>}
    <h3>SALES RECEIPT</h3>
    <dl className={s.details}>

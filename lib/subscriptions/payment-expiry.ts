@@ -14,6 +14,7 @@ type PaymentExpiryOrder = {
   payment_expires_at?: string | null;
   payment_expired_at?: string | null;
   created_at?: string | null;
+  credit_purchase?: boolean;
 };
 
 export function getSubscriptionPaymentExpiryAt(order: {
@@ -40,12 +41,13 @@ export function isSubscriptionPaymentExpired(order: {
 export async function expireSubscriptionPaymentRequestSafely(args: {
   businessId: string;
   orderId: string;
+  kind?: "subscription" | "business_change";
 }) {
-  const { data, error } = await supabaseAdmin
-    .from("subscription_orders")
-    .select(
-      "id,business_id,status,payment_provider,payway_tran_id,payment_expires_at,payment_expired_at,created_at",
-    )
+  const businessChange=args.kind==="business_change";
+  const query=businessChange
+    ? supabaseAdmin.from("business_change_orders").select("id,business_id,status,payment_provider,payway_tran_id,payment_expires_at,payment_expired_at,created_at,credit_purchase")
+    : supabaseAdmin.from("subscription_orders").select("id,business_id,status,payment_provider,payway_tran_id,payment_expires_at,payment_expired_at,created_at");
+  const { data, error } = await query
     .eq("id", args.orderId)
     .eq("business_id", args.businessId)
     .maybeSingle();
@@ -54,7 +56,7 @@ export async function expireSubscriptionPaymentRequestSafely(args: {
   if (!data) throw new Error("Subscription payment request was not found.");
 
   const order = data as PaymentExpiryOrder;
-  if (order.status !== "pending_payment") {
+  if (order.status !== "pending_payment" || (businessChange&&!order.credit_purchase)) {
     return {
       state: order.payment_expired_at ? ("expired" as const) : ("not_pending" as const),
       orderId: order.id,
@@ -76,6 +78,7 @@ export async function expireSubscriptionPaymentRequestSafely(args: {
         orderId: order.id,
         businessId: order.business_id,
         reason: "payment_expired",
+        ...(businessChange?{kind:"business_change" as const}:{}),
       });
       if (result.state === "approved") {
         return { state: "approved" as const, orderId: order.id };
@@ -97,6 +100,17 @@ export async function expireSubscriptionPaymentRequestSafely(args: {
             : "ABA PayWay status could not be verified safely.",
       };
     }
+  }
+
+  if(businessChange){
+    const now=new Date().toISOString();
+    const {data:expired,error:expireError}=await supabaseAdmin.from("business_change_orders")
+      .update({status:"cancelled",cancelled_at:now,payment_expired_at:now,updated_at:now})
+      .eq("id",order.id).eq("business_id",order.business_id).eq("status","pending_payment")
+      .is("payment_provider",null).is("payway_tran_id",null).is("proof_path",null)
+      .lte("payment_expires_at",now).select("id").maybeSingle();
+    if(expireError)throw new Error("Unable to expire credit checkout.");
+    return {state:expired?"expired" as const:"verification_required" as const,orderId:order.id};
   }
 
   const { data: result, error: expireError } = await supabaseAdmin.rpc(

@@ -18,11 +18,13 @@ export default function PaymentRequestCountdown({
   expiresAt,
   initialRemainingSeconds,
   variant = "inline",
+  kind = "subscription",
 }: {
   orderId: string;
   expiresAt: string;
   initialRemainingSeconds: number;
   variant?: "inline" | "panel";
+  kind?: "subscription" | "business_change";
 }) {
   const router = useRouter();
   const [remaining, setRemaining] = useState(Math.max(0, initialRemainingSeconds));
@@ -41,7 +43,9 @@ export default function PaymentRequestCountdown({
         expiryAttempted.current = true;
         startTransition(async () => {
           try {
-            await expireSubscriptionPaymentRequest(orderId);
+            await expireSubscriptionPaymentRequest(orderId,kind);
+          } catch {
+            // The server keeps uncertain payments locked; refresh to show their status.
           } finally {
             router.refresh();
           }
@@ -52,7 +56,7 @@ export default function PaymentRequestCountdown({
     update();
     const timer = window.setInterval(update, 1000);
     return () => window.clearInterval(timer);
-  }, [expiresAt, orderId, router]);
+  }, [expiresAt, orderId, router, kind]);
 
   const label =
     remaining > 0

@@ -16,7 +16,7 @@ export default async function PosReceiptPage({ params }: { params: Promise<{ id:
   if (error) throw new Error('The receipt could not be loaded. Please retry.');
   const receipt = data?.pos_checkout?.receipt as SaleReceipt | undefined;
   if (!data || !receipt || receipt.orderId !== id) notFound();
-  const context = await loadReceiptContext(business.id,business.name);
+  const context = await loadReceiptContext(business.id,business.name,id);
   return <main className={s.receiptPage}>
     <nav className="no-print"><Link href={`/dashboard/orders/${id}`}>← View order</Link><PrintReceiptButton /></nav>
     <p className={`${s.receiptDisclaimer} no-print`}>Original sale receipt. Current order status: <strong>{data.status}</strong>. Later returns, refunds and balance collections are recorded in the order history; this receipt preserves the original payment breakdown.</p>

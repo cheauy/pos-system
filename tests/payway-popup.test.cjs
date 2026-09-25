@@ -40,3 +40,44 @@ test('legacy GET route does not create payments and popup posts only into its fr
   assert.ok(popup.includes('name={`payway-${orderId}`}'));
   assert.ok(!popup.includes('window.location'));
 });
+
+test('ABA receipt downloads are permitted without allowing top-level navigation',()=>{
+  const popup=fs.readFileSync(base+'payway-checkout-button.tsx','utf8');
+  const permissions=popup.match(/<iframe[^>]*sandbox="([^"]+)"/)?.[1].split(/\s+/);
+  assert.ok(permissions?.includes('allow-downloads'));
+  assert.ok(!permissions.includes('allow-top-navigation'));
+  assert.ok(!permissions.includes('allow-top-navigation-by-user-activation'));
+});
+
+function pollingPopup(kind,verify){
+  const effects=[],timers=new Map(),updates=[],calls=[];let nextTimer=0,closed=0;
+  const exports={};
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync(base+'payway-checkout-button.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{
+    exports,document:{activeElement:null},setTimeout(fn){const id=++nextTimer;timers.set(id,fn);return id;},clearTimeout(id){timers.delete(id);},
+    require(name){
+      if(name==='react')return {useEffect:fn=>effects.push(fn),useRef:current=>({current}),useState:initial=>[initial,value=>updates.push(value)]};
+      if(name==='react/jsx-runtime')return require(name);
+      if(name==='next/navigation')return {useRouter:()=>({})};
+      if(name==='next/image')return {default:()=>null};
+      if(name==='lucide-react')return require(name);
+      if(name==='./payway-actions')return {checkPaywayPopup:async(...args)=>{calls.push(args);return verify();}};
+      throw Error(name);
+    }
+  });
+  const tree=exports.PaywayPopup({orderId:id,kind,checkout:{purchaseUrl:'https://example.com',fields:{}},onClose(){closed++;}});
+  const cleanup=effects.map(fn=>fn());
+  return {tree,timers,updates,calls,get closed(){return closed;},cleanup(){cleanup.forEach(fn=>fn?.());},async tick(){const [key,fn]=timers.entries().next().value;timers.delete(key);await fn();}};
+}
+for(const kind of ['subscription','business_change']){
+  test(kind+': automatic checks wait through pending/scanned and close only after approval',async()=>{
+    let state='pending';const h=pollingPopup(kind,()=>({state,error:null}));
+    await h.tick();assert.equal(h.closed,0);assert.equal(h.timers.size,1);
+    state='approved';await h.tick();assert.equal(h.closed,1);assert.equal(h.timers.size,0);
+    assert.deepEqual(Array.from(h.calls[0]),[id,kind]);h.cleanup();
+  });
+}
+test('automatic checks retry connection errors, stop for review and ignore replies after closing',async()=>{
+  const h=pollingPopup('subscription',()=>{throw Error('network');});await h.tick();assert.equal(h.timers.size,1);assert.match(h.updates.at(-1),/Retrying/);h.cleanup();assert.equal(h.timers.size,0);
+  const review=pollingPopup('business_change',()=>({state:'late_payment_review'}));await review.tick();assert.equal(review.timers.size,0);assert.equal(review.closed,0);assert.equal(review.updates.at(-1),false);review.cleanup();
+  let resolve;const pending=pollingPopup('subscription',()=>new Promise(done=>resolve=done));const request=pending.tick();assert.equal(pending.timers.size,0);pending.cleanup();resolve({state:'approved'});await request;assert.equal(pending.closed,0);assert.equal(pending.timers.size,0);
+});

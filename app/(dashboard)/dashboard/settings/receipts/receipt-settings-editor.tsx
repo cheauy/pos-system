@@ -1,16 +1,18 @@
  'use client';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ImagePlus, Save } from 'lucide-react';
 import { PosReceipt } from '@/components/receipts/pos-receipt';
 import { ReceiptViewer } from '@/components/receipts/receipt-viewer';
 import { receiptSample, receiptSettingsIssue, type ReceiptAppearance, type ReceiptContext } from '@/lib/receipts/receipt-model';
 import { saveReceiptAppearance, uploadReceiptLogo, uploadReceiptQr } from './actions';
 import s from './receipt-settings.module.css';
-const TOGGLES: Array<[keyof ReceiptAppearance,string]>=[['showLogo','Logo'],['showCustomer','Customer'],['showDiscount','Discount'],['showPayment','Payment details'],['showFulfillment','Order type and delivery'],['showNotes','Order notes'],['showOrderNumber','Order number'],['showLoyalty','Loyalty points'],['showCashier','Cashier, when recorded']];
+const TOGGLES: Array<[keyof ReceiptAppearance,string]>=[['showPhone','Store phone'],['showAddress','Store address'],['showLogo','Logo'],['showCustomer','Customer'],['showDiscount','Discount'],['showPayment','Payment details'],['showFulfillment','Order type and delivery'],['showNotes','Order notes'],['showOrderNumber','Order number'],['showLoyalty','Loyalty points'],['showCashier','Cashier, when recorded']];
 export function ReceiptSettingsEditor({businessId,initial}:{businessId:string;initial:ReceiptContext}) {
+ const router=useRouter();
  const [a,setA]=useState(initial.appearance);const [busy,setBusy]=useState('');const [message,setMessage]=useState('');const [saved,setSaved]=useState(initial.appearance);
  const sample=receiptSample(initial.store.name);const context={...initial,appearance:a};
- async function save(){const issue=receiptSettingsIssue(a);if(issue){setMessage(issue);return;}setBusy('save');setMessage('');try{const r=await saveReceiptAppearance(businessId,a);if(r.success){setSaved(a);setMessage('Receipt settings saved. Actual receipt views will use this design.');}else setMessage(r.message);}catch{setMessage('Save could not be confirmed. Reopen settings to check before trying again.');}finally{setBusy('');}}
+ async function save(){const issue=receiptSettingsIssue(a);if(issue){setMessage(issue);return;}setBusy('save');setMessage('');try{const r=await saveReceiptAppearance(businessId,a,initial.branchId);if(r.success){setSaved(a);router.refresh();setMessage('Receipt settings saved. Actual receipt views will use this design.');}else setMessage(r.message);}catch{setMessage('Save could not be confirmed. Reopen settings to check before trying again.');}finally{setBusy('');}}
  async function upload(file:File | undefined, kind:'logo'|'qr'='logo'){if(!file)return;setBusy('upload');setMessage('');try{const form=new FormData();form.set('logo',file);const r=await (kind==='logo'?uploadReceiptLogo:uploadReceiptQr)(businessId,form);if(r.success){setA(p=>kind==='logo'?{...p,logoUrl:r.url,showLogo:true}:{...p,qrUrl:r.url,showQr:true});setMessage('Image uploaded. Save receipt settings to apply it.');}else setMessage(r.message);}catch{setMessage('Image upload failed. Please retry.');}finally{setBusy('');}}
  return <div className={s.page}>
  <header><h2>Receipt Settings</h2><p>Standard Receipt · customize your images and text with a live preview.</p></header>
@@ -18,6 +20,10 @@ export function ReceiptSettingsEditor({businessId,initial}:{businessId:string;in
  <div className={s.layout}><section className={s.card}><fieldset disabled={!!busy} className={s.fields}>
  <h2>Standard Receipt</h2><p className={s.muted}>One receipt layout with automatic length.</p>
  <label>Paper size<select value={a.paperSize} onChange={e=>setA(p=>({...p,paperSize:e.target.value as ReceiptAppearance['paperSize']}))}><option value="58mm">58 mm × Auto</option><option value="76mm">76 mm × Auto</option><option value="80mm">80 mm × Auto — Standard Receipt — Default</option></select></label>
+ <h2>Print text</h2><p className={s.muted}>Text size applies to receipts, barcode labels and shipping labels for this branch.</p>
+ <label>Font size<select value={a.fontSize} onChange={e=>setA(p=>({...p,fontSize:e.target.value as ReceiptAppearance['fontSize']}))}><option value="small">Small</option><option value="medium">Medium — Default</option><option value="large">Large</option></select></label>
+ <label>Spacing<select value={a.density} onChange={e=>setA(p=>({...p,density:e.target.value as ReceiptAppearance['density']}))}><option value="compact">Compact</option><option value="comfortable">Comfortable</option></select></label>
+ <label>Receipt header alignment<select value={a.alignment} onChange={e=>setA(p=>({...p,alignment:e.target.value as ReceiptAppearance['alignment']}))}><option value="center">Center</option><option value="left">Left</option></select></label>
  <h2>Receipt logo</h2><p className={s.muted}>This logo is for receipts only. Your storefront logo is not changed. Uploaded logos are public branding assets.</p>
  <p className={s.muted}>Recommended logo: 600 × 300 px. Prints up to 40 × 20 mm. PNG, JPEG or WebP, max 750 KB.</p>
  <label className={s.upload}><ImagePlus size={18}/> Upload PNG / JPEG / WebP · max 750 KB<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>void upload(e.target.files?.[0])}/></label>

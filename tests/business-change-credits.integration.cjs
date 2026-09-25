@@ -13,6 +13,8 @@ const business='11111111-1111-4111-8111-111111111111',owner='22222222-2222-4222-
  for(const r of before.filter(r=>r.kind==='constraint'&&!r.body.startsWith('FOREIGN KEY')))await db.exec(`alter table business_change_orders add constraint ${r.name} ${r.body}`);
  for(const r of before.filter(r=>r.kind==='function'))await db.exec(r.body);
  await db.exec(migration);await db.exec(migration);
+ const separated=fs.readFileSync('supabase/migrations/20260925004000_separate_credit_purchase_and_apply.sql','utf8');
+ await db.exec(separated);await db.exec(separated);
  await db.query("insert into businesses(id,slug,product_mode,subscription_status,subscription_plan_key) values($1,'shop','standard','active','solo')",[business]);
  await db.query("insert into business_members values($1,$2,'owner',true)",[business,owner]);
  await db.query("insert into business_storefronts values($1,'general',now())",[business]);
@@ -29,5 +31,50 @@ const business='11111111-1111-4111-8111-111111111111',owner='22222222-2222-4222-
  await check('buying a missing second credit does not consume the credit already owned',async()=>{const first=await quote(true,false);await pay(first.order_id);const next=await quote(true,true);assert.equal(Number(next.total_amount),5);assert.equal((await order(next.order_id)).change_url,false);assert.equal((await db.query('select sum(url_remaining) n from business_change_credits')).rows[0].n,1);await pay(next.order_id);const applied=await quote();assert.equal(applied.order_status,'applied');assert.equal((await db.query('select sum(url_remaining+mode_remaining) n from business_change_credits')).rows[0].n,0);});
  await check('legacy paid change orders still apply rather than minting credits',async()=>{const q=await quote();await db.query('update business_change_orders set credit_purchase=false where id=$1',[q.order_id]);await db.query("select * from complete_business_change_order($1,'legacy-payment','manual_admin')",[q.order_id]);assert.equal((await order(q.order_id)).status,'applied');assert.equal((await get()).slug,'shopnew');assert.equal((await db.query('select * from business_change_credits')).rows.length,0);});
  await check('non-owner cannot create changes',async()=>{await assert.rejects(quote(true,false,'33333333-3333-4333-8333-333333333333'));});
+ const buy=async(type,user=owner)=>(await db.query('select buy_business_change_credit($1,$2,$3) id',[business,user,type])).rows[0].id;
+ const apply=async(url=true,mode=true)=>(await db.query("select * from apply_business_changes_with_credits($1,$2,'shop',$3,'general',$4,'standard',$5,$6,$7)",[business,owner,url?'newshop':'shop',mode?'fashion':'general',mode?'variant':'standard',url,mode])).rows[0];
+ await check('buying credit with allowances creates checkout, reuses double-click, never changes settings',async()=>{
+   await db.exec("update businesses set subscription_plan_key='growth',free_url_changes_per_month=2,free_business_mode_changes_per_month=2");
+   const id=await buy('mode');assert.equal(await buy('mode'),id);
+   const o=await order(id);assert.equal(Number(o.total_amount),5);assert.equal(o.credit_purchase,true);assert.equal(o.change_url,false);
+   assert.equal((await get()).product_mode,'standard');await pay(id);
+   assert.equal((await get()).product_mode,'standard');assert.equal((await db.query('select sum(mode_remaining) n from business_change_credits')).rows[0].n,1);
+ });
+ await check('Apply with insufficient credits rolls back all new orders and never starts checkout',async()=>{
+   const id=await buy('url');await pay(id);const beforeCount=(await db.query('select count(*) n from business_change_orders')).rows[0].n;
+   await db.exec('savepoint insufficient');await assert.rejects(apply(),/Not enough credits/);await db.exec('rollback to insufficient');
+   assert.equal((await db.query('select count(*) n from business_change_orders')).rows[0].n,beforeCount);
+   assert.equal((await db.query('select sum(url_remaining) n from business_change_credits')).rows[0].n,1);
+   assert.equal((await get()).slug,'shop');
+ });
+ await check('Apply consumes two purchased credits and never creates a payment',async()=>{
+   await pay(await buy('url'));await pay(await buy('mode'));const result=await apply();assert.equal(result.order_status,'applied');assert.equal(Number(result.total_amount),0);
+   assert.equal((await get()).slug,'newshop');assert.equal((await get()).product_mode,'variant');
+   assert.equal((await db.query('select sum(url_remaining+mode_remaining) n from business_change_credits')).rows[0].n,0);
+   assert.equal((await db.query("select count(*) n from business_change_orders where status='pending_payment'")).rows[0].n,0);
+ });
+ await check('buy cannot bypass active payment, invalid type, owner or service role',async()=>{
+   const id=await buy('url');await db.query("update business_change_orders set payment_provider='aba_payway' where id=$1",[id]);
+   await db.exec('savepoint blocked');await assert.rejects(buy('mode'),/existing payment/);await db.exec('rollback to blocked');
+   await assert.rejects(buy('invalid'),/valid credit/);await db.exec('rollback to blocked');
+   await assert.rejects(buy('mode','33333333-3333-4333-8333-333333333333'),/owner/);await db.exec('rollback to blocked');
+   await db.exec("set local test.role='authenticated'");await assert.rejects(buy('url'),/Server action/);
+ });
+ const deadline=fs.readFileSync('supabase/migrations/20260925005000_credit_checkout_deadline.sql','utf8');await db.exec(deadline);await db.exec(deadline);
+ await check('new credit checkout has a fixed ten-minute deadline; refresh and PayWay start never extend it',async()=>{
+   const id=await buy('url');const first=await order(id);assert.equal(new Date(first.payment_expires_at)-new Date(first.created_at),600000);
+   assert.equal(await buy('url'),id);
+   await db.query("update business_change_orders set payment_expires_at=now()+interval '1 hour' where id=$1",[id]);
+   assert.equal(String((await order(id)).payment_expires_at),String(first.payment_expires_at));await pay(id);
+   assert.equal((await order(id)).status,'paid');assert.equal((await get()).slug,'shop');
+ });
+ await check('expired credit checkout rejects manual proof and new PayWay transactions at the database boundary',async()=>{
+   const id=await buy('mode');await db.exec('alter table business_change_orders disable trigger credit_checkout_deadline');
+   await db.query("update business_change_orders set payment_expires_at=now()-interval '1 second' where id=$1",[id]);await db.exec('alter table business_change_orders enable trigger credit_checkout_deadline');
+   await db.exec('savepoint expired');await assert.rejects(db.query("update business_change_orders set status='payment_submitted' where id=$1",[id]),/expired/);await db.exec('rollback to expired');
+   await assert.rejects(db.query("update business_change_orders set payway_tran_id='NEW' where id=$1",[id]),/expired/);await db.exec('rollback to expired');
+   await db.query("update business_change_orders set status='cancelled',payment_expired_at=now() where id=$1",[id]);assert.equal((await order(id)).status,'cancelled');
+   assert.equal((await db.query('select count(*) n from business_change_credits')).rows[0].n,0);
+ });
  console.log(`${checks} business-credit checks passed`);
 }finally{await db.close();}})().catch(error=>{console.error(error);process.exitCode=1;});

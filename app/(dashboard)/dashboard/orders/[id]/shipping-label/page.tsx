@@ -18,7 +18,7 @@ export default async function OrderShippingLabelPage({ params }: { params: Promi
   if (!branchId) notFound();
   const [context, saved, custom] = await Promise.all([
     loadReceiptContext(business.id, business.name,id),
-    supabaseAdmin.from("branch_receipt_settings").select("shipping_label_size,shipping_show_sender,shipping_show_phone,shipping_show_order_number,shipping_show_cod,shipping_show_item_count,shipping_show_barcode").eq("business_id", business.id).eq("location_id",branchId).maybeSingle(),
+    supabaseAdmin.from("branch_receipt_settings").select("font_size,density,shipping_label_size,shipping_show_sender,shipping_show_phone,shipping_show_order_number,shipping_show_cod,shipping_show_item_count,shipping_show_barcode").eq("business_id", business.id).eq("location_id",branchId).maybeSingle(),
     loadShippingSettings(business.id,id),
   ]);
   if (saved.error) throw new Error("Printer settings could not be loaded. Please retry.");

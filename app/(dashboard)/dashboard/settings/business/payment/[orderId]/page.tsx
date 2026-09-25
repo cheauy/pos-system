@@ -17,6 +17,7 @@ import { getTenantDashboardUrl } from "@/lib/tenancy/domain";
 
 import BusinessChangePaymentForm from "./payment-form";
 import CreditCheckout, {type CreditCheckoutOrder} from "./credit-checkout";
+import { expireSubscriptionPaymentRequestSafely } from "@/lib/subscriptions/payment-expiry";
 
 type ChangeOrder = CreditCheckoutOrder & {
   id: string;
@@ -67,8 +68,10 @@ function statusLabel(status: string) {
 
 export default async function BusinessChangePaymentPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orderId: string }>;
+  searchParams?: Promise<{cancel?:string}>;
 }) {
   const business = await requirePermission("business.view");
 
@@ -77,10 +80,16 @@ export default async function BusinessChangePaymentPage({
   }
 
   const { orderId } = await params;
+  const query=searchParams?await searchParams:{};
+  let expiryCheckFailed=false;
+  try{
+    const result=await expireSubscriptionPaymentRequestSafely({businessId:business.id,orderId,kind:"business_change"});
+    expiryCheckFailed=result.state==='verification_required';
+  }catch{expiryCheckFailed=true;}
   const { data, error } = await supabaseAdmin
     .from("business_change_orders")
     .select(
-      "id,credit_purchase,payment_provider,manual_bank_name,manual_account_name,manual_account_number,manual_qr_image_url,payment_expires_at,old_slug,requested_slug,old_business_type,requested_business_type,change_url,change_business_mode,included_url_change,included_business_mode_change,unit_price,total_amount,currency,status,payment_reference,payment_note,proof_path,proof_file_name,proof_mime_type,proof_size_bytes,proof_uploaded_at,review_note,reviewed_at,created_at",
+      "id,credit_purchase,payment_provider,manual_bank_name,manual_account_name,manual_account_number,manual_qr_image_url,payment_expires_at,payment_expired_at,old_slug,requested_slug,old_business_type,requested_business_type,change_url,change_business_mode,included_url_change,included_business_mode_change,unit_price,total_amount,currency,status,payment_reference,payment_note,proof_path,proof_file_name,proof_mime_type,proof_size_bytes,proof_uploaded_at,review_note,reviewed_at,created_at",
     )
     .eq("id", orderId)
     .eq("business_id", business.id)
@@ -91,7 +100,7 @@ export default async function BusinessChangePaymentPage({
   }
 
   const order = data as ChangeOrder;
-  if(order.credit_purchase)return <CreditCheckout order={order} businessId={business.id}/>;
+  if(order.credit_purchase)return <CreditCheckout order={order} businessId={business.id} cancelFailed={query.cancel==='unavailable'} expiryCheckFailed={expiryCheckFailed}/>;
   const oldMode = getBusinessModePreset(order.old_business_type ?? "");
   const newMode = getBusinessModePreset(order.requested_business_type);
   const isPending = ["pending_payment", "payment_submitted"].includes(order.status);

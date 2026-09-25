@@ -7,31 +7,41 @@ import { createClient } from '@/lib/supabase/branch-server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { receiptSettingsIssue, type ReceiptAppearance } from '@/lib/receipts/receipt-model';
+import { getBranchContext } from '@/lib/branches/context';
 
-async function persistAppearance(businessId:string, a:ReceiptAppearance):Promise<void> {
+async function printerBranch(businessId:string,expectedBranchId?:string){
+ const context=await getBranchContext();
+ if(context.business.id!==businessId||!context.branchId||(expectedBranchId&&expectedBranchId!==context.branchId))throw new Error('The selected branch changed. Reload Printer Settings before saving.');
+ return context.branchId;
+}
+
+async function persistAppearance(businessId:string, a:ReceiptAppearance,expectedBranchId?:string):Promise<void> {
  const invalid=receiptSettingsIssue(a); if(invalid) throw new Error(invalid);
  const db=await createClient();
+ const locationId=await printerBranch(businessId,expectedBranchId);
  const values = {
-  business_id:businessId,receipt_template:a.template,paper_size:a.paperSize,receipt_logo_url:a.logoUrl,receipt_qr_url:a.qrUrl,show_receipt_qr:a.showQr,
+  business_id:businessId,location_id:locationId,receipt_template:a.template,paper_size:a.paperSize,receipt_logo_url:a.logoUrl,receipt_qr_url:a.qrUrl,show_receipt_qr:a.showQr,
+  font_size:a.fontSize,density:a.density,receipt_alignment:a.alignment,
   header_text:a.header.trim(),footer_text:a.footer.trim(),return_policy:a.returnPolicy.trim(),
   show_logo:a.showLogo,show_phone:a.showPhone,show_address:a.showAddress,show_customer:a.showCustomer,
   show_discount:a.showDiscount,show_payment:a.showPayment,show_fulfillment:a.showFulfillment,show_notes:a.showNotes,
   show_order_number:a.showOrderNumber,show_loyalty:a.showLoyalty,show_cashier:a.showCashier,updated_at:new Date().toISOString(),
  };
- let {error}=await db.from('branch_receipt_settings').upsert(values,{onConflict:'business_id,location_id'});
+ let {data:saved,error}=await db.from('branch_receipt_settings').upsert(values,{onConflict:'business_id,location_id'}).select('business_id,location_id').single();
  if(error && ['42703','PGRST204'].includes(error.code) && /receipt_qr_url|show_receipt_qr/.test(error.message) && !a.qrUrl) {
   const legacyValues:Record<string,unknown>={...values};delete legacyValues.receipt_qr_url;delete legacyValues.show_receipt_qr;
-  ({error}=await db.from('branch_receipt_settings').upsert(legacyValues,{onConflict:'business_id,location_id'}));
+  ({data:saved,error}=await db.from('branch_receipt_settings').upsert(legacyValues,{onConflict:'business_id,location_id'}).select('business_id,location_id').single());
  }
  if(error) throw new Error(['42703','PGRST204'].includes(error.code)?'Apply the printer paper and receipt QR migration first.':error.message);
+ if(saved?.business_id!==businessId||saved?.location_id!==locationId)throw new Error('Could not confirm saved settings for this branch. Reload and try again.');
  // Receipt save has committed: cache/audit failure must not claim the save failed.
  try {await createAuditLog({action:'update',entityType:'business',entityId:businessId,description:'Updated receipt appearance',metadata:{template:a.template,paperSize:a.paperSize}});}catch(e){console.error('Receipt audit',e);}
- try {revalidatePath('/dashboard/settings/receipts');revalidatePath('/dashboard/settings/printers');revalidatePath('/dashboard/pos');revalidatePath('/dashboard/orders','layout');}catch(e){console.error('Receipt cache refresh',e);}
+ try {revalidatePath('/dashboard/settings/receipts');revalidatePath('/dashboard/settings/printers');revalidatePath('/dashboard/pos','layout');revalidatePath('/dashboard/orders','layout');revalidatePath('/dashboard/barcodes');revalidatePath('/dashboard/shipping-labels');}catch(e){console.error('Receipt cache refresh',e);}
 }
-export async function saveReceiptAppearance(expectedBusinessId:string, a:ReceiptAppearance) {
+export async function saveReceiptAppearance(expectedBusinessId:string, a:ReceiptAppearance,expectedBranchId?:string) {
  const business=await requirePermission('business.update');
  if(expectedBusinessId!==business.id)return {success:false as const,message:'The selected business changed. Reload Settings.'};
- try {await persistAppearance(business.id,a);return {success:true as const};}
+ try {await persistAppearance(business.id,a,expectedBranchId);return {success:true as const};}
  catch(e){return {success:false as const,message:e instanceof Error?e.message:'Could not save receipt settings.'};}
 }
 // Compatibility with the existing print-customization form; do not remove it.
@@ -43,6 +53,7 @@ export async function saveReceiptSettings(formData:FormData):Promise<void> {
  const checked=(key:string)=>formData.get(key)==='on';
  const a:ReceiptAppearance={...current,template:text('receiptTemplate') as ReceiptAppearance['template'] || current.template,paperSize:text('paperSize') as ReceiptAppearance['paperSize'],
   header:text('headerText'),footer:text('footerText'),returnPolicy:text('returnPolicy'),
+  fontSize:(text('fontSize')||current.fontSize) as ReceiptAppearance['fontSize'],density:(text('density')||current.density) as ReceiptAppearance['density'],alignment:(text('receiptAlignment')||current.alignment) as ReceiptAppearance['alignment'],
   showLogo:checked('showLogo'),showPhone:checked('showPhone'),showAddress:checked('showAddress'),showCustomer:checked('showCustomer'),showDiscount:checked('showDiscount'),showPayment:checked('showPayment'),showFulfillment:checked('showFulfillment'),showNotes:checked('showNotes'),showOrderNumber:checked('showOrderNumber'),showLoyalty:checked('showLoyalty'),showCashier:checked('showCashier')};
  await persistAppearance(business.id,a);
 }
@@ -79,21 +90,24 @@ function labelChecked(formData: FormData, key: string): boolean {
   return formData.get(key) === 'on';
 }
 
-async function upsertLabelSettings(values: Record<string, unknown>): Promise<void> {
+async function upsertLabelSettings(values: Record<string, unknown>,expectedBranchId?:string): Promise<void> {
   // Preserve the original label settings permission; never trust a business ID
   // submitted in the browser's FormData.
   const business = await requirePermission('business.update');
   const supabase = await createClient();
-  const { error } = await supabase.from('branch_receipt_settings').upsert(
+  const locationId=await printerBranch(business.id,expectedBranchId);
+  const { data:saved,error } = await supabase.from('branch_receipt_settings').upsert(
     {
       ...values,
       business_id: business.id,
+      location_id:locationId,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'business_id,location_id' },
-  );
+  ).select('business_id,location_id').single();
 
   if (error) throw new Error(error.message);
+  if(saved?.business_id!==business.id||saved?.location_id!==locationId)throw new Error('Could not confirm saved label settings.');
 
   revalidatePath('/dashboard/settings/receipts');revalidatePath('/dashboard/settings/printers');
   revalidatePath('/dashboard/barcodes');
@@ -107,6 +121,7 @@ export async function saveShippingLabelSettings(formData: FormData): Promise<voi
     : '100x150';
 
   const business=await requirePermission('business.update');
+  await printerBranch(business.id,String(formData.get('branchId')||'')||undefined);
   const {persistShippingSettings}=await import('@/lib/receipts/shipping-design-store');
   await persistShippingSettings(business.id,{
     shipping_label_size:size,
@@ -121,6 +136,7 @@ export async function saveShippingLabelSettings(formData: FormData): Promise<voi
   });
   revalidatePath('/dashboard/settings/printers');
   revalidatePath('/dashboard/shipping-labels');
+  revalidatePath('/dashboard/orders','layout');
 }
 
 export async function saveBarcodeLabelSettings(formData: FormData): Promise<void> {
@@ -147,5 +163,5 @@ export async function saveBarcodeLabelSettings(formData: FormData): Promise<void
     barcode_show_store_name: labelChecked(formData, 'barcodeShowStoreName'),
     barcode_show_custom_text: false,
     barcode_custom_text: '',
-  });
+  },String(formData.get('branchId')||'')||undefined);
 }

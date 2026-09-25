@@ -1,15 +1,18 @@
 import type { SaleReceipt } from '@/app/(dashboard)/dashboard/pos/pos-workspace-types';
 export type ReceiptTemplate = 'classic';
+export function printTextScale(value:unknown){return value==='small'?0.85:value==='large'?1.2:1;}
 export type ReceiptAppearance = {
   template: ReceiptTemplate; paperSize: '58mm' | '76mm' | '80mm'; logoUrl: string | null; qrUrl: string | null; showQr: boolean;
   header: string; footer: string; returnPolicy: string;
+  fontSize: 'small' | 'medium' | 'large'; density: 'compact' | 'comfortable'; alignment: 'left' | 'center';
   showLogo: boolean; showPhone: boolean; showAddress: boolean; showCustomer: boolean;
   showDiscount: boolean; showPayment: boolean; showFulfillment: boolean; showNotes: boolean;
   showOrderNumber: boolean; showLoyalty: boolean; showCashier: boolean;
 };
-export type ReceiptContext = { appearance: ReceiptAppearance; store: { name: string; phone: string; address: string }; };
+export type ReceiptContext = { branchId?: string; appearance: ReceiptAppearance; store: { name: string; phone: string; address: string }; };
 export const DEFAULT_RECEIPT: ReceiptAppearance = {
   template:'classic',paperSize:'80mm',logoUrl:null,qrUrl:null,showQr:true,header:'',footer:'Thank you for shopping with us.',returnPolicy:'',
+  fontSize:'medium',density:'comfortable',alignment:'center',
   showLogo:true,showPhone:true,showAddress:true,showCustomer:true,showDiscount:true,showPayment:true,
   showFulfillment:true,showNotes:false,showOrderNumber:true,showLoyalty:true,showCashier:true,
 };
@@ -23,6 +26,7 @@ export function receiptAppearance(row: Record<string,unknown> | null, fallbackLo
   const r=row || {};const flag=(key:string)=>typeof r[key]==='boolean'?r[key] as boolean:true;
   return {
     template:'classic',
+    fontSize:r.font_size==='small'?'small':r.font_size==='large'?'large':'medium',density:r.density==='compact'?'compact':'comfortable',alignment:r.receipt_alignment==='left'?'left':'center',
     paperSize:r.paper_size==='58mm'?'58mm':r.paper_size==='76mm'?'76mm':'80mm',
     qrUrl:receiptLogoUrl(r.receipt_qr_url),showQr:r.show_receipt_qr!==false,
     logoUrl:receiptLogoUrl(Object.prototype.hasOwnProperty.call(r,'receipt_logo_url') ? r.receipt_logo_url : fallbackLogo),
@@ -34,6 +38,7 @@ export function receiptAppearance(row: Record<string,unknown> | null, fallbackLo
 }
 export function receiptSettingsIssue(a: ReceiptAppearance): string | null {
   if(!a || a.template!=='classic' || !['58mm','76mm','80mm'].includes(a.paperSize)) return 'Choose a valid template and paper width.';
+  if(!['small','medium','large'].includes(a.fontSize)||!['compact','comfortable'].includes(a.density)||!['left','center'].includes(a.alignment))return 'Choose valid text size, spacing and alignment.';
   for(const k of ['header','footer','returnPolicy'] as const) if(typeof a[k]!=='string' || a[k].length>500) return 'Receipt text must be 500 characters or fewer.';
   for(const k of ['showLogo','showPhone','showAddress','showCustomer','showDiscount','showPayment','showFulfillment','showNotes','showOrderNumber','showLoyalty','showCashier'] as const) if(typeof a[k]!=='boolean') return 'Invalid receipt visibility setting.';
   if(a.qrUrl!=null && !receiptLogoUrl(a.qrUrl)) return 'Use a valid QR image URL.';

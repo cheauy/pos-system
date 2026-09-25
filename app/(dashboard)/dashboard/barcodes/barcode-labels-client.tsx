@@ -1,4 +1,5 @@
 "use client";
+import { printTextScale } from "@/lib/receipts/receipt-model";
 
 import {
   useMemo,
@@ -643,7 +644,7 @@ export default function BarcodeLabelsClient({
                 <div>
                   <div className="flex min-h-[240px] items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 p-6">
                     {currentPreview ? (
-                      <LabelCard
+                      <LabelCard fontSize={settings.font_size} density={settings.density}
                         product={currentPreview}
                         businessName={businessName}
                         size={labelSize}
@@ -700,7 +701,7 @@ export default function BarcodeLabelsClient({
                       .slice(0, 8)
                       .map((product) => (
                         <div key={product.id} className="scale-[0.55] origin-top-left">
-                          <LabelCard
+                          <LabelCard fontSize={settings.font_size} density={settings.density}
                             product={product}
                             businessName={businessName}
                             size={labelSize}
@@ -741,7 +742,7 @@ export default function BarcodeLabelsClient({
 
       <div id="barcode-print-area" className="hidden print:block">
         {printedLabels.map(({ product, key }) => (
-          <LabelCard
+          <LabelCard fontSize={settings.font_size} density={settings.density}
             key={key}
             product={product}
             businessName={businessName}
@@ -822,6 +823,7 @@ export function LabelCard({
   templateId,
   elements,
   customText,
+  fontSize, density,
 }: {
   product: Product;
   businessName: string;
@@ -829,6 +831,7 @@ export function LabelCard({
   templateId: TemplateId;
   elements: LabelElements;
   customText: string;
+  fontSize?:unknown; density?:unknown;
 }) {
   const value = product.barcode || product.sku || product.id.slice(0, 12);
   const data = code39Bars(value);
@@ -836,20 +839,21 @@ export function LabelCard({
   const image = product.variant_image_url ?? product.image_url;
   const split = templateId === "price";
   const scale = Math.min(width / 50, height / 30) * (elements.image && image ? 0.8 : elements.customText && customText ? 0.9 : 1);
+  const textScale=scale*printTextScale(fontSize);
   const details = <div style={{minWidth:0,flex:1}}>
-    {elements.storeName && <div style={{fontSize:9*scale,lineHeight:1.1,fontWeight:700,marginBottom:2*scale,overflowWrap:"anywhere"}}>{businessName}</div>}
+    {elements.storeName && <div style={{fontSize:9*textScale,lineHeight:1.1,fontWeight:700,marginBottom:2*scale,overflowWrap:"anywhere"}}>{businessName}</div>}
     {elements.image && image && <img src={image} alt="" style={{width:20*scale,height:20*scale,objectFit:"contain",margin:"0 auto"}}/>}
-    {elements.name && <div style={{fontSize:12*scale,fontWeight:800,lineHeight:1.05,overflowWrap:"anywhere"}}>{product.name}</div>}
-    {elements.variant && <div style={{fontSize:9*scale,lineHeight:1.2}}>{[product.color,product.size].filter(Boolean).join(" / ")}</div>}
-    {elements.sku && <div style={{fontSize:8*scale,lineHeight:1.3,overflowWrap:"anywhere"}}>SKU: {product.sku || data.text}</div>}
+    {elements.name && <div style={{fontSize:12*textScale,fontWeight:800,lineHeight:1.05,overflowWrap:"anywhere"}}>{product.name}</div>}
+    {elements.variant && <div style={{fontSize:9*textScale,lineHeight:1.2}}>{[product.color,product.size].filter(Boolean).join(" / ")}</div>}
+    {elements.sku && <div style={{fontSize:8*textScale,lineHeight:1.3,overflowWrap:"anywhere"}}>SKU: {product.sku || data.text}</div>}
   </div>;
-  return <div className="barcode-label border border-slate-200 bg-white text-black" style={{width:`${width}mm`,height:`${height}mm`,boxSizing:"border-box",padding:`${1.5*scale}mm`,display:"flex",flexDirection:"column",justifyContent:"space-between",gap:2*scale,overflow:"hidden",textAlign:split?"left":"center",fontFamily:"Arial, sans-serif"}}>
+  return <div className="barcode-label border border-slate-200 bg-white text-black" style={{width:`${width}mm`,height:`${height}mm`,boxSizing:"border-box",padding:`${1.5*scale}mm`,display:"flex",flexDirection:"column",justifyContent:"space-between",gap:(density==="compact"?1:2)*scale,overflow:"hidden",textAlign:split?"left":"center",fontFamily:"Arial, sans-serif"}}>
     <div style={{display:"flex",gap:5*scale,alignItems:"center"}}>
       {details}
-      {split && elements.price && <div style={{borderLeft:"1px solid black",paddingLeft:5*scale,flexShrink:0}}><div style={{fontSize:7*scale,letterSpacing:1}}>PRICE</div><div style={{fontSize:20*scale,fontWeight:900,lineHeight:1.2}}>{money(product.selling_price)}</div></div>}
+      {split && elements.price && <div style={{borderLeft:"1px solid black",paddingLeft:5*scale,flexShrink:0}}><div style={{fontSize:7*textScale,letterSpacing:1}}>PRICE</div><div style={{fontSize:20*textScale,fontWeight:900,lineHeight:1.2}}>{money(product.selling_price)}</div></div>}
     </div>
-    {elements.barcode && <div style={{textAlign:"center",padding:"0 2mm"}}><svg viewBox={`0 0 ${data.width} 44`} style={{width:"100%",height:`${(split?8:6)*scale}mm`,display:"block"}} preserveAspectRatio="none" aria-label={`Barcode ${data.text}`}>{data.bars.map((bar,index)=><rect key={index} x={bar.x} y="0" width={bar.width} height="44" fill="black"/>)}</svg><div style={{fontSize:8*scale,letterSpacing:1,lineHeight:1.1}}>{data.text}</div></div>}
-    {!split && elements.price && <div style={{fontSize:19*scale,fontWeight:900,lineHeight:1}}>{money(product.selling_price)}</div>}
+    {elements.barcode && <div style={{textAlign:"center",padding:"0 2mm"}}><svg viewBox={`0 0 ${data.width} 44`} style={{width:"100%",height:`${(split?8:6)*scale}mm`,display:"block"}} preserveAspectRatio="none" aria-label={`Barcode ${data.text}`}>{data.bars.map((bar,index)=><rect key={index} x={bar.x} y="0" width={bar.width} height="44" fill="black"/>)}</svg><div style={{fontSize:8*textScale,letterSpacing:1,lineHeight:1.1}}>{data.text}</div></div>}
+    {!split && elements.price && <div style={{fontSize:19*textScale,fontWeight:900,lineHeight:1}}>{money(product.selling_price)}</div>}
 
   </div>;
 }

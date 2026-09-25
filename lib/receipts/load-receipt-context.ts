@@ -15,5 +15,5 @@ export async function loadReceiptContext(businessId:string, name:string, orderId
   supabaseAdmin.from('business_locations').select('address,phone').eq('business_id',businessId).eq('id',branchId).maybeSingle(),
  ]);
  if(settings.error || store.error || branch.error) throw new Error('Receipt settings could not be loaded. Please retry.');
- return {appearance:receiptAppearance(settings.data,store.data?.logo_url),store:{name:store.data?.display_name || name,phone:branch.data?.phone || store.data?.phone || '',address:branch.data?.address || store.data?.address || ''}};
+ return {branchId,appearance:receiptAppearance(settings.data,store.data?.logo_url),store:{name:store.data?.display_name || name,phone:branch.data?.phone || store.data?.phone || '',address:branch.data?.address || store.data?.address || ''}};
 }

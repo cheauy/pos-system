@@ -47,12 +47,14 @@ export default async function BarcodeLabelsPage() {
       .eq("business_id", business.id)
       .order("name"),
     supabase
-      .from("branch_receipt_settings")
-      .select("*")
-      .eq("business_id", business.id)
+        .from("branch_receipt_settings")
+        .select("*")
+        .eq("business_id", business.id)
+        .eq("location_id",branchId)
       .maybeSingle(),
   ]);
 
+  if(settingsResult.error)throw new Error('Unable to load saved barcode settings. Please retry.');
   if (productResult.error) {
     return (
       <div className="rounded-xl bg-red-50 p-5 text-red-600">

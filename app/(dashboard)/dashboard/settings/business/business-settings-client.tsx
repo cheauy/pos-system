@@ -29,7 +29,6 @@ import {
   type StoreAddressAvailabilityResult,
 } from "./actions";
 
-const CHANGE_PRICE_USD = 5;
 
 const businessIllustrationByMode = {
   general: "/business-types/general-shop.svg",
@@ -129,12 +128,8 @@ export default function BusinessSettingsClient({
   const changeCount = Number(slugChanged) + Number(businessModeChanged);
   const availableUrlCredits = freeUrlChangesRemaining + urlCredits;
   const availableModeCredits = freeBusinessModeChangesRemaining + modeCredits;
-  const urlChangePrice = slugChanged && availableUrlCredits <= 0 ? CHANGE_PRICE_USD : 0;
-  const businessModeChangePrice =
-    businessModeChanged && availableModeCredits <= 0
-      ? CHANGE_PRICE_USD
-      : 0;
-  const estimatedTotal = urlChangePrice + businessModeChangePrice;
+  const hasRequiredCredits = (!slugChanged || availableUrlCredits > 0) &&
+    (!businessModeChanged || availableModeCredits > 0);
 
   return (
     <main className="mx-auto w-full max-w-[1600px] pb-10">
@@ -158,12 +153,12 @@ export default function BusinessSettingsClient({
           Edit your TENH POS store address or switch the business setup that matches how you sell.
         </p>
         </div>
-        <CreditBadges modeCredits={availableModeCredits} urlCredits={availableUrlCredits}/>
+        <CreditBadges modeCredits={availableModeCredits} urlCredits={availableUrlCredits} canBuy={canEdit}/>
       </header>
 
       {pendingCheckout&&<div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30"><p className="text-sm font-semibold">{pendingCheckout.status==='pending_payment'?'You have an unfinished checkout.':'Your payment is awaiting review.'}</p><Link href={`/dashboard/settings/business/payment/${pendingCheckout.id}`} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white">{pendingCheckout.status==='pending_payment'?'Continue checkout':'View payment'}</Link></div>}
       {result.error&&<p role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">{result.error}</p>}
-      <form ref={form} action={submit} onSubmit={event=>{if(!confirmed.current){event.preventDefault();confirmation.current?.showModal();}else confirmed.current=false;}}>
+      <form ref={form} action={submit} onSubmit={event=>{if(!hasRequiredCredits||changeCount===0||!changedSlugIsAvailable){event.preventDefault();confirmed.current=false;return;}if(!confirmed.current){event.preventDefault();confirmation.current?.showModal();}else confirmed.current=false;}}>
         <input type="hidden" name="businessMode" value={businessMode} />
 
         <div className="space-y-6">
@@ -262,7 +257,7 @@ export default function BusinessSettingsClient({
                 </p>
               ) : slugChanged ? (
                 <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Check this address before continuing to payment.
+                  Check this address before applying your changes.
                 </p>
               ) : null}
 
@@ -273,7 +268,7 @@ export default function BusinessSettingsClient({
                 </div>
                 {slugChanged ? (
                   <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                    URL change · {availableUrlCredits > 0 ? "Use 1 credit" : "$5"}
+                    URL change · 1 credit required
                   </span>
                 ) : (
                   <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
@@ -302,6 +297,7 @@ export default function BusinessSettingsClient({
                     key={preset.value}
                     preset={preset}
                     selected={businessMode === preset.value}
+                    current={currentBusinessType === preset.value}
                     disabled={!canEdit}
                     onSelect={() => setBusinessMode(preset.value)}
                   />
@@ -337,16 +333,17 @@ export default function BusinessSettingsClient({
 
               {canEdit && (
                 <div className="mt-5">
-                  <ContinueButton
+                  <ApplyButton
                     disabled={
                       changeCount === 0 ||
                       normalizedPreviewSlug.length < 2 ||
                       !selectedPreset ||
-                      !changedSlugIsAvailable
+                      !changedSlugIsAvailable ||
+                      !hasRequiredCredits
                     }
-                    total={estimatedTotal}
-                    includedOnly={estimatedTotal === 0 && changeCount > 0}
+                    count={changeCount}
                   />
+                  {!hasRequiredCredits&&<p role="status" className="mt-3 text-center text-sm text-amber-700 dark:text-amber-300">Buy the required credits above, then apply your changes.</p>}
                   <p className="mt-3 text-center text-xs text-slate-500 dark:text-slate-400">
                     Store URL: {availableUrlCredits} {availableUrlCredits === 1 ? "credit" : "credits"} available · Business mode: {availableModeCredits} {availableModeCredits === 1 ? "credit" : "credits"} available
                   </p>
@@ -358,26 +355,24 @@ export default function BusinessSettingsClient({
         </div>
       </form>
       <dialog ref={confirmation} aria-labelledby="business-confirm-title" className="fixed inset-0 m-auto w-[min(92vw,480px)] rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl backdrop:bg-slate-950/50 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
-        <h2 id="business-confirm-title" className="text-xl font-bold">{estimatedTotal>0?'Buy change credits?':'Confirm business changes?'}</h2>
+        <h2 id="business-confirm-title" className="text-xl font-bold">Confirm business changes?</h2>
         <div className="mt-4 space-y-2 text-sm">
           {slugChanged&&<p>Store URL: <strong className="break-all">{initialSlug} → {normalizedPreviewSlug}</strong></p>}
           {businessModeChanged&&<p>Business mode: <strong>{currentPreset?.label} → {selectedPreset?.label}</strong></p>}
-          <p className="pt-2 text-slate-500">{estimatedTotal>0?`Pay $${estimatedTotal.toFixed(2)} for the missing credits. Payment adds credits without changing your business. Use them later; they never expire.`:'Apply these changes now. Included monthly changes are used first, then one purchased credit for each remaining change.'}</p>
+          <p className="pt-2 text-slate-500">Apply these changes using {changeCount} {changeCount===1?'credit':'credits'}. Included credits are used first.</p>
         </div>
-        <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={()=>confirmation.current?.close()} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold">Cancel</button><button type="button" onClick={()=>{confirmation.current?.close();confirmed.current=true;form.current?.requestSubmit();}} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white">{estimatedTotal>0?'Continue to checkout':'Confirm change'}</button></div>
+        <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={()=>confirmation.current?.close()} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold">Cancel</button><button type="button" disabled={!hasRequiredCredits} onClick={()=>{confirmation.current?.close();confirmed.current=true;form.current?.requestSubmit();}} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Apply</button></div>
       </dialog>
     </main>
   );
 }
 
-function ContinueButton({
+function ApplyButton({
   disabled,
-  total,
-  includedOnly,
+  count,
 }: {
   disabled: boolean;
-  total: number;
-  includedOnly: boolean;
+  count: number;
 }) {
   const { pending } = useFormStatus();
 
@@ -388,16 +383,10 @@ function ContinueButton({
       className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-blue-600/15 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-45"
     >
       {pending ? <Loader2 size={18} className="animate-spin" /> : null}
-      {pending
-        ? includedOnly
-          ? "Applying change…"
-          : "Creating order…"
-        : includedOnly
-          ? "Apply change"
-          : "Continue to payment"}
-      {!pending && total > 0 ? (
+      {pending ? "Applying…" : "Apply"}
+      {count > 0 ? (
         <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs">
-          ${total.toFixed(2)}
+          {count} {count === 1 ? "credit" : "credits"}
         </span>
       ) : null}
     </button>
@@ -407,11 +396,13 @@ function ContinueButton({
 function BusinessModeCard({
   preset,
   selected,
+  current,
   disabled,
   onSelect,
 }: {
   preset: BusinessModePreset;
   selected: boolean;
+  current: boolean;
   disabled: boolean;
   onSelect: () => void;
 }) {
@@ -433,6 +424,7 @@ function BusinessModeCard({
           <Check size={14} strokeWidth={3} />
         </span>
       )}
+      {current && <span className="absolute left-3 top-3 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Current</span>}
       <div className="flex h-[78px] w-[78px] shrink-0 items-center justify-center overflow-hidden rounded-[22px] bg-gradient-to-br from-slate-50 to-blue-50 transition duration-200 group-hover:scale-[1.04] dark:from-slate-900 dark:to-blue-950/50">
         <Image
           src={illustration}

@@ -8,12 +8,15 @@ import * as receiptModel from "../lib/receipts/receipt-model.ts";
 import * as photoCache from "../lib/public-photo-cache.ts";
 
 const require = createRequire(import.meta.url);
-function actions({ missingQr = false } = {}) {
+function actions({ missingQr = false,missingSaved=false } = {}) {
   const writes = [];
   const uploads = [];
-  const db = { from: () => ({ upsert: async values => {
+  const stored={};
+  const db = { from: () => ({ upsert: values => {
     writes.push(values);
-    return { error: missingQr && "receipt_qr_url" in values ? { code: "PGRST204", message: "Missing receipt_qr_url column" } : null };
+    const error=missingQr&&"receipt_qr_url" in values?{code:"PGRST204",message:"Missing receipt_qr_url column"}:null;
+    if(!error)Object.assign(stored,values);
+    return {select:()=>({single:async()=>({data:missingSaved?null:{...stored},error})})};
   } }) };
   const bucket = {
     upload: async (path, bytes, options) => { uploads.push({ path, bytes, options }); return { error: null }; },
@@ -25,7 +28,8 @@ function actions({ missingQr = false } = {}) {
     "@/lib/auth/require-permission": { requirePermission: async permission => {
       assert.equal(permission, "business.update"); return { id: "authorized-business" };
     } },
-    "@/lib/supabase/server": { createClient: async () => db },
+    "@/lib/supabase/branch-server": { createClient: async () => db },
+    "@/lib/branches/context": {getBranchContext:async()=>({business:{id:"authorized-business"},branchId:"branch-a"})},
     "@/lib/supabase/admin": { supabaseAdmin: { storage: { from: name => { assert.equal(name, "tenh-receipt-logos"); return bucket; } } } },
     "@/lib/audit/create-audit-log": { createAuditLog: async () => {} },
     "@/lib/receipts/receipt-model": receiptModel,
@@ -34,7 +38,7 @@ function actions({ missingQr = false } = {}) {
   const { outputText } = ts.transpileModule(readFileSync(file, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } });
   const module = { exports: {} };
   new Function("require", "module", "exports", outputText)(id => deps[id] ?? require(id), module, module.exports);
-  return { api: module.exports, writes, uploads };
+  return { api: module.exports, writes, uploads,stored };
 }
 
 test("receipt logo saves survive missing optional QR columns without changing label settings", async () => {
@@ -81,4 +85,18 @@ test("barcode save persists the chosen new layout, size and fields only", async 
   assert.equal(writes[0].barcode_label_size, "50x30");
   assert.equal(writes[0].barcode_show_store_name, true);
   assert.ok(!("receipt_logo_url" in writes[0]));
+});
+
+test("saved receipt typography and logo survive a later barcode save and reload",async()=>{
+ const {api,stored}=actions();
+ const appearance={...DEFAULT_RECEIPT,fontSize:'large',density:'compact',alignment:'left',paperSize:'58mm',logoUrl:'https://example.com/receipt-logo.png',showPhone:false,footer:'Saved footer'};
+ assert.equal((await api.saveReceiptAppearance('authorized-business',appearance,'branch-a')).success,true);
+ const form=new FormData();form.set('branchId','branch-a');form.set('barcodeLabelSize','40x20');form.set('barcodeTemplate','price');
+ await api.saveBarcodeLabelSettings(form);
+ assert.deepEqual(receiptModel.receiptAppearance(stored),appearance);
+ assert.equal(stored.location_id,'branch-a');assert.equal(stored.barcode_label_size,'40x20');
+});
+test("a stale branch form or unconfirmed write cannot report a successful save",async()=>{
+ const h=actions();assert.equal((await h.api.saveReceiptAppearance('authorized-business',DEFAULT_RECEIPT,'branch-b')).success,false);assert.equal(h.writes.length,0);
+ const missing=actions({missingSaved:true});assert.equal((await missing.api.saveReceiptAppearance('authorized-business',DEFAULT_RECEIPT,'branch-a')).success,false);
 });

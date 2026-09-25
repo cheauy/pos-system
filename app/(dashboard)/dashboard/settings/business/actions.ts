@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getStoreSlugAvailability } from "@/lib/tenancy/store-slug-availability";
 import { getManualPaymentConfig } from "@/lib/subscriptions/manual-bank";
 import { cancelSubscriptionPaywayCheckout } from "@/lib/payway/server";
+import { isSubscriptionPaymentExpired } from "@/lib/subscriptions/payment-expiry";
 
 const BUSINESS_CHANGE_PROOF_BUCKET = "tenh-pos-business-change-proofs";
 const MAX_PROOF_BYTES = 10 * 1024 * 1024;
@@ -201,7 +202,7 @@ async function createChangeOrderForRequestedState({
   }
 
   const { data: result, error: orderError } = await supabaseAdmin.rpc(
-    "create_business_change_order_with_entitlement",
+    "apply_business_changes_with_credits",
     {
       p_business_id: business.id,
       p_requesting_user_id: user.id,
@@ -261,12 +262,7 @@ async function createChangeOrderForRequestedState({
     redirect("/dashboard/settings/business?included=1");
   }
 
-  const manual=getManualPaymentConfig();
-  if(manual.enabled){
-    const {error}=await supabaseAdmin.from("business_change_orders").update({manual_bank_name:manual.bankName,manual_account_name:manual.accountName,manual_account_number:manual.accountNumber,manual_qr_image_url:manual.qrImageUrl}).eq("id",order.order_id).eq("business_id",business.id).eq("status","pending_payment");
-    if(error)throw new Error("Unable to prepare bank details. Please try again.");
-  }
-  redirect(`/dashboard/settings/business/payment/${order.order_id}`);
+  throw new Error("Changes were not applied. Refresh your credit balance and try again.");
 }
 
 export async function createBusinessChangeOrder(formData: FormData) {
@@ -290,6 +286,29 @@ export async function createBusinessChangeOrder(formData: FormData) {
 export async function submitBusinessDetails(_previous:{error:string},formData:FormData):Promise<{error:string}>{
   try{await createBusinessChangeOrder(formData);return {error:""};}
   catch(error){if(isRedirectError(error))throw error;return {error:error instanceof Error?error.message:"Unable to save changes. Please try again."};}
+}
+
+export async function buyBusinessCredit(_previous:{error:string},formData:FormData):Promise<{error:string}>{
+  try {
+    const business=await requirePermission("business.update");
+    if(business.role!=="owner")throw new Error("Only the business owner can buy credits.");
+    const type=formData.get("creditType");
+    if(type!=="url"&&type!=="mode")throw new Error("Select a valid credit type.");
+    const client=await createClient();
+    const {data:{user}}=await client.auth.getUser();
+    if(!user)throw new Error("Please sign in again.");
+    const {data:orderId,error}=await supabaseAdmin.rpc("buy_business_change_credit",{p_business_id:business.id,p_requesting_user_id:user.id,p_credit_type:type});
+    if(error||!orderId)throw new Error(error?.message??"Unable to create credit checkout.");
+    const manual=getManualPaymentConfig();
+    if(manual.enabled){
+      const {error:snapshotError}=await supabaseAdmin.from("business_change_orders").update({manual_bank_name:manual.bankName,manual_account_name:manual.accountName,manual_account_number:manual.accountNumber,manual_qr_image_url:manual.qrImageUrl}).eq("id",orderId).eq("business_id",business.id).eq("status","pending_payment");
+      if(snapshotError)throw new Error("Unable to prepare bank details. Please try again.");
+    }
+    redirect(`/dashboard/settings/business/payment/${orderId}`);
+  } catch(error){
+    if(isRedirectError(error))throw error;
+    return {error:error instanceof Error?error.message:"Unable to buy credits. Please try again."};
+  }
 }
 
 // Compatibility guard for an older product-mode form that may still exist in
@@ -375,7 +394,7 @@ export async function submitBusinessChangePaymentReference(formData: FormData): 
 
   const { data: order, error: orderError } = await supabaseAdmin
     .from("business_change_orders")
-    .select("id,status,proof_bucket,proof_path,proof_file_name,payway_tran_id,payment_provider,manual_bank_name")
+    .select("id,status,credit_purchase,payment_expires_at,created_at,proof_bucket,proof_path,proof_file_name,payway_tran_id,payment_provider,manual_bank_name")
     .eq("id", orderId)
     .eq("business_id", business.id)
     .maybeSingle();
@@ -387,6 +406,7 @@ export async function submitBusinessChangePaymentReference(formData: FormData): 
   if (!order) {
     return { success: false, message: "Change order was not found." };
   }
+  if(order.credit_purchase&&order.status==='pending_payment'&&isSubscriptionPaymentExpired(order))return {success:false,message:"Payment request expired. Create a new checkout."};
   if(order.payway_tran_id || order.payment_provider==='aba_payway')return {success:false,message:"ABA PayWay has already started. Complete or safely cancel that checkout first."};
   if(!order.manual_bank_name && !getManualPaymentConfig().enabled)return {success:false,message:"Manual payment is unavailable."};
 
@@ -514,8 +534,24 @@ export async function cancelBusinessChangeCheckout(formData:FormData){
   const business=await requirePermission("business.update");
   if(business.role!=="owner")throw new Error("Only the owner can cancel checkout.");
   const id=String(formData.get("orderId")??"");
-  const result=await cancelSubscriptionPaywayCheckout({orderId:id,businessId:business.id,kind:"business_change"});
-  if(result.state==="provider_close_unavailable")throw new Error(result.message);
+  if(!/^[0-9a-f-]{36}$/i.test(id))throw new Error("Invalid credit checkout.");
+  const {data:order,error}=await supabaseAdmin.from("business_change_orders").select("id,status,credit_purchase,proof_path,payment_provider,payway_tran_id").eq("id",id).eq("business_id",business.id).maybeSingle();
+  if(error||!order||!order.credit_purchase)throw new Error("Credit checkout was not found.");
+  if(order.status==='cancelled')redirect('/dashboard/settings/business');
+  if(order.status!=='pending_payment'||order.proof_path)redirect(`/dashboard/settings/business/payment/${id}`);
+  if(order.payment_provider==='aba_payway'||order.payway_tran_id){
+    let result;
+    try{result=await cancelSubscriptionPaywayCheckout({orderId:id,businessId:business.id,kind:"business_change"});}
+    catch{redirect(`/dashboard/settings/business/payment/${id}?cancel=unavailable`);}
+    if(result.state==="provider_close_unavailable")redirect(`/dashboard/settings/business/payment/${id}?cancel=unavailable`);
+    if(result.state==="approved"){revalidatePath(`/dashboard/settings/business/payment/${id}`);redirect(`/dashboard/settings/business/payment/${id}`);}
+  }else{
+    const now=new Date().toISOString();
+    const {data:cancelled,error:cancelError}=await supabaseAdmin.from("business_change_orders").update({status:"cancelled",cancelled_at:now,updated_at:now})
+      .eq("id",id).eq("business_id",business.id).eq("status","pending_payment").is("proof_path",null).is("payment_provider",null).is("payway_tran_id",null).select("id").maybeSingle();
+    if(cancelError||!cancelled)redirect(`/dashboard/settings/business/payment/${id}?cancel=unavailable`);
+  }
   revalidatePath(`/dashboard/settings/business/payment/${id}`);
-  if(result.state!=="approved")redirect("/dashboard/settings/business");
+  revalidatePath("/dashboard/settings/business");
+  redirect("/dashboard/settings/business");
 }

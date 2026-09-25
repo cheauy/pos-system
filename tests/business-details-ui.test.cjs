@@ -9,20 +9,33 @@ function load(){const state=[],refs=[];let cursor=0,refCursor=0;
  return {render(overrides={}){cursor=0;refCursor=0;return nodes(Component({...props,...overrides}));}};
 }
 test('applying changes requires the centered confirmation; cancel never submits',()=>{
- const h=load();let tree=h.render();tree.find(n=>n.props?.preset?.value==='fashion').props.onSelect();tree=h.render();
+ const h=load();let tree=h.render({modeCredits:1});tree.find(n=>n.props?.preset?.value==='fashion').props.onSelect();tree=h.render({modeCredits:1});
  const form=tree.find(n=>n.type==='form'),dialog=tree.find(n=>n.type==='dialog');let opened=0,closed=0,submissions=0;
  dialog.props.ref.current={showModal(){opened++;},close(){closed++;}};
  let blocked=false;form.props.onSubmit({preventDefault(){blocked=true;}});assert.equal(blocked,true);assert.equal(opened,1);
  assert.match(dialog.props.className,/fixed inset-0 m-auto/);
  tree.find(n=>n.type==='button'&&n.props.children==='Cancel').props.onClick();assert.equal(closed,1);assert.equal(submissions,0);
  form.props.ref.current={requestSubmit(){let prevented=false;form.props.onSubmit({preventDefault(){prevented=true;}});if(!prevented)submissions++;}};
- tree.find(n=>n.type==='button'&&n.props.children==='Continue to checkout').props.onClick();assert.equal(submissions,1);
+ tree.find(n=>n.type==='button'&&n.props.children==='Apply').props.onClick();assert.equal(submissions,1);
  blocked=false;form.props.onSubmit({preventDefault(){blocked=true;}});assert.equal(blocked,true);
 });
-test('available credit makes confirmation an apply action; no credit quotes five dollars',()=>{
+test('Apply requires the right credits and displays the number of changes',()=>{
  const h=load();h.render().find(n=>n.props?.preset?.value==='fashion').props.onSelect();
- let tree=h.render();assert.equal(tree.find(n=>typeof n.props?.includedOnly==='boolean').props.total,5);
- tree=h.render({modeCredits:1});assert.equal(tree.find(n=>typeof n.props?.includedOnly==='boolean').props.total,0);assert.ok(tree.some(n=>n.type==='button'&&n.props.children==='Confirm change'));
+ let tree=h.render();assert.equal(tree.find(n=>n.props?.count===1).props.disabled,true);
+ tree=h.render({urlCredits:1});assert.equal(tree.find(n=>n.props?.count===1).props.disabled,true);
+ tree=h.render({modeCredits:1});assert.equal(tree.find(n=>n.props?.count===1).props.disabled,false);assert.ok(tree.some(n=>n.type==='button'&&n.props.children==='Apply'));
+ tree.find(n=>n.type==='input'&&n.props.name==='subdomain').props.onChange({target:{value:'new-shop'}});
+ tree=h.render({modeCredits:1,urlCredits:1});assert.ok(tree.find(n=>n.props?.count===2));
+});
+
+test('Current stays on the saved business type when another type is selected',()=>{
+ const h=load();let tree=h.render();
+ const current=tree.find(n=>n.props?.preset?.value==='general');
+ assert.equal(current.props.current,true);
+ assert.ok(nodes(current.type(current.props)).some(n=>n.props.children==='Current'));
+ tree.find(n=>n.props?.preset?.value==='fashion').props.onSelect();tree=h.render();
+ assert.equal(tree.find(n=>n.props?.preset?.value==='general').props.current,true);
+ assert.equal(tree.find(n=>n.props?.preset?.value==='fashion').props.current,false);
 });
 
 test('current details show business-scoped active counts and only its owner/admin names',async()=>{
