@@ -2,22 +2,23 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {loadTs,queryDouble}=require('./helpers/load-ts.cjs');
+const {readSupportFields}=loadTs('lib/support/reports.ts');
 const B='11111111-1111-4111-8111-111111111111';
 function support({allowed=true,dbError=false}={}){
  const log=[];
  const auth={requireSuperAdmin:async()=>{if(!allowed)throw Error('Forbidden');return {id:B};}};
  const admin={from(table){const q=queryDouble(table,{data:{id:B},error:dbError?{message:'failure'}:null},log);q.insert=value=>{log.push({insert:value});return Promise.resolve({error:dbError?{message:'failure'}:null});};return q;}};
- return {log,api:loadTs('app/(super-admin)/super-admin/support/actions.ts',{'next/cache':{revalidatePath(){}},'@/lib/auth/require-super-admin':auth,'@/lib/supabase/admin':{supabaseAdmin:admin}})};
+ return {log,api:loadTs('app/(super-admin)/super-admin/support/actions.ts',{'next/cache':{revalidatePath(){}},'@/lib/auth/require-super-admin':auth,'@/lib/supabase/admin':{supabaseAdmin:admin},'@/lib/support/save-report':{saveSupportReport:async(form,userId,businessId)=>{const fields=readSupportFields(form);if(fields.error)return {ok:false,message:fields.error};const {error}=await admin.from('platform_support_reports').insert({title:fields.title,description:fields.description,reason:fields.reason,created_by:userId,business_id:businessId,page_path:''});return {ok:!error,message:error?'Failed':'Saved'};}}})};
 }
-function form(values){const data=new FormData();for(const[k,v]of Object.entries(values))data.set(k,v);return data;}
+function form(values){const data=new FormData();for(const[k,v]of Object.entries({reason:'Bug or Technical Issue',image:new File(['stub'],'image.png',{type:'image/png'}),...values}))data.set(k,v);return data;}
 test('support checks access before reading or writing data',async()=>{
  const {api,log}=support({allowed:false});await assert.rejects(api.createBugReport({},form({})),/Forbidden/);await assert.rejects(api.updateBugStatus(B,'resolved'),/Forbidden/);assert.equal(log.length,0);
 });
 test('support rejects invalid reports and statuses without database writes',async()=>{
  const {api,log}=support();assert.equal((await api.createBugReport({},form({title:'x',description:'short'}))).ok,false);assert.equal((await api.updateBugStatus(B,'deleted')).ok,false);assert.equal(log.length,0);
 });
-test('report saves attributed text and strips query secrets from page paths',async()=>{
- const {api,log}=support();const result=await api.createBugReport({},form({title:'Order filter issue',description:'Steps: open orders and change the filter.',pagePath:'/dashboard/orders?token=secret',priority:'normal'}));assert.equal(result.ok,true);assert.equal(log.find(x=>x.insert).insert.page_path,'/dashboard/orders');assert.equal(log.find(x=>x.insert).insert.created_by,B);
+test('report saves attributed text and ignores removed page path input',async()=>{
+ const {api,log}=support();const result=await api.createBugReport({},form({title:'Order filter issue',description:'Steps: open orders and change the filter.',pagePath:'/dashboard/orders?token=secret',priority:'normal'}));assert.equal(result.ok,true);assert.equal(log.find(x=>x.insert).insert.page_path,'');assert.equal(log.find(x=>x.insert).insert.created_by,B);
 });
 test('database failures do not report a successful save',async()=>{
  const {api}=support({dbError:true});assert.equal((await api.createBugReport({},form({title:'Filter issue',description:'The filter does not apply correctly.'}))).ok,false);assert.equal((await api.updateBugStatus(B,'resolved')).ok,false);

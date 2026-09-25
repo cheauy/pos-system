@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LogOut,
   Megaphone,
+  Percent,
   ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -54,6 +55,7 @@ export default function SuperAdminSideRail({
       icon: Building2,
     },
     { label: "User Update Alerts", href: "/super-admin/update-alerts", icon: Megaphone },
+    { label: "Plan discounts", href: "/super-admin/discounts", icon: Percent },
     {
       label: "Payment Approval",
       href: "/super-admin/manual-payments",

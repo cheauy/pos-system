@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Building2, Minus, Plus, UsersRound, X } from "lucide-react";
+import { promotionDiscount, promotionPrice, type Promotion } from "@/lib/subscriptions/promotions";
 import {
   calculateCustomSubscriptionPrice,
   subscriptionPlans,
@@ -12,6 +13,8 @@ import {
 type UpgradeTermMonths = 0 | SubscriptionTermMonths;
 
 type Props = {
+  promotions?: Promotion[];
+  pricePreviewAt: number;
   users: number;
   branches: number;
   months: UpgradeTermMonths;
@@ -34,7 +37,7 @@ export default function CustomPlanDialog(props: Props) {
   const [branches, setBranches] = useState(props.branches);
   const [months, setMonths] = useState<UpgradeTermMonths>(props.months);
   const pricingMonths: SubscriptionTermMonths = months === 0 ? 1 : months;
-  const price = calculateCustomSubscriptionPrice(users, branches, pricingMonths);
+  const price = promotionPrice(calculateCustomSubscriptionPrice(users, branches, pricingMonths),props.promotions??[],"custom",pricingMonths);
   const matchedPlan = price.matchedPlanKey ? subscriptionPlans[price.matchedPlanKey] : null;
   const upgradeMode = props.mode === "upgrade";
 
@@ -44,7 +47,7 @@ export default function CustomPlanDialog(props: Props) {
     const targetMonthly = Math.max(0, price.monthlyPrice);
     const expiresAtMs = props.currentExpiresAt ? new Date(props.currentExpiresAt).getTime() : 0;
     const remainingSeconds = Number.isFinite(expiresAtMs)
-      ? Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000))
+      ? Math.max(0, Math.floor((expiresAtMs - props.pricePreviewAt) / 1000))
       : 0;
     const monthlyDifference = Math.max(0, targetMonthly - currentMonthly);
     const capacityProration = Number(
@@ -56,7 +59,7 @@ export default function CustomPlanDialog(props: Props) {
       extensionTotal,
       total: Number((capacityProration + extensionTotal).toFixed(2)),
     };
-  }, [months, price.monthlyPrice, price.total, props.currentExpiresAt, props.currentMonthlyPrice, upgradeMode]);
+  }, [months, price.monthlyPrice, price.total, props.currentExpiresAt, props.currentMonthlyPrice, props.pricePreviewAt, upgradeMode]);
 
   const noUpgradeSelected = upgradeMode && users === props.minimumUsers && branches === props.minimumBranches;
 
@@ -148,8 +151,8 @@ export default function CustomPlanDialog(props: Props) {
                   }`}
                 >
                   <span className="block font-bold">{term.label}</span>
-                  {term.discountPercent ? (
-                    <span className="mt-1 block text-xs font-semibold text-emerald-600">Save {term.discountPercent}%</span>
+                  {promotionDiscount(props.promotions??[],"custom",term.months) ? (
+                    <span className="mt-1 block text-xs font-semibold text-emerald-600">Save {promotionDiscount(props.promotions??[],"custom",term.months)}%</span>
                   ) : (
                     <span className="mt-1 block text-xs text-slate-400">No discount</span>
                   )}

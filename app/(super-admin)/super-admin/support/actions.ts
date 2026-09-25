@@ -2,15 +2,15 @@
 import { revalidatePath } from "next/cache";
 import { requireSuperAdmin } from "@/lib/auth/require-super-admin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { saveSupportReport } from "@/lib/support/save-report";
 const uuid=/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 export async function createBugReport(_previous:{ok:boolean;message:string},form:FormData) {
   const user=await requireSuperAdmin();
-  const title=String(form.get("title")??"").trim(),description=String(form.get("description")??"").trim(),priority=String(form.get("priority")??"normal"),businessId=String(form.get("businessId")??"");
-  const path=String(form.get("pagePath")??"").trim().split(/[?#]/)[0];
-  if(title.length<3||title.length>160||description.length<10||description.length>6000||!["low","normal","urgent"].includes(priority)||path.length>500||(path&&!/^\/(?!\/)/.test(path))||(businessId&&!uuid.test(businessId)))return {ok:false,message:"Check the title, description, priority and page path."};
+  const businessId=String(form.get("businessId")??"");
+  if(businessId&&!uuid.test(businessId))return {ok:false,message:"Choose a valid business."};
   if(businessId){const {data,error}=await supabaseAdmin.from("businesses").select("id").eq("id",businessId).maybeSingle();if(error||!data)return {ok:false,message:"The selected business is unavailable."};}
-  const {error}=await supabaseAdmin.from("platform_support_reports").insert({created_by:user.id,business_id:businessId||null,title,description,priority,page_path:path});
-  if(error)return {ok:false,message:"Unable to save the report. Your details have been kept; please try again."};
+  const result=await saveSupportReport(form,user.id,businessId||null);
+  if(!result.ok)return result;
   try { revalidatePath("/super-admin/support"); } catch { console.error("Bug report saved; support page refresh failed."); }
   return {ok:true,message:"Bug report saved."};
 }

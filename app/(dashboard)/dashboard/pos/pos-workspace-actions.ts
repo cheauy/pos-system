@@ -36,7 +36,7 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
   const business = await requirePermission('pos.access');
   if (expectedBusinessId && expectedBusinessId !== business.id) return activeBusinessError();
   try {
-    const { branchId, business: operatingBusiness } = await getBranchContext();
+    const { branchId, branches, business: operatingBusiness } = await getBranchContext();
     if (operatingBusiness.id !== business.id) return activeBusinessError();
     if (expectedBranchId !== undefined && (!uuid(expectedBranchId) || expectedBranchId !== branchId)) {
       return { success: false, message: 'The operating branch changed in another tab. Copy your unsaved cart details before reloading; no sale has been submitted.' };
@@ -45,14 +45,14 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
     const { data, error } = await db.rpc('tenh_pos_catalog_scoped', { p_business_id: business.id });
     if (error) return { success: false, message: errorMessage(error) };
     if (!data || data.businessId !== business.id || !Array.isArray(data.products)) return { success: false, message: 'The POS catalog returned incomplete data. Please refresh.' };
-    const formatting = await db.from('branch_pos_settings').select('currency_format').eq('business_id',business.id).maybeSingle();
+    const formatting = await db.from('branch_pos_settings').select('currency_format').eq('business_id',business.id).eq('location_id',branchId).maybeSingle();
     if (formatting.error) return {success:false,message:'Unable to load currency settings. Please refresh.'};
     data.settings.currencyFormat = currencyFormat(formatting.data?.currency_format, data.settings.currency);
     if (data.inventoryVersion !== 2) return { success:false,message:'Apply 20260919_pos_stock_variants_continue_checkout.sql in Supabase before using this POS update.' };
     const ready = await db.rpc('tenh_pos_receipt_update_ready', { p_business_id: business.id });
     if (ready.error || ready.data !== true) return { success: false, message: 'Apply 20260919_pos_receipt_customer_delivery_update.sql, then refresh POS. This prevents using the old delivery status logic.' };
     const [customers, categories, openShifts] = await Promise.all([
-      db.from('customers').select('id,name,phone,address,loyalty_points').eq('business_id',business.id).order('name'),
+      db.from('customers').select('id,name,phone,address,loyalty_points').eq('business_id',business.id).eq('location_id',branchId).order('name'),
       db.from('categories').select('id,name,branch_ids').eq('business_id',business.id),
       // The drawer belongs to the operating branch, not whichever branch this
       // cashier last opened. Another authorized cashier may have opened it.
@@ -63,12 +63,17 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
     if ((openShifts.data?.length ?? 0) > 1) throw new Error('This branch has multiple open registers. Review them before checkout; do not delete cash history.');
     data.shift = openShifts.data?.[0] ?? null;
     data.defaultBranchId = branchId;
+    data.branches = (data.branches ?? []).filter((b:{id:string}) => branches.some(allowed => allowed.id === b.id));
+    data.stock = (data.stock ?? []).filter((stock:{location_id:string}) => stock.location_id === branchId);
     data.customers = customers.data;
     data.holds = (data.holds ?? []).filter((h: {draft: CartDraft}) => h.draft.branchId === branchId);
     data.categories = (categories.data ?? []).filter(c => c.branch_ids === null || c.branch_ids.includes(branchId));
     const visibleCategories = new Set(data.categories.map((c: {id:string}) => c.id));
     const assigned = new Set((data.stock ?? []).filter((s: {location_id:string}) => s.location_id === branchId).map((s: {product_id:string}) => s.product_id));
     data.products = data.products.filter((p: {id:string;category_id:string|null}) => assigned.has(p.id) && (!p.category_id || visibleCategories.has(p.category_id)));
+    const visibleProducts = new Set(data.products.map((p:{id:string})=>p.id));
+    data.groups = (data.groups ?? []).filter((group:{product_id:string})=>visibleProducts.has(group.product_id));
+    data.options = (data.options ?? []).filter((option:{product_id:string})=>visibleProducts.has(option.product_id));
     const receiptContext = await loadReceiptContext(business.id, business.name);
     return { success: true, data: { ...data, receiptContext } as Workspace };
   } catch (error) { return { success: false, message: errorMessage(error) }; }

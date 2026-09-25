@@ -5,7 +5,7 @@ import SupportClient from "./support-client";
 export default async function SupportPage() {
   await requireSuperAdmin();
   const [reports,businesses]=await Promise.all([
-    supabaseAdmin.from("platform_support_reports").select("id,title,description,page_path,priority,status,created_at,business_id,created_by").order("created_at",{ascending:false}).limit(100),
+    supabaseAdmin.from("platform_support_reports").select("id,title,description,reason,image_path,page_path,priority,status,created_at,business_id,created_by").order("created_at",{ascending:false}).limit(100),
     readAllRows<{id:string;name:string}>((from,to)=>supabaseAdmin.from("businesses").select("id,name").order("name").order("id").range(from,to)),
   ]);
   const reporterIds=[...new Set((reports.data??[]).map(r=>r.created_by).filter((id):id is string=>Boolean(id)))];

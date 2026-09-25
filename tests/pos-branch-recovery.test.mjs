@@ -23,6 +23,7 @@ function workspace(overrides = {}) {
   const catalog = {
     businessId:B, inventoryVersion:2, checkoutVersion:3, defaultBranchId:C,
     settings:{currency:'USD'},
+    branches:[{id:A,name:'Main'},{id:C,name:'Other'}],
     shift:{id:'wrong-cashier-shift',location_id:C},
     products:[{id:'shirt',category_id:'shared'},{id:'hidden-category',category_id:'other'},{id:'unassigned',category_id:null}],
     stock:[{product_id:'shirt',location_id:A},{product_id:'hidden-category',location_id:A}],
@@ -33,7 +34,7 @@ function workspace(overrides = {}) {
   const db = {
     from(table) {
       const results = {
-        business_storefronts:{data:{currency_format:null},error:null},
+        branch_pos_settings:{data:{currency_format:null},error:null},
         customers:{data:[],error:null},
         categories:{data:[{id:'shared',branch_ids:null},{id:'other',branch_ids:[C]}],error:null},
         cash_register_shifts:{data:overrides.shifts ?? [{id:'main-drawer',location_id:A}],error:overrides.shiftError ?? null},
@@ -55,7 +56,7 @@ function workspace(overrides = {}) {
   };
   const api = loadTs('app/(dashboard)/dashboard/pos/pos-workspace-actions.ts', {
     '@/lib/branches/context':{
-      getBranchContext:async()=>({business,branchId:A}),
+      getBranchContext:async()=>({business,branchId:A,branches:[{id:A}]}),
       assertOperatingBranch:async id=>{if(id!==A)throw new Error('Branch changed');},
     },
     '@/lib/subscriptions/branch-limits':{assertBranchOperation:async()=>{}},
@@ -79,6 +80,7 @@ test('catalog uses operating-branch drawer, even when the catalog returns anothe
   const {api,tables}=workspace();const result=await api.loadPosWorkspace(B,A);
   assert.equal(result.success,true);assert.equal(result.data.shift.id,'main-drawer');
   assert.equal(result.data.shift.location_id,A);assert.equal(result.data.defaultBranchId,A);
+  assert.deepEqual(result.data.branches.map(b=>b.id),[A]);
   assert.deepEqual(result.data.holds.map(h=>h.id),['here']);assert.deepEqual(result.data.products.map(p=>p.id),['shirt']);
   const query=tables.find(t=>t.table==='cash_register_shifts');
   for(const filter of [['eq','business_id',B],['eq','location_id',A],['eq','status','open'],['limit',2]]) assert.ok(query.steps.some(s=>JSON.stringify(s)===JSON.stringify(filter)));
@@ -123,7 +125,7 @@ function customers(options={}) {
   const business={id:options.businessId || B,role:'owner'};
   const row={id:CUSTOMER,name:'New Buyer',phone:input.phone,address:input.address,created_at:'2026-09-20T00:00:00Z'};
   const db={from(table){
-    if(table==='business_customer_settings') return queryDouble(table,{data:options.flags ?? {email_enabled:true,birthday_enabled:true},error:null},queries);
+    if(table==='branch_customer_settings') return queryDouble(table,{data:options.flags ?? {email_enabled:true,birthday_enabled:true},error:null},queries);
     assert.equal(table,'customers');return queryDouble(table,call=>call.steps.some(s=>s[0]==='single')?(options.savedResult ?? {data:{id:CUSTOMER},error:null}):{data:[row],error:null},queries);
   },async rpc(name,args){calls.push({name,args});return options.rpcResult ?? {data:row,error:null};}};
   const api=loadTs('app/(dashboard)/dashboard/pos/pos-customer-actions.ts',{

@@ -1,4 +1,4 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import OnlineOrderListener from "@/components/online-order-listener";
@@ -10,6 +10,8 @@ import { getEffectivePermissions } from "@/lib/auth/effective-permissions";
 import PermissionRefresh from '@/components/permission-refresh';
 import WorkspaceBranchProvider from "./workspace-branch-provider";
 import SidebarClient from "./sidebar-client";
+import PosLockProvider from './pos-lock-provider';
+import { posLockAllows, posLockCookie } from '@/lib/pos/navigation-lock';
 
 const SUBSCRIPTION_PATH = "/dashboard/settings/subscription";
 const LEGACY_SUBSCRIPTION_PLANS_PATH =
@@ -99,8 +101,11 @@ export default async function DashboardLayout({
   ]);
   const onlineScope = effectivePermissions.includes("orders.view")
     ? await supabase.rpc("tenh_receive_all_online_orders", { p_business: business.id }) : null;
+  const posLocked=effectivePermissions.includes('pos.access')&&(await cookies()).get(posLockCookie(business.id,branchContext.userId))?.value==='1';
+  if(posLocked&&!posLockAllows(pathname))redirect('/dashboard/pos');
   return (
     <div className="workspace-theme min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <PosLockProvider key={`${business.id}:${branchContext.userId}`} businessId={business.id} userId={branchContext.userId} branchId={branchContext.branchId} initialLocked={posLocked}>
       <WorkspaceBranchProvider businessId={business.id} businessName={business.name} role={business.role} userId={branchContext.userId} branchId={branchContext.branchId} branches={branchContext.branches}>
       <SidebarClient businessId={business.id} branchId={branchContext.branchId} effectivePermissions={effectivePermissions} />
       <PermissionRefresh businessId={business.id} userId={branchContext.userId} role={business.role} />
@@ -110,6 +115,7 @@ export default async function DashboardLayout({
         <main className="p-4 sm:p-6"><UpdateAlertBanner /><div key={branchContext.branchId}>{children}</div></main>
       </div>
       </WorkspaceBranchProvider>
+      </PosLockProvider>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { branchChannelKey, branchDestination } from '@/lib/branches/switch-model
 import { getOperatingBranchStatus, switchOperatingBranch } from './branch-actions';
 import { useTheme } from '@/components/providers/theme-provider';
 import { APPEARANCE_STORAGE_KEY } from '@/lib/appearance';
+import { usePosNavigationLock } from './pos-lock-provider';
 
 type Guard=(targetId?:string)=>string|null;
 type SwitchContext={requestSwitch:(id:string)=>Promise<void>;registerGuard:(guard:Guard)=>()=>void};
@@ -24,6 +25,7 @@ export function useBranchSwitchGuard(guard:Guard) {
 
 type Props={businessId:string;businessName:string;role:string;userId:string;branchId:string;branches:{id:string;name:string}[];children:ReactNode};
 export default function WorkspaceBranchProvider(p:Props) {
+  const {locked:posLocked}=usePosNavigationLock();
   const {setScope}=useTheme();
   useEffect(()=>{setScope(`${APPEARANCE_STORAGE_KEY}:${p.businessId}:${p.branchId}`);return()=>setScope(APPEARANCE_STORAGE_KEY);},[p.businessId,p.branchId,setScope]);
   const pathname=usePathname();
@@ -71,6 +73,7 @@ export default function WorkspaceBranchProvider(p:Props) {
     return()=>{live=false;clearInterval(timer);channel.current?.close();channel.current=null;window.removeEventListener('storage',storage);window.removeEventListener('focus',signal);document.removeEventListener('visibilitychange',signal);};
   },[p.businessId,p.userId,p.branchId,key]);
   const requestSwitch=useCallback(async(id:string)=>{
+    if(posLocked){setError('Unlock POS before switching branches.');setOpen(true);return;}
     if(saving.current || id===p.branchId)return;
     if(stale){setError('Reload this workspace before switching branches.');return;}
     const reason=guardReason(id);
@@ -90,7 +93,7 @@ export default function WorkspaceBranchProvider(p:Props) {
       window.location.assign(branchDestination(pathname));
     } catch {setStale('The switch result could not be confirmed. Reload the workspace to read the saved branch before continuing.');}
     finally{saving.current=false;setBusy(false);}
-  },[p.businessId,p.userId,p.branchId,p.branches,pathname,key,stale,guardReason]);
+  },[p.businessId,p.userId,p.branchId,p.branches,pathname,key,stale,guardReason,posLocked]);
   function reload(){
     // Do not abandon a payment/save still running. POS registers this guard.
     const reason=guardReason();
@@ -103,7 +106,7 @@ export default function WorkspaceBranchProvider(p:Props) {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 sm:px-6 lg:ml-16 dark:border-slate-800 dark:bg-slate-900" data-workspace-branch-header>
         <div className="flex min-w-0 items-center gap-3"><Store size={22} className="shrink-0 text-blue-600"/><div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-widest text-blue-600">TENH POS workspace</p><p className="truncate font-bold text-slate-900 dark:text-white">{p.businessName}</p></div></div>
         <div className="flex flex-wrap items-center gap-3">
-        {!sharedOnlineStore && <><span className="text-sm text-slate-500">{currentName}</span><button type="button" aria-label="Switch Branches" aria-haspopup="dialog" disabled={busy||Boolean(stale)||p.branches.length<2} onClick={()=>{setSelected(p.branchId);setOpen(true);setError('');}} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
+        {!sharedOnlineStore && <><span className="text-sm text-slate-500">{currentName}</span><button type="button" aria-label="Switch Branches" aria-haspopup="dialog" disabled={busy||Boolean(stale)||posLocked||p.branches.length<2} onClick={()=>{setSelected(p.branchId);setOpen(true);setError('');}} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
           <ArrowRightLeft size={16}/>Switch Branches<ChevronDown size={15}/>
         </button></>}
         <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700"><ShieldCheck size={16}/><span>Role: <span className="capitalize">{p.role}</span></span></span>

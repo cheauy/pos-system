@@ -2,25 +2,26 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {loadTs,queryDouble}=require('./helpers/load-ts.cjs');
+const {readSupportFields}=loadTs('lib/support/reports.ts');
 const BUSINESS='11111111-1111-4111-8111-111111111111',USER='22222222-2222-4222-8222-222222222222';
 function harness({user=true,member=true,failure=false,refreshFailure=false}={}){
  const log=[];
  const client={auth:{getUser:async()=>({data:{user:user?{id:USER}:null},error:null})}};
  const admin={from(table){if(table==='business_members')return queryDouble(table,{data:member?{id:'membership'}:null,error:null},log);return {insert:async row=>{log.push({row});return {error:failure?{message:'DB unavailable'}:null};}};}};
- const api=loadTs('app/(dashboard)/dashboard/settings/support/actions.ts',{'next/cache':{revalidatePath(){if(refreshFailure)throw Error('refresh failed');}},'@/lib/business/get-current-business':{getCurrentBusiness:async()=>({id:BUSINESS})},'@/lib/supabase/server':{createClient:async()=>client},'@/lib/supabase/admin':{supabaseAdmin:admin}});
+ const api=loadTs('app/(dashboard)/dashboard/settings/support/actions.ts',{'next/cache':{revalidatePath(){if(refreshFailure)throw Error('refresh failed');}},'@/lib/business/get-current-business':{getCurrentBusiness:async()=>({id:BUSINESS})},'@/lib/supabase/server':{createClient:async()=>client},'@/lib/supabase/admin':{supabaseAdmin:admin},'@/lib/support/save-report':{saveSupportReport:async(form,userId,businessId)=>{const fields=readSupportFields(form);if(fields.error)return {ok:false,message:fields.error};const {error}=await admin.from('platform_support_reports').insert({title:fields.title,description:fields.description,reason:fields.reason,business_id:businessId,created_by:userId,status:'open',page_path:''});return {ok:!error,message:error?'Failed':'Saved'};}}});
  return {api,log};
 }
-function form(extra={}){const f=new FormData();for(const[k,v]of Object.entries({title:'Order filter issue',description:'Open orders and select a filter; the list does not update.',priority:'normal',...extra}))f.set(k,v);return f;}
+function form(extra={}){const f=new FormData();for(const[k,v]of Object.entries({title:'Order filter issue',description:'Open orders and select a filter; the list does not update.',priority:'normal',reason:'Bug or Technical Issue',image:new File(['stub'],'image.png',{type:'image/png'}),...extra}))f.set(k,v);return f;}
 test('customer report ownership and status come from the server',async()=>{
  const {api,log}=harness();assert.equal((await api.submitCustomerBugReport(form({businessId:'another-business',created_by:'someone-else',status:'resolved',pagePath:'/dashboard/orders?token=secret'}))).ok,true);
- const saved=log.find(v=>v.row).row;assert.equal(saved.business_id,BUSINESS);assert.equal(saved.created_by,USER);assert.equal(saved.status,'open');assert.equal(saved.page_path,'/dashboard/orders');
+ const saved=log.find(v=>v.row).row;assert.equal(saved.business_id,BUSINESS);assert.equal(saved.created_by,USER);assert.equal(saved.status,'open');assert.equal(saved.page_path,'');
  const membership=log.find(v=>v.table==='business_members');assert.ok(membership.steps.some(([op,key,value])=>op==='eq'&&key==='is_active'&&value===true));
 });
 test('signed-out and inactive members cannot report through privileged storage',async()=>{
  for(const options of [{user:false},{member:false}]){const {api,log}=harness(options);assert.equal((await api.submitCustomerBugReport(form())).ok,false);assert.ok(!log.some(v=>v.row));}
 });
 test('invalid fields and failed saves return errors without false success',async()=>{
- for(const extra of [{title:'x'},{description:'short'},{priority:'critical'},{pagePath:'https://example.com/secret'}]){const {api,log}=harness();assert.equal((await api.submitCustomerBugReport(form(extra))).ok,false);assert.ok(!log.some(v=>v.row));}
+ for(const extra of [{title:'x'},{reason:'unknown'},{priority:'critical'},{image:''}]){const {api,log}=harness();assert.equal((await api.submitCustomerBugReport(form(extra))).ok,false);assert.ok(!log.some(v=>v.row));}
  assert.equal((await harness({failure:true}).api.submitCustomerBugReport(form())).ok,false);
 });
 test('customer reads are restricted to their account and current business',async()=>{

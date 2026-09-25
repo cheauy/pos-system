@@ -1,0 +1,74 @@
+[
+  {
+    "name": "subscription_orders_amount_check",
+    "definition": "CHECK ((((plan_key = 'custom'::text) AND (status = ANY (ARRAY['quote_requested'::text, 'cancelled'::text])) AND (total_amount IS NULL)) OR ((total_amount IS NOT NULL) AND (total_amount > (0)::numeric))))"
+  },
+  {
+    "name": "subscription_orders_currency_check",
+    "definition": "CHECK ((currency = 'USD'::text))"
+  },
+  {
+    "name": "subscription_orders_order_kind_check",
+    "definition": "CHECK ((order_kind = ANY (ARRAY['activation'::text, 'reactivation'::text, 'upgrade'::text, 'renewal'::text])))"
+  },
+  {
+    "name": "subscription_orders_plan_check",
+    "definition": "CHECK ((plan_key = ANY (ARRAY['solo'::text, 'small_team'::text, 'growth'::text, 'custom'::text])))"
+  },
+  {
+    "name": "subscription_orders_remaining_credit_check",
+    "definition": "CHECK ((remaining_credit_amount >= (0)::numeric))"
+  },
+  {
+    "name": "subscription_orders_requested_branch_limit_check",
+    "definition": "CHECK (((requested_branch_limit >= 1) AND (requested_branch_limit <= 100)))"
+  },
+  {
+    "name": "subscription_orders_status_check",
+    "definition": "CHECK ((status = ANY (ARRAY['quote_requested'::text, 'pending_payment'::text, 'payment_submitted'::text, 'approved'::text, 'rejected'::text, 'cancelled'::text])))"
+  },
+  {
+    "name": "subscription_orders_term_check",
+    "definition": "CHECK (((term_months = ANY (ARRAY[1, 3, 6, 12])) OR ((term_months = 0) AND (order_kind = 'upgrade'::text) AND (COALESCE(pricing_version, 0) >= 7)))) NOT VALID"
+  },
+  {
+    "name": "subscription_orders_user_limit_check",
+    "definition": "CHECK (((requested_user_limit >= 1) AND (requested_user_limit <= 500))) NOT VALID"
+  },
+  {
+    "name": "tenh_manual_payment_reference_format_check",
+    "definition": "CHECK (((manual_payment_reference IS NULL) OR (manual_payment_reference ~ '^TENH-[A-Z0-9]{8,16}$'::text))) NOT VALID"
+  },
+  {
+    "name": "tenh_manual_proof_ai_score_check",
+    "definition": "CHECK (((manual_proof_ai_score IS NULL) OR ((manual_proof_ai_score >= 0) AND (manual_proof_ai_score <= 3)))) NOT VALID"
+  },
+  {
+    "name": "tenh_manual_proof_ai_status_check",
+    "definition": "CHECK (((manual_proof_ai_status IS NULL) OR (manual_proof_ai_status = ANY (ARRAY['matched'::text, 'partial'::text, 'unreadable'::text, 'failed'::text])))) NOT VALID"
+  },
+  {
+    "name": "tenh_subscription_carryover_source_check",
+    "definition": "CHECK ((carryover_source = ANY (ARRAY['none'::text, 'trial'::text, 'paid'::text])))"
+  },
+  {
+    "name": "tenh_subscription_payment_route_check",
+    "definition": "CHECK (((payment_provider IS DISTINCT FROM 'aba_payway'::text) OR ((payment_method IS NULL) AND (proof_path IS NULL) AND (proof_bucket IS NULL)))) NOT VALID"
+  },
+  {
+    "name": "tenh_subscription_payway_provider_check",
+    "definition": "CHECK (((payment_provider IS NULL) OR (payment_provider = 'aba_payway'::text))) NOT VALID"
+  },
+  {
+    "name": "tenh_subscription_v4_configuration_check",
+    "definition": "CHECK (((COALESCE(pricing_version, 0) < 4) OR (((term_months = ANY (ARRAY[1, 3, 6, 12])) OR ((COALESCE(pricing_version, 0) >= 7) AND (term_months = 0) AND (order_kind = 'upgrade'::text))) AND ((requested_user_limit >= 1) AND (requested_user_limit <= 500)) AND ((COALESCE(requested_branch_limit, 1) >= 1) AND (COALESCE(requested_branch_limit, 1) <= 100)) AND (((plan_key = 'solo'::text) AND (requested_user_limit = 1) AND (COALESCE(requested_branch_limit, 1) = 1)) OR ((plan_key = 'small_team'::text) AND (requested_user_limit = 5) AND (COALESCE(requested_branch_limit, 1) = 1)) OR ((plan_key = 'growth'::text) AND (requested_user_limit = 10) AND (COALESCE(requested_branch_limit, 1) = 1)) OR (plan_key = 'custom'::text))))) NOT VALID"
+  },
+  {
+    "name": "tenh_apply_approved_branch_plan",
+    "definition": "CREATE OR REPLACE FUNCTION public.tenh_apply_approved_branch_plan()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\ndeclare v_limit integer;\r\nbegin\r\n  if new.status<>'approved' or old.status='approved' then return new; end if;\r\n  if new.pricing_version in (5,6) then return new; end if;\r\n  perform 1 from public.businesses where id=new.business_id for update;\r\n  v_limit:=case when new.plan_key='custom' then new.requested_branch_limit else 1 end;\r\n  if (select count(*) from public.business_locations where business_id=new.business_id and is_active)>v_limit then raise exception 'The payment plan has fewer branches than are active.'; end if;\r\n  if (select count(*) from public.business_members where business_id=new.business_id and is_active)>new.requested_user_limit then raise exception 'The payment plan has fewer seats than are active.'; end if;\r\n  update public.businesses\r\n  set subscription_branch_limit=v_limit,\r\n      subscription_base_plan_key=case when new.pricing_version=3 then null else coalesce(new.base_plan_key,case when new.plan_key='custom' then 'growth' else new.plan_key end) end\r\n  where id=new.business_id;\r\n  return new;\r\nend; $function$\n"
+  },
+  {
+    "name": "tenh_preserve_trial_time_after_paid_approval",
+    "definition": "CREATE OR REPLACE FUNCTION public.tenh_preserve_trial_time_after_paid_approval()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\ndeclare\r\n  b public.businesses%rowtype;\r\n  v_activation_at timestamptz;\r\n  v_target_expiry timestamptz;\r\nbegin\r\n  if new.status <> 'approved'\r\n     or old.status = 'approved'\r\n     or coalesce(new.term_months, 0) <= 0\r\n     or new.order_kind not in ('activation', 'upgrade') then\r\n    return new;\r\n  end if;\r\n\r\n  select *\r\n  into b\r\n  from public.businesses\r\n  where id = new.business_id\r\n  for update;\r\n\r\n  if not found\r\n     or b.trial_started_at is null\r\n     or b.trial_expires_at is null\r\n     or new.created_at < b.trial_started_at\r\n     or new.created_at >= b.trial_expires_at then\r\n    return new;\r\n  end if;\r\n\r\n  v_activation_at := coalesce(new.approved_at, new.reviewed_at, now());\r\n  v_target_expiry := greatest(b.trial_expires_at, v_activation_at)\r\n    + make_interval(months => new.term_months);\r\n\r\n  -- Never shorten an expiry if an approval procedure already preserved more\r\n  -- time. This also makes the safety compatible with older/newer review RPCs.\r\n  if b.subscription_expires_at is null\r\n     or b.subscription_expires_at < v_target_expiry then\r\n    update public.businesses\r\n    set subscription_expires_at = v_target_expiry,\r\n        updated_at = now()\r\n    where id = b.id;\r\n  end if;\r\n\r\n  return new;\r\nend;\r\n$function$\n"
+  }
+]

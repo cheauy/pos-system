@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import { posBranchSwitchReason } from '@/lib/branches/switch-model';
 import { useWorkspaceBranch, useBranchSwitchGuard } from "../workspace-branch-provider";
+import { usePosNavigationLock } from '../pos-lock-provider';
+import { LockKeyhole, LockKeyholeOpen } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Barcode, Banknote, Check, ChevronDown, Clock, CreditCard, Gift, Grid2X2, Heart, List, Minus, Package, Plus, Printer, RefreshCw, Search, Settings2, ShoppingCart, SlidersHorizontal, Store, Trash2, UserRound, X } from 'lucide-react';
 import { allocatePosStock, checkPosSale, completePosSale, deletePosHold, loadPosWorkspace, savePosHold, savePosSettings } from './pos-workspace-actions';
@@ -28,6 +30,7 @@ function newRequestId(): string {
 const messageOf = (e: unknown) => e instanceof Error ? e.message : 'The request failed. Please try again.';
 
 export default function PosClient({ initialData }: { initialData: Workspace }) {
+  const navigationLock=usePosNavigationLock();
   const { requestSwitch } = useWorkspaceBranch();
   const [data, setData] = useState(initialData);
   const [branch, setBranch] = useState(initialData.defaultBranchId);
@@ -399,12 +402,13 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
       <header className={s.pageHeader}>
         <div><h1>Point of Sale</h1><p>Search products, filter inventory, and complete sales quickly.</p></div>
         <div className={s.headerStats}>
+          <button type="button" className={s.button} aria-pressed={navigationLock.locked} disabled={navigationLock.pending||frozen} onClick={()=>void navigationLock.toggle()} title={navigationLock.locked?'Unlock navigation':'Lock navigation to POS, Orders and Register'}>{navigationLock.locked?<LockKeyhole size={17}/>:<LockKeyholeOpen size={17}/>} {navigationLock.pending?'Saving…':navigationLock.locked?'Locked':'Lock'}</button>
           <div className={s.productSummary} aria-label="Products">
             <div className={s.productCount}><span><Package size={19}/></span><div><strong>{allGroupCount}</strong><small>Products</small></div></div>
 
           </div>
           <button className={`${s.miniStat} ${s.warningStat}`} onClick={() => changeFilter('stock', filters.stock === 'low' ? 'all' : 'low')} aria-pressed={filters.stock === 'low'}><span><AlertTriangle size={19} /></span><div><strong>{lowStockCount}</strong><small>Low stock SKUs</small></div></button>
-          <label className={s.branchStat}><Store size={19} /><span><small>Branch</small><select aria-label="Sale branch" value={branch} onChange={e => changeBranch(e.target.value)} disabled={frozen}>{data.branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></span></label>
+          <label className={s.branchStat}><Store size={19} /><span><small>Branch</small><select aria-label="Sale branch" value={branch} onChange={e => changeBranch(e.target.value)} disabled={frozen||navigationLock.locked||data.branches.length<2}>{data.branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></span></label>
         </div>
       </header>
       {notice && <div role={notice.kind === 'error' ? 'alert' : 'status'} className={`${s.notice} ${notice.kind === 'error' ? s.error : notice.kind === 'success' ? s.success : ''}`}><span>{notice.text}</span><button className={s.iconButton} aria-label="Dismiss message" onClick={() => setNotice(null)}><X size={16} /></button></div>}

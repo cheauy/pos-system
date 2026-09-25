@@ -29,6 +29,7 @@ import {
   type SubscriptionTermMonths,
 } from "@/lib/subscriptions/plans";
 import CustomPlanDialog from "./custom-plan-dialog";
+import { promotionDiscount, promotionPrice, type Promotion } from "@/lib/subscriptions/promotions";
 import RenewalSelectionDialog, {
   type RenewalBranchOption,
   type RenewalMemberOption,
@@ -36,6 +37,8 @@ import RenewalSelectionDialog, {
 import { continueFreeTrial, submitSubscriptionSelection } from "./actions";
 
 type Props = {
+  promotions?: Promotion[];
+  pricePreviewAt: number;
   businessId: string;
   businessName: string;
   currentPlanKey: string | null;
@@ -137,6 +140,8 @@ const visualMeta: Record<
 
 
 export default function SubscriptionPlansClient({
+  promotions = [],
+  pricePreviewAt,
   businessId,
   businessName,
   currentPlanKey,
@@ -191,9 +196,6 @@ export default function SubscriptionPlansClient({
   // duration". Price previews still need a real term, so use 1 month only as
   // the preview basis; the submitted order keeps the original 0 value.
   const pricingTerm: SubscriptionTermMonths = termMonths === 0 ? 1 : normalizeSubscriptionTerm(termMonths);
-  const selectedTerm = termMonths === 0
-    ? { months: 0 as const, label: "Keep current", discountPercent: 0 }
-    : subscriptionTerms.find((term) => term.months === termMonths);
   const selectedTermLabel = termMonths === 0
     ? "Keep current"
     : termMonths === 12
@@ -202,9 +204,9 @@ export default function SubscriptionPlansClient({
         ? "1 month"
         : `${termMonths} months`;
   const price = useMemo(() => {
-    if (selectedPlan === "custom") return calculateCustomSubscriptionPrice(effectiveUsers, effectiveBranches, pricingTerm);
-    return calculateSubscriptionPrice(selectedPlan, pricingTerm);
-  }, [selectedPlan, pricingTerm, effectiveUsers, effectiveBranches]);
+    const base=selectedPlan === "custom" ? calculateCustomSubscriptionPrice(effectiveUsers, effectiveBranches, pricingTerm) : calculateSubscriptionPrice(selectedPlan, pricingTerm);
+    return promotionPrice(base,promotions,selectedPlan,pricingTerm);
+  }, [selectedPlan, pricingTerm, effectiveUsers, effectiveBranches, promotions]);
 
   const selectedSeatLimit = selectedPlan === "custom" ? effectiveUsers : selected.userLimit ?? 1;
   const selectedBranchLimit = selectedPlan === "custom" ? effectiveBranches : selected.branchLimit;
@@ -223,7 +225,7 @@ export default function SubscriptionPlansClient({
   // current paid time, plus the newly selected duration at the target rate.
   // This avoids charging the existing paid allowance twice.
   const remainingPaidSeconds = currentExpiresAt
-    ? Math.max(0, Math.floor((new Date(currentExpiresAt).getTime() - Date.now()) / 1000))
+    ? Math.max(0, Math.floor((new Date(currentExpiresAt).getTime() - pricePreviewAt) / 1000))
     : 0;
   const currentMonthly = Math.max(0, Number(currentMonthlyPrice ?? 0));
   const capacityUpgradeProration =
@@ -378,6 +380,7 @@ export default function SubscriptionPlansClient({
               <div className="grid w-full grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm sm:grid-cols-4 dark:border-slate-700 dark:bg-slate-900">
                 {subscriptionTerms.map((term) => {
                   const active = termMonths === term.months;
+                  const discount=promotionDiscount(promotions,selectedPlan,term.months);
                   return (
                     <button
                       key={term.months}
@@ -394,9 +397,9 @@ export default function SubscriptionPlansClient({
                         {term.months === 12 ? "1 year" : term.months === 1 ? "1 month" : `${term.months} months`}
                       </span>
                       <span className="mt-1 flex min-h-[20px] items-center justify-center">
-                        {term.discountPercent > 0 ? (
+                        {discount > 0 ? (
                           <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-extrabold leading-4 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                            -{term.discountPercent}%
+                            -{discount}%
                           </span>
                         ) : null}
                       </span>
@@ -479,6 +482,7 @@ export default function SubscriptionPlansClient({
             const action = actionForPlan(planKey);
             return (
               <PlanCard
+              promotions={promotions}
               key={planKey}
               planKey={planKey}
               selected={selectedPlan === planKey}
@@ -512,8 +516,6 @@ export default function SubscriptionPlansClient({
                   setCustomDialogOpen(true);
                   return;
                 }
-                const targetUsers = subscriptionPlans[planKey].userLimit ?? currentSeats;
-                const targetBranches = subscriptionPlans[planKey].branchLimit;
                 setSelectedPlan(planKey);
                 setSelectionMade(true);
               }}
@@ -540,6 +542,8 @@ export default function SubscriptionPlansClient({
         </div>
         {customDialogOpen && (
           <CustomPlanDialog
+            pricePreviewAt={pricePreviewAt}
+            promotions={promotions}
             users={effectiveUsers}
             branches={effectiveBranches}
             months={pricingTerm}
@@ -737,6 +741,7 @@ export default function SubscriptionPlansClient({
 }
 
 function PlanCard({
+  promotions,
   planKey,
   selected,
   current,
@@ -747,6 +752,7 @@ function PlanCard({
   onDowngrade,
   action,
 }: {
+  promotions: Promotion[];
   planKey: SubscriptionPlanKey;
   selected: boolean;
   current: boolean;
@@ -764,7 +770,7 @@ function PlanCard({
   const termPrice =
     planKey === "custom"
       ? null
-      : calculateSubscriptionPrice(planKey, termMonths);
+      : promotionPrice(calculateSubscriptionPrice(planKey, termMonths),promotions,planKey,termMonths);
   const effectiveMonthly = termPrice
     ? Number((termPrice.total / termMonths).toFixed(2))
     : null;

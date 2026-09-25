@@ -28,6 +28,7 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
+  LockKeyhole,
   Menu,
   Package,
   PackagePlus,
@@ -54,6 +55,8 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { getRootUrl } from "@/lib/tenancy/domain";
 import type { Permission } from "@/lib/auth/permissions";
+import { usePosNavigationLock } from './pos-lock-provider';
+import { posLockAllows } from '@/lib/pos/navigation-lock';
 
 type MenuItem = {
   name: string;
@@ -244,25 +247,27 @@ function SidebarShell({
   mobile?: boolean;
 }) {
   const routeGroup = useMemo(() => getActiveGroup(pathname, groups), [pathname, groups]);
+  const {locked:posLocked}=usePosNavigationLock();
   const searchRoute = isSearchRoute(pathname);
   const notificationsRoute = isNotificationsRoute(pathname);
   const shellRef = useRef<HTMLDivElement>(null);
   const [openGroupTitle, setOpenGroupTitle] = useState<string | null>(
     mobile && !isDirectRailRoute(pathname) ? routeGroup.title : null,
   );
-  const [specialPanel, setSpecialPanel] = useState<SpecialPanel>(
+  const [selectedPanel, setSpecialPanel] = useState<SpecialPanel>(
     mobile && searchRoute
       ? "search"
       : mobile && notificationsRoute
         ? "notifications"
         : null,
   );
+  const specialPanel=posLocked?null:selectedPanel;
   const [query, setQuery] = useState("");
   const notifications = useBusinessNotifications(businessId, branchId);
 
   useEffect(() => {
     const onGlobalSearchShortcut = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      if (!posLocked && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setOpenGroupTitle(null);
         setSpecialPanel("search");
@@ -270,7 +275,7 @@ function SidebarShell({
     };
     window.addEventListener("keydown", onGlobalSearchShortcut);
     return () => window.removeEventListener("keydown", onGlobalSearchShortcut);
-  }, []);
+  }, [posLocked]);
 
   useEffect(() => {
     if (!mobile) return;
@@ -458,6 +463,7 @@ function IconRail({
   mobile: boolean;
 }) {
   const routeGroup = getActiveGroup(pathname, groups);
+  const {locked:posLocked}=usePosNavigationLock();
   const directRailRoute = isDirectRailRoute(pathname);
 
   return (
@@ -468,7 +474,7 @@ function IconRail({
     >
       <div className="flex h-20 w-full items-center justify-center border-b border-slate-100 dark:border-slate-800">
         <Link
-          href="/dashboard"
+          href={posLocked?'/dashboard/pos':'/dashboard'}
           onClick={onDirectNavigate}
           aria-label="TENH POS dashboard"
           className="flex h-11 w-11 items-center justify-center rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200 transition hover:ring-blue-300 dark:bg-slate-900 dark:ring-slate-700"
@@ -519,6 +525,7 @@ function IconRail({
           }
 
           const GroupIcon = group.icon;
+          const blocked=posLocked&&group.items.every(item=>!posLockAllows(item.href));
           const panelOpen = openGroupTitle === group.title;
           const routeActive =
             !directRailRoute && routeGroup.title === group.title;
@@ -529,22 +536,24 @@ function IconRail({
               <button
                 type="button"
                 onClick={() => onSelect(group.title)}
-                aria-label={group.title}
+                disabled={blocked}
+                aria-label={`${group.title}${blocked?' · Locked':''}`}
                 aria-expanded={panelOpen}
-                className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition duration-150 focus:outline-none focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-950 ${
+                className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition duration-150 focus:outline-none focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-950 disabled:cursor-not-allowed disabled:opacity-40 ${
                   active
                     ? "bg-blue-100 text-blue-700 shadow-sm dark:bg-blue-950 dark:text-blue-300"
                     : "text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                 }`}
               >
                 <GroupIcon size={20} strokeWidth={2} />
+                {blocked&&<LockKeyhole size={11} className="absolute bottom-1 right-1"/>}
                 {routeActive && !panelOpen ? (
                   <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-blue-600 ring-2 ring-white dark:ring-slate-950" />
                 ) : null}
               </button>
 
               {!mobile && !panelOpen ? (
-                <RailTooltip label={group.title} />
+                <RailTooltip label={`${group.title}${blocked?' · Locked':''}`} />
               ) : null}
             </div>
           );
@@ -592,19 +601,22 @@ function RailActionButton({
   onClick: () => void;
   badge?: number;
 }) {
+  const {locked}=usePosNavigationLock();
   return (
     <div className="group relative flex w-full justify-center">
       <button
         type="button"
         onClick={onClick}
-        aria-label={label}
-        className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition duration-150 focus:outline-none focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-950 ${
+        disabled={locked}
+        aria-label={`${label}${locked?' · Locked':''}`}
+        className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition duration-150 focus:outline-none focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-950 disabled:cursor-not-allowed disabled:opacity-40 ${
           active
             ? "bg-blue-100 text-blue-700 shadow-sm dark:bg-blue-950 dark:text-blue-300"
             : "text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
         }`}
       >
         <Icon size={20} strokeWidth={2} />
+        {locked&&<LockKeyhole size={11} className="absolute bottom-1 right-1"/>}
         {badge > 0 ? (
           <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-blue-600 px-1.5 py-0.5 text-center text-[9px] font-black leading-4 text-white ring-2 ring-white dark:ring-slate-950">
             {badge > 99 ? "99+" : badge}
@@ -633,6 +645,8 @@ function RailDirectLink({
   onNavigate?: () => void;
   badge?: number;
 }) {
+  const {locked}=usePosNavigationLock();
+  if(locked&&!posLockAllows(href))return <div className="group relative flex w-full justify-center"><span role="link" aria-disabled="true" aria-label={`${label} · Locked`} title={`${label} · Locked`} className="relative flex h-11 w-11 cursor-not-allowed items-center justify-center rounded-xl text-slate-400 opacity-40"><Icon size={20}/><LockKeyhole size={11} className="absolute bottom-1 right-1"/></span>{!mobile&&<RailTooltip label={`${label} · Locked`}/>}</div>;
   return (
     <div className="group relative flex w-full justify-center">
       <Link
@@ -1142,6 +1156,8 @@ function NavigationLink({
 }) {
   const Icon = item.icon;
   const active = isItemActive(pathname, item.href);
+  const {locked}=usePosNavigationLock();
+  if(locked&&!posLockAllows(item.href))return <span role="link" aria-disabled="true" className="flex min-h-10 cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400 opacity-60"><Icon size={17}/><span className="flex-1">{item.name}</span><LockKeyhole size={13}/><span className="text-xs">Locked</span></span>;
 
   return (
     <Link

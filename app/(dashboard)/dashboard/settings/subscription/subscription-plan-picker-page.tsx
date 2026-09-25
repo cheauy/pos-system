@@ -2,6 +2,7 @@ import { getBranchEntitlement } from "@/lib/subscriptions/branch-limits";
 import { getCurrentBusinessForSubscription } from "@/lib/business/get-current-business";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { isSubscriptionPlanKey } from "@/lib/subscriptions/plans";
+import { loadEligiblePromotions } from "@/lib/subscriptions/load-promotions";
 import type {
   RenewalBranchOption,
   RenewalMemberOption,
@@ -129,12 +130,15 @@ export default async function SubscriptionPlanPickerPage({
     status === "trialing"
       ? current?.trial_expires_at ?? null
       : current?.subscription_expires_at ?? null;
+  const promotionPreview=await loadEligiblePromotions(status === 'active' || status === 'expired');
   const remainingAccessDays = accessExpiresAt
-    ? Math.max(0, Math.ceil((new Date(accessExpiresAt).getTime() - Date.now()) / 86_400_000))
+    ? Math.max(0, Math.ceil((new Date(accessExpiresAt).getTime() - promotionPreview.checkedAt) / 86_400_000))
     : 0;
 
   return (
     <SubscriptionPlansClient
+      promotions={promotionPreview.rules}
+      pricePreviewAt={promotionPreview.checkedAt}
       businessId={business.id}
       businessName={business.name}
       currentPlanKey={currentPlanKey}

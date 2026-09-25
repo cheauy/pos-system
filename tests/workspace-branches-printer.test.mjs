@@ -18,11 +18,12 @@ function action(opts={}) {
  const written=[],checks=[];
  const context={business:{id:opts.businessId||B},userId:U,branchId:opts.current||A,branches:[{id:A,name:'Main'},{id:C,name:'West'}]};
  const api=loadTs('app/(dashboard)/dashboard/branch-actions.ts',{
-  'next/headers':{cookies:async()=>({set(...args){written.push(args);}})},
+  'next/headers':{cookies:async()=>({get:()=>({value:opts.locked?'1':'0'}),set(...args){written.push(args);}})},
   'next/cache':{revalidatePath(){if(opts.cacheError)throw Error('cache offline');}},
   '@/lib/branches/context':{branchCookie:(b,u)=>`${b}-${u}`,getBranchContext:async()=>context},
   '@/lib/subscriptions/branch-limits':{assertBranchOperation:async(b,l)=>{checks.push({b,l});if(opts.capacityError)throw Error('plan capacity');}},
   '@/lib/branches/switch-model':model,
+  '@/lib/pos/navigation-lock':loadTs('lib/pos/navigation-lock.ts'),
  });return{api,written,checks};
 }
 const origin={businessId:B,userId:U,branchId:A};
@@ -33,6 +34,7 @@ for(const [name,opts,target,from] of [['business switched',{businessId:C},C,orig
  const h=action(opts),r=await h.api.switchOperatingBranch(target,from);assert.equal(r.success,false);assert.equal(h.written.length,0);
 });
 test('retry to already-selected target is idempotent',async()=>{const h=action({current:C});const r=await h.api.switchOperatingBranch(C,origin);assert.equal(r.success,true);});
+test('locked POS cannot switch branches through its server action',async()=>{const h=action({locked:true});assert.equal((await h.api.switchOperatingBranch(C,origin)).success,false);assert.equal(h.written.length,0);});
 test('cookie already saved is not reported as failed on cache error',async()=>{const h=action({cacheError:true});assert.equal((await h.api.switchOperatingBranch(C,origin)).success,true);});
 test('workspace status never discloses a replacement business branch',async()=>{const h=action({businessId:C});assert.equal((await h.api.getOperatingBranchStatus(B,U)).success,false);});
 test('view defaults now follow operating branch rather than own assigned branch',async()=>{
@@ -43,7 +45,7 @@ test('view defaults now follow operating branch rather than own assigned branch'
        select(){return q;}, eq(){return q;}, single(){return q;}, order(){return q;},
        then(resolve,reject) {
          const result = table==='business_members'
-           ? {data:{default_location_id:A},error:null}
+           ? {data:{default_location_id:A,role:'owner'},error:null}
            : {data:[{id:A,name:'Main'},{id:C,name:'West'}],error:null};
          return Promise.resolve(result).then(resolve,reject);
        },
@@ -55,7 +57,7 @@ test('view defaults now follow operating branch rather than own assigned branch'
    'server-only':{}, react:{cache:fn=>fn},
    'next/headers':{cookies:async()=>({get:()=>({value:C})})},
    '@/lib/supabase/server':{createClient:async()=>db},
-   '@/lib/business/get-current-business':{getCurrentBusiness:async()=>({id:B})},
+   '@/lib/business/get-current-business':{getCurrentBusiness:async()=>({id:B,role:'owner'})},
  });
  assert.equal(await ctx.getViewingBranchId(),C);assert.equal(await ctx.getViewingBranchId('all'),'');
 });

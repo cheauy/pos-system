@@ -426,7 +426,7 @@ export default async function SubscriptionPaymentPage({
                     <span className="mt-1 block text-xs text-slate-400">
                       {order.term_months === 0
                         ? "No additional billing term is added"
-                        : `Monthly rate ${money(order.monthly_price)}${safeDiscountPercent > 0 ? ` · ${safeDiscountPercent.toFixed(0)}% term discount` : ""}`}
+                        : `Monthly rate ${money(order.monthly_price)}${safeDiscountPercent > 0 ? ` · ${safeDiscountPercent}% term discount` : ""}`}
                     </span>
                   </>
                 }
@@ -481,7 +481,7 @@ export default async function SubscriptionPaymentPage({
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-1 dark:border-slate-700 dark:bg-slate-950/50">
             <CheckoutTotalRow label="Subtotal" value={money(checkoutSubtotal)} />
             <CheckoutTotalRow
-              label={`Discount (${safeDiscountPercent.toFixed(0)}%)`}
+              label={`Discount (${safeDiscountPercent}%)`}
               value={termDiscountAmount > 0 ? `-${money(termDiscountAmount)}` : "$0.00"}
             />
             {hasCredit ? (
