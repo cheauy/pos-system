@@ -1,0 +1,267 @@
+[
+  {
+    "kind": "function",
+    "name": "complete_business_change_order",
+    "body": "CREATE OR REPLACE FUNCTION public.complete_business_change_order(p_order_id uuid, p_payment_reference text, p_payment_provider text DEFAULT 'external'::text)\n RETURNS TABLE(business_id uuid, new_slug text, new_business_type text, order_status text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\ndeclare\r\n  v_order public.business_change_orders%rowtype;\r\n  v_business public.businesses%rowtype;\r\n  v_current_business_type text;\r\n  v_reference text;\r\nbegin\r\n  select bco.*\r\n  into v_order\r\n  from public.business_change_orders as bco\r\n  where bco.id = p_order_id\r\n  for update;\r\n\r\n  if not found then\r\n    raise exception 'Business change order was not found.';\r\n  end if;\r\n\r\n  if v_order.status = 'applied' then\r\n    return query\r\n    select\r\n      v_order.business_id,\r\n      v_order.requested_slug,\r\n      v_order.requested_business_type,\r\n      v_order.status;\r\n    return;\r\n  end if;\r\n\r\n  if v_order.status not in ('pending_payment', 'payment_submitted', 'paid') then\r\n    raise exception\r\n      'Business change order is not payable/applicable in status %.',\r\n      v_order.status;\r\n  end if;\r\n\r\n  v_reference := nullif(btrim(coalesce(p_payment_reference, '')), '');\r\n\r\n  if v_reference is null then\r\n    raise exception 'A verified payment reference is required.';\r\n  end if;\r\n\r\n  select b.*\r\n  into v_business\r\n  from public.businesses as b\r\n  where b.id = v_order.business_id\r\n  for update;\r\n\r\n  if not found then\r\n    raise exception 'Business was not found.';\r\n  end if;\r\n\r\n  select bs.business_type\r\n  into v_current_business_type\r\n  from public.business_storefronts as bs\r\n  where bs.business_id = v_order.business_id\r\n  for update;\r\n\r\n  -- Prevent a stale paid order from overwriting a newer business change.\r\n  if v_business.slug <> v_order.old_slug then\r\n    raise exception\r\n      'The store URL changed after this order was created. Create a new change order.';\r\n  end if;\r\n\r\n  if v_business.product_mode <> v_order.old_product_mode then\r\n    raise exception\r\n      'The product mode changed after this order was created. Create a new change order.';\r\n  end if;\r\n\r\n  if coalesce(v_current_business_type, '') <>\r\n     coalesce(v_order.old_business_type, '') then\r\n    raise exception\r\n      'The business type changed after this order was created. Create a new change order.';\r\n  end if;\r\n\r\n  if v_order.change_url then\r\n    if exists (\r\n      select 1\r\n      from public.businesses as other_business\r\n      where lower(other_business.slug) = lower(v_order.requested_slug)\r\n        and other_business.id <> v_order.business_id\r\n    ) then\r\n      raise exception\r\n        'The requested TENH POS store address is no longer available.';\r\n    end if;\r\n  end if;\r\n\r\n  update public.businesses as b\r\n  set\r\n    slug = case\r\n      when v_order.change_url then v_order.requested_slug\r\n      else b.slug\r\n    end,\r\n    product_mode = case\r\n      when v_order.change_business_mode then v_order.requested_product_mode\r\n      else b.product_mode\r\n    end,\r\n    updated_at = now()\r\n  where b.id = v_order.business_id;\r\n\r\n  if v_order.change_business_mode then\r\n    insert into public.business_storefronts (\r\n      business_id,\r\n      business_type,\r\n      updated_at\r\n    ) values (\r\n      v_order.business_id,\r\n      v_order.requested_business_type,\r\n      now()\r\n    )\r\n    on conflict on constraint business_storefronts_pkey\r\n    do update set\r\n      business_type = excluded.business_type,\r\n      updated_at = excluded.updated_at;\r\n  end if;\r\n\r\n  update public.business_change_orders as bco\r\n  set\r\n    status = 'applied',\r\n    payment_provider = left(\r\n      coalesce(nullif(btrim(p_payment_provider), ''), 'external'),\r\n      80\r\n    ),\r\n    payment_reference = v_reference,\r\n    paid_at = coalesce(bco.paid_at, now()),\r\n    applied_at = now(),\r\n    updated_at = now()\r\n  where bco.id = v_order.id;\r\n\r\n  return query\r\n  select\r\n    v_order.business_id,\r\n    case\r\n      when v_order.change_url then v_order.requested_slug\r\n      else v_order.old_slug\r\n    end,\r\n    case\r\n      when v_order.change_business_mode then v_order.requested_business_type\r\n      else v_order.old_business_type\r\n    end,\r\n    'applied'::text;\r\nend;\r\n$function$\n"
+  },
+  {
+    "kind": "function",
+    "name": "create_business_change_order_with_entitlement",
+    "body": "CREATE OR REPLACE FUNCTION public.create_business_change_order_with_entitlement(p_business_id uuid, p_requesting_user_id uuid, p_old_slug text, p_requested_slug text, p_old_business_type text, p_requested_business_type text, p_old_product_mode text, p_requested_product_mode text, p_change_url boolean, p_change_business_mode boolean)\n RETURNS TABLE(order_id uuid, order_status text, total_amount numeric, included_url_change boolean, included_business_mode_change boolean)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\ndeclare\r\n  v_business public.businesses%rowtype;\r\n  v_role text;\r\n  v_current_business_type text;\r\n  v_url_used integer := 0;\r\n  v_mode_used integer := 0;\r\n  v_include_url boolean := false;\r\n  v_include_mode boolean := false;\r\n  v_total numeric := 0;\r\n  v_order_id uuid;\r\n  v_status text := 'pending_payment';\r\n  v_month_start timestamptz := (date_trunc('month', now() at time zone 'Asia/Phnom_Penh') at time zone 'Asia/Phnom_Penh');\r\nbegin\r\n  if not (coalesce(p_change_url,false) or coalesce(p_change_business_mode,false)) then\r\n    raise exception 'There are no changes to continue with.';\r\n  end if;\r\n\r\n  select bm.role::text\r\n  into v_role\r\n  from public.business_members bm\r\n  where bm.business_id = p_business_id\r\n    and bm.user_id = p_requesting_user_id\r\n    and bm.is_active = true\r\n  limit 1;\r\n\r\n  if v_role <> 'owner' then\r\n    raise exception 'Only the business owner can request business changes.';\r\n  end if;\r\n\r\n  select * into v_business\r\n  from public.businesses\r\n  where id = p_business_id\r\n  for update;\r\n\r\n  if not found then\r\n    raise exception 'Business was not found.';\r\n  end if;\r\n\r\n  if v_business.slug <> p_old_slug or v_business.product_mode <> p_old_product_mode then\r\n    raise exception 'Business settings changed. Refresh and try again.';\r\n  end if;\r\n\r\n  select bs.business_type\r\n  into v_current_business_type\r\n  from public.business_storefronts bs\r\n  where bs.business_id = p_business_id;\r\n\r\n  if coalesce(v_current_business_type,'') <> coalesce(p_old_business_type,'') then\r\n    raise exception 'Business mode changed. Refresh and try again.';\r\n  end if;\r\n\r\n  if p_change_url and exists (\r\n    select 1 from public.businesses b\r\n    where lower(b.slug) = lower(p_requested_slug)\r\n      and b.id <> p_business_id\r\n  ) then\r\n    raise exception 'This TENH POS store address is already in use.';\r\n  end if;\r\n\r\n  if exists (\r\n    select 1 from public.business_change_orders o\r\n    where o.business_id = p_business_id\r\n      and o.status = 'payment_submitted'\r\n  ) then\r\n    raise exception 'A business-change payment is already under review. Wait for that review before creating another change request.';\r\n  end if;\r\n\r\n  update public.business_change_orders\r\n  set status = 'cancelled', cancelled_at = now(), updated_at = now()\r\n  where business_id = p_business_id\r\n    and status = 'pending_payment';\r\n\r\n  if v_business.subscription_status = 'active'\r\n     and v_business.subscription_plan_key in ('growth','custom') then\r\n    select\r\n      count(*) filter (where o.included_url_change),\r\n      count(*) filter (where o.included_business_mode_change)\r\n    into v_url_used, v_mode_used\r\n    from public.business_change_orders o\r\n    where o.business_id = p_business_id\r\n      and o.created_at >= v_month_start\r\n      and o.status in ('pending_payment','payment_submitted','paid','applied');\r\n\r\n    if p_change_url\r\n       and v_url_used < coalesce(v_business.free_url_changes_per_month,0) then\r\n      v_include_url := true;\r\n    end if;\r\n\r\n    if p_change_business_mode\r\n       and v_mode_used < coalesce(v_business.free_business_mode_changes_per_month,0) then\r\n      v_include_mode := true;\r\n    end if;\r\n  end if;\r\n\r\n  v_total := 5 * (\r\n    (case when p_change_url and not v_include_url then 1 else 0 end) +\r\n    (case when p_change_business_mode and not v_include_mode then 1 else 0 end)\r\n  );\r\n\r\n  insert into public.business_change_orders (\r\n    business_id,\r\n    requested_by_user_id,\r\n    old_slug,\r\n    requested_slug,\r\n    old_business_type,\r\n    requested_business_type,\r\n    old_product_mode,\r\n    requested_product_mode,\r\n    change_url,\r\n    change_business_mode,\r\n    included_url_change,\r\n    included_business_mode_change,\r\n    unit_price,\r\n    total_amount,\r\n    currency,\r\n    status\r\n  ) values (\r\n    p_business_id,\r\n    p_requesting_user_id,\r\n    p_old_slug,\r\n    p_requested_slug,\r\n    p_old_business_type,\r\n    p_requested_business_type,\r\n    p_old_product_mode,\r\n    p_requested_product_mode,\r\n    p_change_url,\r\n    p_change_business_mode,\r\n    v_include_url,\r\n    v_include_mode,\r\n    5.00,\r\n    v_total,\r\n    'USD',\r\n    case when v_total = 0 then 'paid' else 'pending_payment' end\r\n  ) returning id into v_order_id;\r\n\r\n  if v_total = 0 then\r\n    perform * from public.complete_business_change_order(\r\n      v_order_id,\r\n      'subscription-included:' || v_order_id::text,\r\n      'subscription_entitlement'\r\n    );\r\n    v_status := 'applied';\r\n  else\r\n    v_status := 'pending_payment';\r\n  end if;\r\n\r\n  return query\r\n  select v_order_id, v_status, v_total, v_include_url, v_include_mode;\r\nend;\r\n$function$\n"
+  },
+  {
+    "kind": "function",
+    "name": "review_business_change_order",
+    "body": "CREATE OR REPLACE FUNCTION public.review_business_change_order(p_order_id uuid, p_decision text, p_admin_user_id uuid, p_admin_email text, p_review_note text DEFAULT NULL::text)\n RETURNS TABLE(business_id uuid, order_status text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\ndeclare\r\n  v_order public.business_change_orders%rowtype;\r\n  v_decision text;\r\n  v_note text;\r\n  v_internal_reference text;\r\nbegin\r\n  v_decision := lower(btrim(coalesce(p_decision, '')));\r\n  v_note := nullif(btrim(coalesce(p_review_note, '')), '');\r\n\r\n  if v_decision not in ('approve', 'reject') then\r\n    raise exception 'Decision must be approve or reject.';\r\n  end if;\r\n\r\n  if v_note is not null and char_length(v_note) > 1000 then\r\n    raise exception 'Review note is too long.';\r\n  end if;\r\n\r\n  if v_decision = 'reject' and (v_note is null or char_length(v_note) < 3) then\r\n    raise exception 'A rejection reason is required.';\r\n  end if;\r\n\r\n  select *\r\n  into v_order\r\n  from public.business_change_orders\r\n  where id = p_order_id\r\n  for update;\r\n\r\n  if not found then\r\n    raise exception 'Business change order was not found.';\r\n  end if;\r\n\r\n  if v_decision = 'approve' and v_order.status = 'applied' then\r\n    return query select v_order.business_id, v_order.status;\r\n    return;\r\n  end if;\r\n\r\n  if v_decision = 'reject' and v_order.status = 'cancelled' and v_order.reviewed_at is not null then\r\n    return query select v_order.business_id, v_order.status;\r\n    return;\r\n  end if;\r\n\r\n  if v_order.status <> 'payment_submitted' then\r\n    raise exception 'Only a customer-submitted payment can be manually reviewed.';\r\n  end if;\r\n\r\n  if v_decision = 'approve' then\r\n    if nullif(btrim(coalesce(v_order.payment_note, '')), '') is null then\r\n      raise exception 'A customer payment note is required before approval.';\r\n    end if;\r\n\r\n    if v_order.proof_bucket is null or v_order.proof_path is null then\r\n      raise exception 'Customer payment proof is required before approval.';\r\n    end if;\r\n\r\n    -- Legacy orders may already have a real reference. New orders use an internal\r\n    -- immutable reference because customers no longer need to type one manually.\r\n    v_internal_reference := coalesce(\r\n      nullif(btrim(coalesce(v_order.payment_reference, '')), ''),\r\n      'manual-proof:' || v_order.id::text\r\n    );\r\n\r\n    perform *\r\n    from public.complete_business_change_order(\r\n      v_order.id,\r\n      v_internal_reference,\r\n      'manual_admin'\r\n    );\r\n\r\n    update public.business_change_orders\r\n    set\r\n      reviewed_at = now(),\r\n      reviewed_by_user_id = p_admin_user_id,\r\n      reviewed_by_email = left(nullif(btrim(coalesce(p_admin_email, '')), ''), 320),\r\n      review_note = v_note,\r\n      updated_at = now()\r\n    where id = v_order.id;\r\n\r\n    return query select v_order.business_id, 'applied'::text;\r\n    return;\r\n  end if;\r\n\r\n  update public.business_change_orders\r\n  set\r\n    status = 'cancelled',\r\n    cancelled_at = coalesce(cancelled_at, now()),\r\n    reviewed_at = now(),\r\n    reviewed_by_user_id = p_admin_user_id,\r\n    reviewed_by_email = left(nullif(btrim(coalesce(p_admin_email, '')), ''), 320),\r\n    review_note = v_note,\r\n    updated_at = now()\r\n  where id = v_order.id;\r\n\r\n  return query select v_order.business_id, 'cancelled'::text;\r\nend;\r\n$function$\n"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_business_id_fkey",
+    "body": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_currency_check",
+    "body": "CHECK ((currency = 'USD'::text))"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_has_change_check",
+    "body": "CHECK ((change_url OR change_business_mode))"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_old_product_mode_check",
+    "body": "CHECK ((old_product_mode = ANY (ARRAY['standard'::text, 'variant'::text, 'configurable'::text])))"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_payment_note_length_check",
+    "body": "CHECK (((payment_note IS NULL) OR (char_length(payment_note) <= 1000)))"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_pkey",
+    "body": "PRIMARY KEY (id)"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_price_check",
+    "body": "CHECK ((unit_price = 5.00))"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_proof_metadata_check",
+    "body": "CHECK (((proof_path IS NULL) OR ((proof_bucket IS NOT NULL) AND (proof_file_name IS NOT NULL) AND (proof_mime_type = ANY (ARRAY['image/jpeg'::text, 'image/png'::text, 'image/webp'::text, 'application/pdf'::text])) AND (proof_size_bytes IS NOT NULL) AND (proof_uploaded_at IS NOT NULL))))"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_proof_size_check",
+    "body": "CHECK (((proof_size_bytes IS NULL) OR ((proof_size_bytes > 0) AND (proof_size_bytes <= 10485760))))"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_reference_length_check",
+    "body": "CHECK (((payment_reference IS NULL) OR (char_length(payment_reference) <= 120)))"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_requested_product_mode_check",
+    "body": "CHECK ((requested_product_mode = ANY (ARRAY['standard'::text, 'variant'::text, 'configurable'::text])))"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_requested_type_check",
+    "body": "CHECK ((requested_business_type = ANY (ARRAY['shoes'::text, 'milk_tea'::text, 'restaurant'::text, 'cafe'::text, 'fashion'::text, 'accessories'::text, 'beauty'::text, 'electronics'::text, 'grocery'::text, 'general'::text, 'other'::text])))"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_review_note_length_check",
+    "body": "CHECK (((review_note IS NULL) OR (char_length(review_note) <= 1000)))"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_status_check",
+    "body": "CHECK ((status = ANY (ARRAY['pending_payment'::text, 'payment_submitted'::text, 'paid'::text, 'applied'::text, 'cancelled'::text, 'failed'::text])))"
+  },
+  {
+    "kind": "constraint",
+    "name": "business_change_orders_total_check",
+    "body": "CHECK ((total_amount = (unit_price * ((\nCASE\n    WHEN (change_url AND (NOT included_url_change)) THEN 1\n    ELSE 0\nEND +\nCASE\n    WHEN (change_business_mode AND (NOT included_business_mode_change)) THEN 1\n    ELSE 0\nEND))::numeric)))"
+  },
+  {
+    "kind": "column",
+    "name": "id",
+    "body": "uuid default gen_random_uuid()"
+  },
+  {
+    "kind": "column",
+    "name": "business_id",
+    "body": "uuid default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "requested_by_user_id",
+    "body": "uuid default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "old_slug",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "requested_slug",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "old_business_type",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "requested_business_type",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "old_product_mode",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "requested_product_mode",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "change_url",
+    "body": "boolean default false"
+  },
+  {
+    "kind": "column",
+    "name": "change_business_mode",
+    "body": "boolean default false"
+  },
+  {
+    "kind": "column",
+    "name": "unit_price",
+    "body": "numeric default 5.00"
+  },
+  {
+    "kind": "column",
+    "name": "total_amount",
+    "body": "numeric default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "currency",
+    "body": "text default 'USD'::text"
+  },
+  {
+    "kind": "column",
+    "name": "status",
+    "body": "text default 'pending_payment'::text"
+  },
+  {
+    "kind": "column",
+    "name": "payment_provider",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "payment_reference",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "paid_at",
+    "body": "timestamp with time zone default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "applied_at",
+    "body": "timestamp with time zone default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "cancelled_at",
+    "body": "timestamp with time zone default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "created_at",
+    "body": "timestamp with time zone default now()"
+  },
+  {
+    "kind": "column",
+    "name": "updated_at",
+    "body": "timestamp with time zone default now()"
+  },
+  {
+    "kind": "column",
+    "name": "reviewed_at",
+    "body": "timestamp with time zone default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "reviewed_by_user_id",
+    "body": "uuid default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "reviewed_by_email",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "review_note",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "payment_note",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "proof_bucket",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "proof_path",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "proof_file_name",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "proof_mime_type",
+    "body": "text default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "proof_size_bytes",
+    "body": "bigint default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "proof_uploaded_at",
+    "body": "timestamp with time zone default NULL"
+  },
+  {
+    "kind": "column",
+    "name": "included_url_change",
+    "body": "boolean default false"
+  },
+  {
+    "kind": "column",
+    "name": "included_business_mode_change",
+    "body": "boolean default false"
+  }
+]

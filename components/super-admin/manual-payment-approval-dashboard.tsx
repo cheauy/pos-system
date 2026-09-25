@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import BusinessChangePaymentReview from "@/components/super-admin/business-change-payment-review";
 
 export type ManualPaymentViewRow = {
+  creditPurchase?: boolean;
   id: string;
   businessId: string;
   businessName: string;
@@ -116,6 +117,7 @@ function requestType(row: ManualPaymentViewRow) {
 }
 
 function requestSubtext(row: ManualPaymentViewRow) {
+  if(row.creditPurchase)return `${Number(row.changeUrl)+Number(row.changeBusinessMode)} permanent change credit(s) · Apply later`;
   if (row.changeUrl && row.changeBusinessMode) {
     return `${row.requestedUrl} · ${row.requestedBusinessType}`;
   }
@@ -746,13 +748,14 @@ function PaymentDetails({
         <dl className="mt-5 space-y-2.5 text-[11px]">
           <Detail label="Request type" value={requestType(row)} />
           {row.changeUrl ? <Detail label="Current URL" value={row.oldUrl} /> : null}
-          {row.changeUrl ? <Detail label="New URL" value={row.requestedUrl} /> : null}
+          {row.changeUrl && !row.creditPurchase ? <Detail label="New URL" value={row.requestedUrl} /> : null}
           {row.changeBusinessMode ? (
             <Detail label="Current mode" value={row.oldBusinessType} />
           ) : null}
-          {row.changeBusinessMode ? (
+          {row.changeBusinessMode && !row.creditPurchase ? (
             <Detail label="New mode" value={row.requestedBusinessType} />
           ) : null}
+          {row.creditPurchase&&<Detail label="Approval adds" value={`${Number(row.changeUrl)} Store URL credit · ${Number(row.changeBusinessMode)} Business mode credit · No expiry`}/>}
           <Detail label="Amount" value={formatMoney(row.amount, row.currency)} strong />
           <Detail label="Payment method" value={row.paymentProvider || "Manual payment"} />
           <Detail label="Customer note" value={row.paymentNote || "—"} />

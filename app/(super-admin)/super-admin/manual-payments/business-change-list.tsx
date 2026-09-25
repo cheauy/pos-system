@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type OrderRow = {
   id: string;
+  credit_purchase: boolean;
   business_id: string;
   requested_by_user_id: string | null;
   old_slug: string;
@@ -50,13 +51,13 @@ type ProfileRow = {
 function isVisibleManualOrder(order: OrderRow) {
   return (
     order.status === "payment_submitted" ||
-    (Boolean(order.reviewed_at) && ["applied", "cancelled"].includes(order.status))
+    (Boolean(order.reviewed_at) && ["applied", "paid", "cancelled"].includes(order.status))
   );
 }
 
 function statusOf(order: OrderRow): ManualPaymentViewRow["status"] {
   if (order.status === "payment_submitted") return "waiting";
-  if (order.status === "applied" && order.reviewed_at) return "approved";
+  if (["applied","paid"].includes(order.status) && order.reviewed_at) return "approved";
   return "rejected";
 }
 
@@ -66,9 +67,9 @@ export default async function BusinessChangePaymentList() {
   const { data: rawOrders, error } = await supabaseAdmin
     .from("business_change_orders")
     .select(
-      "id,business_id,requested_by_user_id,old_slug,requested_slug,old_business_type,requested_business_type,change_url,change_business_mode,unit_price,total_amount,currency,status,payment_provider,payment_reference,payment_note,proof_bucket,proof_path,proof_file_name,proof_mime_type,proof_size_bytes,proof_uploaded_at,reviewed_at,reviewed_by_email,review_note,created_at,updated_at",
+      "id,credit_purchase,business_id,requested_by_user_id,old_slug,requested_slug,old_business_type,requested_business_type,change_url,change_business_mode,unit_price,total_amount,currency,status,payment_provider,payment_reference,payment_note,proof_bucket,proof_path,proof_file_name,proof_mime_type,proof_size_bytes,proof_uploaded_at,reviewed_at,reviewed_by_email,review_note,created_at,updated_at",
     )
-    .in("status", ["payment_submitted", "applied", "cancelled"])
+    .in("status", ["payment_submitted", "applied", "paid", "cancelled"])
     .order("created_at", { ascending: false })
     .limit(500);
 
@@ -128,6 +129,7 @@ export default async function BusinessChangePaymentList() {
 
     return {
       id: order.id,
+      creditPurchase: order.credit_purchase,
       businessId: order.business_id,
       businessName: business?.name ?? "Unknown business",
       customerName: requester?.full_name ?? "Business owner",

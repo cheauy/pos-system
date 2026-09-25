@@ -10,6 +10,8 @@ export type BusinessChangeEntitlements = {
   modeFreeUsed: number;
   urlFreeRemaining: number;
   modeFreeRemaining: number;
+  urlCredits: number;
+  modeCredits: number;
 };
 
 export async function getBusinessChangeEntitlements(
@@ -57,8 +59,9 @@ export async function getBusinessChangeEntitlements(
 
   const { data: orders, error: ordersError } = await supabaseAdmin
     .from("business_change_orders")
-    .select("included_url_change,included_business_mode_change,status")
+    .select("included_url_change,included_business_mode_change,used_url_credit,used_mode_credit,status")
     .eq("business_id", businessId)
+    .eq("credit_purchase", false)
     .gte("created_at", startOfMonth.toISOString())
     .in("status", ["pending_payment", "payment_submitted", "paid", "applied"]);
 
@@ -66,8 +69,12 @@ export async function getBusinessChangeEntitlements(
     throw new Error(`Unable to load monthly change allowance: ${ordersError.message}`);
   }
 
-  const urlFreeUsed = (orders ?? []).filter((order) => order.included_url_change).length;
-  const modeFreeUsed = (orders ?? []).filter((order) => order.included_business_mode_change).length;
+  const urlFreeUsed = (orders ?? []).filter((order) => order.included_url_change && !order.used_url_credit).length;
+  const modeFreeUsed = (orders ?? []).filter((order) => order.included_business_mode_change && !order.used_mode_credit).length;
+  const {data:credits,error:creditsError}=await supabaseAdmin.from("business_change_credits").select("url_remaining,mode_remaining").eq("business_id",businessId).or("url_remaining.gt.0,mode_remaining.gt.0");
+  if(creditsError)throw new Error("Unable to load purchased change credits.");
+  const urlCredits=(credits??[]).reduce((sum,row)=>sum+row.url_remaining,0);
+  const modeCredits=(credits??[]).reduce((sum,row)=>sum+row.mode_remaining,0);
 
   return {
     planKey: business?.subscription_plan_key ?? "legacy",
@@ -77,5 +84,7 @@ export async function getBusinessChangeEntitlements(
     modeFreeUsed,
     urlFreeRemaining: Math.max(0, urlFreeLimit - urlFreeUsed),
     modeFreeRemaining: Math.max(0, modeFreeLimit - modeFreeUsed),
+    urlCredits,
+    modeCredits,
   };
 }

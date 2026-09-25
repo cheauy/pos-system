@@ -2,25 +2,16 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState, useTransition, type ReactNode } from "react";
+import { useActionState, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import {
   ArrowLeft,
   Box,
   Check,
-  Coffee,
-  Gem,
-  Laptop,
   Link2,
   Loader2,
-  Package,
-  Shirt,
-  ShoppingBasket,
-  ShoppingBag,
-  Sparkles,
   Store,
   UserRound,
-  UtensilsCrossed,
 } from "lucide-react";
 
 import {
@@ -29,11 +20,12 @@ import {
   type BusinessModePreset,
 } from "@/lib/business/business-mode-presets";
 import type { ProductMode } from "@/lib/business/types";
+import CreditBadges from "./credit-badges";
 import { normalizeTenantSlug } from "@/lib/tenancy/domain";
 
 import {
   checkStoreAddressAvailability,
-  createBusinessChangeOrder,
+  submitBusinessDetails,
   type StoreAddressAvailabilityResult,
 } from "./actions";
 
@@ -86,6 +78,9 @@ type Props = {
   subscriptionPlanKey: string;
   freeUrlChangesRemaining: number;
   freeBusinessModeChangesRemaining: number;
+  urlCredits: number;
+  modeCredits: number;
+  pendingCheckout?: {id:string;status:string;total_amount:number|string}|null;
 };
 
 export default function BusinessSettingsClient({
@@ -95,10 +90,16 @@ export default function BusinessSettingsClient({
   initialSlug,
   rootDomain,
   canEdit,
-  subscriptionPlanKey,
   freeUrlChangesRemaining,
   freeBusinessModeChangesRemaining,
+  urlCredits,
+  modeCredits,
+  pendingCheckout,
 }: Props) {
+  const confirmation=useRef<HTMLDialogElement>(null);
+  const [result,submit]=useActionState(submitBusinessDetails,{error:""});
+  const form=useRef<HTMLFormElement>(null);
+  const confirmed=useRef(false);
   const [businessMode, setBusinessMode] = useState(currentBusinessType);
   const [slug, setSlug] = useState(initialSlug);
   const [availabilityResult, setAvailabilityResult] =
@@ -126,9 +127,11 @@ export default function BusinessSettingsClient({
       availabilityResult?.available === true &&
       availabilityResult.status === "available");
   const changeCount = Number(slugChanged) + Number(businessModeChanged);
-  const urlChangePrice = slugChanged && freeUrlChangesRemaining <= 0 ? CHANGE_PRICE_USD : 0;
+  const availableUrlCredits = freeUrlChangesRemaining + urlCredits;
+  const availableModeCredits = freeBusinessModeChangesRemaining + modeCredits;
+  const urlChangePrice = slugChanged && availableUrlCredits <= 0 ? CHANGE_PRICE_USD : 0;
   const businessModeChangePrice =
-    businessModeChanged && freeBusinessModeChangesRemaining <= 0
+    businessModeChanged && availableModeCredits <= 0
       ? CHANGE_PRICE_USD
       : 0;
   const estimatedTotal = urlChangePrice + businessModeChangePrice;
@@ -136,26 +139,31 @@ export default function BusinessSettingsClient({
   return (
     <main className="mx-auto w-full max-w-[1600px] pb-10">
       <Link
-        href="/dashboard/settings"
+        href="/dashboard/settings/business"
         className="mb-5 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-300"
       >
         <ArrowLeft size={18} />
-        Back to settings
+        Back to Business Details
       </Link>
 
-      <div className="mb-6">
+      <header className="mb-6 flex flex-col justify-between gap-5 xl:flex-row xl:items-start">
+        <div className="min-w-0">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">
-          Business settings
+          Business Details
         </p>
         <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.03em] text-slate-950 sm:text-4xl dark:text-white">
-          Manage {businessName}
+          Change {businessName}
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-400">
           Edit your TENH POS store address or switch the business setup that matches how you sell.
         </p>
-      </div>
+        </div>
+        <CreditBadges modeCredits={availableModeCredits} urlCredits={availableUrlCredits}/>
+      </header>
 
-      <form action={createBusinessChangeOrder}>
+      {pendingCheckout&&<div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30"><p className="text-sm font-semibold">{pendingCheckout.status==='pending_payment'?'You have an unfinished checkout.':'Your payment is awaiting review.'}</p><Link href={`/dashboard/settings/business/payment/${pendingCheckout.id}`} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white">{pendingCheckout.status==='pending_payment'?'Continue checkout':'View payment'}</Link></div>}
+      {result.error&&<p role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">{result.error}</p>}
+      <form ref={form} action={submit} onSubmit={event=>{if(!confirmed.current){event.preventDefault();confirmation.current?.showModal();}else confirmed.current=false;}}>
         <input type="hidden" name="businessMode" value={businessMode} />
 
         <div className="space-y-6">
@@ -169,7 +177,7 @@ export default function BusinessSettingsClient({
                   Your TENH POS address
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  Edit the address here. Growth and Custom plans include up to 2 URL changes each month; otherwise the normal price is $5 per change.
+                  Use 1 available Store URL credit to change your address. Additional credits are $5 each.
                 </p>
               </div>
 
@@ -265,7 +273,7 @@ export default function BusinessSettingsClient({
                 </div>
                 {slugChanged ? (
                   <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                    URL change · {freeUrlChangesRemaining > 0 ? "Included" : "$5"}
+                    URL change · {availableUrlCredits > 0 ? "Use 1 credit" : "$5"}
                   </span>
                 ) : (
                   <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
@@ -276,15 +284,15 @@ export default function BusinessSettingsClient({
             </section>
 
             <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_8px_28px_rgba(15,23,42,0.05)] sm:p-6 dark:border-slate-800 dark:bg-slate-900">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
                   Business type
                 </p>
                 <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-950 dark:text-white">
-                  Do you want to switch to another business type?
+                  Switch to another business type?
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  Choose another setup only if you want to change how TENH POS prepares products and selling tools. Growth and Custom plans include up to 2 Business Mode switches each month; otherwise the normal price is $5.
+                  Use 1 available Business mode credit to change your business setup. Additional credits are $5 each.
                 </p>
               </div>
 
@@ -340,9 +348,7 @@ export default function BusinessSettingsClient({
                     includedOnly={estimatedTotal === 0 && changeCount > 0}
                   />
                   <p className="mt-3 text-center text-xs text-slate-500 dark:text-slate-400">
-                    {subscriptionPlanKey === "growth" || subscriptionPlanKey === "custom"
-                      ? `This month: ${freeUrlChangesRemaining} free URL change(s) left · ${freeBusinessModeChangesRemaining} free Business Mode switch(es) left. Extra changes are $5 each.`
-                      : "Store URL change = $5 · Business Mode switch = $5 · Both changes = $10"}
+                    Store URL: {availableUrlCredits} {availableUrlCredits === 1 ? "credit" : "credits"} available · Business mode: {availableModeCredits} {availableModeCredits === 1 ? "credit" : "credits"} available
                   </p>
                 </div>
               )}
@@ -351,6 +357,15 @@ export default function BusinessSettingsClient({
 
         </div>
       </form>
+      <dialog ref={confirmation} aria-labelledby="business-confirm-title" className="fixed inset-0 m-auto w-[min(92vw,480px)] rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl backdrop:bg-slate-950/50 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+        <h2 id="business-confirm-title" className="text-xl font-bold">{estimatedTotal>0?'Buy change credits?':'Confirm business changes?'}</h2>
+        <div className="mt-4 space-y-2 text-sm">
+          {slugChanged&&<p>Store URL: <strong className="break-all">{initialSlug} → {normalizedPreviewSlug}</strong></p>}
+          {businessModeChanged&&<p>Business mode: <strong>{currentPreset?.label} → {selectedPreset?.label}</strong></p>}
+          <p className="pt-2 text-slate-500">{estimatedTotal>0?`Pay $${estimatedTotal.toFixed(2)} for the missing credits. Payment adds credits without changing your business. Use them later; they never expire.`:'Apply these changes now. Included monthly changes are used first, then one purchased credit for each remaining change.'}</p>
+        </div>
+        <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={()=>confirmation.current?.close()} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold">Cancel</button><button type="button" onClick={()=>{confirmation.current?.close();confirmed.current=true;form.current?.requestSubmit();}} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white">{estimatedTotal>0?'Continue to checkout':'Confirm change'}</button></div>
+      </dialog>
     </main>
   );
 }
@@ -375,10 +390,10 @@ function ContinueButton({
       {pending ? <Loader2 size={18} className="animate-spin" /> : null}
       {pending
         ? includedOnly
-          ? "Applying included change…"
+          ? "Applying change…"
           : "Creating order…"
         : includedOnly
-          ? "Apply included change"
+          ? "Apply change"
           : "Continue to payment"}
       {!pending && total > 0 ? (
         <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs">
@@ -458,7 +473,7 @@ function SetupSummaryBar({
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">
           Your requested setup
         </p>
-        <span className="hidden text-xs text-slate-400 sm:block">Preview before payment</span>
+        <span className="hidden text-xs text-slate-400 sm:block">Review before confirming</span>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {items.map((item, index) => {

@@ -6,6 +6,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAppUrl } from "@/lib/tenancy/domain";
 
 type PaywayEnvironment = "sandbox" | "live";
+export type PaywayOrderKind = "subscription" | "business_change";
 
 type SubscriptionPaywayOrder = {
   id: string;
@@ -150,22 +151,27 @@ function safeEmail(value: string | null | undefined) {
 }
 
 export async function prepareSubscriptionPaywayCheckout(args: {
+  kind?: PaywayOrderKind;
   orderId: string;
   businessId: string;
   email?: string | null;
 }) {
+  const businessChange = args.kind === "business_change";
+  const table = businessChange ? "business_change_orders" : "subscription_orders";
+  const columns:string = businessChange ? "id,business_id,status,credit_purchase,total_amount,currency,payment_method,payment_provider,proof_path,manual_payment_reference:payment_reference,payment_expires_at,payment_expired_at,payway_tran_id,payway_started_at,payway_verified_at" : "id,business_id,status,plan_key,term_months,total_amount,currency,payment_method,payment_provider,proof_path,manual_payment_reference,manual_verified_at,manual_verified_transaction_id,pricing_locked_until,payment_expires_at,payment_expired_at,payway_tran_id,payway_started_at,payway_verified_at";
   const { data, error } = await supabaseAdmin
-    .from("subscription_orders")
-    .select("id,business_id,status,plan_key,term_months,total_amount,currency,payment_method,payment_provider,proof_path,manual_payment_reference,manual_verified_at,manual_verified_transaction_id,pricing_locked_until,payment_expires_at,payment_expired_at,payway_tran_id,payway_started_at,payway_verified_at")
+    .from(table)
+    .select(columns)
     .eq("id", args.orderId)
     .eq("business_id", args.businessId)
     .maybeSingle();
 
   if (error) throw new Error(`Unable to load subscription checkout: ${error.message}`);
   if (!data) throw new Error("Subscription order was not found.");
-  const order = data as SubscriptionPaywayOrder;
+  const order = data as unknown as SubscriptionPaywayOrder;
+  if (businessChange && !(data as unknown as {credit_purchase:boolean}).credit_purchase) throw new Error("Use the original manual checkout for this older order.");
 
-  if (order.status === "approved" && order.payway_verified_at) {
+  if (order.status === (businessChange ? "paid" : "approved") && order.payway_verified_at) {
     return { alreadyPaid: true as const, orderId: order.id };
   }
   if (order.status !== "pending_payment") {
@@ -195,7 +201,7 @@ export async function prepareSubscriptionPaywayCheckout(args: {
     !hasManualEvidence &&
     !hasPaywayEvidence;
 
-  if (staleUncommittedMethod) {
+  if (staleUncommittedMethod && !businessChange) {
     const staleMethod = order.payment_method;
     const { error: clearLegacyError } = await supabaseAdmin
       .from("subscription_orders")
@@ -237,8 +243,8 @@ export async function prepareSubscriptionPaywayCheckout(args: {
   if (currency !== "USD") throw new Error("TENH POS subscription checkout currently supports ABA PayWay in USD only.");
 
   const startedAt = order.payway_started_at || new Date().toISOString();
-  const { data: saved, error: saveError } = await supabaseAdmin
-    .from("subscription_orders")
+  let lockQuery = supabaseAdmin
+    .from(table)
     .update({
       // PayWay is a provider route, not a legacy payment_method value. Clear
       // any stale method atomically when the PayWay transaction is locked.
@@ -246,11 +252,14 @@ export async function prepareSubscriptionPaywayCheckout(args: {
       payment_provider: "aba_payway",
       payway_tran_id: tranId,
       payway_started_at: startedAt,
+      ...(businessChange ? {payment_expires_at: order.payment_expires_at || new Date(Date.now() + 10 * 60 * 1000).toISOString()} : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", order.id)
     .eq("business_id", args.businessId)
-    .eq("status", "pending_payment")
+    .eq("status", "pending_payment");
+  if (businessChange) lockQuery = lockQuery.is("proof_path", null).is("payment_reference", null).is("payment_method", null);
+  const { data: saved, error: saveError } = await lockQuery
     .select("id")
     .maybeSingle();
   if (saveError || !saved) {
@@ -258,13 +267,14 @@ export async function prepareSubscriptionPaywayCheckout(args: {
   }
 
   const reqTime = utcRequestTime();
-  const callbackUrl = `${config.appOrigin}/api/payway/subscription/callback`;
+  const callbackUrl = `${config.appOrigin}/api/payway/${businessChange ? "business-change" : "subscription"}/callback`;
   const returnUrl = Buffer.from(callbackUrl, "utf8").toString("base64");
-  const continueSuccessUrl = `${config.appOrigin}/dashboard/settings/subscription/payment/${order.id}/payway-return`;
-  const cancelUrl = `${config.appOrigin}/dashboard/settings/subscription/payment/${order.id}?payway=cancelled`;
+  const paymentPath = `/dashboard/settings/${businessChange ? "business" : "subscription"}/payment/${order.id}`;
+  const continueSuccessUrl = `${config.appOrigin}${paymentPath}/payway-return`;
+  const cancelUrl = `${config.appOrigin}${paymentPath}?payway=cancelled`;
   const returnParams = JSON.stringify({ order_id: order.id });
   const items = Buffer.from(JSON.stringify([
-    { name: `TENH POS ${order.plan_key} subscription`, quantity: 1, price: Number(amount) },
+    { name: businessChange ? "TENH POS business change credits" : `TENH POS ${order.plan_key} subscription`, quantity: 1, price: Number(amount) },
   ]), "utf8").toString("base64");
 
   // PayWay requires the Purchase hash values in this exact documented order,
@@ -278,13 +288,13 @@ export async function prepareSubscriptionPaywayCheckout(args: {
     ["tran_id", tranId],
     ["amount", amount],
     ["items", items],
-    ["shipping", ""],
+    ["shipping", "0.00"],
     ["firstname", "TENH"],
     ["lastname", "Customer"],
     ["email", email],
     ["phone", ""],
     ["type", "purchase"],
-    ["payment_option", ""],
+    ["payment_option", "abapay_khqr"],
     ["return_url", returnUrl],
     ["cancel_url", cancelUrl],
     ["continue_success_url", continueSuccessUrl],
@@ -305,7 +315,7 @@ export async function prepareSubscriptionPaywayCheckout(args: {
     purchaseUrl: config.purchaseUrl,
     fields: Object.fromEntries([
       ...hashFields,
-      ["view_type", "hosted_view"],
+      ["view_type", "popup"],
       ["payment_gate", "0"],
       ["hash", hash],
     ]),
@@ -339,13 +349,16 @@ function approvedPaywayResponse(payload: PaywayCheckResponse) {
 }
 
 export async function verifyAndConfirmSubscriptionPaywayPayment(args: {
+  kind?: PaywayOrderKind;
   orderId?: string;
   tranId?: string;
   businessId?: string;
 }) {
+  const businessChange = args.kind === "business_change";
+  const table = businessChange ? "business_change_orders" : "subscription_orders";
   if (!args.orderId && !args.tranId) throw new Error("ABA PayWay order reference is required.");
   let query = supabaseAdmin
-    .from("subscription_orders")
+    .from(table)
     .select("id,business_id,status,total_amount,currency,payment_provider,payway_tran_id,payway_verified_at,payment_expires_at,payment_expired_at");
   if (args.orderId) query = query.eq("id", args.orderId);
   if (args.tranId) query = query.eq("payway_tran_id", args.tranId);
@@ -355,7 +368,7 @@ export async function verifyAndConfirmSubscriptionPaywayPayment(args: {
   if (!data) throw new Error("ABA PayWay subscription order was not found.");
 
   const order = data as SubscriptionPaywayOrder;
-  if (order.status === "approved" && order.payway_verified_at) {
+  if (order.status === (businessChange ? "paid" : "approved") && order.payway_verified_at) {
     return { state: "approved" as const, orderId: order.id, alreadyConfirmed: true };
   }
   if (order.status !== "pending_payment") {
@@ -395,7 +408,7 @@ export async function verifyAndConfirmSubscriptionPaywayPayment(args: {
   if (paymentWindowEnded) {
     const reviewedAt = new Date().toISOString();
     const { error: latePaymentError } = await supabaseAdmin
-      .from("subscription_orders")
+      .from(table)
       .update({
         status: "under_review",
         payment_expired_at: order.payment_expired_at ?? reviewedAt,
@@ -420,7 +433,7 @@ export async function verifyAndConfirmSubscriptionPaywayPayment(args: {
     };
   }
 
-  const { data: confirmed, error: confirmError } = await supabaseAdmin.rpc("confirm_payway_subscription_order", {
+  const { data: confirmed, error: confirmError } = await supabaseAdmin.rpc(businessChange ? "confirm_payway_business_change_order" : "confirm_payway_subscription_order", {
     p_business_id: order.business_id,
     p_order_id: order.id,
     p_tran_id: order.payway_tran_id,
@@ -496,12 +509,15 @@ async function closePaywayTransaction(tranId: string): Promise<PaywayCloseRespon
 }
 
 export async function cancelSubscriptionPaywayCheckout(args: {
+  kind?: PaywayOrderKind;
   orderId: string;
   businessId: string;
   reason?: "owner_cancelled" | "payment_expired";
 }) {
+  const businessChange = args.kind === "business_change";
+  const table = businessChange ? "business_change_orders" : "subscription_orders";
   const { data, error } = await supabaseAdmin
-    .from("subscription_orders")
+    .from(table)
     .select("id,business_id,status,payment_provider,payway_tran_id,payway_verified_at,payment_expired_at")
     .eq("id", args.orderId)
     .eq("business_id", args.businessId)
@@ -511,7 +527,7 @@ export async function cancelSubscriptionPaywayCheckout(args: {
   if (!data) throw new Error("ABA PayWay subscription order was not found.");
   const order = data as SubscriptionPaywayOrder;
 
-  if (order.status === "approved" && order.payway_verified_at) {
+  if (order.status === (businessChange ? "paid" : "approved") && order.payway_verified_at) {
     return { state: "approved" as const, orderId: order.id };
   }
   if (order.status === "cancelled") {
@@ -528,9 +544,17 @@ export async function cancelSubscriptionPaywayCheckout(args: {
   const checked = await checkPaywayTransaction(order.payway_tran_id);
   if (approvedPaywayResponse(checked)) {
     const confirmed = await verifyAndConfirmSubscriptionPaywayPayment({
+      kind: args.kind,
       orderId: order.id,
       businessId: order.business_id,
     });
+    if (confirmed.state !== "approved") {
+      return {
+        state: "provider_close_unavailable" as const,
+        orderId: order.id,
+        message: "This payment needs review. No replacement checkout was created. Check the payment order before paying again.",
+      };
+    }
     return { state: "approved" as const, orderId: confirmed.orderId };
   }
 
@@ -560,7 +584,7 @@ export async function cancelSubscriptionPaywayCheckout(args: {
   const cancelledAt = new Date().toISOString();
   const paymentExpired = args.reason === "payment_expired";
   const { data: cancelled, error: cancelError } = await supabaseAdmin
-    .from("subscription_orders")
+    .from(table)
     .update({
       status: "cancelled",
       cancelled_at: cancelledAt,
@@ -581,11 +605,11 @@ export async function cancelSubscriptionPaywayCheckout(args: {
   if (!cancelled) {
     // A callback may have won the race. Re-read before deciding what happened.
     const { data: latest } = await supabaseAdmin
-      .from("subscription_orders")
+      .from(table)
       .select("status,payway_verified_at")
       .eq("id", order.id)
       .maybeSingle();
-    if (latest?.status === "approved" && latest.payway_verified_at) {
+    if (latest?.status === (businessChange ? "paid" : "approved") && latest.payway_verified_at) {
       return { state: "approved" as const, orderId: order.id };
     }
     throw new Error("TENH could not safely confirm cancellation. Check this payment order before paying again.");

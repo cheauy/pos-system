@@ -546,7 +546,7 @@ export default function SubscriptionPlansClient({
             promotions={promotions}
             users={effectiveUsers}
             branches={effectiveBranches}
-            months={pricingTerm}
+            months={customUpgradeMode ? termMonths : pricingTerm}
             minimumUsers={customUpgradeMode ? Math.max(currentSeats, activeSeatCount) : 1}
             minimumBranches={customUpgradeMode ? Math.max(currentBranches, activeBranchCount) : 1}
             mode={customUpgradeMode ? "upgrade" : "build"}

@@ -1,3 +1,6 @@
+import CheckoutDuration from './checkout-duration';
+import PaywayCheckoutButton from './payway-checkout-button';
+import PaymentMethodSelector from './payment-method-selector';
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -32,7 +35,6 @@ import ManualPaymentQrPreview from "../../manual-payment-qr-preview";
 import ManualPaymentProofForm from "./manual-payment-proof-form";
 import {
   cancelPendingSubscriptionPayment,
-  changePendingUpgradeDuration,
   selectSubscriptionPaymentMethod,
 } from "../../actions";
 
@@ -250,7 +252,7 @@ export default async function SubscriptionPaymentPage({
   const canChangeUpgradeDuration =
     pending &&
     !priceExpired &&
-    (order.order_kind === "upgrade" || order.order_kind === "reactivation") &&
+    (order.order_kind === "upgrade" || order.order_kind === "reactivation" || order.order_kind === "renewal") &&
     !order.payment_method &&
     !order.payment_provider &&
     !order.payway_tran_id &&
@@ -405,76 +407,50 @@ export default async function SubscriptionPaymentPage({
                       ? hasUpgradeProration
                         ? "Added capacity for the remaining paid term"
                         : "Selected subscription capacity"
-                      : `${durationLabel(order.term_months)} · Monthly rate ${money(order.monthly_price)}`}
+                      : `Monthly rate ${money(order.monthly_price)} · Billed in Duration below`}
                   </span>
                 </>
               }
-              price={money(planItemPrice)}
+              price={order.order_kind === "upgrade" ? money(planItemPrice) : "Included"}
             />
 
-            {order.order_kind === "upgrade" ? (
+            {(
               <CheckoutItemRow
                 icon={<CalendarDays size={18} />}
-                item="Billing term"
+                item="Add-on Duration"
                 detail={
                   <>
                     <span>
                       {order.term_months === 0
                         ? "Keep current expiry"
-                        : `Add ${durationLabel(order.term_months)} after the current paid expiry`}
+                        : order.order_kind === "upgrade" || order.order_kind === "renewal"
+                          ? `${durationLabel(order.term_months)} · Starts after the current paid expiry`
+                          : durationLabel(order.term_months)}
                     </span>
                     <span className="mt-1 block text-xs text-slate-400">
                       {order.term_months === 0
                         ? "No additional billing term is added"
-                        : `Monthly rate ${money(order.monthly_price)}${safeDiscountPercent > 0 ? ` · ${safeDiscountPercent}% term discount` : ""}`}
+                        : `${order.term_months} × ${money(order.monthly_price)} / month${safeDiscountPercent > 0 ? ` · ${safeDiscountPercent}% discount shown below` : ""}`}
                     </span>
                   </>
                 }
                 price={order.term_months > 0 ? money(safeTermSubtotal) : "$0.00"}
               />
-            ) : null}
+            )}
           </div>
 
-          {order.order_kind === "upgrade" || order.order_kind === "reactivation" ? (
+          {order.order_kind === "upgrade" || order.order_kind === "reactivation" || order.order_kind === "renewal" ? (
             <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-900 dark:bg-blue-950/20">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <p className="font-extrabold text-blue-950 dark:text-blue-100">Billing Term</p>
-                  <p className="mt-0.5 text-xs text-blue-700 dark:text-blue-300">{order.order_kind === "reactivation" ? `Selected: ${durationLabel(order.term_months)}. Your previous term is selected automatically; you can change it before payment.` : "Keep your current expiry or add a new billing term after it."}</p>
+                  <p className="font-extrabold text-blue-950 dark:text-blue-100">Add-on Duration</p>
+                  <p className="mt-0.5 text-xs text-blue-700 dark:text-blue-300">{order.order_kind === "reactivation" ? `Selected: ${durationLabel(order.term_months)}. Your previous term is selected automatically; you can change it before payment.` : order.order_kind === "upgrade" ? "Keep your current expiry or add a new billing term after it." : "Choose the duration to add after your current paid expiry."}</p>
                 </div>
                 {!canChangeUpgradeDuration ? (
                   <p className="text-xs font-bold text-amber-700 dark:text-amber-300">Locked after payment starts</p>
                 ) : null}
               </div>
-              <form action={changePendingUpgradeDuration} className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                <input type="hidden" name="orderId" value={order.id} />
-                {[
-                  { value: 0, label: "Keep current" },
-                  { value: 1, label: "Add 1 month" },
-                  { value: 3, label: "Add 3 months" },
-                  { value: 6, label: "Add 6 months" },
-                  { value: 12, label: "Add 1 year" },
-                ].filter((option) => order.order_kind === "upgrade" || option.value > 0).map((option) => {
-                  const active = order.term_months === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="submit"
-                      name="termMonths"
-                      value={option.value}
-                      disabled={!canChangeUpgradeDuration || active}
-                      aria-pressed={active}
-                      className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-extrabold transition disabled:cursor-default ${
-                        active
-                          ? "border-blue-600 bg-blue-600 text-white"
-                          : "border-blue-200 bg-white text-blue-700 hover:border-blue-400 hover:bg-blue-100 disabled:opacity-50 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/50"
-                      }`}
-                    >
-                      {order.order_kind === "reactivation" ? option.label.replace("Add ", "") : option.label}
-                    </button>
-                  );
-                })}
-              </form>
+              <CheckoutDuration orderId={order.id} months={order.term_months} canChange={canChangeUpgradeDuration} canKeepExpiry={order.order_kind === "upgrade"}/>
             </div>
           ) : null}
 
@@ -603,18 +579,23 @@ export default async function SubscriptionPaymentPage({
                 </div>
               ) : null}
 
-              {usingPayway ? (
+              {!usingPayway && !manualRouteCommitted ? (
+                <PaymentMethodSelector orderId={order.id} manualAvailable={manualOptionAvailable} initialMethod={paywaySelected?'payway':null}/>
+              ) : usingPayway ? (
                 <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30">
-                  <p className="text-sm font-extrabold text-blue-900 dark:text-blue-200">ABA PayWay checkout started</p>
-                  <p className="mt-1 text-xs leading-5 text-blue-700 dark:text-blue-300">
-                    This order is locked to one PayWay transaction to prevent duplicate charges.
+                  <PaywayCheckoutButton orderId={order.id} />
+                  <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    <ShieldCheck size={15} className="mt-0.5 shrink-0" />
+                    Reopening checkout uses the same payment request.
                   </p>
-                  <div className={`mt-3 grid gap-2 ${manualOptionAvailable ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+                  <div className="mt-4 grid gap-2 border-t border-blue-100 pt-4 dark:border-blue-900">
                     <Link
                       href={`/dashboard/settings/subscription/payment/${order.id}/payway-return`}
-                      className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+                      className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                     >
+                      <CheckCircle2 size={18} className="shrink-0 text-blue-600" />
                       Check payment status
+                      <ArrowRight size={16} className="ml-auto shrink-0 text-slate-400" />
                     </Link>
                     {manualOptionAvailable ? (
                       <form action={selectSubscriptionPaymentMethod}>
@@ -622,9 +603,11 @@ export default async function SubscriptionPaymentPage({
                         <input type="hidden" name="paymentMethod" value="manual" />
                         <button
                           type="submit"
-                          className="inline-flex w-full items-center justify-center rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-300"
+                          className="flex min-h-11 w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                         >
-                          Switch to Manual
+                          <Building2 size={18} className="shrink-0 text-slate-500" />
+                          Use manual payment
+                          <ArrowRight size={16} className="ml-auto shrink-0 text-slate-400" />
                         </button>
                       </form>
                     ) : null}
@@ -632,8 +615,9 @@ export default async function SubscriptionPaymentPage({
                       <input type="hidden" name="orderId" value={order.id} />
                       <button
                         type="submit"
-                        className="inline-flex w-full items-center justify-center rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-300"
+                        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 dark:text-red-400 dark:hover:bg-red-950/30"
                       >
+                        <XCircle size={17} className="shrink-0" />
                         Cancel payment
                       </button>
                     </form>
@@ -668,25 +652,19 @@ export default async function SubscriptionPaymentPage({
                 </>
               )}
 
-              {!usingPayway ? (
+              {!usingPayway && manualRouteCommitted ? (
                 <div className="mt-4 grid gap-2">
                   <CheckoutInfo icon={<ShieldCheck size={17} />} title="Secure checkout" description="Your payment information is handled safely." />
                   <CheckoutInfo icon={<FileText size={17} />} title="Payment proof" description="Manual payment requires proof before you can submit. Upload your receipt." />
                 </div>
               ) : null}
 
-              {!usingPayway && paywaySelected ? (
+              {!usingPayway && manualRouteCommitted && paywaySelected ? (
                 <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30">
                   <p className="text-sm font-extrabold text-blue-900 dark:text-blue-200">ABA PayWay selected</p>
                   <p className="mt-1 text-xs leading-5 text-blue-700 dark:text-blue-300">Review the total, then continue to secure checkout.</p>
                   <div className="mt-4 border-t border-blue-200 pt-4 dark:border-blue-900">
-                    <Link
-                      href={`/dashboard/settings/subscription/payment/${order.id}/payway`}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-blue-700"
-                    >
-                      Checkout with ABA PayWay
-                      <ArrowRight size={17} />
-                    </Link>
+                    <PaywayCheckoutButton orderId={order.id} />
                   </div>
                 </div>
               ) : null}

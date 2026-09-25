@@ -11,13 +11,11 @@ import {
   MapPinned,
   Palette,
   ShieldCheck,
-  Store,
   UserRound,
   UsersRound,
 } from "lucide-react";
 
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
-import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
 import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -72,7 +70,6 @@ export default async function SettingsPage() {
   const [
     { data: locations },
     { data: memberships },
-    businessMode,
   ] = await Promise.all([
     supabaseAdmin
       .from("business_locations")
@@ -82,10 +79,6 @@ export default async function SettingsPage() {
       .from("business_members")
       .select("id,role,is_active")
       .eq("business_id", business.id),
-    getCurrentBusinessMode({
-      businessId: business.id,
-      productMode: business.productMode,
-    }),
   ]);
 
   const locationRows = (locations ?? []) as unknown as Array<{
@@ -108,12 +101,9 @@ export default async function SettingsPage() {
       member.role !== "owner",
   ).length;
 
-  const businessType = businessMode.shortLabel;
-
-  const [canManageUsers, canManageBranches, canUpdateBusiness] = await Promise.all([
+  const [canManageUsers, canManageBranches] = await Promise.all([
     businessHasPermission(business, "users.view"),
     businessHasPermission(business, "locations.manage"),
-    businessHasPermission(business, "business.update"),
   ]);
 
   const settingsItems: SettingItem[] = [
@@ -143,42 +133,8 @@ export default async function SettingsPage() {
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="grid divide-y divide-slate-100 lg:grid-cols-[2.2fr_repeat(2,minmax(0,0.85fr))] lg:divide-x lg:divide-y-0 dark:divide-slate-800">
-          {canUpdateBusiness ? <Link
-            href="/dashboard/settings/business"
-            aria-label={`Manage ${business.name} store URL and business mode`}
-            className="group flex min-w-0 items-center gap-4 p-5 transition hover:bg-blue-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:p-6 dark:hover:bg-blue-950/20"
-          >
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 transition group-hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:group-hover:bg-blue-900/60">
-              <Store size={27} strokeWidth={2.1} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="truncate text-lg font-bold text-slate-950 dark:text-white">
-                {business.name}
-              </h2>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-                <span className="text-slate-500 dark:text-slate-400">Business mode:</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-100">
-                  {businessType}
-                </span>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  System Online
-                </span>
-                <span className="text-slate-300 dark:text-slate-600">|</span>
-                <span className="text-slate-400">All systems operational</span>
-              </div>
-              <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
-                Modern POS for growing businesses
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-1 text-xs font-semibold text-blue-600 opacity-80 transition group-hover:translate-x-0.5 group-hover:opacity-100 dark:text-blue-300">
-              <span className="hidden sm:inline">Change URL & mode</span>
-              <ChevronRight size={17} />
-            </div>
-          </Link> : null}
+        <div className="grid divide-y divide-slate-100 sm:grid-cols-2 lg:divide-x lg:divide-y-0 dark:divide-slate-800">
+
 
           <SummaryMetric
             icon={Building2}

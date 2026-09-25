@@ -50,7 +50,7 @@ export async function reviewBusinessChangePayment(
     const { data: order, error: orderError } = await supabaseAdmin
       .from("business_change_orders")
       .select(
-        "id,business_id,requested_by_user_id,status,payment_note,proof_bucket,proof_path,total_amount,currency,change_url,change_business_mode,old_slug,requested_slug,old_business_type,requested_business_type",
+        "id,business_id,credit_purchase,requested_by_user_id,status,payment_note,proof_bucket,proof_path,total_amount,currency,change_url,change_business_mode,old_slug,requested_slug,old_business_type,requested_business_type",
       )
       .eq("id", orderId)
       .maybeSingle();
@@ -63,10 +63,10 @@ export async function reviewBusinessChangePayment(
       throw new Error("Payment request was not found.");
     }
 
-    if (order.status === "applied" && decision === "approve") {
+    if (["applied","paid"].includes(order.status) && decision === "approve") {
       return {
         success: true,
-        message: "This payment was already approved and the business changes are already applied.",
+        message: "This payment was already approved.",
         reviewedAt: Date.now(),
       };
     }
@@ -143,11 +143,11 @@ export async function reviewBusinessChangePayment(
     if (order.requested_by_user_id) {
       const notificationTitle =
         decision === "approve"
-          ? "Business change approved"
+          ? order.credit_purchase ? "Business change credits available" : "Business change approved"
           : "Business change payment rejected";
       const notificationMessage =
         decision === "approve"
-          ? "Your payment was approved and the requested TENH POS business changes were applied."
+          ? order.credit_purchase ? "Your payment was approved. Purchased change credits are available in Business Details and never expire." : "Your payment was approved and the requested TENH POS business changes were applied."
           : reviewNote;
 
       const { error: notificationError } = await supabaseAdmin

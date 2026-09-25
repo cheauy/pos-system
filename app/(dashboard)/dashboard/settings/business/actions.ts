@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
@@ -11,8 +12,9 @@ import type { ProductMode } from "@/lib/business/types";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getStoreSlugAvailability } from "@/lib/tenancy/store-slug-availability";
+import { getManualPaymentConfig } from "@/lib/subscriptions/manual-bank";
+import { cancelSubscriptionPaywayCheckout } from "@/lib/payway/server";
 
-const CHANGE_PRICE_USD = 5;
 const BUSINESS_CHANGE_PROOF_BUCKET = "tenh-pos-business-change-proofs";
 const MAX_PROOF_BYTES = 10 * 1024 * 1024;
 const ALLOWED_PROOF_TYPES = new Set([
@@ -259,6 +261,11 @@ async function createChangeOrderForRequestedState({
     redirect("/dashboard/settings/business?included=1");
   }
 
+  const manual=getManualPaymentConfig();
+  if(manual.enabled){
+    const {error}=await supabaseAdmin.from("business_change_orders").update({manual_bank_name:manual.bankName,manual_account_name:manual.accountName,manual_account_number:manual.accountNumber,manual_qr_image_url:manual.qrImageUrl}).eq("id",order.order_id).eq("business_id",business.id).eq("status","pending_payment");
+    if(error)throw new Error("Unable to prepare bank details. Please try again.");
+  }
   redirect(`/dashboard/settings/business/payment/${order.order_id}`);
 }
 
@@ -278,6 +285,11 @@ export async function createBusinessChangeOrder(formData: FormData) {
     rawSubdomain,
     requestedBusinessMode,
   });
+}
+
+export async function submitBusinessDetails(_previous:{error:string},formData:FormData):Promise<{error:string}>{
+  try{await createBusinessChangeOrder(formData);return {error:""};}
+  catch(error){if(isRedirectError(error))throw error;return {error:error instanceof Error?error.message:"Unable to save changes. Please try again."};}
 }
 
 // Compatibility guard for an older product-mode form that may still exist in
@@ -336,7 +348,7 @@ export async function submitBusinessChangePaymentReference(formData: FormData): 
   }
 
   const orderId = formData.get("orderId");
-  const paymentReference = formData.get("paymentReference");
+  const paymentReference = `manual-proof:${orderId}`;
   const paymentNote = formData.get("paymentNote");
   const proofValue = formData.get("paymentProof");
   const proofFile =
@@ -356,15 +368,14 @@ export async function submitBusinessChangePaymentReference(formData: FormData): 
 
   if (
     typeof paymentNote !== "string" ||
-    paymentNote.trim().length < 2 ||
     paymentNote.trim().length > 1000
   ) {
-    return { success: false, field: "paymentNote", message: "Add a payment note between 2 and 1,000 characters before submitting for review." };
+    return { success: false, field: "paymentNote", message: "Payment note must be 1,000 characters or fewer." };
   }
 
   const { data: order, error: orderError } = await supabaseAdmin
     .from("business_change_orders")
-    .select("id,status,proof_bucket,proof_path,proof_file_name")
+    .select("id,status,proof_bucket,proof_path,proof_file_name,payway_tran_id,payment_provider,manual_bank_name")
     .eq("id", orderId)
     .eq("business_id", business.id)
     .maybeSingle();
@@ -376,6 +387,8 @@ export async function submitBusinessChangePaymentReference(formData: FormData): 
   if (!order) {
     return { success: false, message: "Change order was not found." };
   }
+  if(order.payway_tran_id || order.payment_provider==='aba_payway')return {success:false,message:"ABA PayWay has already started. Complete or safely cancel that checkout first."};
+  if(!order.manual_bank_name && !getManualPaymentConfig().enabled)return {success:false,message:"Manual payment is unavailable."};
 
   if (!["pending_payment", "payment_submitted"].includes(order.status)) {
     return { success: false, message: "This change order is no longer waiting for payment." };
@@ -425,7 +438,8 @@ export async function submitBusinessChangePaymentReference(formData: FormData): 
 
   const updatePayload: Record<string, unknown> = {
     payment_reference: paymentReference.trim(),
-    payment_note: paymentNote.trim(),
+    payment_note: paymentNote.trim() || "Payment receipt submitted for review",
+    payment_method: "manual",
     status: "payment_submitted",
     updated_at: new Date().toISOString(),
   };
@@ -439,13 +453,17 @@ export async function submitBusinessChangePaymentReference(formData: FormData): 
     updatePayload.proof_uploaded_at = new Date().toISOString();
   }
 
-  const { error } = await supabaseAdmin
+  const { data: saved, error } = await supabaseAdmin
     .from("business_change_orders")
     .update(updatePayload)
     .eq("id", order.id)
-    .eq("business_id", business.id);
+    .eq("business_id", business.id)
+    .in("status",["pending_payment","payment_submitted"])
+    .is("payway_tran_id",null)
+    .is("payment_provider",null)
+    .select("id").maybeSingle();
 
-  if (error) {
+  if (error || !saved) {
     if (uploadedProofPath) {
       await supabaseAdmin.storage
         .from(BUSINESS_CHANGE_PROOF_BUCKET)
@@ -489,5 +507,15 @@ export async function submitBusinessChangePaymentReference(formData: FormData): 
 
   revalidatePath(`/dashboard/settings/business/payment/${order.id}`);
   revalidatePath("/super-admin/manual-payments");
-  return { success: true, message: "Payment details submitted for review. Your business mode will change after payment verification." };
+  return { success: true, message: "Receipt submitted. Purchased credits become available after payment approval." };
+}
+
+export async function cancelBusinessChangeCheckout(formData:FormData){
+  const business=await requirePermission("business.update");
+  if(business.role!=="owner")throw new Error("Only the owner can cancel checkout.");
+  const id=String(formData.get("orderId")??"");
+  const result=await cancelSubscriptionPaywayCheckout({orderId:id,businessId:business.id,kind:"business_change"});
+  if(result.state==="provider_close_unavailable")throw new Error(result.message);
+  revalidatePath(`/dashboard/settings/business/payment/${id}`);
+  if(result.state!=="approved")redirect("/dashboard/settings/business");
 }

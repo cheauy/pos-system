@@ -35,7 +35,7 @@ export default function CustomPlanDialog(props: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [users, setUsers] = useState(props.users);
   const [branches, setBranches] = useState(props.branches);
-  const [months, setMonths] = useState<UpgradeTermMonths>(props.months);
+  const [months, setMonths] = useState<UpgradeTermMonths>(props.mode === "upgrade" ? 0 : props.months);
   const pricingMonths: SubscriptionTermMonths = months === 0 ? 1 : months;
   const price = promotionPrice(calculateCustomSubscriptionPrice(users, branches, pricingMonths),props.promotions??[],"custom",pricingMonths);
   const matchedPlan = price.matchedPlanKey ? subscriptionPlans[price.matchedPlanKey] : null;
@@ -61,7 +61,7 @@ export default function CustomPlanDialog(props: Props) {
     };
   }, [months, price.monthlyPrice, price.total, props.currentExpiresAt, props.currentMonthlyPrice, props.pricePreviewAt, upgradeMode]);
 
-  const noUpgradeSelected = upgradeMode && users === props.minimumUsers && branches === props.minimumBranches;
+  const noUpgradeSelected = upgradeMode && months === 0 && users === props.minimumUsers && branches === props.minimumBranches;
 
   useEffect(() => {
     const element = dialog.current;
@@ -91,7 +91,7 @@ export default function CustomPlanDialog(props: Props) {
             </h2>
             <p id="custom-plan-description" className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               {upgradeMode
-                ? "Increase users or branches. You can keep the current expiry or add more duration on the payment page."
+                ? "Choose users, branches and duration. You can also change duration at checkout."
                 : "Choose the users and branches your business needs."}
             </p>
           </div>
@@ -125,10 +125,12 @@ export default function CustomPlanDialog(props: Props) {
 
         {upgradeMode ? (
           <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
-            <p className="font-extrabold">Duration is chosen at payment</p>
-            <p className="mt-1">
-              Continue with the capacity upgrade first. On the payment page you can choose Keep current, +1 month, +3 months, +6 months, or +1 year.
-            </p>
+            <label htmlFor="custom-upgrade-duration" className="font-semibold">Duration</label>
+            <select id="custom-upgrade-duration" value={months} onChange={event=>setMonths(Number(event.target.value) as UpgradeTermMonths)} disabled={props.disabled} className="mt-2 w-full rounded-xl border border-blue-200 bg-white px-3 py-3 text-sm font-medium text-slate-900 focus:outline-2 focus:outline-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+              <option value={0}>Keep current expiry</option>
+              {subscriptionTerms.map(term=><option key={term.months} value={term.months}>Add {term.months===12?'1 year':`${term.months} ${term.months===1?'month':'months'}`}</option>)}
+            </select>
+            <p className="mt-2 text-xs">You can change this again at checkout before payment starts.</p>
             {props.remainingAccessDays && props.remainingAccessDays > 0 ? (
               <p className="mt-2 text-xs font-semibold">
                 Your current {props.remainingAccessDays} paid {props.remainingAccessDays === 1 ? "day" : "days"} stay protected.
@@ -189,9 +191,10 @@ export default function CustomPlanDialog(props: Props) {
           {upgradeMode && upgradeMath ? (
             <>
               <div className="flex justify-between gap-4"><span>Capacity upgrade for remaining paid time</span><span>${upgradeMath.capacityProration.toFixed(2)}</span></div>
-              <div className="flex justify-between gap-4"><span>Optional duration</span><span>Choose at payment</span></div>
-              <div className="flex justify-between border-t border-blue-200 pt-3 text-lg font-bold dark:border-blue-900"><span>Capacity due now</span><span>${upgradeMath.capacityProration.toFixed(2)}</span></div>
-              <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">Your existing paid subscription is not billed again. Any duration you add on the payment page is added after the current expiry.</p>
+              <div className="flex justify-between gap-4"><span>{months === 0 ? 'Keep current expiry' : `Added duration (${months} ${months === 1 ? 'month' : 'months'})`}</span><span>${upgradeMath.extensionTotal.toFixed(2)}</span></div>
+              {months!==0&&price.discountAmount>0&&<p className="text-xs text-emerald-700 dark:text-emerald-400">Includes {price.discountPercent}% off the added duration.</p>}
+              <div className="flex justify-between border-t border-blue-200 pt-3 text-lg font-bold dark:border-blue-900"><span>Total due now</span><span>${upgradeMath.total.toFixed(2)}</span></div>
+              <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">Your existing paid time stays protected. Added duration starts after the current expiry.</p>
             </>
           ) : (
             <div className="flex justify-between text-lg font-bold"><span>Total for {months} {months === 1 ? "month" : "months"}</span><span>${price.total.toFixed(2)}</span></div>
@@ -199,7 +202,7 @@ export default function CustomPlanDialog(props: Props) {
         </div>
         <div className="flex gap-3">
           <button type="button" onClick={props.onClose} className="rounded-xl border border-slate-200 px-5 py-3 font-semibold dark:border-slate-700">Cancel</button>
-          <button type="button" disabled={props.disabled || noUpgradeSelected} onClick={() => props.onApply(users, branches, upgradeMode ? 0 : months)} className="flex-1 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Continue to payment</button>
+          <button type="button" disabled={props.disabled || noUpgradeSelected} onClick={() => props.onApply(users, branches, months)} className="flex-1 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Continue to payment</button>
         </div>
       </div>
     </dialog>

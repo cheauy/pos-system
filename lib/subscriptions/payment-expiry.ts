@@ -80,6 +80,9 @@ export async function expireSubscriptionPaymentRequestSafely(args: {
       if (result.state === "approved") {
         return { state: "approved" as const, orderId: order.id };
       }
+      if (result.state === "provider_close_unavailable") {
+        return { state: "verification_required" as const, orderId: order.id, message: result.message };
+      }
       return { state: "expired" as const, orderId: order.id };
     } catch (paymentError) {
       // Do not mark an external payment expired when PayWay's state is

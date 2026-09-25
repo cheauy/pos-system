@@ -2,6 +2,7 @@
 
 import { useRef, useState, type FormEvent } from "react";
 import { RefreshCw } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { submitBusinessChangePaymentReference, type BusinessChangePaymentResult } from "../../actions";
 
 type Props = {
@@ -13,7 +14,8 @@ type Props = {
   submitted: boolean;
 };
 
-export default function BusinessChangePaymentForm({ orderId, paymentReference, paymentNote, hasProof, proofFileName, submitted }: Props) {
+export default function BusinessChangePaymentForm({ orderId, paymentNote, hasProof, proofFileName, submitted }: Props) {
+  const router=useRouter();
   const [result, setResult] = useState<BusinessChangePaymentResult | null>(null);
   const [pending, setPending] = useState(false);
   const submitting = useRef(false);
@@ -34,6 +36,7 @@ export default function BusinessChangePaymentForm({ orderId, paymentReference, p
     try {
       const response = await submitBusinessChangePaymentReference(data);
       setResult(response);
+      if(response.success)router.refresh();
       if (response.field) {
         const field = form.elements.namedItem(response.field);
         if (field instanceof HTMLElement) field.focus();
@@ -52,28 +55,21 @@ export default function BusinessChangePaymentForm({ orderId, paymentReference, p
       <input type="hidden" name="orderId" value={orderId} />
 
       <div>
-        <label htmlFor="paymentReference" className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Payment / transaction reference *</label>
-        <input id="paymentReference" name="paymentReference" type="text" required minLength={2} maxLength={120} defaultValue={paymentReference ?? ""} placeholder="Reference from your payment receipt" aria-invalid={result?.field === "paymentReference"} aria-describedby={result?.field === "paymentReference" ? "payment-result" : "payment-reference-help"} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
-        <p id="payment-reference-help" className="mt-2 text-xs text-slate-500">Enter the transaction ID or reference shown on your payment receipt.</p>
-      </div>
-      <div>
         <label
           htmlFor="paymentNote"
           className="block text-sm font-semibold text-slate-700 dark:text-slate-300"
         >
-          Note *
+          Additional note (optional)
         </label>
         <textarea
           id="paymentNote"
           name="paymentNote"
           aria-invalid={result?.field === "paymentNote"}
           aria-describedby={result?.field === "paymentNote" ? "payment-result" : undefined}
-          required
-          minLength={2}
           maxLength={1000}
           rows={4}
           defaultValue={paymentNote ?? ""}
-          placeholder="Add a note for TENH payment review"
+          placeholder="Optional transfer details for the TENH team"
           className="mt-2 w-full resize-none rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-blue-950/50"
         />
       </div>

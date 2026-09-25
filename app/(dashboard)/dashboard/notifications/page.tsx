@@ -9,10 +9,11 @@ const tone = { info:"text-blue-600 bg-blue-50", success:"text-emerald-600 bg-eme
 export default async function NotificationsPage(){
  const business=await getCurrentBusiness(); const supabase=await createClient();
  await supabase.rpc("refresh_business_notifications",{p_business_id:business.id});
- const [{data:items,error},{data:reads}]=await Promise.all([
-  supabase.from("business_notifications").select("id,notification_type,severity,title,message,href,occurred_at,is_active").eq("business_id",business.id).order("occurred_at",{ascending:false}).limit(100),
-  supabase.from("business_notification_reads").select("notification_id")
- ]);
+ const {data:items,error:itemsError}=await supabase.from("business_notifications").select("id,notification_type,severity,title,message,href,occurred_at,is_active").eq("business_id",business.id).order("occurred_at",{ascending:false}).limit(100);
+ const {data:reads,error:readsError}=items?.length
+  ? await supabase.from("business_notification_reads").select("notification_id").in("notification_id",items.map(item=>item.id))
+  : {data:[],error:null};
+ const error=itemsError??readsError;
  const read=new Set((reads??[]).map((r:{notification_id:string})=>r.notification_id));
 
  return <main className="mx-auto max-w-5xl"><div className="mb-7"><h1 className="flex items-center gap-3 text-3xl font-bold"><Bell/>Notification Center</h1><p className="mt-1 text-slate-500">Orders, payments, inventory, credit, transfers and register alerts in one place.</p></div>

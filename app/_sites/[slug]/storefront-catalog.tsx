@@ -72,15 +72,15 @@ export default function StorefrontCatalog({ categories, products, settings, onAd
     <div className="catalog-categories"><div className="category-pills" role="group" aria-label="Product categories"><button type="button" aria-pressed={!newOnly && category === "all"} onClick={() => { setNewOnly(false); setCategory("all"); setLimit(24); }}><Grid2X2 size={14} />{t("All products")}</button>{products.some(product => product.isNewArrival) && <button type="button" aria-pressed={newOnly} onClick={() => { setNewOnly(!newOnly); setCategory("all"); setLimit(24); }}><Sparkles size={14} />{t("New arrivals")}</button>}{[...categories.filter(row => products.some(product => product.categoryId === row.id)), ...(products.some(product => !product.categoryId) ? [{ id: "other", name: t("Other") }] : [])].map(row => <button key={row.id} type="button" aria-pressed={!newOnly && row.id === category} onClick={() => { setNewOnly(false); setCategory(row.id); setLimit(24); }}>{row.id === "other" ? t("Other") : row.name}</button>)}</div><p className="catalog-count" aria-live="polite">{filtered.length} {t(filtered.length === 1 ? t("product") : t("products"))}</p></div>
     {!settings.orderingEnabled && <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Browse our collection. Online ordering is currently paused.</p>}
     <div className={`store-product-grid ${view === "list" ? "list-view" : ""}`}>
-      {filtered.slice(0, limit).map(product => <CatalogCard key={product.key} product={product} categoryName={categoryNames.get(product.categoryId ?? "") ?? t("Collection")} settings={settings} onAdd={variantId => onAdd(product, variantId)} onQuickView={variantId => onQuickView?.(product, variantId)} />)}
+      {filtered.slice(0, limit).map((product, index) => <CatalogCard eager={index < 4} key={product.key} product={product} categoryName={categoryNames.get(product.categoryId ?? "") ?? t("Collection")} settings={settings} onAdd={variantId => onAdd(product, variantId)} onQuickView={variantId => onQuickView?.(product, variantId)} />)}
     </div>
     {!filtered.length && <div className="catalog-empty"><Package size={36} /><h2>{products.length ? t("No matching products") : t("Our collection is coming soon")}</h2><p>{products.length ? t("Try another search, category, or price range.") : t("Check back soon for the latest arrivals.")}</p>{products.length > 0 && <button type="button" onClick={clearFilters}>{t("Clear filters")}</button>}</div>}
     {filtered.length > limit && <button type="button" className="load-products" onClick={() => setLimit(limit + 24)}>{t("Load more products")} <ChevronDown size={15} /></button>}
   </section>;
 }
 
-function CatalogCard({ product, categoryName, settings, onAdd, onQuickView }: {
-  product: StorefrontCatalogProduct; categoryName: string; settings: CatalogSettings;
+function CatalogCard({ product, categoryName, settings, onAdd, onQuickView, eager }: {
+  product: StorefrontCatalogProduct; categoryName: string; settings: CatalogSettings; eager: boolean;
   onAdd: (variantId?: string) => void;
   onQuickView: (variantId?: string) => void;
 }) {
@@ -106,7 +106,7 @@ function CatalogCard({ product, categoryName, settings, onAdd, onQuickView }: {
   );
   const stock = matches.reduce((sum, row) => sum + Math.max(0, row.stockQuantity), 0);
   return <article className="store-product-card">
-    <div className="product-photo"><div className="product-badges">{product.isBestseller && <span className="product-bestseller-badge"><Award size={12} />{t("Bestseller")}</span>}{product.isNewArrival && <span className="product-new-badge">{t("New arrival")}</span>}</div>{image ? <button type="button" className="product-photo-open" aria-label={`${t("View full screen")} ${product.name}`} onClick={() => setImageOpen(true)}><ProductPhoto src={image} alt={product.name} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px" /></button> : <div className="product-photo-placeholder"><ShoppingCart size={32} /></div>}
+    <div className="product-photo"><div className="product-badges">{product.isBestseller && <span className="product-bestseller-badge"><Award size={12} />{t("Bestseller")}</span>}{product.isNewArrival && <span className="product-new-badge">{t("New arrival")}</span>}</div>{image ? <button type="button" className="product-photo-open" aria-label={`${t("View full screen")} ${product.name}`} onClick={() => setImageOpen(true)}><ProductPhoto loading={eager ? 'eager' : 'lazy'} src={image} alt={product.name} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px" /></button> : <div className="product-photo-placeholder"><ShoppingCart size={32} /></div>}
 
     </div>
     <div className="product-card-body"><h3 title={product.name}>{product.name}</h3><p className="product-category">{categoryName}</p>

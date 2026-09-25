@@ -7,8 +7,10 @@ import { createClient } from "@/lib/supabase/client";
 
 export default function ManualPaymentStatusWatcher({
   orderId,
+  kind='subscription',
 }: {
   orderId: string;
+  kind?: 'subscription'|'business_change';
 }) {
   const router = useRouter();
 
@@ -29,7 +31,7 @@ export default function ManualPaymentStatusWatcher({
         {
           event: "UPDATE",
           schema: "public",
-          table: "subscription_orders",
+          table: kind==='business_change'?'business_change_orders':"subscription_orders",
           filter: `id=eq.${orderId}`,
         },
         refresh,
@@ -42,7 +44,7 @@ export default function ManualPaymentStatusWatcher({
       window.clearInterval(timer);
       void supabase.removeChannel(channel);
     };
-  }, [orderId, router]);
+  }, [orderId, router, kind]);
 
   return null;
 }

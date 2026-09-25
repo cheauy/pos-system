@@ -53,6 +53,7 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
+import { markNotificationsRead } from "./notifications/read-actions";
 import { getRootUrl } from "@/lib/tenancy/domain";
 import type { Permission } from "@/lib/auth/permissions";
 import { usePosNavigationLock } from './pos-lock-provider';
@@ -83,6 +84,7 @@ type NotificationRow = {
   message: string;
   href: string | null;
   occurred_at: string;
+  is_active?: boolean;
 };
 
 type NotificationPrefs = {
@@ -145,9 +147,11 @@ const menuGroups: MenuGroup[] = [
   {
     title: "Subscription",
     icon: CreditCard,
-    href: "/dashboard/settings/subscription",
     permission: "business.update",
-    items: [],
+    items: [
+      { name: "Subscription & Plan", href: "/dashboard/settings/subscription", permission: "business.update", icon: CreditCard },
+      { name: "Business Details", href: "/dashboard/settings/business", permission: "business.update", icon: Store },
+    ],
   },
   {
     title: "Settings",
@@ -546,6 +550,7 @@ function IconRail({
                 }`}
               >
                 <GroupIcon size={20} strokeWidth={2} />
+                {group.title === "Subscription" && subscriptionUnreadCount > 0 && <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{subscriptionUnreadCount}</span>}
                 {blocked&&<LockKeyhole size={11} className="absolute bottom-1 right-1"/>}
                 {routeActive && !panelOpen ? (
                   <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-blue-600 ring-2 ring-white dark:ring-slate-950" />
@@ -1011,6 +1016,7 @@ function NotificationPanel({
         </div>
       </div>
 
+      {notifications.readError && <p role="alert" className="px-4 py-2 text-sm text-red-600">{notifications.readError}</p>}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {items.length === 0 ? (
           <div className="px-6 py-10 text-center">
@@ -1187,7 +1193,9 @@ function useBusinessNotifications(businessId: string, branchId: string) {
     sound_enabled: true,
   });
   const prefsRef = useRef(prefs);
-  const previousUnread = useRef(0);
+  const seenIds = useRef<Set<string> | null>(null);
+  const loadVersion = useRef(0);
+  const [readError, setReadError] = useState("");
   const [toast, setToast] = useState<NotificationRow | null>(null);
   const [supabase] = useState(() => createClient());
 
@@ -1197,25 +1205,40 @@ function useBusinessNotifications(businessId: string, branchId: string) {
 
   const load = useCallback(
     async (announce = false) => {
+      const version = ++loadVersion.current;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      if (version !== loadVersion.current) return;
+      if (seenIds.current === null) {
+        setItems([]);
+        setReadIds(new Set());
+        setReadError("");
+        setToast(null);
+      }
       await supabase.rpc("refresh_business_notifications", {
         p_business_id: businessId,
       });
 
       const [
-        { data: notifications },
-        { data: reads },
+        { data: notifications, error: notificationsError },
         { data: prefData },
       ] = await Promise.all([
         supabase.rpc("tenh_branch_notifications", {p_business:businessId,p_branch:branchId}),
-        supabase.from("business_notification_reads").select("notification_id"),
         supabase
           .from("business_notification_preferences")
           .select("browser_enabled,sound_enabled")
           .eq("business_id", businessId)
+          .eq("user_id", user.id)
           .maybeSingle(),
       ]);
 
-      const rows = (notifications ?? []) as NotificationRow[];
+      if (version !== loadVersion.current || notificationsError) return;
+      const rows = ((notifications ?? []) as NotificationRow[]).filter(item => item.is_active !== false);
+      const { data: reads, error: readsError } = rows.length
+        ? await supabase.from("business_notification_reads").select("notification_id").eq("user_id", user.id).in("notification_id", rows.map(item => item.id))
+        : { data: [], error: null };
+      // Failed/stale reads must never turn previously read history into unread alerts.
+      if (version !== loadVersion.current || readsError) return;
       const read = new Set(
         (reads ?? []).map(
           (row: { notification_id: string }) => row.notification_id,
@@ -1227,10 +1250,10 @@ function useBusinessNotifications(businessId: string, branchId: string) {
       setReadIds(read);
       setPrefs(nextPrefs);
 
-      const unread = rows.filter((item) => !read.has(item.id)).length;
+      const newest = seenIds.current && rows.find(item => !read.has(item.id) && !seenIds.current!.has(item.id));
+      seenIds.current = new Set([...(seenIds.current ?? []), ...rows.map(item => item.id)]);
 
-      if (announce && unread > previousUnread.current) {
-        const newest = rows.find((item) => !read.has(item.id));
+      if (announce && newest) {
 
         if (newest && isSubscriptionPaymentNotification(newest)) {
           setToast(newest);
@@ -1266,16 +1289,20 @@ function useBusinessNotifications(businessId: string, branchId: string) {
         }
       }
 
-      previousUnread.current = unread;
     },
     [businessId, branchId, supabase],
   );
 
   useEffect(() => {
+    const versionRef = loadVersion;
+    seenIds.current = null;
     void load(false);
+    const onRead = () => void load(false);
+    window.addEventListener("notifications-read", onRead);
     const timer = window.setInterval(() => void load(true), 30000);
     const channel = supabase
       .channel(`sidebar-notifications:${businessId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "business_notification_reads" }, onRead)
       .on(
         "postgres_changes",
         {
@@ -1359,6 +1386,8 @@ function useBusinessNotifications(businessId: string, branchId: string) {
       .subscribe();
 
     return () => {
+      ++versionRef.current;
+      window.removeEventListener("notifications-read", onRead);
       window.clearInterval(timer);
       void supabase.removeChannel(channel);
     };
@@ -1376,33 +1405,23 @@ function useBusinessNotifications(businessId: string, branchId: string) {
   ).length;
 
   const markRead = async (id: string) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    await supabase.from("business_notification_reads").upsert({
-      notification_id: id,
-      user_id: user.id,
-      read_at: new Date().toISOString(),
-    });
-    setReadIds((current) => new Set(current).add(id));
+    await saveReads([id]);
   };
 
   const markAllRead = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user || items.length === 0) return;
+    await saveReads(items.filter(item => !readIds.has(item.id)).map(item => item.id));
+  };
 
-    await supabase.from("business_notification_reads").upsert(
-      items.map((item) => ({
-        notification_id: item.id,
-        user_id: user.id,
-        read_at: new Date().toISOString(),
-      })),
-    );
-    setReadIds(new Set(items.map((item) => item.id)));
+  const saveReads = async (ids: string[]) => {
+    try {
+      await markNotificationsRead(ids);
+      ++loadVersion.current;
+      setReadIds(current => new Set([...current, ...ids]));
+      setReadError("");
+      window.dispatchEvent(new Event("notifications-read"));
+    } catch {
+      setReadError("Unable to mark notifications as read. Please try again.");
+    }
   };
 
   const toggleSound = async () => {
@@ -1444,6 +1463,7 @@ function useBusinessNotifications(businessId: string, branchId: string) {
 
   return {
     items,
+    readError,
     readIds,
     prefs,
     unread,
@@ -1521,7 +1541,6 @@ function isDirectRailRoute(pathname: string) {
   return (
     pathname === "/dashboard" ||
     isSearchRoute(pathname) ||
-    isSubscriptionRoute(pathname) ||
     pathname === "/dashboard/settings/profile" ||
     pathname.startsWith("/dashboard/settings/profile/") ||
     isNotificationsRoute(pathname)
@@ -1541,8 +1560,7 @@ function isItemActive(pathname: string, href: string) {
     return (
       pathname === href ||
       pathname.startsWith("/dashboard/settings/system") ||
-      pathname.startsWith("/dashboard/settings/security") ||
-      pathname.startsWith("/dashboard/settings/business")
+      pathname.startsWith("/dashboard/settings/security")
     );
   }
 

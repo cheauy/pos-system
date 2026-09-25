@@ -43,6 +43,10 @@ const b='11111111-1111-4111-8111-111111111111',owner='22222222-2222-4222-8222-22
   const legacy=await quote();
   await db.exec(migration);
   await db.exec(migration);
+  const capacityMigration=fs.readFileSync('supabase/migrations/20260925001000_subscription_v7_deferred_capacity.sql','utf8');
+  await db.exec(capacityMigration);await db.exec(capacityMigration);
+  const durationMigration=fs.readFileSync('supabase/migrations/20260925002000_renewal_checkout_duration.sql','utf8');
+  await db.exec(durationMigration);await db.exec(durationMigration);
   await check('legacy checkout is unchanged and approves after promotions start',async()=>{await offer({percent:30});assert.equal(Number((await row(legacy)).total_amount),28.5);await submit(legacy);assert.equal((await approve(legacy)).status,'approved');});
   await check('all plans and terms use server-side percentage math',async()=>{
    await offer({percent:10});
@@ -96,6 +100,20 @@ const b='11111111-1111-4111-8111-111111111111',owner='22222222-2222-4222-8222-22
    await active();await offer({percent:20,newCustomer:false});const id=await quote();const order=await row(id);assert.equal(order.order_kind,'renewal');assert.equal(Number(order.total_amount),24);
    await submit(id);await approve(id);assert.equal((await row(id)).activated_at,null);assert.equal(Number((await db.query('select subscription_cycle_value from businesses')).rows[0].subscription_cycle_value),28.5);
   });
+  await check('duration-only renewal can change again at checkout without changing capacity or paid expiry',async()=>{
+   await active();await offer({plan:'solo',months:6,percent:20});
+   const id=await quote('solo',1);const original=await row(id);
+   for(const months of [3,6,12,1]){
+    await db.query('select * from update_pending_subscription_billing_term($1,$2,$3,$4)',[b,owner,id,months]);
+    const order=await row(id);const discount=months===6?20:months===12?10:months===3?5:0;
+    assert.equal(order.term_months,months);assert.equal(Number(order.total_amount),Number((10*months*(1-discount/100)).toFixed(2)));
+    assert.equal(new Date(order.effective_at).getTime(),new Date(original.effective_at).getTime());
+    assert.equal(order.requested_user_limit,original.requested_user_limit);assert.equal(order.requested_branch_limit,original.requested_branch_limit);
+   }
+   await db.exec('savepoint no_zero');await assert.rejects(db.query('select * from update_pending_subscription_billing_term($1,$2,$3,0)',[b,owner,id]),/Choose 1, 3, 6 or 12/);await db.exec('rollback to no_zero');
+   await db.query("update subscription_orders set payment_provider='aba_payway' where id=$1",[id]);
+   await assert.rejects(db.query('select * from update_pending_subscription_billing_term($1,$2,$3,3)',[b,owner,id]),/locked after payment/);
+  });
   await check('PayWay accepts the locked discounted amount after expiry and is idempotent',async()=>{
    await offer({percent:30});const id=await quote();await db.query("update subscription_orders set payment_provider='aba_payway',payway_tran_id='TEST',payway_started_at=now() where id=$1",[id]);
    await db.exec('update subscription_promotions set enabled=false');
@@ -115,6 +133,54 @@ const b='11111111-1111-4111-8111-111111111111',owner='22222222-2222-4222-8222-22
    assert.equal((await db.query("select has_table_privilege('authenticated','subscription_order_discounts','UPDATE') allowed")).rows[0].allowed,false);
    assert.equal((await db.query("select has_function_privilege('service_role','tenh_record_subscription_discount(uuid)','EXECUTE') allowed")).rows[0].allowed,false);
    await db.exec("set local test.auth_role='authenticated'");await assert.rejects(quote(),/Server access/);
+  });
+  await check('buying during trial preserves unused trial time and applies purchased capacity',async()=>{
+   await db.exec("update businesses set trial_expires_at=now()+interval '5 days',subscription_branch_limit=1");
+   const id=await quote('custom',1,5,2);const order=await row(id);
+   assert.equal(order.order_kind,'activation');assert.equal(Number(order.total_amount),38);
+   await submit(id);await approve(id);
+   const business=(await db.query('select * from businesses')).rows[0];
+   assert.equal(business.subscription_user_limit,5);assert.equal(business.subscription_branch_limit,2);
+   const expected=(await db.query("select now()+interval '1 month'+interval '5 days' expiry")).rows[0].expiry;
+   assert.ok(Math.abs(new Date(business.subscription_expires_at)-new Date(expected))<2000);
+  });
+  await check('capacity-only upgrade charges proration and preserves paid expiry exactly',async()=>{
+   await active();const before=(await db.query('select subscription_expires_at from businesses')).rows[0].subscription_expires_at;
+   const id=await quote('custom',0,5,2);const order=await row(id);
+   assert.equal(Number(order.term_price_amount),0);assert.equal(Number(order.total_amount),Number(order.upgrade_prorated_amount));
+   await submit(id);await approve(id);
+   const business=(await db.query('select * from businesses')).rows[0];
+   assert.equal(new Date(business.subscription_expires_at).getTime(),new Date(before).getTime());
+   assert.equal(business.subscription_user_limit,5);assert.equal(business.subscription_branch_limit,2);
+  });
+  await check('downgrade waits until expiry and applies lower user and branch allowances only when due',async()=>{
+   await active();await db.exec("update businesses set subscription_plan_key='custom',subscription_user_limit=10,subscription_branch_limit=3,subscription_monthly_price=78");
+   await db.query("insert into business_members(business_id,user_id,role,is_active,created_at) values($1,'44444444-4444-4444-8444-444444444444','staff',true,now())",[b]);
+   await db.query("insert into business_locations(business_id,name,is_default,is_active,created_at) values($1,'Extra',false,true,now())",[b]);
+   const id=await quote('solo',1,1,1);const order=await row(id);
+   assert.equal(order.order_kind,'renewal');assert.equal(Number(order.total_amount),10);
+   await submit(id);await approve(id);
+   let business=(await db.query('select * from businesses')).rows[0];
+   assert.equal(business.subscription_user_limit,10);assert.equal(business.subscription_branch_limit,3);
+   assert.equal((await db.query('select count(*)::int n from business_members where is_active')).rows[0].n,2);
+   assert.equal((await db.query('select count(*)::int n from business_locations where is_active')).rows[0].n,2);
+   assert.equal((await row(id)).activated_at,null);
+   await db.query("update subscription_orders set effective_at=now()-interval '1 second' where id=$1",[id]);
+   await db.query('select tenh_apply_subscription_order($1)',[id]);
+   business=(await db.query('select * from businesses')).rows[0];
+   assert.equal(business.subscription_user_limit,1);assert.equal(business.subscription_branch_limit,1);
+   assert.equal((await db.query('select count(*)::int n from business_members where is_active')).rows[0].n,1);
+   assert.equal((await db.query('select count(*)::int n from business_locations where is_active')).rows[0].n,1);
+   assert.equal((await db.query("select is_active from business_members where user_id=$1",[owner])).rows[0].is_active,true);
+   assert.equal((await db.query("select is_active from business_locations where is_default")).rows[0].is_active,true);
+   assert.equal((await db.query('select tenh_apply_subscription_order($1) result',[id])).rows[0].result.status,'already_applied');
+  });
+  await check('custom server pricing covers user and branch boundaries for every duration',async()=>{
+   for(const users of [1,2,5,6,10,11,500])for(const branches of [1,2,100])for(const months of [1,3,6,12]){
+    const monthly=(users<=5?10+(users-1)*2:users<=10?18+(users-5)*4:38+(users-10)*5)+(branches-1)*20;
+    const discount=({1:0,3:5,6:8,12:10})[months];const order=await row(await quote('custom',months,users,branches));
+    assert.equal(Number(order.monthly_price),monthly);assert.equal(Number(order.total_amount),Number((monthly*months*(1-discount/100)).toFixed(2)));
+   }
   });
   console.log(`${count} subscription promotion integration checks passed.`);
  }finally{await db.close();}

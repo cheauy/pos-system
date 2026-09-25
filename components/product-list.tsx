@@ -425,8 +425,8 @@ export default function ProductList({
         </div>
       ) : view === "grid" ? (
         <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
-          {pageRows.map((group) => (
-            <ProductCard key={group.key} group={group} onMenu={openActionMenu} isGeneralShop={isGeneralShop} isVariantMode={isVariantMode} />
+          {pageRows.map((group, index) => (
+            <ProductCard eager={index < 3} key={group.key} group={group} onMenu={openActionMenu} isGeneralShop={isGeneralShop} isVariantMode={isVariantMode} />
           ))}
         </div>
       ) : (
@@ -446,13 +446,13 @@ export default function ProductList({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {pageRows.map((group) => (
+              {pageRows.map((group, index) => (
                 <tr key={group.key} className="transition hover:bg-slate-50/70">
                   <td className="px-3 py-3"><input type="checkbox" aria-label={`Select ${group.name}`} /></td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-3">
                       {group.imageUrl ? (
-                        <ProductPhoto src={group.imageUrl} alt={group.name} sizes="56px" className="h-11 w-11 rounded-lg border border-slate-200 object-cover" />
+                        <ProductPhoto loading={index < 3 ? 'eager' : 'lazy'} src={group.imageUrl} alt={group.name} sizes="56px" className="h-11 w-11 rounded-lg border border-slate-200 object-cover" />
                       ) : (
                         <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 text-slate-400"><Package size={18} /></div>
                       )}
@@ -946,11 +946,13 @@ export default function ProductList({
 }
 
 function ProductCard({
+  eager,
   group,
   onMenu,
   isGeneralShop = false,
   isVariantMode = false,
 }: {
+  eager: boolean;
   group: ProductGroup;
   onMenu: (event: ReactMouseEvent<HTMLButtonElement>, group: ProductGroup) => void;
   isGeneralShop?: boolean;
@@ -960,7 +962,7 @@ function ProductCard({
     <div className="rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm">
       <div className="flex items-start gap-3">
         <Link href={`/dashboard/products/${group.representative.id}/edit`} className="flex min-w-0 flex-1 items-start gap-3">
-          {group.imageUrl ? <ProductPhoto src={group.imageUrl} alt={group.name} sizes="56px" className="h-14 w-14 rounded-xl border border-slate-200 object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><Package size={20} /></div>}
+          {group.imageUrl ? <ProductPhoto loading={eager ? 'eager' : 'lazy'} src={group.imageUrl} alt={group.name} sizes="56px" className="h-14 w-14 rounded-xl border border-slate-200 object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><Package size={20} /></div>}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-slate-900">{group.name}</p>
             <p className="mt-0.5 text-xs text-slate-400">{group.category}</p>

@@ -23,10 +23,10 @@ export function Modal({ title, children, onClose, wide = false, locked = false, 
   </dialog>;
 }
 
-export function ProductImage({ src, alt, className = '' }: { src: string | null; alt: string; className?: string }) {
+export function ProductImage({ src, alt, className = '', loading = 'lazy' }: { src: string | null; alt: string; className?: string; loading?: 'eager' | 'lazy' }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
-  return src && !failed ? <ProductPhoto className={className} src={src} alt={alt} sizes="(max-width: 640px) 45vw, 200px" onError={() => setFailed(true)} /> : <span className={`${s.imageFallback} ${className}`} role="img" aria-label={`${alt} — no image`}><Package size={32} /></span>;
+  return src && !failed ? <ProductPhoto loading={loading} className={className} src={src} alt={alt} sizes="(max-width: 640px) 45vw, 200px" onError={() => setFailed(true)} /> : <span className={`${s.imageFallback} ${className}`} role="img" aria-label={`${alt} — no image`}><Package size={32} /></span>;
 }
 
 type DetectorInstance = { detect: (video: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>> };
