@@ -8,8 +8,10 @@ import { loadShippingSettings } from "@/lib/receipts/shipping-design-store";
 import PrintButton from "@/components/print-button";
 import { ShippingLabel, ShippingPrintStyles } from "../../../shipping-labels/shipping-labels-client";
 import { loadDetailedOrder } from "../order-detail-data";
+import OrderPrintEmbedStyles from '@/components/order-print-embed-styles';
 
-export default async function OrderShippingLabelPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OrderShippingLabelPage({ params,searchParams }: { params: Promise<{ id: string }>;searchParams?:Promise<{preview?:string}> }) {
+  const embedded=(await searchParams)?.preview==='1';
   const business = await requirePermission("orders.view");
   const { id } = await params;
   const order = await loadDetailedOrder(business.id, id);
@@ -26,7 +28,8 @@ export default async function OrderShippingLabelPage({ params }: { params: Promi
   const size = ["80x50", "100x100", "100x150"].includes(settings.shipping_label_size ?? "") ? settings.shipping_label_size! : "100x150";
   const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers;
   const hasAddress = !!(order.guest_address || customer?.address)?.trim();
-  return <main className="mx-auto max-w-2xl rounded-xl bg-white p-6 text-black">
+  return <main id="order-print-preview" data-print-disabled={!hasAddress} className="mx-auto max-w-2xl rounded-xl bg-white p-6 text-black">
+    {embedded&&<OrderPrintEmbedStyles/>}
     <nav className="no-print flex flex-wrap items-center justify-between gap-3"><Link href={`/dashboard/orders/${encodeURIComponent(id)}`}>Back to order</Link><PrintButton label="Print Shipping label" selector="#shipping-label-print-area" disabled={!hasAddress}/></nav>
     <div className="no-print my-5 text-sm text-slate-600"><h1 className="font-bold text-black">Shipping label · {order.order_number}</h1><p>{size.replace("x", " × ")} mm. Select your installed printer, matching paper size, 100% scale, and turn off headers and footers in the print dialog.</p><Link className="underline" href="/dashboard/settings/printers">Printer Settings</Link>{!hasAddress && <p role="alert" className="mt-3 text-red-700">Add the customer&apos;s delivery address to the order before printing a shipping label.</p>}</div>
     <div id="shipping-label-print-area"><ShippingLabel order={{...order, payment_method: order.payment_method || "", order_items: order.order_items || []}} businessName={context.store.name} businessPhone={context.store.phone} businessAddress={context.store.address} size={size} settings={settings}/></div>

@@ -40,7 +40,7 @@ export function ShippingLabel({order,businessName,businessPhone,businessAddress,
    {settings.shipping_show_item_count!==false&&<div><span>Items</span><p className="font-bold">{qty}</p></div>}
    {settings.shipping_show_cod!==false&&<><div><span>Payment</span><p className="font-bold">{(order.payment_method||'').toUpperCase()}</p></div><div><span>Amount</span><p className="font-bold">${Number(order.total).toFixed(2)}</p></div></>}
   </div>
-  {settings.shipping_show_barcode!==false&&<div className={tight?"mt-1":"mt-6"}><svg viewBox={`0 0 ${data.width} 44`} className={`${compact?"h-5":"h-14"} w-full`} preserveAspectRatio="none">{data.bars.map((bar,index)=><rect key={index} x={bar.x} y="0" width={bar.width} height="44" fill="black"/>)}</svg><p className="text-center tracking-[.2em]">{data.text}</p></div>}
+  {settings.shipping_show_barcode!==false&&<div className={tight?"mt-1":"mt-6"}><svg shapeRendering="crispEdges" viewBox={`0 0 ${data.width} 44`} className={`${compact?"h-5":"h-14"} w-full`} preserveAspectRatio="none">{data.bars.map((bar,index)=><rect key={index} x={bar.x} y="0" width={bar.width} height="44" fill="black"/>)}</svg><p className="text-center tracking-[.2em]">{data.text}</p></div>}
  </article>;
 }
 export function ShippingPrintStyles({size}:{size:string}) {

@@ -89,6 +89,19 @@ body {
 }
 
 @media print {
+  .receipt, .barcode-label, .shipping-label {
+    background: #fff !important;
+    color: #000 !important;
+    opacity: 1 !important;
+    filter: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt *, .barcode-label *, .shipping-label * {
+    color: #000 !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
   @page {
     size: 80mm auto;
     margin: 4mm;
@@ -123,7 +136,7 @@ body {
     border: 0;
     border-radius: 0;
     box-shadow: none;
-    font-size: 11px;
+    font-size: calc(12px * var(--receipt-font-scale, 1));
   }
 
   .receipt h1 {

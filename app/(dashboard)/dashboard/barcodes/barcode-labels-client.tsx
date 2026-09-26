@@ -1,8 +1,10 @@
 "use client";
 import { printTextScale } from "@/lib/receipts/receipt-model";
+import { preparePrint } from '@/lib/printing/prepare-print';
 
 import {
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -262,9 +264,14 @@ export default function BarcodeLabelsClient({
     setPriceFilter("all");
   }
 
-  function printLabels() {
-    if (!selectedProducts.length) return;
-    window.print();
+  const printLock=useRef(false);
+  const [printing,setPrinting]=useState(false),[printError,setPrintError]=useState('');
+  async function printLabels() {
+    if (!selectedProducts.length||printLock.current) return;
+    printLock.current=true;setPrinting(true);setPrintError('');
+    try{await preparePrint(document,'#barcode-print-area');window.print();}
+    catch(error){setPrintError(error instanceof Error?error.message:'Could not prepare labels for printing.');}
+    finally{printLock.current=false;setPrinting(false);}
   }
 
   const printedLabels = selectedProducts.flatMap((product) => {
@@ -290,7 +297,7 @@ export default function BarcodeLabelsClient({
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={!selectedProducts.length}
+            disabled={!selectedProducts.length||printing}
             onClick={printLabels}
             className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -720,7 +727,7 @@ export default function BarcodeLabelsClient({
 
             <button
               type="button"
-              disabled={!selectedProducts.length}
+              disabled={!selectedProducts.length||printing}
               onClick={printLabels}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -729,7 +736,7 @@ export default function BarcodeLabelsClient({
             </button>
             <button
               type="button"
-              disabled={!selectedProducts.length}
+              disabled={!selectedProducts.length||printing}
               onClick={printLabels}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 font-semibold text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -740,6 +747,8 @@ export default function BarcodeLabelsClient({
         </aside>
       </div>
 
+      {printError&&<p role="alert" className="no-print rounded-xl bg-red-50 p-3 text-sm text-red-700">{printError}</p>}
+      {printing&&<p role="status" className="no-print text-sm text-slate-600">Preparing images and fonts…</p>}
       <div id="barcode-print-area" className="hidden print:block">
         {printedLabels.map(({ product, key }) => (
           <LabelCard fontSize={settings.font_size} density={settings.density}
@@ -852,7 +861,7 @@ export function LabelCard({
       {details}
       {split && elements.price && <div style={{borderLeft:"1px solid black",paddingLeft:5*scale,flexShrink:0}}><div style={{fontSize:7*textScale,letterSpacing:1}}>PRICE</div><div style={{fontSize:20*textScale,fontWeight:900,lineHeight:1.2}}>{money(product.selling_price)}</div></div>}
     </div>
-    {elements.barcode && <div style={{textAlign:"center",padding:"0 2mm"}}><svg viewBox={`0 0 ${data.width} 44`} style={{width:"100%",height:`${(split?8:6)*scale}mm`,display:"block"}} preserveAspectRatio="none" aria-label={`Barcode ${data.text}`}>{data.bars.map((bar,index)=><rect key={index} x={bar.x} y="0" width={bar.width} height="44" fill="black"/>)}</svg><div style={{fontSize:8*textScale,letterSpacing:1,lineHeight:1.1}}>{data.text}</div></div>}
+    {elements.barcode && <div style={{textAlign:"center",padding:"0 2mm"}}><svg shapeRendering="crispEdges" viewBox={`0 0 ${data.width} 44`} style={{width:"100%",height:`${(split?8:6)*scale}mm`,display:"block"}} preserveAspectRatio="none" aria-label={`Barcode ${data.text}`}>{data.bars.map((bar,index)=><rect key={index} x={bar.x} y="0" width={bar.width} height="44" fill="black"/>)}</svg><div style={{fontSize:8*textScale,letterSpacing:1,lineHeight:1.1}}>{data.text}</div></div>}
     {!split && elements.price && <div style={{fontSize:19*textScale,fontWeight:900,lineHeight:1}}>{money(product.selling_price)}</div>}
 
   </div>;

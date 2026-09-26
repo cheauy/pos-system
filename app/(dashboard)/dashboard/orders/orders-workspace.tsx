@@ -3,6 +3,7 @@
 import Link from "next/link";
 import ReturnItemsForm from "./[id]/return-items-form";
 import OrderPrintMenu from "@/components/order-print-menu";
+import OrderPrintPreview, {type OrderPrintKind} from "@/components/order-print-preview";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
@@ -27,7 +28,7 @@ type Props = { businessId: string; businessName: string; showTableQr?: boolean; 
 type ActionDialog = { type: "edit" | "status" | "delete"; order: OrderRow };
 type QueueItem = { id: string; number: string };
 const statusTabs = ["all", "new", "pending", "completed", "cancelled", "refunded"];
-const receiptHref = (id: string) => `/dashboard/orders/${encodeURIComponent(id)}/receipt`;
+
 const orderHref = (id: string) => `/dashboard/orders/${encodeURIComponent(id)}`;
 
 export default function OrdersWorkspace({ businessId, businessName, showTableQr = false, data, filters, permissions }: Props) {
@@ -43,6 +44,7 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selected, setSelected] = useState<QueueItem[]>([]);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [printPreview,setPrintPreview]=useState<{id:string;kind:OrderPrintKind}|null>(null);
   const [menu, setMenu] = useState<{ row: OrderRow; rect: DOMRect; trigger: HTMLButtonElement } | null>(null);
   const [dialog, setDialog] = useState<ActionDialog | null>(null);
   const [notice, setNotice] = useState("");
@@ -105,7 +107,7 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
   const firstShown = data.total === 0 ? 0 : (data.page - 1) * filters.limit + 1;
   const lastShown = Math.min(data.page * filters.limit, data.total);
   const activeFilters = !!(filters.search || filters.from || filters.to || [filters.branch, filters.source, filters.fulfillment, filters.payment, filters.status].some((value) => value !== "all"));
-  const detailContent = <DetailPanel detail={detail} loading={detailLoading} error={detailError} currency={data.currency} timezone={data.timezone} permissions={permissions}
+  const detailContent = <DetailPanel onPrint={(id,kind)=>setPrintPreview({id,kind})} detail={detail} loading={detailLoading} error={detailError} currency={data.currency} timezone={data.timezone} permissions={permissions}
     onClose={() => { setPanelClosed(true); setMobileOpen(false); }} onRetry={() => setDetailReload((value) => value + 1)} onAction={openAction} onReturned={() => { setDetailReload(value => value + 1); refresh(); }} />;
 
   return <div className={styles.workspace}>
@@ -185,11 +187,12 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
       {!narrow && <aside className={styles.detailColumn}>{panelClosed || !visibleId ? <div className={styles.detailPlaceholder}><FileText size={32} /><h3>Select an order</h3><p>Review customer details, items, payments, and activity.</p>{panelClosed && visibleId && <button className={styles.button} type="button" onClick={() => setPanelClosed(false)}>Show details</button>}</div> : detailContent}</aside>}
     </div>
     {narrow && mobileOpen && !panelClosed && visibleId && <Modal title="Order details" onClose={() => setMobileOpen(false)} wide>{detailContent}</Modal>}
-    {menu && <RowMenu menu={menu} permissions={permissions} onClose={() => setMenu(null)} onAction={openAction} onView={() => { selectRow(menu.row); setMenu(null); }} />}
+    {printPreview&&<OrderPrintPreview orderId={printPreview.id} kind={printPreview.kind} onClose={()=>setPrintPreview(null)}/>}
+    {menu && <RowMenu onPrint={kind=>{setPrintPreview({id:menu.row.id,kind});setMenu(null);}} menu={menu} permissions={permissions} onClose={() => setMenu(null)} onAction={openAction} onView={() => { selectRow(menu.row); setMenu(null); }} />}
     {dialog && <ManageOrderDialog action={dialog} businessId={businessId} permissions={permissions} onClose={() => setDialog(null)} onSuccess={actionSuccess} />}
     {queueOpen && <Modal title={`Print Queue (${selected.length})`} onClose={() => setQueueOpen(false)}>
       <p className={styles.modalHelp}>Choose a receipt or shipping label for each order, review the preview, then print using your saved settings.</p>
-      <div className={styles.printQueue}>{selected.map((item) => <div key={item.id}><span>{item.number}</span><OrderPrintMenu orderId={item.id} className={styles.button}/><button className={styles.iconButton} type="button" aria-label={`Remove ${item.number} from print queue`} onClick={() => setSelected((items) => items.filter((entry) => entry.id !== item.id))}><X size={14} /></button></div>)}</div>
+      <div className={styles.printQueue}>{selected.map((item) => <div key={item.id}><span>{item.number}</span><OrderPrintMenu orderId={item.id} className={styles.button} onPreview={kind=>setPrintPreview({id:item.id,kind})}/><button className={styles.iconButton} type="button" aria-label={`Remove ${item.number} from print queue`} onClick={() => setSelected((items) => items.filter((entry) => entry.id !== item.id))}><X size={14} /></button></div>)}</div>
       {!selected.length && <p className={styles.modalHelp}>The queue is empty. Select orders using the table checkboxes.</p>}
     </Modal>}
   </div>;
@@ -210,7 +213,8 @@ function pageButtons(current: number, total: number): (number | "gap")[] {
   return output;
 }
 
-function DetailPanel({ detail, loading, error, currency, timezone, permissions, onClose, onRetry, onAction, onReturned }: {
+function DetailPanel({ detail, loading, error, currency, timezone, permissions, onClose, onRetry, onAction, onReturned, onPrint }: {
+  onPrint: (id:string,kind:OrderPrintKind)=>void;
   onReturned: () => void;
   detail: OrderDetail | null; loading: boolean; error: string; currency: string; timezone: string; permissions: WorkspacePermissions;
   onClose: () => void; onRetry: () => void; onAction: (type: ActionDialog["type"], row: OrderRow) => void;
@@ -229,7 +233,7 @@ function DetailPanel({ detail, loading, error, currency, timezone, permissions, 
     <div className={styles.detailHeading}><div><h2>Order {order.orderNumber}</h2><div><Badge value={order.status} />{returnedQuantity > 0 && <span className={`${styles.badge} ${styles.orange}`}>{allReturned ? "Items returned" : "Partially returned"} · Refund recorded</span>}<small>{dateText(order.createdAt, timezone)} at {dateText(order.createdAt, timezone, true)}</small></div></div><button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close order details"><X size={16} /></button></div>
     <div className={styles.detailActions}>
       <Link className={styles.miniButton} href={orderHref(order.id)}><Eye size={13} />View</Link>
-      <OrderPrintMenu orderId={order.id} className={styles.miniButton}/>
+      <OrderPrintMenu orderId={order.id} className={styles.miniButton} onPreview={kind=>onPrint(order.id,kind)}/>
       {permissions.refund && !order.returnsUnavailable && ["new", "pending", "completed"].includes(order.status) && <ReturnItemsForm key={order.id} orderId={order.id} orderNumber={order.orderNumber} triggerClassName={styles.miniButton} onReturned={onReturned} currency={currency} items={order.items.map(item => ({ id: item.id, product_name: [item.name, item.variant, ...item.options].filter(Boolean).join(" · "), quantity: item.quantity, unit_price: item.unitPrice, returned_quantity: item.returnedQuantity }))} />}
     </div>
     <div className={styles.manageActions}>
@@ -251,7 +255,8 @@ function DetailPanel({ detail, loading, error, currency, timezone, permissions, 
   </section>;
 }
 
-function RowMenu({ menu, permissions, onClose, onAction, onView }: {
+function RowMenu({ menu, permissions, onClose, onAction, onView, onPrint }: {
+  onPrint:(kind:OrderPrintKind)=>void;
   menu: { row: OrderRow; rect: DOMRect; trigger: HTMLButtonElement }; permissions: WorkspacePermissions;
   onClose: () => void; onAction: (type: ActionDialog["type"], row: OrderRow) => void; onView: () => void;
 }) {
@@ -282,8 +287,8 @@ function RowMenu({ menu, permissions, onClose, onAction, onView }: {
   return createPortal(<div ref={element} role="menu" aria-label={`Order ${menu.row.orderNumber} actions`} className={styles.rowMenu} style={{ top, left }}>
     <div className={styles.menuLabel}>{menu.row.orderNumber}</div>
     <button role="menuitem" type="button" onClick={onView}><Eye size={15} />View details</button>
-    <a role="menuitem" href={`/dashboard/orders/${encodeURIComponent(menu.row.id)}/shipping-label`} target="_blank" rel="noopener noreferrer" onClick={onClose}><Printer size={15} />Print shipping label</a>
-    <a role="menuitem" href={receiptHref(menu.row.id)} target="_blank" rel="noopener noreferrer" onClick={onClose}><Printer size={15} />Print receipt</a>
+    <button role="menuitem" type="button" onClick={()=>onPrint("shipping-label")}><Printer size={15} />Print shipping label</button>
+    <button role="menuitem" type="button" onClick={()=>onPrint("receipt")}><Printer size={15} />Print receipt</button>
     <button role="menuitem" type="button" disabled={!permissions.edit || !nextStatuses(menu.row, permissions.cancel).length} onClick={() => onAction("status", menu.row)}><ArrowUpDown size={15} />Change status</button>
     <button role="menuitem" type="button" disabled={!permissions.edit} onClick={() => onAction("edit", menu.row)}><Pencil size={15} />Edit</button>
     <div className={styles.menuDivider} />

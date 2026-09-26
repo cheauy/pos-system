@@ -87,9 +87,9 @@ test("barcode save persists the chosen new layout, size and fields only", async 
   assert.ok(!("receipt_logo_url" in writes[0]));
 });
 
-test("saved receipt typography and logo survive a later barcode save and reload",async()=>{
+test("saved receipt typography, business name visibility and logo survive a later barcode save and reload",async()=>{
  const {api,stored}=actions();
- const appearance={...DEFAULT_RECEIPT,fontSize:'large',density:'compact',alignment:'left',paperSize:'58mm',logoUrl:'https://example.com/receipt-logo.png',showPhone:false,footer:'Saved footer'};
+ const appearance={...DEFAULT_RECEIPT,fontSize:'large',density:'compact',alignment:'left',paperSize:'58mm',logoUrl:'https://example.com/receipt-logo.png',showBusinessName:false,showPhone:false,wifiPassword:'Guest-example',showWifi:true,footer:'Saved footer'};
  assert.equal((await api.saveReceiptAppearance('authorized-business',appearance,'branch-a')).success,true);
  const form=new FormData();form.set('branchId','branch-a');form.set('barcodeLabelSize','40x20');form.set('barcodeTemplate','price');
  await api.saveBarcodeLabelSettings(form);

@@ -6,7 +6,7 @@ export function ShippingElementContent({element,values}:{element:ShippingElement
   if(element.field==="line")return <div style={{borderTop:"1px solid black",width:"100%",marginTop:1}}/>;
   if(element.field==="barcode"){
     const code=code39Bars((values.orderNumber||"ORDER-001").toUpperCase().replace(/[^A-Z0-9 .\-$\/%+]/g,"-").slice(0,40));
-    return <svg aria-label={`Order barcode ${code.text}`} viewBox={`0 0 ${code.width} 44`} width="100%" height="100%" preserveAspectRatio="none">{code.bars.map((bar,i)=><rect key={i} x={bar.x} width={bar.width} y="0" height="44" fill="black"/>)}</svg>;
+    return <svg shapeRendering="crispEdges" aria-label={`Order barcode ${code.text}`} viewBox={`0 0 ${code.width} 44`} width="100%" height="100%" preserveAspectRatio="none">{code.bars.map((bar,i)=><rect key={i} x={bar.x} width={bar.width} y="0" height="44" fill="black"/>)}</svg>;
   }
   return <>{element.field==="text" ? element.text : values[element.field] || ""}</>;
 }

@@ -1,13 +1,14 @@
  'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { imagePrintDpi } from '@/lib/printing/prepare-print';
 import { ImagePlus, Save } from 'lucide-react';
 import { PosReceipt } from '@/components/receipts/pos-receipt';
 import { ReceiptViewer } from '@/components/receipts/receipt-viewer';
 import { receiptSample, receiptSettingsIssue, type ReceiptAppearance, type ReceiptContext } from '@/lib/receipts/receipt-model';
 import { saveReceiptAppearance, uploadReceiptLogo, uploadReceiptQr } from './actions';
 import s from './receipt-settings.module.css';
-const TOGGLES: Array<[keyof ReceiptAppearance,string]>=[['showPhone','Store phone'],['showAddress','Store address'],['showLogo','Logo'],['showCustomer','Customer'],['showDiscount','Discount'],['showPayment','Payment details'],['showFulfillment','Order type and delivery'],['showNotes','Order notes'],['showOrderNumber','Order number'],['showLoyalty','Loyalty points'],['showCashier','Cashier, when recorded']];
+const TOGGLES: Array<[keyof ReceiptAppearance,string]>=[['showBusinessName','Business name'],['showPhone','Store phone'],['showAddress','Store address'],['showLogo','Logo'],['showCustomer','Customer'],['showDiscount','Discount'],['showPayment','Payment details'],['showFulfillment','Order type and delivery'],['showNotes','Order notes'],['showOrderNumber','Order number'],['showLoyalty','Loyalty points'],['showCashier','Cashier, when recorded']];
 export function ReceiptSettingsEditor({businessId,initial}:{businessId:string;initial:ReceiptContext}) {
  const router=useRouter();
  const [a,setA]=useState(initial.appearance);const [busy,setBusy]=useState('');const [message,setMessage]=useState('');const [saved,setSaved]=useState(initial.appearance);
@@ -30,11 +31,15 @@ export function ReceiptSettingsEditor({businessId,initial}:{businessId:string;in
 
  {a.logoUrl && <ImageSize key={a.logoUrl} src={a.logoUrl} label="Logo"/>}
  <button type="button" onClick={()=>setA(p=>({...p,logoUrl:null,showLogo:false}))}>Remove receipt logo</button>
- <h2>Receipt QR code</h2><p className={s.muted}>Upload your QR image with its white margins. Recommended: 600 × 600 px; printed size 26 × 26 mm. PNG, JPEG or WebP, max 750 KB.</p>
+ <h2>Receipt QR code</h2><p className={s.muted}>Upload the original QR image, preferably a 1000 × 1000 px PNG. Target size: 80 × 80 mm, automatically reduced to fit the receipt width and margins. Keep a clear white border at least four QR squares wide on every side. PNG, JPEG or WebP, max 750 KB.</p>
+ <p className={s.muted}>For payments, use the original merchant QR downloaded from your bank. Upload the QR itself with its white border, not a photo or a full poster. Print at 100% scale, then test the paper QR with your phone before using it.</p>
  <label className={s.upload}><ImagePlus size={18}/> Upload QR code<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>void upload(e.target.files?.[0],'qr')}/></label>
  {a.qrUrl && <ImageSize key={a.qrUrl} src={a.qrUrl} label="QR code"/>}
  <div className={s.toggles}><label><input type="checkbox" checked={a.showQr} onChange={e=>setA(p=>({...p,showQr:e.target.checked}))}/>Show QR code</label></div>
  <button type="button" onClick={()=>setA(p=>({...p,qrUrl:null,showQr:false}))}>Remove QR code</button>
+ <h2>Guest Wi-Fi</h2>
+ <label>Wi-Fi password<input type="text" autoComplete="off" maxLength={128} value={a.wifiPassword} onChange={e=>setA(p=>({...p,wifiPassword:e.target.value}))}/></label>
+ <div className={s.toggles}><label><input type="checkbox" checked={a.showWifi} onChange={e=>setA(p=>({...p,showWifi:e.target.checked}))}/>Show Wi-Fi password below the store phone</label></div>
  <p className={s.muted}>Shop address and telephone are taken from Online Store → Contact and appear below your shop name.</p><h2>Text</h2>{([['header','Header text'],['footer','Footer text'],['returnPolicy','Return policy']] as const).map(([key,label])=><label key={key}>{label}<textarea rows={2} maxLength={500} value={a[key]} onChange={e=>setA(p=>({...p,[key]:e.target.value}))}/></label>)}
  <h2>Visible sections</h2><div className={s.toggles}>{TOGGLES.map(([key,label])=><label key={key}><input type="checkbox" checked={a[key]===true} onChange={e=>setA(p=>({...p,[key]:e.target.checked}))}/>{label}</label>)}</div>
  <div className={s.actions}><button type="button" onClick={()=>{setA(saved);setMessage('Unsaved appearance changes discarded.');}}>Discard changes</button><button type="button" className={s.primary} onClick={()=>void save()}><Save size={17}/>{busy==='save'?'Saving…':'Save settings'}</button></div>
@@ -43,6 +48,6 @@ export function ReceiptSettingsEditor({businessId,initial}:{businessId:string;in
 }
 
 function ImageSize({src,label}:{src:string;label:string}) {
- const [size,setSize]=useState('');
- return <div style={{display:'flex',alignItems:'center',gap:12}}><img src={src} alt={label} style={{width:64,height:64,objectFit:'contain',background:'white'}} onLoad={event=>setSize(`${event.currentTarget.naturalWidth} × ${event.currentTarget.naturalHeight} px`)} /><span>{label}{size?` · ${size}`:''}</span></div>;
+ const [size,setSize]=useState('');const [dpi,setDpi]=useState(0);
+ return <div style={{display:'flex',alignItems:'center',gap:12}}><img src={src} alt={label} style={{width:64,height:64,objectFit:'contain',background:'white'}} onLoad={event=>{const {naturalWidth:w,naturalHeight:h}=event.currentTarget;setSize(`${w} × ${h} px`);setDpi(imagePrintDpi(w,h,label==='Logo'?40:80,label==='Logo'?20:80));}} /><span>{label}{size?` · ${size}`:''}{dpi>0&&<small style={{display:'block',color:dpi<300?'#92400e':'#047857'}}>{dpi<300?'Low resolution — upload a larger original PNG for sharper printing.':`Approximately ${dpi} DPI at the configured print size.`}</small>}</span></div>;
 }

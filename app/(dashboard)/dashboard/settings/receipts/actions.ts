@@ -24,6 +24,9 @@ async function persistAppearance(businessId:string, a:ReceiptAppearance,expected
   font_size:a.fontSize,density:a.density,receipt_alignment:a.alignment,
   header_text:a.header.trim(),footer_text:a.footer.trim(),return_policy:a.returnPolicy.trim(),
   show_logo:a.showLogo,show_phone:a.showPhone,show_address:a.showAddress,show_customer:a.showCustomer,
+  ...(a.showBusinessName===undefined?{}:{show_business_name:a.showBusinessName}),
+  ...(a.wifiPassword===undefined?{}:{receipt_wifi_password:a.wifiPassword}),
+  ...(a.showWifi===undefined?{}:{show_receipt_wifi:a.showWifi}),
   show_discount:a.showDiscount,show_payment:a.showPayment,show_fulfillment:a.showFulfillment,show_notes:a.showNotes,
   show_order_number:a.showOrderNumber,show_loyalty:a.showLoyalty,show_cashier:a.showCashier,updated_at:new Date().toISOString(),
  };
@@ -32,7 +35,7 @@ async function persistAppearance(businessId:string, a:ReceiptAppearance,expected
   const legacyValues:Record<string,unknown>={...values};delete legacyValues.receipt_qr_url;delete legacyValues.show_receipt_qr;
   ({data:saved,error}=await db.from('branch_receipt_settings').upsert(legacyValues,{onConflict:'business_id,location_id'}).select('business_id,location_id').single());
  }
- if(error) throw new Error(['42703','PGRST204'].includes(error.code)?'Apply the printer paper and receipt QR migration first.':error.message);
+ if(error) throw new Error(['42703','PGRST204'].includes(error.code)?'Apply the latest printer settings migrations first.':error.message);
  if(saved?.business_id!==businessId||saved?.location_id!==locationId)throw new Error('Could not confirm saved settings for this branch. Reload and try again.');
  // Receipt save has committed: cache/audit failure must not claim the save failed.
  try {await createAuditLog({action:'update',entityType:'business',entityId:businessId,description:'Updated receipt appearance',metadata:{template:a.template,paperSize:a.paperSize}});}catch(e){console.error('Receipt audit',e);}

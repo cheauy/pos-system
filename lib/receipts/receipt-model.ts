@@ -4,8 +4,9 @@ export function printTextScale(value:unknown){return value==='small'?0.85:value=
 export type ReceiptAppearance = {
   template: ReceiptTemplate; paperSize: '58mm' | '76mm' | '80mm'; logoUrl: string | null; qrUrl: string | null; showQr: boolean;
   header: string; footer: string; returnPolicy: string;
+  wifiPassword: string; showWifi: boolean;
   fontSize: 'small' | 'medium' | 'large'; density: 'compact' | 'comfortable'; alignment: 'left' | 'center';
-  showLogo: boolean; showPhone: boolean; showAddress: boolean; showCustomer: boolean;
+  showBusinessName: boolean; showLogo: boolean; showPhone: boolean; showAddress: boolean; showCustomer: boolean;
   showDiscount: boolean; showPayment: boolean; showFulfillment: boolean; showNotes: boolean;
   showOrderNumber: boolean; showLoyalty: boolean; showCashier: boolean;
 };
@@ -13,7 +14,8 @@ export type ReceiptContext = { branchId?: string; appearance: ReceiptAppearance;
 export const DEFAULT_RECEIPT: ReceiptAppearance = {
   template:'classic',paperSize:'80mm',logoUrl:null,qrUrl:null,showQr:true,header:'',footer:'Thank you for shopping with us.',returnPolicy:'',
   fontSize:'medium',density:'comfortable',alignment:'center',
-  showLogo:true,showPhone:true,showAddress:true,showCustomer:true,showDiscount:true,showPayment:true,
+  wifiPassword:'',showWifi:false,
+  showBusinessName:true,showLogo:true,showPhone:true,showAddress:true,showCustomer:true,showDiscount:true,showPayment:true,
   showFulfillment:true,showNotes:false,showOrderNumber:true,showLoyalty:true,showCashier:true,
 };
 export function receiptLogoUrl(value: unknown): string | null {
@@ -26,12 +28,13 @@ export function receiptAppearance(row: Record<string,unknown> | null, fallbackLo
   const r=row || {};const flag=(key:string)=>typeof r[key]==='boolean'?r[key] as boolean:true;
   return {
     template:'classic',
+    wifiPassword:typeof r.receipt_wifi_password==='string'?r.receipt_wifi_password:'',showWifi:r.show_receipt_wifi===true,
     fontSize:r.font_size==='small'?'small':r.font_size==='large'?'large':'medium',density:r.density==='compact'?'compact':'comfortable',alignment:r.receipt_alignment==='left'?'left':'center',
     paperSize:r.paper_size==='58mm'?'58mm':r.paper_size==='76mm'?'76mm':'80mm',
     qrUrl:receiptLogoUrl(r.receipt_qr_url),showQr:r.show_receipt_qr!==false,
     logoUrl:receiptLogoUrl(Object.prototype.hasOwnProperty.call(r,'receipt_logo_url') ? r.receipt_logo_url : fallbackLogo),
     header:String(r.header_text || ''),footer:r.footer_text==null?DEFAULT_RECEIPT.footer:String(r.footer_text),returnPolicy:String(r.return_policy || ''),
-    showLogo:flag('show_logo'),showPhone:flag('show_phone'),showAddress:flag('show_address'),showCustomer:flag('show_customer'),
+    showBusinessName:flag('show_business_name'),showLogo:flag('show_logo'),showPhone:flag('show_phone'),showAddress:flag('show_address'),showCustomer:flag('show_customer'),
     showDiscount:flag('show_discount'),showPayment:flag('show_payment'),showFulfillment:flag('show_fulfillment'),
     showNotes:r.show_notes===true,showOrderNumber:flag('show_order_number'),showLoyalty:flag('show_loyalty'),showCashier:flag('show_cashier'),
   };
@@ -43,6 +46,9 @@ export function receiptSettingsIssue(a: ReceiptAppearance): string | null {
   for(const k of ['showLogo','showPhone','showAddress','showCustomer','showDiscount','showPayment','showFulfillment','showNotes','showOrderNumber','showLoyalty','showCashier'] as const) if(typeof a[k]!=='boolean') return 'Invalid receipt visibility setting.';
   if(a.qrUrl!=null && !receiptLogoUrl(a.qrUrl)) return 'Use a valid QR image URL.';
   if(typeof a.showQr!=='boolean') return 'Invalid QR visibility setting.';
+  if(a.showBusinessName!==undefined && typeof a.showBusinessName!=='boolean')return 'Invalid business name visibility setting.';
+  if(a.wifiPassword!==undefined && (typeof a.wifiPassword!=='string'||a.wifiPassword.length>128||/[\r\n\u0000]/.test(a.wifiPassword)))return 'Wi-Fi password must be one line, up to 128 characters.';
+  if(a.showWifi!==undefined && typeof a.showWifi!=='boolean')return 'Invalid Wi-Fi visibility setting.';
   if(a.logoUrl!=null && !receiptLogoUrl(a.logoUrl)) return 'Use an HTTPS image URL or a local public image path.';
   return null;
 }
