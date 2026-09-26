@@ -1,3 +1,4 @@
+import PaymentSuccessRedirect from "@/components/payment-success-redirect";
 import CheckoutDuration from './checkout-duration';
 import PaywayCheckoutButton from './payway-checkout-button';
 import PaymentMethodSelector from './payment-method-selector';
@@ -269,6 +270,7 @@ export default async function SubscriptionPaymentPage({
 
   return (
     <main className="mx-auto w-full max-w-[1540px] pb-10">
+      {approved && <PaymentSuccessRedirect href="/dashboard/settings/subscription" label="Subscription Overview" />}
       {manualRouteCommitted && (pending || submitted) ? (
         <ManualPaymentStatusWatcher orderId={order.id} />
       ) : null}

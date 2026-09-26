@@ -1,3 +1,4 @@
+import PaymentSuccessRedirect from "@/components/payment-success-redirect";
 import Link from "next/link";
 import { CheckCircle2, Clock3, XCircle } from "lucide-react";
 
@@ -58,6 +59,7 @@ export default async function SubscriptionPaywayReturnPage({
           {approved ? "Payment verified" : expired ? "Payment request expired" : pending ? "Checking payment" : "Verification needs attention"}
         </h1>
         <p className="mt-3 text-sm leading-6 text-slate-500">{message}</p>
+        {approved && <PaymentSuccessRedirect href="/dashboard/settings/subscription" label="Subscription Overview" />}
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Link
             href={`/dashboard/settings/subscription/payment/${orderId}`}

@@ -66,12 +66,12 @@ export async function createSupplier(
     "suppliers.manage",
   );
 
-  const contactPerson = getOptionalText(
+  const contactPerson = getRequiredText(
     formData,
     "contactPerson",
   );
 
-  const phone = getOptionalText(
+  const phone = getRequiredText(
     formData,
     "phone",
   );
@@ -81,7 +81,7 @@ export async function createSupplier(
     "email",
   );
 
-  const address = getOptionalText(
+  const address = getRequiredText(
     formData,
     "address",
   );
@@ -130,12 +130,12 @@ export async function updateSupplier(
     "name",
   );
 
-  const contactPerson = getOptionalText(
+  const contactPerson = getRequiredText(
     formData,
     "contactPerson",
   );
 
-  const phone = getOptionalText(
+  const phone = getRequiredText(
     formData,
     "phone",
   );
@@ -145,7 +145,7 @@ export async function updateSupplier(
     "email",
   );
 
-  const address = getOptionalText(
+  const address = getRequiredText(
     formData,
     "address",
   );

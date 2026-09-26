@@ -8,33 +8,24 @@ export default async function RegisterPage() {
   const business = await requirePermission("register.manage");
   const { branchId } = await getBranchContext();
 
-  // Permission is verified above, so the trusted client can include the one
-  // closing-only branch whose register still needs to be closed after a plan
-  // change. Normal operating context intentionally hides that branch.
-  const [locations, recent, opened] = await Promise.all([
-    supabaseAdmin
-      .from("business_locations")
-      .select("id,name,code,is_active,plan_disable_pending")
-      .eq("business_id", business.id)
-      .eq("is_active", true)
-      .order("is_default", { ascending: false })
-      .order("name"),
-    supabaseAdmin
-      .from("cash_register_shifts")
-      .select("*")
-      .eq("business_id", business.id)
-      .order("opened_at", { ascending: false })
-      .limit(50),
-    supabaseAdmin
-      .from("cash_register_shifts")
-      .select("*")
-      .eq("business_id", business.id)
-      .eq("status", "open"),
+  // Restrict trusted-client reads before sending any register data to the browser.
+  const locations = await supabaseAdmin.from("business_locations")
+    .select("id,name,code,is_active,plan_disable_pending")
+    .eq("business_id", business.id).eq("is_active", true)
+    .order("is_default", { ascending: false }).order("name");
+  if (locations.error) throw new Error("Unable to load register branches.");
+  const allowedBranches = (locations.data ?? []).filter(location =>
+    location.id === branchId || (business.role === "owner" && location.plan_disable_pending));
+  const allowedIds = allowedBranches.map(location => location.id);
+  if (!allowedIds.length) throw new Error("No register branch is available.");
+  const [recent, opened] = await Promise.all([
+    supabaseAdmin.from("cash_register_shifts").select("*")
+      .eq("business_id", business.id).in("location_id", allowedIds)
+      .order("opened_at", { ascending: false }).limit(50),
+    supabaseAdmin.from("cash_register_shifts").select("*")
+      .eq("business_id", business.id).in("location_id", allowedIds).eq("status", "open"),
   ]);
-
-  if (locations.error || recent.error || opened.error) {
-    throw new Error("Unable to load registers. Please retry.");
-  }
+  if (recent.error || opened.error) throw new Error("Unable to load registers. Please retry.");
 
   const shifts = [
     ...new Map([...(opened.data ?? []), ...(recent.data ?? [])].map((shift) => [shift.id, shift])).values(),
@@ -82,7 +73,7 @@ export default async function RegisterPage() {
   }
 
   const openLocationIds = new Set((opened.data ?? []).map((shift) => shift.location_id));
-  const branches = (locations.data ?? []).filter(
+  const branches = allowedBranches.filter(
     (branch) => branch.id === branchId || (branch.plan_disable_pending && openLocationIds.has(branch.id)),
   );
 

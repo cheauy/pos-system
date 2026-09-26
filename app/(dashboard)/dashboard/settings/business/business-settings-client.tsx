@@ -1,5 +1,6 @@
 "use client";
 
+import PendingCheckoutNotice from "./pending-checkout-notice";
 import Image from "next/image";
 import Link from "next/link";
 import { useActionState, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
@@ -79,7 +80,7 @@ type Props = {
   freeBusinessModeChangesRemaining: number;
   urlCredits: number;
   modeCredits: number;
-  pendingCheckout?: {id:string;status:string;total_amount:number|string}|null;
+  pendingCheckout?: {id:string;status:string;total_amount:number|string;payment_expires_at:string|null;created_at:string}|null;
 };
 
 export default function BusinessSettingsClient({
@@ -156,7 +157,7 @@ export default function BusinessSettingsClient({
         <CreditBadges modeCredits={availableModeCredits} urlCredits={availableUrlCredits} canBuy={canEdit}/>
       </header>
 
-      {pendingCheckout&&<div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30"><p className="text-sm font-semibold">{pendingCheckout.status==='pending_payment'?'You have an unfinished checkout.':'Your payment is awaiting review.'}</p><Link href={`/dashboard/settings/business/payment/${pendingCheckout.id}`} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white">{pendingCheckout.status==='pending_payment'?'Continue checkout':'View payment'}</Link></div>}
+      {pendingCheckout&&<PendingCheckoutNotice key={pendingCheckout.id} order={pendingCheckout}/>}
       {result.error&&<p role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">{result.error}</p>}
       <form ref={form} action={submit} onSubmit={event=>{if(!hasRequiredCredits||changeCount===0||!changedSlugIsAvailable){event.preventDefault();confirmed.current=false;return;}if(!confirmed.current){event.preventDefault();confirmation.current?.showModal();}else confirmed.current=false;}}>
         <input type="hidden" name="businessMode" value={businessMode} />

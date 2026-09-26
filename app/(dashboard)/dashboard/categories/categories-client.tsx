@@ -411,10 +411,10 @@ export default function CategoriesClient({
               <div className="mt-1.5 text-right text-xs text-slate-400">{createDescription.length}/200</div>
             </div>
 
-            <div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
               <div className="mb-3 text-sm font-semibold text-slate-800">Display settings</div>
-              <CategoryDisplayBranches branches={branches} />
-              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
+              <CategoryDisplayBranches branches={branches} embedded />
+              <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
                 <label className="flex items-start gap-3 opacity-80">
                   <input type="checkbox" checked readOnly disabled className="mt-0.5 size-4 rounded border-slate-300" />
                   <span>
@@ -641,7 +641,6 @@ export default function CategoriesClient({
               </button>
             </div>
             <form onSubmit={handleEdit} className="space-y-5 p-5">
-              <CategoryDisplayBranches key={editing.id} branches={branches} branchIds={editing.branchIds} />
               <input type="hidden" name="categoryId" value={editing.id} />
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-800">Category name <span className="text-rose-500">*</span></label>
@@ -651,10 +650,14 @@ export default function CategoriesClient({
                 <label className="mb-2 block text-sm font-semibold text-slate-800">Description</label>
                 <textarea name="description" rows={4} maxLength={200} defaultValue={editing.description ?? ""} className="w-full resize-none rounded-xl border border-slate-300 px-3.5 py-3 text-sm outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
               </div>
-              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-3.5 py-3">
-                <input type="checkbox" name="isOnline" defaultChecked={editing.isOnline} className="size-4 accent-blue-600" />
-                <span className="text-sm font-semibold text-slate-800">Show Online</span>
-              </label>
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
+                <div className="text-sm font-semibold text-slate-800">Display settings</div>
+                <CategoryDisplayBranches key={editing.id} branches={branches} branchIds={editing.branchIds} embedded />
+                <div className="space-y-3 border-t border-slate-200 pt-3">
+                  <label className="flex items-start gap-3 opacity-80"><input type="checkbox" checked readOnly disabled className="mt-0.5 size-4" /><span><span className="block text-sm font-semibold">Show on POS</span><span className="block text-xs text-slate-500">Categories are available in POS by default.</span></span></label>
+                  <label className="flex cursor-pointer items-start gap-3"><input type="checkbox" name="isOnline" defaultChecked={editing.isOnline} className="mt-0.5 size-4 accent-blue-600" /><span><span className="block text-sm font-semibold">Show on Online Store</span><span className="block text-xs text-slate-500">Display this category on your website menu.</span></span></label>
+                </div>
+              </div>
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-800">Index</label>
                 <input name="index" type="number" min={1} max={9999} defaultValue={editing.index} className="h-11 w-full rounded-xl border border-slate-300 px-3.5 text-sm outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />

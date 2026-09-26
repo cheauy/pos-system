@@ -355,18 +355,18 @@ function AddSupplierPanel() {
         <FormField label="Supplier name" required>
           <input name="name" required placeholder="e.g. ABC Trading Co." className={inputClass} />
         </FormField>
-        <FormField label="Contact person">
-          <input name="contactPerson" placeholder="e.g. Dara Lim" className={inputClass} />
+        <FormField label="Contact person" required>
+          <input name="contactPerson" required placeholder="e.g. Dara Lim" className={inputClass} />
         </FormField>
-        <FormField label="Phone">
-          <input name="phone" type="tel" placeholder="e.g. 012 345 678" className={inputClass} />
+        <FormField label="Phone" required>
+          <input name="phone" required type="tel" placeholder="e.g. 012 345 678" className={inputClass} />
         </FormField>
         <FormField label="Email">
           <input name="email" type="email" placeholder="supplier@example.com" className={inputClass} />
         </FormField>
-        <FormField label="Address">
+        <FormField label="Address" required>
           <textarea
-            name="address"
+            name="address" required
             rows={2}
             placeholder="Supplier address"
             className={`${inputClass} resize-none`}

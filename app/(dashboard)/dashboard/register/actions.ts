@@ -1,5 +1,6 @@
 "use server";
 
+import { assertOperatingBranch } from "@/lib/branches/context";
 import { validCash } from "./register-model";
 import { assertBranchOperation } from "@/lib/subscriptions/branch-limits";
 import { revalidatePath } from "next/cache";
@@ -34,6 +35,7 @@ export async function openRegisterShift(formData: FormData) {
     .eq("plan_disable_pending", false)
     .maybeSingle();
   if (!location) throw new Error("Branch not found or is closing after a plan change.");
+  await assertOperatingBranch(locationId);
   await assertBranchOperation(business.id, locationId);
 
   const existing = await supabase
@@ -78,6 +80,7 @@ export async function addCashMovement(formData: FormData) {
 
   const supabase = await createClient();
   const shift = await requireOpenShift(supabase, business.id, shiftId);
+  await assertOperatingBranch(shift.location_id);
   await assertBranchOperation(business.id, shift.location_id);
 
   const { error } = await supabase.rpc("record_cash_movement", {
@@ -129,6 +132,7 @@ export async function closeRegisterShift(formData: FormData) {
 
   let supabase: Awaited<ReturnType<typeof createClient>>;
   if (location.plan_disable_pending) {
+    if (business.role !== "owner") throw new Error("Only the Owner can close a branch pending plan disable.");
     // Only the close action gets a temporary authenticated branch header. The
     // branch is hidden from normal operating context and all new operations are
     // blocked while it waits for this drawer to close.
@@ -137,6 +141,7 @@ export async function closeRegisterShift(formData: FormData) {
       "x-tenh-business-id": business.id,
     }) as Awaited<ReturnType<typeof createClient>>;
   } else {
+    await assertOperatingBranch(shift.location_id);
     await assertBranchOperation(business.id, shift.location_id);
     supabase = await createClient();
   }

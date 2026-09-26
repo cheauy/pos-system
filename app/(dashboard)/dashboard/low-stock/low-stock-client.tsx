@@ -186,7 +186,7 @@ export default function LowStockClient({
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Low Stock</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Products that need to be restocked, reordered, or reviewed across branches.
+            Products that need to be restocked, reordered, or reviewed in this branch.
           </p>
         </div>
 

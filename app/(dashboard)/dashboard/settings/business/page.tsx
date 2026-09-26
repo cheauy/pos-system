@@ -1,3 +1,5 @@
+import PendingCheckoutNotice from "./pending-checkout-notice";
+import { isSubscriptionPaymentExpired } from "@/lib/subscriptions/payment-expiry";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getBusinessModePreset } from "@/lib/business/business-mode-presets";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -24,8 +26,9 @@ export default async function BusinessSettingsPage({searchParams}:{searchParams:
     .maybeSingle();
 
   const entitlements = await getBusinessChangeEntitlements(business.id);
-  const {data:pendingCheckout,error:checkoutError}=await supabaseAdmin.from("business_change_orders").select("id,status,total_amount").eq("business_id",business.id).in("status",["pending_payment","payment_submitted","under_review"]).order("created_at",{ascending:false}).limit(1).maybeSingle();
+  const {data:checkoutRows,error:checkoutError}=await supabaseAdmin.from("business_change_orders").select("id,status,total_amount,payment_expires_at,payment_expired_at,created_at").eq("business_id",business.id).in("status",["pending_payment","payment_submitted","under_review"]).order("created_at",{ascending:false}).limit(20);
   if(checkoutError)throw new Error("Unable to load business checkout.");
+  const pendingCheckout = checkoutRows?.find(order => order.status !== "pending_payment" || (!order.payment_expired_at && !isSubscriptionPaymentExpired(order))) ?? null;
 
   const storedBusinessType = storefront?.business_type ?? "";
   const currentBusinessType =
@@ -57,7 +60,7 @@ export default async function BusinessSettingsPage({searchParams}:{searchParams:
         </dl>
       </section>
       <p className="text-xs text-slate-500">One credit per change. Purchased credits never expire.</p>
-      {pendingCheckout&&<div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30"><p className="text-sm font-semibold">{pendingCheckout.status==='pending_payment'?'You have an unfinished checkout.':'Your payment is awaiting review.'}</p><Link href={`/dashboard/settings/business/payment/${pendingCheckout.id}`} className="inline-flex items-center gap-2 text-sm font-bold text-blue-600">{pendingCheckout.status==='pending_payment'?'Continue checkout':'View payment'}<ArrowRight size={16}/></Link></div>}
+      {pendingCheckout&&<PendingCheckoutNotice key={pendingCheckout.id} order={pendingCheckout}/>}
     </main>;
   }
 
@@ -79,4 +82,4 @@ export default async function BusinessSettingsPage({searchParams}:{searchParams:
   );
 }
 import Link from "next/link";
-import { ArrowRight, Building2, Link2, Pencil, ShieldCheck, Store, Users } from "lucide-react";
+import { Building2, Link2, Pencil, ShieldCheck, Store, Users } from "lucide-react";

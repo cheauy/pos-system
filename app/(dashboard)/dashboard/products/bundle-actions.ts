@@ -37,7 +37,7 @@ export async function createBundleProduct(_state: CreateBundleState, form: FormD
   const imageData = upload.imageData;
   const { error } = await db.rpc(imageData ? 'tenh_create_packed_bundle_with_image' : 'tenh_create_packed_bundle', {
     p_business_id: business.id, p_branch_id: branchId, p_request_id: read(form, 'requestId'),
-    p_input: { name: read(form, 'name'), sku: read(form, 'sku'), sellingPrice: read(form, 'sellingPrice'), categoryId: read(form, 'categoryId'), description: read(form, 'description'), items, ...imageData },
+    p_input: { name: read(form, 'name'), sku: read(form, 'sku'), sellingPrice: read(form, 'sellingPrice'), categoryId: read(form, 'categoryId'), description: read(form, 'description'), isPos: form.get('showPos') === 'on', isOnline: form.get('showOnline') === 'on', items, ...imageData },
   });
   if (error) return { success: false, message: error.code === '23505' ? 'This SKU is already in use.' : error.message };
   refreshBundles();

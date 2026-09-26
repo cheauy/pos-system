@@ -54,6 +54,8 @@ const { PGlite } = require(path.join(process.env.TEMP, 'tenh-branch-sql-check/no
     from (values(null::text),('dine_in'),('pickup'),('delivery')) o(fulfillment_type) where true
     and (coalesce(p_filters->>'fulfillment','all')='all' or o.fulfillment_type::text=p_filters->>'fulfillment');$$;`);
   await db.exec(fs.readFileSync('supabase/migrations/20260924006000_bundle_edit_and_pos_choices.sql','utf8'));
+  const visibilityMigration=fs.readFileSync('supabase/migrations/20260926004000_bundle_creation_visibility.sql','utf8');
+  await db.exec(visibilityMigration);await db.exec(visibilityMigration);
   const b=randomUUID(), user=randomUUID(), branch=randomUUID(), otherBranch=randomUUID(), foreign=randomUUID(), a=randomUUID(), v=randomUUID(), c=randomUUID(), g=randomUUID(), o=randomUUID();
   await db.query("select set_config('test.user',$1,false)",[user]);
   await db.query('insert into businesses values($1),($2)',[b,foreign]);
@@ -69,6 +71,14 @@ const { PGlite } = require(path.join(process.env.TEMP, 'tenh-branch-sql-check/no
   const create=async(payload=input,request=randomUUID(),business=b,location=branch)=>(await db.query('select tenh_create_packed_bundle($1,$2,$3,$4) id',[business,location,request,JSON.stringify(payload)])).rows[0].id;
   const snapshot=async()=>JSON.stringify((await db.query('select id,stock_quantity from products order by id')).rows)+JSON.stringify((await db.query('select * from product_location_stock order by location_id,product_id')).rows);
   const imageRequest=randomUUID(), imagePath=`${b}/${user}/${imageRequest}-${'a'.repeat(64)}.png`;
+  for (const isPos of [false,true]) for (const isOnline of [false,true]) {
+    const payload={...input,sku:`CHANNEL-${isPos}-${isOnline}`,isPos,isOnline};
+    const request=randomUUID();const id=await create(payload,request);
+    const row=(await db.query('select is_pos,is_online,is_active from products where id=$1',[id])).rows[0];
+    assert.deepEqual(row,{is_pos:isPos,is_online:isOnline,is_active:isPos||isOnline});
+    assert.equal(await create(payload,request),id,'same visibility retry returns saved bundle');
+    await assert.rejects(create({...payload,isOnline:!isOnline},request),/already used/);
+  }
   const imagePayload={...input,sku:'IMAGE-SET',imagePath,imageUrl:`https://example.supabase.co/storage/v1/object/public/product-images/${imagePath}`};
   const createImage=async(payload=imagePayload,request=imageRequest)=>(await db.query('select tenh_create_packed_bundle_with_image($1,$2,$3,$4) id',[b,branch,request,JSON.stringify(payload)])).rows[0].id;
   await assert.rejects(createImage(),/Upload the bundle image/);

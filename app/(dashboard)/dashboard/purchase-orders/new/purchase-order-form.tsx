@@ -73,6 +73,7 @@ export default function PurchaseOrderForm({
   suppliers: Supplier[];
   products: Product[];
 }) {
+  const [productSearch, setProductSearch] = useState<Record<number, string>>({});
   const [supplierId, setSupplierId] = useState("");
   const [items, setItems] = useState<OrderItem[]>([blankItem(1)]);
   const [nextRowId, setNextRowId] = useState(2);
@@ -577,7 +578,9 @@ export default function PurchaseOrderForm({
                     {index + 1}
                   </td>
                   <td className="px-3 py-3">
+                    <input type="search" aria-label={`Search product for item ${index + 1}`} placeholder="Search SKU or product name" value={productSearch[item.rowId] ?? ""} onChange={event => setProductSearch(current => ({...current, [item.rowId]: event.target.value}))} className={`${inputClass} mb-2`} />
                     <select
+                      aria-label={`Product for item ${index + 1}`}
                       value={item.productId}
                       onChange={(event) =>
                         updateProduct(item.rowId, event.target.value)
@@ -585,7 +588,7 @@ export default function PurchaseOrderForm({
                       className={inputClass}
                     >
                       <option value="">Select product / variant</option>
-                      {products.map((product) => (
+                      {products.filter(product => product.id === item.productId || productLabel(product).toLowerCase().includes((productSearch[item.rowId] ?? "").trim().toLowerCase())).map((product) => (
                         <option key={product.id} value={product.id}>
                           {productLabel(product)}
                         </option>

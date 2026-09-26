@@ -130,13 +130,14 @@ export default async function LowStockPage() {
       .eq("business_id", business.id)
       .eq("is_active", true)
       .order("name", { ascending: true }),
-    supabase
+    readAllRows<PurchaseOrderItemRow>((from, to) => supabase
       .from("purchase_order_items")
       .select(
         "product_id, unit_cost, received_quantity, updated_at, purchase_orders!inner(supplier_id, supplier_name, status, updated_at)",
       )
       .eq("business_id", business.id)
-      .order("updated_at", { ascending: false }),
+      .eq("purchase_orders.location_id", branchId)
+      .order("updated_at", { ascending: false }).order("id").range(from, to)),
     supabase
       .from("stock_adjustments")
       .select(
@@ -201,7 +202,6 @@ export default async function LowStockPage() {
   }
 
   const rows: LowStockRow[] = [];
-  const seenProductLocations = new Set<string>();
 
   for (const stock of locationStock) {
     const product = productMap.get(stock.product_id);
@@ -236,7 +236,6 @@ export default async function LowStockPage() {
       status: statusFor(currentStock, threshold),
     });
 
-    seenProductLocations.add(`${product.id}:${stock.location_id}`);
   }
 
   rows.sort((a, b) => {
@@ -245,7 +244,7 @@ export default async function LowStockPage() {
   });
 
   const activities: LowStockActivity[] = adjustments.map((adjustment) => {
-    const product = singleRelation(adjustment.products);
+    const product = productMap.get(adjustment.product_id) ?? singleRelation(adjustment.products);
     return {
       id: adjustment.id,
       productName: product?.name?.trim() || "Product",

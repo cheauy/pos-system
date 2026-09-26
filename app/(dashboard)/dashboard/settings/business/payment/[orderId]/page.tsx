@@ -1,3 +1,4 @@
+import PaymentSuccessRedirect from "@/components/payment-success-redirect";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import {
@@ -112,6 +113,7 @@ export default async function BusinessChangePaymentPage({
 
   return (
     <main className="mx-auto w-full max-w-5xl pb-10">
+      {isApplied && <PaymentSuccessRedirect href="/dashboard/settings/business?edit=1" label="Change business" />}
       <Link
         href="/dashboard/settings/business"
         className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300"

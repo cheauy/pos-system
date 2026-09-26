@@ -80,7 +80,7 @@ export default async function SupplierEditPage({
           />
 
           <FormField
-            label="Supplier name"
+            label="Supplier name" required
             htmlFor="name"
           >
             <input
@@ -93,12 +93,12 @@ export default async function SupplierEditPage({
           </FormField>
 
           <FormField
-            label="Contact person"
+            label="Contact person" required
             htmlFor="contactPerson"
           >
             <input
               id="contactPerson"
-              name="contactPerson"
+              name="contactPerson" required
               defaultValue={
                 supplier.contact_person ?? ""
               }
@@ -107,12 +107,12 @@ export default async function SupplierEditPage({
           </FormField>
 
           <FormField
-            label="Phone"
+            label="Phone" required
             htmlFor="phone"
           >
             <input
               id="phone"
-              name="phone"
+              name="phone" required
               type="tel"
               defaultValue={supplier.phone ?? ""}
               className={inputClass}
@@ -134,12 +134,12 @@ export default async function SupplierEditPage({
 
           <div className="md:col-span-2">
             <FormField
-              label="Address"
+              label="Address" required
               htmlFor="address"
             >
               <textarea
                 id="address"
-                name="address"
+                name="address" required
                 rows={3}
                 defaultValue={supplier.address ?? ""}
                 className={`${inputClass} resize-none`}
@@ -189,10 +189,12 @@ const inputClass =
 function FormField({
   label,
   htmlFor,
+  required = false,
   children,
 }: {
   label: string;
   htmlFor: string;
+  required?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -201,7 +203,7 @@ function FormField({
         htmlFor={htmlFor}
         className="mb-2 block text-sm font-medium text-slate-700"
       >
-        {label}
+        {label}{required && <span className="ml-1 text-red-500">*</span>}
       </label>
 
       {children}

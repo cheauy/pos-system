@@ -1,3 +1,4 @@
+import PaymentSuccessRedirect from "@/components/payment-success-redirect";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Link2, Store, XCircle } from "lucide-react";
 import { getBusinessChangeEntitlements } from "@/lib/subscriptions/entitlements";
@@ -30,6 +31,7 @@ export default async function CreditCheckout({order,businessId,cancelFailed=fals
  const credits=paid?await getBusinessChangeEntitlements(businessId):null;
  const manualContent=<><p className="text-sm text-slate-500">Transfer the exact amount, then upload your receipt for approval.</p><p className="my-4 text-3xl font-extrabold">${Number(order.total_amount).toFixed(2)} USD</p><dl className="space-y-2 rounded-xl border p-4 text-sm"><div><dt className="text-slate-500">Bank</dt><dd className="font-bold">{order.manual_bank_name}</dd></div><div><dt className="text-slate-500">Account name</dt><dd className="font-bold">{order.manual_account_name}</dd></div><div><dt className="text-slate-500">Account number</dt><dd className="font-bold">{order.manual_account_number}</dd></div></dl>{order.manual_qr_image_url&&<div className="mx-auto my-4 max-w-64"><ManualPaymentQrPreview imageUrl={order.manual_qr_image_url}/></div>}<BusinessChangePaymentForm orderId={order.id} paymentReference={order.payment_reference} paymentNote={order.payment_note} hasProof={Boolean(order.proof_path)} proofFileName={order.proof_file_name} submitted={submitted}/></>;
  return <main className="mx-auto w-full max-w-[1540px] pb-10">
+  {paid&&<PaymentSuccessRedirect href="/dashboard/settings/business?edit=1" label="Change business"/>}
   {(submitted||(pending&&payway))&&<ManualPaymentStatusWatcher orderId={order.id} kind="business_change"/>}
   <Link href="/dashboard/settings/business" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500"><ArrowLeft size={16}/>Business Details</Link>
   <div className="my-6"><p className="text-xs font-bold uppercase tracking-widest text-blue-600">TENH POS</p><h1 className="mt-2 text-3xl font-extrabold">Checkout</h1><p className="mt-2 text-sm text-slate-500">Business change credits · Order #{order.id.slice(0,8).toUpperCase()}</p></div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Gift, Plus, Trash2 } from "lucide-react";
+import { Gift, Globe, Monitor, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import ProductVariantPicker from '@/components/product-variant-picker';
 
@@ -201,6 +201,15 @@ export default function BundleProductForm({
         <p>Estimated component cost: <strong>${costTotal.toFixed(2)}</strong></p>
       </div>
 
+      {!initial && <div className="grid gap-3 sm:grid-cols-2">
+        {([{ name: 'showPos', label: 'Show on POS', icon: Monitor }, { name: 'showOnline', label: 'Show online', icon: Globe }]).map(({ name, label, icon: Icon }) => (
+          <label key={name} className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+            <span className="flex items-center gap-2 text-sm font-medium"><Icon size={18} className="text-blue-600" />{label}</span>
+            <input type="checkbox" role="switch" name={name} aria-label={label} defaultChecked className="peer sr-only" />
+            <span aria-hidden="true" className="flex h-6 w-11 shrink-0 items-center rounded-full bg-slate-300 p-0.5 transition peer-checked:bg-blue-600 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 peer-disabled:opacity-50 dark:bg-slate-600 peer-checked:[&>span]:translate-x-5"><span className="h-5 w-5 rounded-full bg-white shadow-sm transition-transform" /></span>
+          </label>
+        ))}
+      </div>}
       <Field label="Description" htmlFor="bundle-description">
         <textarea id="bundle-description" name="description" defaultValue={initial?.description ?? ''} maxLength={2000} rows={3} placeholder="Optional bundle description" className={`${inputClass} resize-none`} />
       </Field>

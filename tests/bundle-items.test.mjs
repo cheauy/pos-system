@@ -16,11 +16,11 @@ test('bundle actions support every business mode and reject stale branch submiss
    'next/cache':{revalidatePath:()=>{}},
    '@/lib/auth/require-permission':{requirePermission:async()=>({id:'business-1',product_mode:mode})},
    '@/lib/branches/context':{assertOperatingBranch:async id=>{if(id!==branch)throw new Error('stale');}},
-   '@/lib/supabase/server':{createClient:async()=>({rpc:async(name,input)=>{calls.push({name,input});return {error:null};}})},
+   '@/lib/supabase/branch-server':{createClient:async()=>({rpc:async(name,input)=>{calls.push({name,input});return {error:null};}})},
   });
   const form=new FormData();for(const [key,value] of Object.entries({name:'Set',sku:'SET',sellingPrice:'12',branchId:branch,requestId:'request-1',items:'[{"productId":"p1","quantity":1},{"productId":"p2","quantity":1}]'}))form.set(key,value);
   assert.equal((await actions.createBundleProduct({success:false,message:''},form)).success,true);
-  assert.equal(calls[0].name,'tenh_create_packed_bundle');assert.equal(calls[0].input.p_branch_id,branch);
+  assert.equal(calls[0].input.p_input.isPos,false);assert.equal(calls[0].input.p_input.isOnline,false);assert.equal(calls[0].name,'tenh_create_packed_bundle');assert.equal(calls[0].input.p_branch_id,branch);
   assert.equal((await actions.packBundle({branchId:branch,bundleId:'bundle-1',quantity:-2,requestId:'request-2'})).success,true);
   assert.equal(calls[1].input.p_quantity,-2);
   branch='branch-2';assert.equal((await actions.createBundleProduct({success:false,message:''},form)).success,false);
@@ -61,7 +61,7 @@ test('bundle image validates contents, stops on upload failure and reuses identi
   '@/lib/images/compress-photo':{compressPhoto:async file=>file},'@/lib/public-photo-cache':{PUBLIC_PHOTO_CACHE_SECONDS:'31536000'},'node:crypto':crypto,'next/cache':{revalidatePath:()=>{}},
   '@/lib/auth/require-permission':{requirePermission:async()=>({id:'business'})},
   '@/lib/branches/context':{assertOperatingBranch:async()=>{}},
-  '@/lib/supabase/server':{createClient:async()=>({
+  '@/lib/supabase/branch-server':{createClient:async()=>({
    auth:{getUser:async()=>({data:{user:{id:'user'}}})},
    storage:{from:()=>({upload:async(path,bytes,options)=>{uploads.push({path,options});return {error:failUpload?{statusCode:'500'}:duplicate?{statusCode:'409'}:null};},getPublicUrl:path=>({data:{publicUrl:`https://example.supabase.co/storage/v1/object/public/product-images/${path}`}})})},
    rpc:async(name,input)=>{calls.push({name,input});return {error:null};},
@@ -85,7 +85,7 @@ test('bundle edit sends contents and image removal atomically and rejects stale 
   '@/lib/images/compress-photo':{compressPhoto:async file=>file},'@/lib/public-photo-cache':{PUBLIC_PHOTO_CACHE_SECONDS:'31536000'},'node:crypto':crypto,'next/cache':{revalidatePath:()=>{}},
   '@/lib/auth/require-permission':{requirePermission:async permission=>{permissions.push(permission);return {id:'business',slug:'shop'};}},
   '@/lib/branches/context':{assertOperatingBranch:async()=>{}},
-  '@/lib/supabase/server':{createClient:async()=>({from:table=>queryDouble(table,{data:{id:'bundle',updated_at:updatedAt},error:null},queries),rpc:async(name,input)=>{calls.push({name,input});return {error:null};}})},
+  '@/lib/supabase/branch-server':{createClient:async()=>({from:table=>queryDouble(table,{data:{id:'bundle',updated_at:updatedAt},error:null},queries),rpc:async(name,input)=>{calls.push({name,input});return {error:null};}})},
  });
  const form=new FormData();for(const [key,value] of Object.entries({bundleId:'bundle',branchId:'branch',expected:updatedAt,name:'New Set',sku:'SET',sellingPrice:'15',items:'[{"productId":"one","quantity":2,"optionIds":[]},{"productId":"two","quantity":1,"optionIds":[]}]',removeImage:'true'}))form.set(key,value);
  assert.equal((await actions.editBundleProduct(form)).success,true);
@@ -103,6 +103,9 @@ test('edit form restores its image and component quantities for editing', () => 
  }).default;
  const products=['one','two'].map(id=>({id,name:id,sku:id,stock_quantity:10,cost_price:2,selling_price:5,groups:[],options:[]}));
  const initial={id:'bundle',name:'Saved Set',sku:'SAVED',price:12,categoryId:null,description:'Description',imageUrl:'https://example.test/photo.png',updatedAt:'2026-09-24T12:00:00Z',items:[{productId:'one',quantity:2,optionIds:[]},{productId:'two',quantity:1,optionIds:[]}]};
+ const createHtml=renderToStaticMarkup(React.createElement(Form,{products,categories:[],branchId:'branch',requestId:'request'}));
+ for(const name of ['showPos','showOnline'])assert.match(createHtml,new RegExp(`(?=[^<]*name="${name}")(?=[^<]*checked="")[^<]*`));
+ assert.ok(createHtml.indexOf('name="showOnline"')<createHtml.indexOf('id="bundle-description"'));
  const html=renderToStaticMarkup(React.createElement(Form,{products,categories:[],branchId:'branch',requestId:'request',initial}));
  assert.match(html,/Save changes/);assert.match(html,/value="Saved Set"/);assert.match(html,/src="https:\/\/example.test\/photo.png"/);assert.match(html,/Quantity for one/);assert.match(html,/Remove one/);assert.match(html,/name="image"/);
 });
