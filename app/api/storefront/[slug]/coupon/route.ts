@@ -13,7 +13,7 @@ type RouteProps = {
 type CouponBody = {
   code?: string;
   subtotal?: number;
-  items?: { productId: string; quantity: number }[];
+  items?: { productId: string; quantity: number; optionIds?: string[] }[];
   tableToken?: string | null;
 };
 
@@ -99,86 +99,9 @@ export async function POST(
 
     const { data: branchId, error: branchError } = await supabaseAdmin.rpc("tenh_choose_online_branch", { p_business: business.id, p_checkout: { p_items: body.items, p_coupon_code: code, p_table_token: body.tableToken || null } });
     if (branchError || !branchId) return NextResponse.json({ success: false, message: "This coupon cannot be used for the current cart." }, { status: 400 });
-    const now = new Date().toISOString();
-    const { data: coupon, error: couponError } = await supabaseAdmin
-      .from("business_coupons")
-      .select(`
-        id,
-        code,
-        discount_type,
-        discount_value,
-        minimum_order,
-        max_discount,
-        starts_at,
-        ends_at,
-        usage_limit,
-        usage_count,
-        is_active
-      `)
-      .eq("business_id", business.id)
-      .eq("location_id", branchId)
-      .ilike("code", code)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (couponError || !coupon) {
-      return NextResponse.json(
-        { success: false, message: "This coupon is invalid or expired." },
-        { status: 400 },
-      );
-    }
-
-    if (
-      (coupon.starts_at && coupon.starts_at > now) ||
-      (coupon.ends_at && coupon.ends_at < now)
-    ) {
-      return NextResponse.json(
-        { success: false, message: "This coupon is invalid or expired." },
-        { status: 400 },
-      );
-    }
-
-    if (subtotal < Number(coupon.minimum_order ?? 0)) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: `This coupon requires a minimum order of ${Number(
-            coupon.minimum_order,
-          ).toFixed(2)}.`,
-        },
-        { status: 400 },
-      );
-    }
-
-    if (
-      coupon.usage_limit !== null &&
-      Number(coupon.usage_count) >= Number(coupon.usage_limit)
-    ) {
-      return NextResponse.json(
-        { success: false, message: "This coupon has reached its usage limit." },
-        { status: 400 },
-      );
-    }
-
-    let discount =
-      coupon.discount_type === "percentage"
-        ? (subtotal * Number(coupon.discount_value)) / 100
-        : Number(coupon.discount_value);
-
-    if (coupon.max_discount !== null) {
-      discount = Math.min(discount, Number(coupon.max_discount));
-    }
-
-    discount = Math.max(0, Math.min(subtotal, discount));
-    discount = Math.round((discount + Number.EPSILON) * 100) / 100;
-
-    return NextResponse.json({
-      success: true,
-      coupon: {
-        code: coupon.code.toUpperCase(),
-        discount,
-      },
-    });
+    const result=await supabaseAdmin.rpc('tenh_preview_online_coupon',{p_business:business.id,p_branch:branchId,p_code:code,p_items:body.items});
+    if(result.error||!result.data)return NextResponse.json({success:false,message:result.error?.message||'This coupon is unavailable.'},{status:400});
+    return NextResponse.json({success:true,coupon:{code:result.data.code,discount:Number(result.data.discount)}});
   } catch (error) {
     console.error("Coupon preview failed", error);
 

@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getBranchContext } from "@/lib/branches/context";
 import { getEffectivePermissions } from "@/lib/auth/effective-permissions";
 import PermissionRefresh from '@/components/permission-refresh';
+import WorkspaceActivity from '@/components/ui/workspace-activity';
 import WorkspaceBranchProvider from "./workspace-branch-provider";
 import SidebarClient from "./sidebar-client";
 import PosLockProvider from './pos-lock-provider';
@@ -87,6 +88,7 @@ export default async function DashboardLayout({
   if (business.subscriptionLocked) {
     return (
       <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+        <WorkspaceActivity />
         <main className="mx-auto min-h-screen w-full max-w-[1600px] p-4 sm:p-6">
           <UpdateAlertBanner />
           {children}
@@ -105,6 +107,7 @@ export default async function DashboardLayout({
   if(posLocked&&!posLockAllows(pathname))redirect('/dashboard/pos');
   return (
     <div className="workspace-theme min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <WorkspaceActivity />
       <PosLockProvider key={`${business.id}:${branchContext.userId}`} businessId={business.id} userId={branchContext.userId} branchId={branchContext.branchId} initialLocked={posLocked}>
       <WorkspaceBranchProvider businessId={business.id} businessName={business.name} role={business.role} userId={branchContext.userId} branchId={branchContext.branchId} branches={branchContext.branches}>
       <SidebarClient businessId={business.id} branchId={branchContext.branchId} effectivePermissions={effectivePermissions} />

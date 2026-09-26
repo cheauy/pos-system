@@ -1,8 +1,10 @@
 "use client";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
+import { useActivity } from '@/components/ui/activity-link';
 export default function ViewBranchSelect({ branches, branchId }: { branches: { id: string; name: string; is_active?: boolean }[]; branchId: string }) {
   const router = useRouter(); const path = usePathname(); const search = useSearchParams(); const [pending, startTransition] = useTransition();
+  useActivity(pending);
   return <label className="text-xs font-semibold text-slate-500">Choose Branch
     <select aria-label="View data for branch" disabled={pending} value={branchId} onChange={e => {
       const query = new URLSearchParams(search.toString()); query.set("branch", e.target.value || "all");

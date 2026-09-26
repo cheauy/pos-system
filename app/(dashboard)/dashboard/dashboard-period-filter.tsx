@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useActivity } from '@/components/ui/activity-link';
 import {useRouter} from "next/navigation";
 import { CalendarDays, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 type DashboardRange =
   | "today"
@@ -25,6 +25,8 @@ export default function DashboardPeriodFilter({
   canViewReports: boolean; branches:{id:string;name:string;is_active:boolean}[]; branchId:string;
 }) {
   const router=useRouter();
+  const [pending, startTransition] = useTransition();
+  useActivity(pending);
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
@@ -122,7 +124,7 @@ export default function DashboardPeriodFilter({
                 </button>
               </div>
 
-              <form onSubmit={event => { event.preventDefault(); const query = new URLSearchParams(new FormData(event.currentTarget) as unknown as Record<string,string>); router.push(`/dashboard?${query}`); setOpen(false); }} className="space-y-3"><input type="hidden" name="branch" value={branchId || "all"}/>
+                <form onSubmit={event => { event.preventDefault(); const query = new URLSearchParams(new FormData(event.currentTarget) as unknown as Record<string,string>); startTransition(() => router.push(`/dashboard?${query}`)); setOpen(false); }} className="space-y-3"><input type="hidden" name="branch" value={branchId || "all"}/>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
                     <span className="block text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">

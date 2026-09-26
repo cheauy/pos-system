@@ -35,6 +35,7 @@ type CheckoutBody = {
   deliveryZoneId?: string | null;
   requestedFor?: string | null;
   couponCode?: string | null;
+  expectedSubtotal?: number;
 };
 
 function cleanText(value: unknown, maxLength: number) {
@@ -74,6 +75,9 @@ export async function POST(
     if (Number(request.headers.get("content-length") || 0) > 6 * 1024 * 1024) return NextResponse.json({ success: false, message: "Payment proof must not exceed 5 MB." }, { status: 413 });
     const form = multipart ? await request.formData() : null;
     const body = (form ? JSON.parse(String(form.get("checkout") || "{}")) : await request.json()) as CheckoutBody;
+    if (body.expectedSubtotal !== undefined && (typeof body.expectedSubtotal !== 'number' || !Number.isFinite(body.expectedSubtotal) || body.expectedSubtotal < 0)) {
+      return NextResponse.json({ success: false, message: 'Invalid cart total. Refresh your cart.' }, { status: 400 });
+    }
     const emailError = validateCheckoutEmail(body.guestEmail);
     if (emailError) return NextResponse.json({ success: false, message: emailError }, { status: 400 });
     const guestEmail = body.guestEmail!.trim().toLowerCase();
@@ -175,6 +179,7 @@ export async function POST(
     }
 
     const branchCheckout = {
+        p_expected_subtotal:body.expectedSubtotal??null,
         p_items: normalizedItems,
         p_fulfillment_type: fulfillmentType,
         p_guest_name: guestName,

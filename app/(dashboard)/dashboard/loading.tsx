@@ -1,5 +1,8 @@
+import { ActivitySignal } from '@/components/ui/activity-link';
+
 export default function DashboardLoading() {
   return <div role="status" aria-label="Loading workspace" className="space-y-5 p-1">
+    <ActivitySignal />
     <span className="sr-only">Loading workspace…</span>
     <div aria-hidden="true" className="space-y-5 motion-safe:animate-pulse">
       <div className="h-8 w-52 rounded-lg bg-slate-200 dark:bg-slate-800" />

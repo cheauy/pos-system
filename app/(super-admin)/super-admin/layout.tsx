@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 
 import SuperAdminSideRail from "@/components/super-admin/super-admin-side-rail";
 import UpdateAlertBanner from "@/components/update-alert-banner";
+import WorkspaceActivity from '@/components/ui/workspace-activity';
 import { requireSuperAdmin } from "@/lib/auth/require-super-admin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -47,6 +48,7 @@ export default async function SuperAdminLayout({
 
   return (
     <div className="min-h-screen bg-slate-100">
+      <WorkspaceActivity />
       <SuperAdminSideRail
         pendingPayments={pendingPayments}
         pendingSubscriptionPayments={pendingSubscriptionPayments}

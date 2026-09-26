@@ -5,6 +5,9 @@ import { revalidatePath } from "next/cache";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/branch-server";
+import { getBranchContext } from '@/lib/branches/context';
+
+function refreshPromotions(){for(const path of ['/dashboard/promotions','/dashboard/pos','/dashboard/online-store'])revalidatePath(path);revalidatePath('/_sites/[slug]','page');}
 
 function text(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -44,7 +47,18 @@ export async function createCoupon(formData: FormData) {
   const business = await requirePermission("storefront.update");
   const scopedDb=await createClient();
 
-  const code = text(formData, "code").toUpperCase();
+  const context=await getBranchContext();
+  if(context.business.id!==business.id||context.branchId!==text(formData,'branchId'))throw new Error('The branch changed. Reload Promotions.');
+  const automatic=text(formData,'campaignType')==='automatic';
+  const applyPos=formData.get('applyPos')==='on',applyOnline=formData.get('applyOnline')==='on';
+  if(!applyPos&&!applyOnline)throw new Error('Select POS, Online store, or both.');
+  const productIds=text(formData,'target')==='selected'?[...new Set(formData.getAll('productIds').map(String))]:null;
+  if(productIds){
+    if(!productIds.length||productIds.length>500||productIds.some(id=>!/^[0-9a-f-]{36}$/i.test(id)))throw new Error('Select 1–500 products.');
+    const assigned=await scopedDb.from('product_location_stock').select('product_id').eq('business_id',business.id).eq('location_id',context.branchId).in('product_id',productIds);
+    if(assigned.error||assigned.data?.length!==productIds.length)throw new Error('Select products assigned to this branch.');
+  }
+  const code = automatic?`AUTO_${crypto.randomUUID().replaceAll('-','').slice(0,20).toUpperCase()}`:text(formData, "code").toUpperCase();
   const name = text(formData, "name") || null;
   const discountType = text(formData, "discountType");
   const discountValue = Number(text(formData, "discountValue"));
@@ -54,6 +68,7 @@ export async function createCoupon(formData: FormData) {
   const perCustomerLimit = optionalInteger(formData, "perCustomerLimit");
   const startsAt = optionalDate(formData, "startsAt");
   const endsAt = optionalDate(formData, "endsAt");
+  if(automatic&&(minimumOrder!==0||usageLimit!==null||perCustomerLimit!==null))throw new Error('Automatic discounts cannot have order minimums or coupon usage limits.');
 
   if (!/^[A-Z0-9_-]{3,30}$/.test(code)) {
     throw new Error(
@@ -67,6 +82,11 @@ export async function createCoupon(formData: FormData) {
 
   if (!Number.isFinite(discountValue) || discountValue <= 0) {
     throw new Error("Discount value must be greater than zero.");
+  }
+  for (const value of [discountValue, minimumOrder, maxDiscount]) {
+    if (value !== null && (value > 999999999 || Math.abs(value * 100 - Math.round(value * 100)) > 0.00001)) {
+      throw new Error('Amounts must have at most two decimal places and be below 1 billion.');
+    }
   }
 
   if (discountType === "percentage" && discountValue > 100) {
@@ -101,6 +121,7 @@ export async function createCoupon(formData: FormData) {
     .from("business_coupons")
     .insert({
       business_id: business.id,
+      location_id:context.branchId,is_automatic:automatic,apply_pos:applyPos,apply_online:applyOnline,product_ids:productIds,
       code,
       name,
       discount_type: discountType,
@@ -134,7 +155,7 @@ export async function createCoupon(formData: FormData) {
     },
   });
 
-  revalidatePath("/dashboard/promotions");
+  refreshPromotions();
 }
 
 export async function setCouponActive(formData: FormData) {
@@ -166,7 +187,7 @@ export async function setCouponActive(formData: FormData) {
     description: `${active ? "Enabled" : "Paused"} coupon ${data.code}`,
   });
 
-  revalidatePath("/dashboard/promotions");
+  refreshPromotions();
 }
 
 export async function deleteCoupon(formData: FormData) {
@@ -217,12 +238,14 @@ export async function deleteCoupon(formData: FormData) {
         : `Deleted coupon ${coupon.code}`,
   });
 
-  revalidatePath("/dashboard/promotions");
+  refreshPromotions();
 }
 
 export async function updateLoyaltySettings(formData: FormData) {
   const business = await requirePermission("storefront.update");
   const scopedDb=await createClient();
+  const context=await getBranchContext();
+  if(context.business.id!==business.id||context.branchId!==text(formData,'branchId'))throw new Error('The branch changed. Reload Promotions.');
 
   const loyaltyEnabled = formData.get("loyaltyEnabled") === "on";
   const enableCoupons = formData.get("enableCoupons") === "on";
@@ -242,16 +265,9 @@ export async function updateLoyaltySettings(formData: FormData) {
     throw new Error("Loyalty minimum order cannot be negative.");
   }
 
-  const { error } = await scopedDb
-    .from("business_storefronts")
-    .update({
-      enable_coupons: enableCoupons,
-      loyalty_enabled: loyaltyEnabled,
-      loyalty_spend_per_point: spendPerPoint,
-      loyalty_minimum_order: loyaltyMinimumOrder,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("business_id", business.id);
+  const { error } = await scopedDb.rpc('tenh_save_promotion_settings',{p_business:business.id,p_branch:context.branchId,p_settings:{
+    onlineCoupons:enableCoupons,onlineLoyalty:loyaltyEnabled,posCoupons:formData.get('posCoupons')==='on',posLoyalty:formData.get('posLoyalty')==='on',spend:spendPerPoint,minimum:loyaltyMinimumOrder,
+  }});
 
   if (error) throw new Error(error.message);
 
@@ -268,6 +284,13 @@ export async function updateLoyaltySettings(formData: FormData) {
     },
   });
 
-  revalidatePath("/dashboard/promotions");
-  revalidatePath("/dashboard/online-store");
+  refreshPromotions();
+}
+
+export async function updateCampaignChannels(formData:FormData){
+ const business=await requirePermission('storefront.update');const db=await createClient();
+ const applyPos=formData.get('applyPos')==='on',applyOnline=formData.get('applyOnline')==='on';
+ if(!applyPos&&!applyOnline)throw new Error('Choose at least one channel, or disable the campaign.');
+ const result=await db.from('business_coupons').update({apply_pos:applyPos,apply_online:applyOnline,updated_at:new Date().toISOString()}).eq('business_id',business.id).eq('id',text(formData,'couponId')).select('id').single();
+ if(result.error)throw new Error('Could not update campaign channels.');refreshPromotions();
 }

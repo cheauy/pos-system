@@ -22,6 +22,7 @@ export type StorefrontCatalogVariant = {
   color: string | null;
   imageUrl: string | null;
   sellingPrice: number;
+  originalPrice?: number;
   stockQuantity: number;
 };
 

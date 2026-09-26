@@ -9,6 +9,7 @@ import { businessHasPermission } from '@/lib/auth/effective-permissions';
 import { createClient } from '@/lib/supabase/branch-server';
 import { uuid, validateCheckout } from './pos-workspace-helpers';
 import { loadReceiptContext } from '@/lib/receipts/load-receipt-context';
+import { promotionalPrice, type Campaign } from '@/lib/promotions/pricing';
 import { currencyFormat, validCurrencyFormat, type CurrencyFormat } from '@/lib/currency-format';
 import type { ActionResult, CartDraft, CheckoutInput, SaleReceipt, Workspace } from './pos-workspace-types';
 
@@ -45,9 +46,17 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
     const { data, error } = await db.rpc('tenh_pos_catalog_scoped', { p_business_id: business.id });
     if (error) return { success: false, message: errorMessage(error) };
     if (!data || data.businessId !== business.id || !Array.isArray(data.products)) return { success: false, message: 'The POS catalog returned incomplete data. Please refresh.' };
-    const formatting = await db.from('branch_pos_settings').select('currency_format').eq('business_id',business.id).eq('location_id',branchId).maybeSingle();
+    const formatting = await db.from('branch_pos_settings').select('currency_format,enable_coupons').eq('business_id',business.id).eq('location_id',branchId).maybeSingle();
     if (formatting.error) return {success:false,message:'Unable to load currency settings. Please refresh.'};
     data.settings.currencyFormat = currencyFormat(formatting.data?.currency_format, data.settings.currency);
+    data.settings.couponsEnabled = formatting.data?.enable_coupons===true;
+    const campaigns=await db.from('business_coupons').select('*').eq('business_id',business.id).eq('location_id',branchId).eq('apply_pos',true).eq('is_active',true);
+    if(campaigns.error)throw new Error('Unable to load promotion prices. Refresh POS.');
+    data.coupons=(campaigns.data??[]).filter((c:Campaign)=>!c.is_automatic);
+    data.products=data.products.map((p:{id:string;selling_price:number;compare_at_price:number|null})=>{
+      const sale=promotionalPrice(p.id,Number(p.selling_price),campaigns.data as Campaign[],'pos');
+      return {...p,selling_price:sale,...(sale<Number(p.selling_price)?{compare_at_price:Number(p.selling_price)}:{})};
+    });
     if (data.inventoryVersion !== 2) return { success:false,message:'Apply 20260919_pos_stock_variants_continue_checkout.sql in Supabase before using this POS update.' };
     const ready = await db.rpc('tenh_pos_receipt_update_ready', { p_business_id: business.id });
     if (ready.error || ready.data !== true) return { success: false, message: 'Apply 20260919_pos_receipt_customer_delivery_update.sql, then refresh POS. This prevents using the old delivery status logic.' };

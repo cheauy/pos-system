@@ -16,7 +16,20 @@ async function preview(subtotal, overrides = {}, storeOverrides = {}) {
     business_storefronts: { is_published: true, accept_online_orders: true, enable_coupons: true, ...storeOverrides },
     business_coupons: { code: "SAVE", discount_type: "percentage", discount_value: 10, minimum_order: 0, max_discount: null, starts_at: null, ends_at: null, usage_limit: null, usage_count: 0, is_active: true, ...overrides },
   };
-  const admin = { rpc: async (name, args) => { assert.equal(name, "tenh_choose_online_branch"); assert.equal(args.p_business, "shop"); assert.equal(args.p_checkout.p_coupon_code, "SAVE"); assert.equal(args.p_checkout.p_items[0].productId, "product"); return { data: "branch", error: null }; }, from(table) {
+  const admin = { rpc: async (name, args) => {
+    assert.equal(args.p_business, 'shop');
+    if (name === 'tenh_choose_online_branch') {
+      assert.equal(args.p_checkout.p_coupon_code, 'SAVE');
+      assert.equal(args.p_checkout.p_items[0].productId, 'product');
+      return { data: 'branch', error: null };
+    }
+    assert.equal(name, 'tenh_preview_online_coupon');
+    assert.equal(args.p_branch, 'branch');
+    assert.equal(args.p_code, 'SAVE');
+    assert.equal(args.p_items[0].productId, 'product');
+    assert.equal(args.p_subtotal, undefined);
+    return overrides.error ? { data: null, error: { message: overrides.error } } : { data: { code: 'SAVE', discount: 1.5 }, error: null };
+  }, from(table) {
     const query = { select() { return query; }, eq() { return query; }, ilike() { return query; }, maybeSingle: async () => ({ data: rows[table], error: null }) };
     return query;
   } };
@@ -33,18 +46,17 @@ async function preview(subtotal, overrides = {}, storeOverrides = {}) {
   return { status: response.status, body: await response.json() };
 }
 
-test("percentage discounts recalculate with subtotal and round to cents", async () => {
+test("server-priced discount ignores client subtotal", async () => {
   assert.equal((await preview(15)).body.coupon.discount, 1.5);
-  assert.equal((await preview(29.99)).body.coupon.discount, 3);
+  assert.equal((await preview(99999)).body.coupon.discount, 1.5);
 });
 
 test("discounts respect the maximum and never exceed the subtotal", async () => {
-  assert.equal((await preview(100, { max_discount: 4 })).body.coupon.discount, 4);
-  assert.equal((await preview(15, { discount_type: "fixed", discount_value: 50 })).body.coupon.discount, 15);
+  assert.equal((await preview(100)).body.coupon.discount, 1.5);
 });
 
 test("rejects minimum-order, expired and exhausted coupons", async () => {
-  for (const override of [{ minimum_order: 50 }, { ends_at: "2000-01-01T00:00:00.000Z" }, { usage_limit: 1, usage_count: 1 }]) {
+  for (const override of [{ error: 'Minimum order' }, { error: 'Expired' }, { error: 'Usage limit' }]) {
     assert.equal((await preview(15, override)).status, 400);
   }
 });

@@ -17,9 +17,7 @@ import {
   PlayCircle,
   Plus,
   Search,
-  ShoppingBag,
   Sparkles,
-  Store,
   Tag,
   TicketPercent,
   Trash2,
@@ -30,14 +28,17 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { createClient } from "@/lib/supabase/branch-server";
 import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
+import { getBranchContext } from '@/lib/branches/context';
+import CampaignForm from './campaign-form';
 import {
-  createCoupon,
   deleteCoupon,
   setCouponActive,
   updateLoyaltySettings,
+  updateCampaignChannels,
 } from "./actions";
 
 type Coupon = {
+  is_automatic:boolean;apply_pos:boolean;apply_online:boolean;product_ids:string[]|null;
   id: string;
   code: string;
   name: string | null;
@@ -87,6 +88,13 @@ export default async function PromotionsPage({
   const params = await searchParams;
   const business = await requirePermission("storefront.view");
   const scopedDb=await createClient();
+  const context=await getBranchContext();
+  const [posSettings,productChoices]=await Promise.all([
+    scopedDb.from('branch_pos_settings').select('enable_coupons,loyalty_enabled').eq('business_id',business.id).eq('location_id',context.branchId).maybeSingle(),
+    scopedDb.from('product_location_stock').select('product_id,products(name,size,color)').eq('business_id',business.id).eq('location_id',context.branchId),
+  ]);
+  if(posSettings.error||productChoices.error)throw new Error('Unable to load branch promotion settings.');
+  const products=(productChoices.data??[]).map(row=>{const p=Array.isArray(row.products)?row.products[0]:row.products;return {id:row.product_id,name:[p?.name,p?.size,p?.color].filter(Boolean).join(' / ')};});
 
   const [settings, couponResult, orderResult] = await Promise.all([
     getStorefrontSettings(business.id),
@@ -107,6 +115,7 @@ export default async function PromotionsPage({
         usage_count,
         is_active,
         created_at
+        ,is_automatic,apply_pos,apply_online,product_ids
       `)
       .eq("business_id", business.id)
       .order("created_at", { ascending: false }),
@@ -177,7 +186,7 @@ export default async function PromotionsPage({
 
     const couponStatus = getCouponStatus(coupon, now);
     const matchesStatus = status === "all" || couponStatus === status;
-    return matchesQuery && matchesStatus;
+    return matchesQuery && matchesStatus && (tab !== 'coupons' || !coupon.is_automatic);
   });
 
   filteredCoupons = [...filteredCoupons].sort((first, second) => {
@@ -413,13 +422,13 @@ export default async function PromotionsPage({
                               </td>
                               <td className="px-2 py-3">
                                 <div className="flex items-center gap-3">
-                                  <CampaignIcon index={index} code={coupon.code} />
+                                  <CampaignIcon index={index} code={coupon.is_automatic?'Automatic discount':coupon.code} />
                                   <div className="min-w-0">
                                     <p className="max-w-[220px] truncate font-semibold text-slate-900">
                                       {coupon.name || coupon.code}
                                     </p>
                                     <p className="mt-0.5 max-w-[240px] truncate text-xs text-slate-500">
-                                      Code · {coupon.code}
+                                      Code · {coupon.is_automatic?'Automatic discount':coupon.code}
                                     </p>
                                   </div>
                                 </div>
@@ -472,7 +481,7 @@ export default async function PromotionsPage({
                                 <div className="flex items-center gap-3 text-xs font-medium text-slate-600">
                                   <span className="inline-flex items-center gap-1.5">
                                     <Globe2 size={15} className="text-slate-500" />
-                                    Online
+                                    {coupon.apply_pos?"POS ":""}{coupon.apply_online?"Online":""}
                                   </span>
                                 </div>
                               </td>
@@ -482,6 +491,7 @@ export default async function PromotionsPage({
                                     <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800">
                                       <MoreHorizontal size={17} />
                                     </summary>
+<form action={updateCampaignChannels} className="space-y-2 border-b p-2 text-xs"><input type="hidden" name="couponId" value={coupon.id}/><label><input type="checkbox" name="applyPos" defaultChecked={coupon.apply_pos}/> POS</label><label><input type="checkbox" name="applyOnline" defaultChecked={coupon.apply_online}/> Online</label><button type="submit" className="block text-blue-600">Save channels</button></form>
                                     <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 text-left shadow-xl">
                                       <form action={setCouponActive}>
                                         <input type="hidden" name="couponId" value={coupon.id} />
@@ -590,7 +600,7 @@ export default async function PromotionsPage({
                   <Gift size={19} />
                 </div>
                 <div>
-                  <h2 className="font-bold text-slate-900">Online store loyalty settings (shared)</h2>
+                  <h2 className="font-bold text-slate-900">Coupon & loyalty settings</h2>
                   <p className="mt-0.5 text-xs leading-5 text-slate-500">
                     Turn repeat customers into loyal fans.
                   </p>
@@ -602,9 +612,12 @@ export default async function PromotionsPage({
             </div>
 
             <form action={updateLoyaltySettings} className="mt-4 space-y-2.5">
+              <input type="hidden" name="branchId" value={context.branchId??''}/>
+              <SwitchRow name="posCoupons" label="POS coupon codes" description="Allow codes at checkout in this branch." defaultChecked={posSettings.data?.enable_coupons===true} disabled={!canEdit} icon={<TicketPercent size={16}/>} iconClass="bg-blue-50 text-blue-600"/>
+              <SwitchRow name="posLoyalty" label="POS loyalty points" description="Earn and redeem points in this branch." defaultChecked={posSettings.data?.loyalty_enabled===true} disabled={!canEdit} icon={<Gift size={16}/>} iconClass="bg-violet-50 text-violet-600"/>
               <SwitchRow
                 name="enableCoupons"
-                label="Enable coupon codes"
+                label="Online coupon codes"
                 description="Show coupon entry at online checkout."
                 defaultChecked={settings.enable_coupons}
                 disabled={!canEdit}
@@ -613,7 +626,7 @@ export default async function PromotionsPage({
               />
               <SwitchRow
                 name="loyaltyEnabled"
-                label="Enable loyalty points"
+                label="Online loyalty points"
                 description="Earn points on completed purchases."
                 defaultChecked={settings.loyalty_enabled}
                 disabled={!canEdit}
@@ -667,132 +680,12 @@ export default async function PromotionsPage({
                   <TicketPercent size={18} />
                 </div>
                 <div>
-                  <h2 className="font-bold text-slate-900">Create Coupon Campaign</h2>
-                  <p className="mt-0.5 text-xs text-slate-500">Create a code customers can redeem online.</p>
+                  <h2 className="font-bold text-slate-900">Create Promotion</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">Automatic discounts or coupon codes.</p>
                 </div>
               </div>
 
-              <form action={createCoupon} className="mt-4 space-y-3">
-                <label className={fieldLabelClass}>
-                  Campaign name
-                  <input
-                    name="name"
-                    maxLength={120}
-                    placeholder="e.g. Welcome Discount"
-                    className={compactInputClass}
-                  />
-                </label>
-
-                <label className={fieldLabelClass}>
-                  Coupon code
-                  <input
-                    name="code"
-                    required
-                    minLength={3}
-                    maxLength={30}
-                    placeholder="e.g. WELCOME10"
-                    className={`${compactInputClass} uppercase`}
-                  />
-                </label>
-
-                <div className="grid grid-cols-[1fr_120px] gap-2">
-                  <label className={fieldLabelClass}>
-                    Discount type
-                    <select name="discountType" defaultValue="percentage" className={compactInputClass}>
-                      <option value="percentage">Percentage</option>
-                      <option value="fixed">Fixed amount</option>
-                    </select>
-                  </label>
-                  <label className={fieldLabelClass}>
-                    Value
-                    <input
-                      name="discountValue"
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      required
-                      placeholder="10"
-                      className={compactInputClass}
-                    />
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <label className={fieldLabelClass}>
-                    Minimum order
-                    <input name="minimumOrder" type="number" min="0" step="0.01" defaultValue="0" className={compactInputClass} />
-                  </label>
-                  <label className={fieldLabelClass}>
-                    Max discount
-                    <input name="maxDiscount" type="number" min="0.01" step="0.01" placeholder="Optional" className={compactInputClass} />
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <label className={fieldLabelClass}>
-                    Total usage limit
-                    <input name="usageLimit" type="number" min="1" step="1" placeholder="Unlimited" className={compactInputClass} />
-                  </label>
-                  <label className={fieldLabelClass}>
-                    Per customer limit
-                    <input name="perCustomerLimit" type="number" min="1" step="1" placeholder="Unlimited" className={compactInputClass} />
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <label className={fieldLabelClass}>
-                    Starts
-                    <input name="startsAt" type="datetime-local" className={compactInputClass} />
-                  </label>
-                  <label className={fieldLabelClass}>
-                    Ends
-                    <input name="endsAt" type="datetime-local" className={compactInputClass} />
-                  </label>
-                </div>
-
-                <div>
-                  <span className="text-xs font-semibold text-slate-600">Applicable to</span>
-                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600">
-                    <span className="inline-flex items-center gap-1.5 font-medium text-blue-700">
-                      <span className="flex h-4 w-4 items-center justify-center rounded-full border-4 border-blue-600 bg-white" />
-                      All products
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 text-slate-400" title="Product targeting is not connected yet">
-                      <span className="h-4 w-4 rounded-full border border-slate-300" />
-                      Selected products
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-xs font-semibold text-slate-600">Channels</span>
-                  <div className="mt-2 flex items-center gap-4 text-xs font-medium text-slate-600">
-                    <span className="inline-flex items-center gap-1.5 text-slate-400" title="POS coupon redemption is not connected yet">
-                      <Store size={15} /> POS
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 text-blue-700">
-                      <ShoppingBag size={15} /> Online store
-                    </span>
-                  </div>
-                </div>
-
-                <label className="flex items-center gap-2.5 rounded-xl bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700">
-                  <input
-                    name="isActive"
-                    type="checkbox"
-                    defaultChecked
-                    className="h-4 w-4 rounded border-slate-300 accent-blue-600"
-                  />
-                  Activate campaign now
-                </label>
-
-                <button
-                  type="submit"
-                  className="h-10 w-full rounded-xl bg-blue-600 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
-                >
-                  Create Campaign
-                </button>
-              </form>
+              <CampaignForm branchId={context.branchId!} products={products}/>
             </section>
           ) : null}
         </aside>
@@ -803,7 +696,6 @@ export default async function PromotionsPage({
 
 const compactInputClass =
   "mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-normal text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-50 disabled:text-slate-400";
-const fieldLabelClass = "block text-xs font-semibold text-slate-600";
 const menuItemClass =
   "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50";
 const menuButtonClass =

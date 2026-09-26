@@ -8,6 +8,7 @@ import { getOperatingBranchStatus, switchOperatingBranch } from './branch-action
 import { useTheme } from '@/components/providers/theme-provider';
 import { APPEARANCE_STORAGE_KEY } from '@/lib/appearance';
 import { usePosNavigationLock } from './pos-lock-provider';
+import { useActivity } from '@/components/ui/activity-link';
 
 type Guard=(targetId?:string)=>string|null;
 type SwitchContext={requestSwitch:(id:string)=>Promise<void>;registerGuard:(guard:Guard)=>()=>void};
@@ -32,6 +33,7 @@ export default function WorkspaceBranchProvider(p:Props) {
   const sharedOnlineStore=pathname === "/dashboard/online-store" || pathname.startsWith("/dashboard/online-store/");
   const [open,setOpen]=useState(false),[selected,setSelected]=useState(p.branchId);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[stale,setStale]=useState('');
+  useActivity(busy);
   const guards=useRef(new Set<Guard>()),dirty=useRef(false),saving=useRef(false);
   const modal=useRef<HTMLDialogElement>(null),staleDialog=useRef<HTMLDialogElement>(null);
   const content=useRef<HTMLDivElement>(null),channel=useRef<BroadcastChannel|null>(null);

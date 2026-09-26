@@ -704,7 +704,7 @@ function CartDrawer({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, subtotal, items: cart.map(item => ({ productId: item.productId, quantity: item.quantity })), tableToken: fulfillment === "dine_in" ? tableToken : null }),
+          body: JSON.stringify({ code, subtotal, items: cart.map(item => ({ productId: item.productId, quantity: item.quantity, optionIds: item.optionIds })), tableToken: fulfillment === "dine_in" ? tableToken : null }),
         },
       );
       const payload = await response.json();
@@ -805,6 +805,7 @@ function CartDrawer({
                 : null,
             requestedFor,
             couponCode: coupon?.code ?? null,
+            expectedSubtotal:subtotal,
           };
       const upload = new FormData();
       upload.set("checkout", JSON.stringify(checkout));

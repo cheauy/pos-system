@@ -98,6 +98,9 @@ function CatalogCard({ product, categoryName, settings, onAdd, onQuickView, eage
   const variant = matches.find(row => row.stockQuantity > 0) ?? matches[0];
   const [imageOpen, setImageOpen] = useState(false);
   const image = variant?.imageUrl || product.imageUrl;
+  const displayVariants=matches.length?matches:product.variants;
+  const cheapest=displayVariants.reduce((best,row)=>row.sellingPrice<best.sellingPrice?row:best,displayVariants[0]);
+  const originalPrice=cheapest?.originalPrice;
   const price = matches.length ? Math.min(...matches.map(row => row.sellingPrice)) : product.priceFrom;
   const preorder = Boolean(
     (selectedColor || selectedSize) &&
@@ -110,7 +113,7 @@ function CatalogCard({ product, categoryName, settings, onAdd, onQuickView, eage
 
     </div>
     <div className="product-card-body"><h3 title={product.name}>{product.name}</h3><p className="product-category">{categoryName}</p>
-      <div className="product-price-row"><p className="product-price">{new Intl.NumberFormat("en-US", { style: "currency", currency: settings.currency }).format(price)}{matches.some(row => row.sellingPrice !== price) && <small className="ml-1 text-[9px] font-normal">{t("from")}</small>}</p><span className={`product-stock ${preorder ? "preorder" : stock <= 0 ? "sold-out" : stock <= 3 ? "low" : ""}`}><i />{preorder ? t("Pre-order") : stock <= 0 ? t("Sold out") : stock <= 3 ? `${t("Only")} ${stock} ${t("left")}` : t("In stock")}</span></div>
+      <div className="product-price-row">{originalPrice!==undefined&&originalPrice>price&&<del className="text-xs text-slate-500">{new Intl.NumberFormat("en-US",{style:"currency",currency:settings.currency}).format(originalPrice)}</del>}<p className="product-price">{new Intl.NumberFormat("en-US", { style: "currency", currency: settings.currency }).format(price)}{matches.some(row => row.sellingPrice !== price) && <small className="ml-1 text-[9px] font-normal">{t("from")}</small>}</p><span className={`product-stock ${preorder ? "preorder" : stock <= 0 ? "sold-out" : stock <= 3 ? "low" : ""}`}><i />{preorder ? t("Pre-order") : stock <= 0 ? t("Sold out") : stock <= 3 ? `${t("Only")} ${stock} ${t("left")}` : t("In stock")}</span></div>
       <div className="product-swatches">{colors.map(color => <button key={color} type="button" title={color} aria-label={`${product.name}: ${color}`} aria-pressed={selectedColor === color} onClick={() => { setSelectedColor(selectedColor === color ? null : color); setSelectedSize(null); }} style={{ background: swatchColor(color) }} />)}{!colors.length && <small>{product.productType === "configurable" ? t("Customize your selection") : t("Ready to order")}</small>}</div>
       {sizes.length > 0 && <div className="product-sizes" role="group" aria-label={`${product.name} sizes`}><span>{t("Size")}</span>{sizes.map(size => {
         const available = product.variants.some(row => row.size?.trim() === size && (!selectedColor || row.color?.trim() === selectedColor) && row.stockQuantity > 0);

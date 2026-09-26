@@ -148,6 +148,7 @@ export function totals(lines: CartLine[], discount: number, delivery: number, po
   return { subtotal: subtotal / 100, manualDiscount: manual / 100, reward: reward / 100, discount: (manual + reward) / 100, tax: tax / 100, delivery: (cents(delivery) || 0) / 100, total: Math.max(0, taxable + tax + (cents(delivery) || 0)) / 100 };
 }
 export function validateCheckout(input: CheckoutInput): string | null {
+  if(input?.couponCode!==undefined&&input.couponCode!==''&&!/^[A-Z0-9_-]{3,30}$/.test(input.couponCode))return 'Enter a valid coupon code.';
   if (!input || !uuid(input.requestId) || !uuid(input.branchId) || (input.customerId !== null && !uuid(input.customerId))) return 'Invalid sale or branch.';
   if (!Array.isArray(input.items) || !input.items.length || input.items.length > MAX_LINES) return 'Add 1–100 items to the sale.';
   for (const i of input.items) {

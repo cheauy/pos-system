@@ -34,6 +34,7 @@ function workspace(overrides = {}) {
   const db = {
     from(table) {
       const results = {
+        business_coupons:{data:[],error:null},
         branch_pos_settings:{data:{currency_format:null},error:null},
         customers:{data:[],error:null},
         categories:{data:[{id:'shared',branch_ids:null},{id:'other',branch_ids:[C]}],error:null},
@@ -64,6 +65,7 @@ function workspace(overrides = {}) {
     '@/lib/auth/require-permission':{requirePermission:async()=>business},
     '@/lib/auth/effective-permissions':{businessHasPermission:async()=>true},
     '@/lib/currency-format':loadTs('lib/currency-format.ts'),
+    '@/lib/promotions/pricing':loadTs('lib/promotions/pricing.ts'),
     '@/lib/supabase/branch-server':{createClient:async()=>{dbCreated++;return db;}},
     '@/lib/receipts/load-receipt-context':{loadReceiptContext:async()=>({source:'unchanged'})},
     'next/cache':{revalidatePath(){if(overrides.cacheError)throw Error('cache offline');}},

@@ -23,6 +23,7 @@ import {
   normalizeTenantSlug,
 } from "@/lib/tenancy/domain";
 import StorefrontShop from "./storefront-shop";
+import { promotionalPrice, type Campaign } from '@/lib/promotions/pricing';
 import StorefrontContact from "./storefront-contact";
 import { supportsDineIn } from "@/lib/storefront/profile";
 import "./storefront.css";
@@ -43,6 +44,7 @@ type CategoryRow = {
 };
 
 type ProductRow = {
+  original_price?: number;
   created_at: string;
   id: string;
   category_id: string | null;
@@ -264,6 +266,9 @@ export default async function StorefrontPage({
   let productRows = ((productResult.data ?? []) as ProductRow[]).filter(
     (product) => !product.category_id || categoryIds.has(product.category_id),
   );
+  const campaigns=await supabaseAdmin.from('business_coupons').select('*').eq('business_id',business.id).eq('is_automatic',true).eq('apply_online',true).eq('is_active',true);
+  if(campaigns.error)throw new Error('Unable to load store promotion prices. Please refresh.');
+  productRows=productRows.map(product=>({...product,original_price:Number(product.selling_price),selling_price:promotionalPrice(product.id,Number(product.selling_price),campaigns.data as Campaign[],'online')}));
 
   const { data: inventoryBranches, error: inventoryBranchError } = await supabaseAdmin.from("business_locations").select("id").eq("business_id", business.id).eq("is_active", true).eq("plan_disable_pending", false);
   if (inventoryBranchError) throw new Error("Unable to load store branches.");
@@ -470,6 +475,7 @@ function buildCatalog(
       color: row.color,
       imageUrl: row.variant_image_url,
       sellingPrice: Number(row.selling_price),
+      originalPrice: row.original_price,
       stockQuantity: Number(row.stock_quantity),
     }));
 
