@@ -1,4 +1,5 @@
 "use client";
+import { PASSWORD_HELP } from "@/lib/auth/password-policy";
 
 import {
   useActionState,
@@ -77,7 +78,13 @@ export default function SecurityForm({
 }: SecurityFormProps) {
   const supabase = useMemo(() => createClient(), []);
   const [passwordState, passwordAction, passwordPending] = useActionState(
-    changePassword,
+    async (previous: ChangePasswordState, formData: FormData) => {
+      try {
+        const result = await changePassword(previous, formData);
+        if (result.success) { setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); }
+        return result;
+      } catch { return { success: false, message: 'Unable to change your password. Please try again.' }; }
+    },
     initialPasswordState,
   );
   const [deleteState, deleteAction, deletePending] = useActionState(
@@ -88,6 +95,8 @@ export default function SecurityForm({
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [newPassword, setNewPassword] = useState("");
   const [verifiedFactors, setVerifiedFactors] = useState<Factor[]>([]);
   const [identities, setIdentities] = useState<string[]>([]);
@@ -319,13 +328,14 @@ export default function SecurityForm({
             />
 
             <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(260px,0.75fr)]">
-              <div className="space-y-4">
+              <fieldset disabled={passwordPending} className="min-w-0 space-y-4">
                 {hasPasswordIdentity && (
                   <PasswordField
                     id="current_password"
                     name="current_password"
                     label="Current password"
                     placeholder="Enter your current password"
+                    value={currentPassword} onChange={setCurrentPassword}
                     visible={showCurrent}
                     onToggle={() => setShowCurrent((value) => !value)}
                   />
@@ -345,10 +355,12 @@ export default function SecurityForm({
                   name="confirm_password"
                   label="Confirm new password"
                   placeholder="Enter the new password again"
+                  value={confirmPassword} onChange={setConfirmPassword}
                   visible={showConfirm}
                   onToggle={() => setShowConfirm((value) => !value)}
                 />
 
+                <p className="text-xs text-slate-500">{PASSWORD_HELP}</p>
                 {passwordState.message && (
                   <StatusBox success={passwordState.success}>
                     {passwordState.message}
@@ -367,7 +379,7 @@ export default function SecurityForm({
                       ? "Update Password"
                       : "Create Password"}
                 </button>
-              </div>
+              </fieldset>
 
             </div>
           </form>
@@ -692,6 +704,7 @@ function PasswordField({
           type={visible ? "text" : "password"}
           required
           minLength={name === "current_password" ? undefined : 8}
+          maxLength={name === "current_password" ? undefined : 72}
           autoComplete={name === "current_password" ? "current-password" : "new-password"}
           placeholder={placeholder}
           {...(value !== undefined

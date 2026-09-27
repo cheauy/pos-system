@@ -1,4 +1,5 @@
 "use client";
+import { realtimeTopic } from '@/lib/supabase/realtime-topic';
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -25,7 +26,7 @@ export default function ManualPaymentStatusWatcher({
     // or rejects a submitted manual payment. The polling fallback keeps this
     // safe when Realtime is temporarily unavailable or disabled for the table.
     const channel = supabase
-      .channel(`subscription-payment:${orderId}`)
+      .channel(realtimeTopic(`subscription-payment:${orderId}`))
       .on(
         "postgres_changes",
         {

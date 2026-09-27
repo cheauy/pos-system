@@ -16,7 +16,7 @@ const shippingFields = [
   ["storeName", "Store name"], ["storeAddress", "Store address"],
   ["storePhone", "Store phone number"], ["phone", "Customer phone"],
   ["orderNumber", "Order number"], ["cod", "Payment and amount"],
-  ["itemCount", "Item count"], ["barcode", "Order barcode"],
+  ["itemCount", "Item count"], ["barcode", "Order QR code"],
 ] as const;
 const snake = (key: string) => key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 const upper = (key: string) => key[0].toUpperCase() + key.slice(1);
@@ -27,7 +27,7 @@ const sampleProduct = {
   stock_quantity: 10, size: "M", color: "Black", category_id: null, is_active: true,
 };
 const sampleOrder = {
-  id: "sample-order", order_number: "WEB-123456", total: 37, payment_method: "COD",
+  id: "00000000-0000-0000-0000-000000000000", order_number: "WEB-123456", total: 37, payment_method: "COD",
   payment_status: "unpaid", guest_name: "Sample Customer", guest_phone: "012 345 678",
   guest_address: "123 Sample Street, Phnom Penh", fulfillment_type: "delivery",
   created_at: "2026-01-01T00:00:00Z", customers: null, order_items: [{ quantity: 2 }],

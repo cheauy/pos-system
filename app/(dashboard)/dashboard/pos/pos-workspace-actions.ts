@@ -33,7 +33,7 @@ function refreshRoutes(): void {
   try { for (const path of ['/dashboard/pos', '/dashboard/orders', '/dashboard/products', '/dashboard/register', '/dashboard/customers']) revalidatePath(path); }
   catch (error) { console.error('POS post-commit refresh failed', error); }
 }
-export async function loadPosWorkspace(expectedBusinessId?: string, expectedBranchId?: string): Promise<ActionResult<Workspace>> {
+export async function loadPosWorkspace(expectedBusinessId?: string, expectedBranchId?: string, includeReceipt = true): Promise<ActionResult<Workspace>> {
   const business = await requirePermission('pos.access');
   if (expectedBusinessId && expectedBusinessId !== business.id) return activeBusinessError();
   try {
@@ -43,14 +43,23 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
       return { success: false, message: 'The operating branch changed in another tab. Copy your unsaved cart details before reloading; no sale has been submitted.' };
     }
     const db = await createClient();
-    const { data, error } = await db.rpc('tenh_pos_catalog_scoped', { p_business_id: business.id });
+    // These reads share the validated scope but do not depend on one another.
+    const [catalog, formatting, campaigns, ready, customers, categories, openShifts] = await Promise.all([
+      db.rpc('tenh_pos_catalog_scoped', { p_business_id: business.id }),
+      db.from('branch_pos_settings').select('currency_format,enable_coupons,require_open_register').eq('business_id',business.id).eq('location_id',branchId).maybeSingle(),
+      db.from('business_coupons').select('*').eq('business_id',business.id).eq('location_id',branchId).eq('apply_pos',true).eq('is_active',true),
+      db.rpc('tenh_pos_receipt_update_ready', { p_business_id: business.id }),
+      db.from('customers').select('id,name,phone,address,loyalty_points').eq('business_id',business.id).eq('location_id',branchId).order('name'),
+      db.from('categories').select('id,name,branch_ids').eq('business_id',business.id),
+      db.from('cash_register_shifts').select('id,location_id').eq('business_id',business.id).eq('location_id',branchId).eq('status','open').limit(2),
+    ]);
+    const { data, error } = catalog;
     if (error) return { success: false, message: errorMessage(error) };
     if (!data || data.businessId !== business.id || !Array.isArray(data.products)) return { success: false, message: 'The POS catalog returned incomplete data. Please refresh.' };
-    const formatting = await db.from('branch_pos_settings').select('currency_format,enable_coupons').eq('business_id',business.id).eq('location_id',branchId).maybeSingle();
     if (formatting.error) return {success:false,message:'Unable to load currency settings. Please refresh.'};
     data.settings.currencyFormat = currencyFormat(formatting.data?.currency_format, data.settings.currency);
+    data.settings.requireOpenRegister = formatting.data?.require_open_register !== false;
     data.settings.couponsEnabled = formatting.data?.enable_coupons===true;
-    const campaigns=await db.from('business_coupons').select('*').eq('business_id',business.id).eq('location_id',branchId).eq('apply_pos',true).eq('is_active',true);
     if(campaigns.error)throw new Error('Unable to load promotion prices. Refresh POS.');
     data.coupons=(campaigns.data??[]).filter((c:Campaign)=>!c.is_automatic);
     data.products=data.products.map((p:{id:string;selling_price:number;compare_at_price:number|null})=>{
@@ -58,16 +67,7 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
       return {...p,selling_price:sale,...(sale<Number(p.selling_price)?{compare_at_price:Number(p.selling_price)}:{})};
     });
     if (data.inventoryVersion !== 2) return { success:false,message:'Apply 20260919_pos_stock_variants_continue_checkout.sql in Supabase before using this POS update.' };
-    const ready = await db.rpc('tenh_pos_receipt_update_ready', { p_business_id: business.id });
     if (ready.error || ready.data !== true) return { success: false, message: 'Apply 20260919_pos_receipt_customer_delivery_update.sql, then refresh POS. This prevents using the old delivery status logic.' };
-    const [customers, categories, openShifts] = await Promise.all([
-      db.from('customers').select('id,name,phone,address,loyalty_points').eq('business_id',business.id).eq('location_id',branchId).order('name'),
-      db.from('categories').select('id,name,branch_ids').eq('business_id',business.id),
-      // The drawer belongs to the operating branch, not whichever branch this
-      // cashier last opened. Another authorized cashier may have opened it.
-      db.from('cash_register_shifts').select('id,location_id').eq('business_id',business.id)
-        .eq('location_id',branchId).eq('status','open').limit(2),
-    ]);
     if(customers.error || categories.error || openShifts.error) throw new Error('Unable to load branch customers, categories or register.');
     if ((openShifts.data?.length ?? 0) > 1) throw new Error('This branch has multiple open registers. Review them before checkout; do not delete cash history.');
     data.shift = openShifts.data?.[0] ?? null;
@@ -83,7 +83,7 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
     const visibleProducts = new Set(data.products.map((p:{id:string})=>p.id));
     data.groups = (data.groups ?? []).filter((group:{product_id:string})=>visibleProducts.has(group.product_id));
     data.options = (data.options ?? []).filter((option:{product_id:string})=>visibleProducts.has(option.product_id));
-    const receiptContext = await loadReceiptContext(business.id, business.name);
+    const receiptContext = includeReceipt ? await loadReceiptContext(business.id, business.name) : undefined;
     return { success: true, data: { ...data, receiptContext } as Workspace };
   } catch (error) { return { success: false, message: errorMessage(error) }; }
 }
@@ -141,14 +141,14 @@ export async function deletePosHold(businessId: string, id: string, version: num
     return error ? { success: false, message: errorMessage(error) } : { success: true, data };
   } catch (error) { return { success: false, message: errorMessage(error) }; }
 }
-export async function savePosSettings(businessId: string, taxRate: number, pointValue: number): Promise<ActionResult<null>> {
+export async function savePosSettings(businessId: string, taxRate: number, pointValue: number, requireOpenRegister = true): Promise<ActionResult<null>> {
   const business = await requirePermission('pos.access');
   if (business.id !== businessId) return activeBusinessError();
   if (business.role !== 'owner') return { success: false, message: 'Only the owner can change POS rates.' };
   if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100 || !Number.isFinite(pointValue) || pointValue < 0 || pointValue > 1000000) return { success: false, message: 'Enter a tax rate from 0 to 100 and a valid point value.' };
   try {
     const db = await createClient();
-    const { error } = await db.rpc('tenh_pos_settings', { p_business_id: business.id, p_tax_rate: taxRate, p_point_value: pointValue });
+    const { error } = await db.rpc('tenh_pos_save_options', { p_business_id: business.id, p_tax_rate: taxRate, p_point_value: pointValue, p_require_open_register: requireOpenRegister });
     if (error) return { success: false, message: errorMessage(error) };
     refreshRoutes();
     return { success: true, data: null };

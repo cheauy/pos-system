@@ -21,6 +21,11 @@
 }
 .dark { --workspace-panel: #101b2e; --workspace-background: #020617; }
 .workspace-theme { background: var(--workspace-background); }
+@media screen {
+  .workspace-content :is(div, section):has(> table) { min-width: 0; max-width: 100%; overflow-x: auto; }
+  .workspace-content :is(form, fieldset) { min-width: 0; }
+  .workspace-theme dialog { max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+}
 .workspace-theme [class~="bg-white"], .workspace-theme [class~="dark:bg-slate-900"], .workspace-theme dialog { background-color: var(--workspace-panel); }
 .workspace-theme [class~="bg-blue-600"] { background-color: var(--app-accent); }
 .workspace-theme [class~="text-blue-600"], .workspace-theme [class~="text-blue-700"] { color: var(--app-accent); }

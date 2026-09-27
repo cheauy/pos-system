@@ -1,4 +1,5 @@
 "use client";
+import { realtimeTopic } from '@/lib/supabase/realtime-topic';
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -42,7 +43,7 @@ export default function OnlineOrderListener({
     const supabase = createClient();
 
     const channel = supabase
-      .channel(`dashboard-online-orders:${businessId}`)
+      .channel(realtimeTopic(`dashboard-online-orders:${businessId}`))
       .on(
         "postgres_changes",
         {

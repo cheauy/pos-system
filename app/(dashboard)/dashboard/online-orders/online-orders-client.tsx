@@ -1,4 +1,5 @@
 "use client";
+import { realtimeTopic } from '@/lib/supabase/realtime-topic';
 
 import Link from "next/link";
 import OrderPrintMenu from "@/components/order-print-menu";
@@ -260,7 +261,7 @@ export default function OnlineOrdersClient({
     const supabase = createClient();
 
     const channel = supabase
-      .channel(`online-orders:${businessId}`)
+      .channel(realtimeTopic(`online-orders:${businessId}`))
       .on(
         "postgres_changes",
         {

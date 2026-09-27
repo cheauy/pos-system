@@ -67,7 +67,7 @@ function workspace(overrides = {}) {
     '@/lib/currency-format':loadTs('lib/currency-format.ts'),
     '@/lib/promotions/pricing':loadTs('lib/promotions/pricing.ts'),
     '@/lib/supabase/branch-server':{createClient:async()=>{dbCreated++;return db;}},
-    '@/lib/receipts/load-receipt-context':{loadReceiptContext:async()=>({source:'unchanged'})},
+    '@/lib/receipts/load-receipt-context':{loadReceiptContext:async()=>{if(overrides.receiptError)throw Error('Printer settings unavailable');return {source:'unchanged'};}},
     'next/cache':{revalidatePath(){if(overrides.cacheError)throw Error('cache offline');}},
     './pos-workspace-helpers':{
       uuid:v=>typeof v==='string' && /^[0-9a-f-]{36}$/i.test(v),
@@ -89,6 +89,14 @@ test('catalog uses operating-branch drawer, even when the catalog returns anothe
 });
 test('closed/missing operating drawer overrides stale catalog drawer with null', async()=>{
   const {api}=workspace({shifts:[]});const r=await api.loadPosWorkspace(B,A);assert.equal(r.success,true);assert.equal(r.data.shift,null);
+});
+test('mobile catalog skips unused printer settings but keeps stock, register and branch checks', async()=>{
+  const {api}=workspace({receiptError:true});
+  const mobile=await api.loadPosWorkspace(B,A,false);
+  assert.equal(mobile.success,true); assert.equal(mobile.data.receiptContext,undefined);
+  assert.deepEqual(mobile.data.products.map(p=>p.id),['shirt']);
+  assert.equal(mobile.data.shift.location_id,A);
+  assert.equal((await api.loadPosWorkspace(B,A)).success,false);
 });
 test('multiple open drawers produce explicit failure, not an arbitrary first match', async()=>{
   const {api}=workspace({shifts:[{id:'one',location_id:A},{id:'two',location_id:A}]});

@@ -1,6 +1,6 @@
 "use client";
 import { ImageViewer } from "./image-viewer";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImageOff } from "lucide-react";
 import { useRef, useState } from "react";
 import { useStorefrontLanguage } from "./storefront-language";
 
@@ -8,8 +8,9 @@ export default function ProductGallery({ images, name }: { images: string[]; nam
   const viewport = useRef<HTMLDivElement>(null);
   const [fullscreen, setFullscreen] = useState<number | null>(null);
   const [index, setIndex] = useState(0);
+  const [failed, setFailed] = useState<string[]>([]);
   const { t } = useStorefrontLanguage();
-  if (!images.length) return null;
+  if (!images.length) return <div className="product-gallery-empty"><ImageOff size={32}/><span>{t("No image")}</span></div>;
   const multiple = images.length > 1;
   function show(next: number) {
     const target = Math.max(0, Math.min(images.length - 1, next));
@@ -20,7 +21,7 @@ export default function ProductGallery({ images, name }: { images: string[]; nam
       <div ref={viewport} className="product-gallery-track" tabIndex={multiple ? 0 : undefined} aria-label={t("Product photos")} onKeyDown={event => {
         if (event.key === "ArrowRight" || event.key === "ArrowLeft") { event.preventDefault(); show(index + (event.key === "ArrowRight" ? 1 : -1)); }
       }} onScroll={event => { const node = event.currentTarget; setIndex(Math.round(node.scrollLeft / node.clientWidth)); }}>
-        {images.map((src, position) => <button className="product-gallery-slide" type="button" key={src} onClick={() => setFullscreen(position)} aria-label={`${t("View full screen")} ${position + 1}`}><img src={src} alt={`${name} · ${t("Photo")} ${position + 1}`} loading={position === 0 ? "eager" : "lazy"} draggable={false} /></button>)}
+        {images.map((src, position) => <button className="product-gallery-slide" type="button" key={src} disabled={failed.includes(src)} onClick={() => setFullscreen(position)} aria-label={`${t("View full screen")} ${position + 1}`}>{failed.includes(src) ? <span className="product-gallery-empty"><ImageOff size={32}/><span>{t("Image unavailable")}</span></span> : <img src={src} alt={`${name} · ${t("Photo")} ${position + 1}`} loading={position === 0 ? "eager" : "lazy"} onError={() => setFailed(old => old.includes(src) ? old : [...old,src])} draggable={false} />}</button>)}
       </div>
       {multiple && <>
         <button type="button" className="product-gallery-arrow previous" aria-label={t("Previous photo")} disabled={index === 0} onClick={() => show(index - 1)}><ChevronLeft size={21} /></button>
@@ -28,7 +29,7 @@ export default function ProductGallery({ images, name }: { images: string[]; nam
         <span className="product-gallery-count" aria-live="polite">{index + 1} / {images.length}</span>
       </>}
     </div>
-    {multiple && <div className="product-gallery-thumbnails" aria-label={t("Choose photo")}>{images.map((src, position) => <button key={src} type="button" aria-label={`${t("Photo")} ${position + 1}`} aria-pressed={position === index} onClick={() => show(position)}><img src={src} alt="" loading="lazy" /></button>)}</div>}
+    {multiple && <div className="product-gallery-thumbnails" aria-label={t("Choose photo")}>{images.map((src, position) => <button key={src} type="button" aria-label={`${t("Photo")} ${position + 1}`} aria-pressed={position === index} onClick={() => show(position)}>{failed.includes(src) ? <ImageOff size={20} className="mx-auto"/> : <img src={src} alt="" loading="lazy" />}</button>)}</div>}
     {fullscreen !== null && <ImageViewer images={images} initialIndex={fullscreen} name={name} onClose={() => setFullscreen(null)} />}
   </section>;
 }

@@ -1,4 +1,5 @@
 import type { BusinessRole } from '@/lib/business/types';
+import { passwordIssue } from '@/lib/auth/password-policy';
 import type { Permission } from '@/lib/auth/permissions';
 import { getAssignableRoles } from '@/lib/auth/user-role-options';
 export type TeamStatus = 'active' | 'pending' | 'disabled';
@@ -48,11 +49,12 @@ export function createIssue(input:TeamCreateInput,actor:BusinessRole,allowedRole
   if(typeof input.phone!=='string'||input.phone.length>40||(input.phone.trim()!==''&&!/^[+\d() .-]{3,40}$/.test(input.phone.trim())))return 'Enter a valid phone number or leave it empty.';
   if(!NEW_USER_ROLES.includes(input.role as typeof NEW_USER_ROLES[number])||!allowedRoles.includes(input.role))return 'You cannot assign this role.';
   if(input.sendInvite!==false || input.requirePasswordChange!==true)return 'New users use a temporary password and must change it on first sign in.';
-  if(typeof input.password!=='string'||input.password.length<12||input.password.length>128)return 'Use a temporary password of 12–128 characters.';
+  if(typeof input.password!=='string')return 'Enter a temporary password.';
+  if(passwordIssue(input.password))return passwordIssue(input.password);
   return null;
 }
 export function editIssue(input:TeamEditInput,actor:BusinessRole,allowedRoles:BusinessRole[]=getAssignableRoles(actor)):string|null {
-  return createIssue({...input,email:'validation@example.com',requestId:'00000000-0000-4000-8000-000000000000',password:'validation-only-123',sendInvite:false,requirePasswordChange:true},actor,allowedRoles);
+  return createIssue({...input,email:'validation@example.com',requestId:'00000000-0000-4000-8000-000000000000',password:'Validation-only-123',sendInvite:false,requirePasswordChange:true},actor,allowedRoles);
 }
 export function safeCsv(value:unknown):string {
   let text=String(value??'');if(/^[\s]*[=+\-@\t\r]/.test(text))text="'"+text;

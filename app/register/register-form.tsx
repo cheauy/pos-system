@@ -1,4 +1,5 @@
 "use client";
+import { PASSWORD_HELP, passwordIssue } from "@/lib/auth/password-policy";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -67,6 +68,7 @@ export default function RegisterForm() {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     setClientError("");
 
+    if (passwordIssue(password)) { event.preventDefault(); setClientError(passwordIssue(password)!); return; }
     if (password !== confirmPassword) {
       event.preventDefault();
       setClientError("Passwords do not match.");
@@ -221,7 +223,7 @@ export default function RegisterForm() {
                     name="password"
                     type={showPassword ? "text" : "password"}
                     required
-                    minLength={8}
+                    minLength={8} maxLength={72}
                     autoComplete="new-password"
                     value={password}
                     onChange={(event) => {
@@ -229,7 +231,7 @@ export default function RegisterForm() {
                       setClientError("");
                     }}
                     className={`${inputClass} pr-11`}
-                    placeholder="At least 8 characters"
+                    placeholder="8–72 characters"
                   />
                   <button
                     type="button"
@@ -248,7 +250,7 @@ export default function RegisterForm() {
                   name="confirmPassword"
                   type={showPassword ? "text" : "password"}
                   required
-                  minLength={8}
+                  minLength={8} maxLength={72}
                   autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(event) => {
@@ -261,6 +263,7 @@ export default function RegisterForm() {
               </Field>
             </div>
 
+            <p className="text-xs text-slate-500">{PASSWORD_HELP}</p>
             {clientError || ((state.message && !state.success) || oauthError) ? (
               <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {clientError || oauthError || safeUiMessage(state.message)}

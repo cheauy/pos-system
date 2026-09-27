@@ -18,7 +18,7 @@ function mobile(name) {
   const response = await fetch(`${url}/rest/v1/`, { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(20000) });
   if (!response.ok) throw new Error(`Schema check failed (HTTP ${response.status}).`);
   const schema = await response.json();
-  for (const name of ['tenh_mobile_return','tenh_mobile_return_status','tenh_mobile_receive_purchase','tenh_mobile_purchase_receipt_status','tenh_mobile_transfer_action','send_stock_transfer','receive_stock_transfer']) {
+  for (const name of ['tenh_mobile_return','tenh_mobile_return_status','tenh_mobile_receive_purchase','tenh_mobile_purchase_receipt_status','tenh_mobile_transfer_action','tenh_mobile_management','tenh_mobile_management_status','tenh_mobile_push_device','tenh_mobile_claim_push','send_stock_transfer','receive_stock_transfer']) {
     const published = Boolean(schema.paths?.[`/rpc/${name}`]);
     console.log(`${name}: ${published ? 'published' : 'not published'}`);
     if (!published) process.exitCode = 1;

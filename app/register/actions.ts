@@ -1,4 +1,5 @@
 "use server";
+import { passwordIssue } from "@/lib/auth/password-policy";
 
 import { cookies } from "next/headers";
 
@@ -120,8 +121,8 @@ export async function registerAccount(
 
     const fullName = requiredText(formData, "fullName");
     const email = requiredText(formData, "email").toLowerCase();
-    const password = requiredText(formData, "password");
-    const confirmPassword = requiredText(formData, "confirmPassword");
+    const password = String(formData.get("password") ?? "");
+    const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
     if (fullName.length < 2 || fullName.length > 100) {
       return {
@@ -134,10 +135,10 @@ export async function registerAccount(
       return { success: false, message: "Enter a valid email address." };
     }
 
-    if (password.length < 8) {
+    if (passwordIssue(password)) {
       return {
         success: false,
-        message: "Password must contain at least 8 characters.",
+        message: passwordIssue(password)!,
       };
     }
 

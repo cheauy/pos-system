@@ -13,7 +13,7 @@ test('split payments preserve exact totals for all supported pairs and reject du
 });
 test('purchase and transfer product pickers retain their own permissions and branch currency',async()=>{
  const calls=[];
- const management=loadTs('lib/mobile/management.ts',{'node:crypto':require('node:crypto'),'@/lib/images/compress-photo':{},'@/lib/public-photo-cache':{},'next/cache':{}});
+ const management=loadTs('lib/mobile/management.ts',{'./product-page':loadTs('lib/mobile/product-page.ts'),'node:crypto':require('node:crypto'),'@/lib/images/compress-photo':{},'@/lib/public-photo-cache':{},'next/cache':{}});
  assert.equal(management.managementAccess['purchase-products'],'purchases.create');
  assert.equal(management.managementAccess['transfer-products'],'transfers.manage');
  assert.equal(management.managementAccess['draft-options'],'purchases.create');
@@ -24,4 +24,17 @@ test('purchase and transfer product pickers retain their own permissions and bra
  assert.ok(calls[0].steps.some(s=>s[0]==='neq'&&s[1]==='product_type'&&s[2]==='bundle'));
  assert.ok(calls[0].steps.some(s=>s[0]==='range'&&s[1]===25&&s[2]===49));
  assert.ok(calls[1].steps.some(s=>s[0]==='eq'&&s[1]==='location_id'&&s[2]==='branch'));
+});
+test('bundle create and edit preserve exact components and saved success despite cache refresh failure',async()=>{
+ const management=loadTs('lib/mobile/management.ts',{'./product-page':{},'node:crypto':require('node:crypto'),'@/lib/images/compress-photo':{},'@/lib/public-photo-cache':{},'next/cache':{revalidatePath(){throw Error('test cache unavailable');}}});
+ const requestId='10000000-0000-4000-8000-000000000001';
+ const calls=[],db={rpc:async(name,args)=>{calls.push({name,args});return {data:{success:true,id:requestId},error:null};}};
+ for(const operation of ['bundle-create','bundle-edit']){
+  const input={id:requestId,name:'Set',sku:'SET-1',price:'20',expected:'2026-09-27T01:00:00Z',items:[{productId:'small',quantity:1,optionIds:[]},{productId:'large',quantity:2,optionIds:['option']}],imageUrl:'https://untrusted.invalid/image.jpg'};
+  const form=new FormData();form.set('requestId',requestId);form.set('input',JSON.stringify(input));
+  const result=await management.managementWrite(db,operation,'business','branch','user',form);
+  assert.equal(result.success,true);assert.equal(result.uncertain,false);
+  const {args}=calls.at(-1);assert.equal(args.p_branch_id,'branch');assert.equal(args.p_operation,operation);assert.equal(args.p_request_id,requestId);
+  assert.deepEqual(args.p_input.items,input.items);assert.equal(args.p_input.expected,input.expected);assert.equal(args.p_input.imageUrl,undefined);
+ }
 });

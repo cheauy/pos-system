@@ -44,6 +44,9 @@ test('Orders dropdown renders Walk-in and includes Table QR only when enabled', 
     'next/link': { default: props => React.createElement('a', props) },
     'next/navigation': { useRouter: () => ({}) },
     '@/components/order-print-menu': { default: () => null },
+    '@/components/order-qr-button': { default: () => null },
+    '@/components/order-print-preview': { default: () => null },
+    './[id]/return-items-form': { default: () => null },
     './order-workspace-actions': {}, './order-workspace-types': model, './orders-workspace.module.css': { default: {} },
   }).default;
   const props = { businessId: 'business', businessName: 'Shop', filters: model.parseFilters({}), permissions: {}, data: { rows: [], branches: [], total: 0, page: 1, pages: 1, counts: {}, currency: 'USD', timezone: 'Asia/Phnom_Penh', metrics: { today: 0, yesterday: 0, completed: 0, pending: 0, pendingValue: 0, refunds: 0, refundedAmount: 0 } } };

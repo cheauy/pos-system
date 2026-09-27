@@ -21,29 +21,34 @@ Never put a Supabase service-role key, Resend key, PayWay secret or other server
 - Light/dark appearance, Hanuman font and partial English/Khmer translation.
 - Offline banner, encrypted first-page snapshots with a 24-hour expiry, reconnect/foreground refresh, 15-second foreground refresh, debounced search and paginated lists. Snapshots are separated by account and branch and cleared on sign-out. Customer lists, payment proofs and order details are not stored offline. Writes require a connection; this is not offline checkout.
 - Optional device biometric/passcode lock after a restart or one minute in the background. Face ID requires a development build; physical-device verification remains required.
-- POS product/variant/options selection and automatic promotional prices from the existing catalog; server-quoted totals; customer selection; walk-in/pickup/delivery; cash, verified bank transfer, unpaid COD, deposit and cash/bank split payments; pending-sale recovery with the same request ID.
+- POS product/variant/options selection and automatic promotional prices from the existing catalog; server-quoted totals; customer selection; walk-in/pickup/delivery; cash, verified bank transfer, unpaid COD, deposit and two-part split payments using distinct cash/bank/other methods; pending-sale recovery with the same request ID.
 - Enabled coupon codes, amount/percentage discounts and loyalty redemption, validated against branch settings and customer balance. Unpaid COD/deposit orders cannot redeem points.
 - Save, resume and delete supported held orders with exact version checks and recovery after a lost response; cart details and hold identity survive an app restart. Holds containing unsupported details remain on the website.
 - Return items and record refunds with branch/permission checks and persistent request IDs. Unknown outcomes retain the same request; only a recorded rollback allows starting a corrected request. Requires the refund migration below.
 - Orders and online orders, detail/images, supported status transitions, incoming branch preference and payment-proof review.
 - Stock lookup/scanning and counted stock adjustment using the website's concurrency/idempotency flow.
 - Purchase-order search/details and partial/full receiving. Receiving saves the request on the device, checks previous quantities and reuses the existing atomic branch-stock procedure. Retrying a lost response cannot receive the same request twice. Requires the purchase-receiving migration below.
-- Stock-transfer search/details, Send and Receive in the operating branch. Confirmation checks the exact transfer version and items. Database guards prevent sent transfers from being reopened or edited; repeated Send/Receive cannot move stock twice. Draft creation and editing remain on the website.
+- Stock-transfer search/details, draft creation/editing, Send and Receive in the operating branch. Confirmation checks the exact transfer version and items. Database guards prevent sent transfers from being reopened or edited; repeated Send/Receive cannot move stock twice.
+- Products with branch prices, immutable uploaded images, standard/variant/configurable creation, and branch detail editing. New products start at zero stock. Existing configurable option structures are edited on the website; mobile supports their selection and creation.
+- Bundles with images, item/option selection, branch detail editing, POS/online visibility, pack/unpack and guarded deletion. Transaction history is preserved.
+- Purchase-order creation with branch suppliers and product search by name, SKU or barcode. Product selection uses purchase/transfer permissions rather than requiring unrelated product management access.
+- Shared Online Store name, contact information, publishing and order-availability controls with version checks.
 - Customers with quick-add, expenses with receipt upload, register opening/closing and support reports.
-- Foreground notification feed and read state.
-- Branch reports with yesterday default, sales/cost/expense/profit totals, variant rankings, payment totals and staff KPIs. Periods use UTC+7, matching existing staff reports. Large results fail rather than silently truncate totals.
+- Foreground notification feed and read state. Background push registration, private delivery claims and provider receipt checking are implemented; delivery remains disabled until the release steps are completed.
+- Branch reports with yesterday default, sales/cost/expense/profit totals, variant rankings, payment totals and staff KPIs; column, line and donut charts. Periods use UTC+7, matching existing staff reports. Large results fail rather than silently truncate totals.
 - Saved receipt and shipping-label settings used for native print/PDF sharing. Shipping labels require an address and a single-page PDF before printing.
 
 The native API verifies the bearer token, membership, subscription, branch and effective permissions, then reuses existing server actions. It does not expose arbitrary database operations. Web cookie authentication remains in place for website requests.
 
 ## Still required before completion
 
-- Remaining POS parity: additional split methods and device validation of held orders, returns and printing.
-- Native product/bundle editing, purchase-order creation, stock-transfer draft creation/editing and storefront controls.
-- Full dashboard/chart parity, complete Khmer translation and accessibility/device-layout review.
-- Background push notifications and physical-device validation of biometric unlock and offline viewing.
+- Physical-device validation of held orders, returns, printing, biometric unlock, offline viewing and accessibility/layout.
+- Khmer review of dynamic messages and server errors. Core navigation, form labels, management screens and common dialogs are translated; unexpected server messages retain their original detail.
+- Activate background push with platform credentials, a deployed HTTPS dispatcher and a scheduler; verify receipt delivery on both phones.
 - Real Android and iPhone testing: sign-in/recovery, staff branch restrictions, register reconciliation, stock changes, paid/unpaid order handling, interrupted checkout recovery, camera permissions, print/PDF and supported physical printer models.
 - Native development/preview builds, production HTTPS deployment, store credentials, privacy disclosures and store submission when the owner is ready.
+
+See [RELEASE.md](RELEASE.md) for the device checklist and release gates. Native JavaScript exports are not signed APK/IPA files.
 
 ## Checks
 
@@ -55,6 +60,8 @@ Run `node tests/mobile-refund.integration.cjs` for isolated PostgreSQL refund re
 Run `node tests/mobile-purchase.integration.cjs` for isolated receiving tests using the real branch-stock SQL, including replay, stale quantities, stock isolation and transaction rollback.
 Run `node tests/mobile-transfer.integration.cjs` for isolated transfer replay, stock conservation, stale snapshot, permission, rollback and deletion-cascade checks.
 Run `node --test tests/mobile-device.test.cjs tests/mobile-decoder.test.cjs` for device-lock persistence, offline storage and navigation decoder checks.
+Run `node --test tests/mobile-management.test.cjs tests/mobile-push.test.cjs` for product-picker access, split-payment math and notification-dispatch handling.
+Run `node tests/mobile-management.integration.cjs`, `node tests/mobile-push.integration.cjs` and `node tests/branch-catalog-settings.integration.cjs` for isolated save recovery, branch bundle behavior and push privacy checks.
 Run `node mobile/scripts/check-backend.cjs` for a read-only shared-project and published-function check.
 
 The Expo Router decoder advisory is addressed with a checksum-pinned upstream decoder and a small CommonJS compatibility adapter in `vendor/decode-uri-component`. The dependency audit reported zero vulnerabilities on September 27, 2026. Remove the override when the supported router dependency includes the fixed decoder; see the vendor README.
@@ -76,3 +83,11 @@ The migration adds request history and two mobile RPCs without changing website 
 ## Transfer rollout
 
 `supabase/migrations/20260927003000_mobile_transfer_actions.sql` was applied to the shared project on September 27, 2026 after isolated PostgreSQL checks. Both guards were confirmed enabled and anonymous RPC access denied. No live stock transfer was submitted. The guards also protect website draft edits from changing items after sending and preserve business deletion cascades. To disable mobile transfer writes, revoke authenticated execution of `tenh_mobile_transfer_action(uuid,uuid,uuid,text,timestamptz,jsonb)`; retain the shared guards.
+
+## Management and notification rollout
+
+`20260927004000_mobile_management.sql` and `20260927005000_mobile_push.sql` were applied to the same shared project on September 27, 2026 after isolated PostgreSQL tests. The SQL editor content was checked against the local migration files before execution. Published functions, table RLS, denied direct customer-table access, denied anonymous management access and service-only notification dispatch were verified. Both new ledgers were empty at verification; no live management save or device registration was submitted by the agent.
+
+Management writes keep their original request ID and result. Failed transactions record a rollback; unknown outcomes remain pending on the phone. To disable these writes, revoke authenticated execution of `tenh_mobile_management(uuid,uuid,uuid,text,jsonb)` and keep the ledger for recovery. Do not remove saved request history.
+
+Push registration is available in the database, but sending requires `MOBILE_PUSH_ENABLED=true` on the deployed server, `CRON_SECRET`, platform credentials and a recurring request to the internal dispatcher. No production schedule was enabled. Disable sending with `MOBILE_PUSH_ENABLED=false`; retain delivery claims so restarting cannot resend old alerts.

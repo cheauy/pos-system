@@ -57,7 +57,7 @@ test("embedded ordering fields keep restaurant-only dine-in out of fashion mode"
 test("bestseller badges render only for sales-qualified products", () => {
   const Catalog = component("../app/_sites/[slug]/storefront-catalog.tsx");
   const product = { key: "shirt", name: "Shirt", categoryId: null, productType: "standard", priceFrom: 10, totalStock: 5, variants: [{ id: "one", stockQuantity: 5, sellingPrice: 10 }], optionGroups: [] };
-  const render = isBestseller => renderToStaticMarkup(createElement(Catalog, { products: [{ ...product, isBestseller }], categories: [], settings: { currency: "USD", orderingEnabled: true }, onAdd() {} }));
+  const render = isBestseller => renderToStaticMarkup(createElement(Catalog, { products: [{ ...product, isBestseller }], categories: [], settings: { currency: "USD", orderingEnabled: true }, productHref: key => "?product=" + encodeURIComponent(key), onAdd() {} }));
   assert.match(render(true), /Bestseller/);
   assert.doesNotMatch(render(false), /Bestseller/);
 });

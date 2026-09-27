@@ -1,5 +1,6 @@
 export const khmer:Record<string,string>={
- 'Delete bundle':'លុបបណ្ដុំទំនិញ','Delete':'លុប','Delete this bundle?':'លុបបណ្ដុំទំនិញនេះឬ?',
+ 'Push notifications require a TENH POS development build. In-app alerts still work in Expo Go.':'ការជូនដំណឹងពេលបិទកម្មវិធីត្រូវការកំណែកម្មវិធី TENH POS សម្រាប់សាកល្បង។ ការជូនដំណឹងក្នុងកម្មវិធីនៅតែដំណើរការក្នុង Expo Go។',
+ 'Delete bundle':'លុបបណ្ដុំទំនិញ','Delete this bundle?':'លុបបណ្ដុំទំនិញនេះឬ?',
  'Delete this bundle from this branch? Bundles with stock or transaction history cannot be deleted.':'លុបបណ្ដុំទំនិញនេះពីសាខានេះឬ? មិនអាចលុបបណ្ដុំដែលមានស្តុក ឬប្រវត្តិប្រតិបត្តិការបានទេ។',
  'Allow camera access to scan product barcodes.':'អនុញ្ញាតកាមេរ៉ាដើម្បីស្កេនបារកូដផលិតផល។',
  'Back to cart':'ត្រឡប់ទៅកន្ត្រក','Check saved hold':'ពិនិត្យការបញ្ជាទិញដែលបានទុក','Current order':'ការបញ្ជាទិញបច្ចុប្បន្ន','Discard local draft':'បោះបង់សេចក្ដីព្រាងលើទូរស័ព្ទ',

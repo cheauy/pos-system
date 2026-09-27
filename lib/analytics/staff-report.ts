@@ -26,8 +26,8 @@ export function staffKpis(orders:StaffSale[],members:{userId:string;name:string}
 export function staffReportDates(range='yesterday',from?:string,to?:string,now=new Date()) {
  const today=new Date(now.getTime()+7*3600000).toISOString().slice(0,10);
  const day=(offset:number)=>new Date(Date.parse(`${today}T00:00:00Z`)+offset*86400000).toISOString().slice(0,10);
- let start=range==='today'?today:range==='7days'?day(-6):range==='30days'?day(-29):day(-1);
- let end=range==='yesterday'||!['today','7days','30days','custom'].includes(range)?day(-1):today;
+ let start=range==='today'?today:range==='7days'?day(-6):range==='30days'?day(-29):range==='365days'?day(-364):day(-1);
+ let end=range==='yesterday'||!['today','7days','30days','365days','custom'].includes(range)?day(-1):today;
  if(range==='custom'){
   if(!from||!to||!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to))throw new Error('Choose a valid date range.');
   for(const date of [from,to])if(!Number.isFinite(Date.parse(date))||new Date(date).toISOString().slice(0,10)!==date)throw new Error('Choose valid dates.');

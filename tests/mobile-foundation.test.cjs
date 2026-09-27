@@ -58,7 +58,7 @@ test('keychain chunk storage preserves Unicode, serializes refresh and logout, a
   assert.equal(await store.getItem('auth'), null); assert.equal(values.size, 0);
 });
 
-function route({ authenticated = true, permissions = ['orders.view', 'inventory.view'], locked = false, catalog, tableResults = {}, transferResult = { data: { transferId: B }, error: null }, purchaseResult = { data: { purchaseOrderId: B }, error: null }, refundResult = { data: { returnId: B }, error: null } } = {}) {
+function route({ detailedOrder = null, authenticated = true, permissions = ['orders.view', 'inventory.view'], locked = false, catalog, tableResults = {}, transferResult = { data: { transferId: B }, error: null }, purchaseResult = { data: { purchaseOrderId: B }, error: null }, refundResult = { data: { returnId: B }, error: null } } = {}) {
   const log = [], actions = [];
   const business = { id: B, name: 'Test', role: 'owner', subscriptionLocked: locked };
   const db = {
@@ -67,13 +67,23 @@ function route({ authenticated = true, permissions = ['orders.view', 'inventory.
     rpc: async (name, input) => { log.push({ rpc: name, input }); if (name === 'tenh_mobile_transfer_action') return transferResult; if (name === 'tenh_mobile_return') return refundResult; if (name === 'tenh_mobile_receive_purchase') return purchaseResult; return { data: name === 'tenh_branch_notifications' ? [{ id: B, is_active: true }, { id: L, is_active: false }] : null, error: null }; },
   };
   const api = loadTs('app/api/mobile/[feature]/route.ts', {
+    '@/lib/orders/order-qr': loadTs('lib/orders/order-qr.ts', {qrcode:require('qrcode')}),
+    '@/lib/mobile/account-read': {accountAccess:{'account-users':'users.view','account-branches':'locations.manage','account-categories':'categories.manage'}},
+    '@/lib/mobile/expense-breakdown': {},
+    '@/lib/mobile/register-detail': {},
+    '@/lib/customers/get-customer-field-settings': {},
+    '@/app/(dashboard)/dashboard/settings/customers/actions': {},
+    '@/lib/mobile/order-list': loadTs('lib/mobile/order-list.ts'),
+    '@/lib/mobile/product-page': loadTs('lib/mobile/product-page.ts'),
+    '@/lib/users/setup-state': {needsTeamPasswordSetup: async()=>false},
+    '@/lib/mobile/order-photos': {loadMobileOrderPhotos: async()=>new Map()},
     '@/lib/mobile/request-context': mobile,
     '@/lib/supabase/server': { createClient: async () => db },
     '@/lib/supabase/branch-server': { createClient: async () => db },
     '@/lib/business/get-current-business': { getCurrentBusinessForSubscription: async () => business },
     '@/lib/branches/context': { getBranchContext: async () => ({ branchId: L, branches: [{ id: L, name: 'Test' }] }) },
     '@/lib/auth/effective-permissions': { getEffectivePermissions: async () => permissions },
-    '@/app/(dashboard)/dashboard/orders/order-workspace-data': { loadWorkspace: async (_business, filters) => ({ branch: filters.branch }) },
+    '@/app/(dashboard)/dashboard/orders/order-workspace-data': { loadWorkspace: async (_business, filters) => ({ branch: filters.branch, rows: [], total: 0, page: 1, pages: 1 }) },
     '@/app/(dashboard)/dashboard/orders/order-workspace-types': { parseFilters: input => input },
     '@/app/(dashboard)/dashboard/orders/order-workspace-actions': { changeOrderWorkspaceStatus: async (...args) => { actions.push(args); return { success: true }; } },
     '@/app/(dashboard)/dashboard/notifications/read-actions': {},
@@ -84,7 +94,7 @@ function route({ authenticated = true, permissions = ['orders.view', 'inventory.
     '@/app/(dashboard)/dashboard/settings/support/actions': {},
     '@/app/(dashboard)/dashboard/pos/pos-customer-actions': {},
     '@/app/(dashboard)/dashboard/register/actions': {},
-    '@/app/(dashboard)/dashboard/orders/[id]/order-detail-data': {},
+    '@/app/(dashboard)/dashboard/orders/[id]/order-detail-data': {loadDetailedOrder:async (business,id)=>{log.push({detail:{business,id}});return detailedOrder;}},
     '@/app/(dashboard)/dashboard/orders/[id]/order-detail-model': {},
     '@/lib/receipts/load-receipt-context': {},
     '@/lib/mobile/receipt-html': {},
@@ -128,6 +138,9 @@ test('invalid branch selection is a client error without loading business data',
 });
 test('reports require report permission and validate the selected period', async () => {
   assert.equal((await route().call('reports')).status, 403);
+});
+test('new administration menus keep their existing permissions',async()=>{
+ for(const menu of ['account-users','account-branches','account-categories'])assert.equal((await route().call(menu)).status,403);
 });
 test('mobile reports count completed sales, preserve variants, and match staff refund math', () => {
   const { summarizeMobileReports } = loadTs('lib/mobile/reports.ts', {
@@ -332,16 +345,16 @@ test('receipt HTML follows visibility and sizing while escaping customer content
   const hidden = mobileReceiptHtml(receipt, context, 'https://app.example.com');
   assert.ok(!hidden.includes('&lt;script&gt;')); assert.ok(!hidden.includes('Wi-Fi password:'));
 });
-test('mobile shipping labels honor saved size and visibility, escape customer text and use vector barcodes', () => {
+test('mobile shipping labels honor saved size and visibility, escape customer text and use vector order QR codes', () => {
   const receiptModel = loadTs('lib/receipts/receipt-model.ts');
   const html = loadTs('lib/mobile/receipt-html.ts', { '@/lib/receipts/receipt-model': receiptModel });
   const { mobileShippingHtml } = loadTs('lib/mobile/shipping-html.ts', {
-    '@/lib/barcode/code39': loadTs('lib/barcode/code39.ts'),
+    '@/lib/orders/order-qr': loadTs('lib/orders/order-qr.ts', {qrcode:require('qrcode')}),
     '@/lib/receipts/receipt-model': receiptModel,
     '@/app/(dashboard)/dashboard/orders/[id]/order-detail-model': loadTs('app/(dashboard)/dashboard/orders/[id]/order-detail-model.ts'),
     './receipt-html': html,
   });
-  const order = { order_number: 'WEB-123', guest_name: '<script>bad</script>', guest_phone: '01234', guest_address: 'Street & Lane', customers: null, order_items: [{ quantity: 2 }], payment_method: 'cod', total: 12, remaining_balance: 10 };
+  const order = { id:B, order_number: 'WEB-123', guest_name: '<script>bad</script>', guest_phone: '01234', guest_address: 'Street & Lane', customers: null, order_items: [{ quantity: 2 }], payment_method: 'cod', total: 12, remaining_balance: 10 };
   const context = { store: { name: 'Test Store', address: 'Store Address', phone: '999' } };
   const settings = { shipping_label_size: '80x50', shipping_show_store_phone: false };
   const result = mobileShippingHtml(order, context, settings, 'USD');
@@ -351,4 +364,17 @@ test('mobile shipping labels honor saved size and visibility, escape customer te
   assert.ok(result.html.includes('<svg')); assert.ok(result.html.includes('Balance due: $10.00'));
   assert.ok(!mobileShippingHtml(order, context, { ...settings, shipping_show_barcode: false }, 'USD').html.includes('<svg'));
   assert.throws(() => mobileShippingHtml({ ...order, guest_address: '' }, context, settings, 'USD'), /delivery address/);
+});
+
+test('order QR resolver requires permissions and authorized order details', async()=>{
+ const qr=loadTs('lib/orders/order-qr.ts',{qrcode:require('qrcode')});
+ const value=qr.orderQrPayload(B),query='?value='+encodeURIComponent(value);
+ assert.equal((await route({permissions:[]}).call('order-qr',{query})).status,403);
+ const invalid=route();assert.equal((await invalid.call('order-qr',{query:'?value=https://example.com'})).status,400);
+ assert.ok(!invalid.log.some(row=>row.detail));
+ assert.equal((await route().call('order-qr',{query})).status,404);
+ const allowed=route({detailedOrder:{id:B,order_source:'online'},tableResults:{business_storefronts:{data:{currency:'KHR'},error:null}}});
+ const response=await allowed.call('order-qr',{query}),data=await response.json();
+ assert.equal(response.status,200);assert.equal(data.id,B);assert.equal(data.incoming,true);assert.equal(data.currency,'KHR');assert.ok(data.svg.includes('<svg'));
+ assert.deepEqual(allowed.log.find(row=>row.detail).detail,{business:B,id:B});
 });

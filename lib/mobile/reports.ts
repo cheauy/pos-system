@@ -45,7 +45,7 @@ export function summarizeMobileReports(orders: Sale[], expenses: Expense[]) {
 }
 
 export async function loadMobileReports(db: SupabaseClient, businessId: string, branchId: string, range: string) {
-  if (!['yesterday', 'today', '7days', '30days'].includes(range)) throw new Error('Choose a supported report period.');
+  if (!['yesterday', 'today', '7days', '30days', '365days'].includes(range)) throw new Error('Choose a supported report period.');
   const dates = staffReportDates(range);
   const orders: Sale[] = [], expenses: Expense[] = [];
   // Bound response work; request a shorter period rather than return partial totals.

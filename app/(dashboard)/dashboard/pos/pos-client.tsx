@@ -1,4 +1,5 @@
 'use client';
+import OrderPrintMenu from '@/components/order-print-menu';
 
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -72,6 +73,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   const [holdLabel, setHoldLabel] = useState('');
   const [holdDelete, setHoldDelete] = useState<string | null>(null);
   const [taxSetting, setTaxSetting] = useState(String(initialData.settings.taxRate));
+  const [requireRegister, setRequireRegister] = useState(initialData.settings.requireOpenRegister !== false);
   const [pointSetting, setPointSetting] = useState(String(initialData.settings.pointValue));
   const [receipt, setReceipt] = useState<SaleReceipt | null>(null);
   const [notice, setNotice] = useState<{ text: string; kind: 'error' | 'success' | 'info' } | null>(null);
@@ -309,27 +311,24 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
       setTenders([{method:'cash',amount:first,reference:''},{method:'bank_transfer',amount:(cents(total)-cents(first))/100,reference:''}]);
     }
   }
-  async function beginCheckout(split = false) {
+  function beginCheckout(split = false) {
     if (inFlight.current || frozen || !recoveryLoaded) return;
     if (!lines.length || issue) { setNotice({kind:'error',text:issue || 'Add products first.'}); return; }
-    inFlight.current = true; setBusy('review');
     try {
-      const result = await loadPosWorkspace(data.businessId, branch);
-      if (!result.success) throw new Error(result.message);
-      if(result.data.checkoutVersion !== 3) throw new Error('Apply 20260919_pos_customer_delivery_currency.sql, then refresh POS.');
-      if (!result.data.shift || result.data.shift.location_id !== branch) throw new Error('Open the register for this branch before taking payment. Your cart has not been submitted.');
-      setData(result.data);
-      const error = cartIssue(lines,branch,result.data);
+      // Review is local and submits nothing. completePosSale performs the atomic
+      // stock, expected-price, register, permission and idempotency checks.
+      if(data.checkoutVersion !== 3) throw new Error('Apply 20260919_pos_customer_delivery_currency.sql, then refresh POS.');
+      if (data.settings.requireOpenRegister !== false && (!data.shift || data.shift.location_id !== branch)) throw new Error('Open the register for this branch before taking payment. Your cart has not been submitted.');
+      const error = cartIssue(lines,branch,data);
       if (error) throw new Error(error);
-      const quote = totals(lines,Number(discount),Number(delivery),Number(points),Number(result.data.settings.taxRate),Number(result.data.settings.pointValue),discountType);
+      const quote = totals(lines,Number(discount),Number(delivery),Number(points),Number(data.settings.taxRate),Number(data.settings.pointValue),discountType);
       if (split && quote.total < 0.02) throw new Error('Split payment needs a total of at least 0.02.');
       if (split) changePayment('split',quote.total);
-      const latestCustomer=result.data.customers.find(c=>c.id===customerId);
+      const latestCustomer=data.customers.find(c=>c.id===customerId);
       if(latestCustomer && !recipientEdited.current)setShipping(old=>({...old,recipientName:latestCustomer.name,phone:latestCustomer.phone || '',address:latestCustomer.address || ''}));
       setEntryErrors({});
       setConfirmed(false); open('checkout');
     } catch (e) { setNotice({kind:'error',text:messageOf(e)}); }
-    finally { inFlight.current = false; setBusy(''); }
   }
   function reviewAllocation(group: ProductGroup) {
     setAllocationGroup(group);
@@ -398,7 +397,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   async function saveSettings() {
     if (inFlight.current) return;
     inFlight.current = true; setBusy('settings');
-    try { const result = await savePosSettings(data.businessId, Number(taxSetting), Number(pointSetting)); if (!result.success) setModalError(result.message); else { await refresh(true); setDialog(null); setConfirmed(false); setNotice({ kind: 'success', text: 'POS rates saved. Review the recalculated total.' }); } }
+    try { const result = await savePosSettings(data.businessId, Number(taxSetting), Number(pointSetting), requireRegister); if (!result.success) setModalError(result.message); else { await refresh(true); setDialog(null); setConfirmed(false); setNotice({ kind: 'success', text: 'POS settings saved. Review the recalculated total.' }); } }
     catch (e) { setModalError(messageOf(e)); }
     finally { inFlight.current = false; setBusy(''); }
   }
@@ -432,7 +431,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
         {extraFilters && <div className={s.extraFilters}><label>Color<select aria-label="Color" value={filters.color} onChange={e => changeFilter('color', e.target.value)}><option value="all">All colors</option>{colors.map(c => <option key={c}>{c}</option>)}</select></label><label>Size<select aria-label="Size" value={filters.size} onChange={e => changeFilter('size', e.target.value)}><option value="all">All sizes</option>{sizes.map(v => <option key={v}>{v}</option>)}</select></label><label className={s.checkLabel}><input type="checkbox" checked={filters.favoritesOnly} onChange={e => changeFilter('favoritesOnly', e.target.checked)} /> Favorites only</label></div>}
         <div className={s.chipsRow}><div className={s.chips}><button className={!activeFilters.length ? s.chipActive : s.chip} onClick={() => setFilters({ ...EMPTY_FILTERS, search: filters.search, sort: filters.sort })}>All products</button>{activeFilters.map(([key,value]) => <button key={key} className={s.chip} onClick={() => setFilters(old => ({ ...old, [key]: key === 'favoritesOnly' ? false : 'all' }))}>{key === 'category' ? data.categories.find(c => c.id === value)?.name : key === 'favoritesOnly' ? 'Favorites' : `${key}: ${value}`}<X size={12}/></button>)}{(activeFilters.length > 0 || filters.search) && <button className={s.textButton} onClick={() => setFilters({ ...EMPTY_FILTERS })}>Clear all</button>}</div><label className={s.sortLabel}>Sort:<select aria-label="Sort products" value={filters.sort} onChange={e => changeFilter('sort', e.target.value)}><option value="popular">Popular (30 days)</option><option value="name">Name A–Z</option><option value="newest">Newest</option><option value="priceAsc">Price: low to high</option><option value="priceDesc">Price: high to low</option></select></label></div>
       </section>
-      <div className={s.catalogMeta}><span>{groups.length} products · {branchName}{data.shift ? ' · Open register' : ' · No open register'}</span><div className={s.row}><button className={s.textButton} disabled={Boolean(busy)} onClick={() => refresh()}><RefreshCw size={14} className={busy === 'refresh' ? s.spin : ''}/> Refresh stock</button>{data.canConfigure && <button className={s.textButton} disabled={frozen} onClick={() => { setTaxSetting(String(data.settings.taxRate)); setPointSetting(String(data.settings.pointValue)); open('settings'); }}><Settings2 size={15}/> POS rates</button>}</div></div>
+      <div className={s.catalogMeta}><span>{groups.length} products · {branchName}{data.shift ? ' · Open register' : ' · No open register'}</span><div className={s.row}><button className={s.textButton} disabled={Boolean(busy)} onClick={() => refresh()}><RefreshCw size={14} className={busy === 'refresh' ? s.spin : ''}/> Refresh stock</button>{data.canConfigure && <button className={s.textButton} disabled={frozen} onClick={() => { setTaxSetting(String(data.settings.taxRate)); setPointSetting(String(data.settings.pointValue)); setRequireRegister(data.settings.requireOpenRegister !== false); open('settings'); }}><Settings2 size={15}/> POS settings</button>}</div></div>
       {!groups.length ? <div className={s.empty}><Package size={38}/><h2>{data.products.length ? 'No matching products' : 'Your catalog is empty'}</h2><p>{data.products.length ? 'Try a different search or clear your filters.' : 'Create active products and add branch stock before selling.'}</p><button className={s.button} onClick={() => setFilters({ ...EMPTY_FILTERS })}>Reset filters</button></div> : <div className={view === 'grid' ? s.productGrid : s.productList}>
         {groups.slice(0, shown).map((group, index) => {
           const inCart = lines.filter(l => group.variants.some(v => v.id === l.productId)).reduce((sum,l) => sum+l.quantity,0);
@@ -465,14 +464,14 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
           <p className={s.checkoutHint}>Continue to review payment and order type. No sale is saved until you confirm.</p>
           <label className={s.field}>Order note (optional)<textarea value={note} aria-label="Order note" onChange={e => setNote(e.target.value)} placeholder="Add a note to this order…" rows={2} maxLength={1000}/></label>
           <div className={s.checkoutButtons}><button className={s.softButton} disabled={!lines.length} onClick={() => { setHoldLabel(hold?.label || (customer ? `${customer.name}'s order` : `Order ${timeLabel}`)); open('hold'); }}><Clock size={16}/> Hold Order</button><button className={s.softButton} disabled={!lines.length || values.total < 0.02} onClick={() => beginCheckout(true)}><CreditCard size={16}/> Split Payment</button></div>
-          <button className={s.completeButton} disabled={!lines.length || Boolean(issue) || !recoveryLoaded} onClick={() => beginCheckout()}><Check size={20}/>Continue · {cash(values.total)}</button>
+          <button className={s.completeButton} disabled={frozen || !lines.length || Boolean(issue) || !recoveryLoaded} onClick={() => beginCheckout()}><Check size={20}/>Continue · {cash(values.total)}</button>
         </div>
       </fieldset>
       <footer className={s.orderFooter}><button className={s.textButton} disabled={Boolean(busy) || Boolean(recovery)} onClick={() => { open('holds'); void refresh(true); }}><Clock size={15}/> Held Orders ({data.holds.length})</button><button className={s.textButton} disabled={!receipt || Boolean(busy)} onClick={() => open('receipt')}><Printer size={15}/> Last Receipt</button><Link href="/dashboard/register" onClick={e => { if (frozen || (lines.length && !window.confirm('Leave this sale? Hold the order first to keep it.'))) e.preventDefault(); }} className={s.textButton}><Banknote size={15}/> Register</Link></footer>
       {busy && <div className={s.busyOverlay} role="status"><RefreshCw className={s.spin} size={18}/>{busy === 'checkout' ? 'Saving sale. Please wait…' : 'Working…'}</div>}
     </aside>
 
-    {dialog && <Modal title={{ scan:'Scan Barcode', variant:'Choose Product Variant', options:'Customize Product', customer:'Select Customer', adjustments:'Discount & Loyalty', settings:'POS Tax & Loyalty Value', hold:'Hold Current Order', holds:'Held Orders', clear:'Clear Current Order?', checkout:'Payment & Order Type', stock:'Assign Existing Stock', receipt:'Sale Saved' }[dialog]} onClose={() => { setDialog(null); setModalError(''); }} wide={['holds','variant','checkout','stock'].includes(dialog)} locked={Boolean(busy)}>
+    {dialog && <Modal title={{ scan:'Scan Barcode', variant:'Choose Product Variant', options:'Customize Product', customer:'Select Customer', adjustments:'Discount & Loyalty', settings:'POS settings', hold:'Hold Current Order', holds:'Held Orders', clear:'Clear Current Order?', checkout:'Payment & Order Type', stock:'Assign Existing Stock', receipt:'Sale Saved' }[dialog]} onClose={() => { setDialog(null); setModalError(''); }} wide={['holds','variant','checkout','stock'].includes(dialog)} locked={Boolean(busy)}>
       <fieldset disabled={Boolean(busy)} className={s.flowFieldset}>
       {modalError && <p className={`${s.notice} ${s.error}`} role="alert">{modalError}</p>}
       {dialog === 'scan' && <BarcodeScanner onScan={scan}/>}
@@ -510,10 +509,10 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
         <label className={s.field}>Redeem loyalty points<input aria-label="Redeem loyalty points" type="number" min="0" step="1" max={customer?.loyalty_points || 0} value={adjustmentDraft.points} disabled={!customer || !data.settings.loyaltyEnabled || data.settings.pointValue <= 0} onChange={e => setAdjustmentDraft(d => ({...d,points:e.target.value}))}/><small>{customer ? `${customer.loyalty_points || 0} points available · ${cash(data.settings.pointValue)} per point` : 'Choose a customer first.'} Redeem only on fully paid sales.</small></label>
         <p className={s.paymentInfo}>Shipping and delivery fees are selected after Continue. Changing quantity recalculates a percentage discount automatically.</p>{invalid && <p role="alert" className={s.orangeText}>{invalid}</p>}<div className={s.between}><strong>Updated total</strong><strong>{cash(quoteValues.total)}</strong></div><button className={s.primary} disabled={Boolean(invalid)} onClick={() => {setCouponCode('');setCouponEntry('');setDiscount(adjustmentDraft.discount);setDiscountType(adjustmentDraft.discountType);setPoints(adjustmentDraft.points);setDialog(null);}}>Apply to order</button></div>;
       })()}
-      {dialog === 'settings' && <div className={s.stack}><p className={s.paymentInfo}>Owner settings for POS only. Both rates start at zero; set the rates appropriate for your business. Loyalty must also be enabled in Promotions & Loyalty.</p><label className={s.field}>Tax rate (%)<input type="number" min="0" max="100" step="0.001" value={taxSetting} onChange={e => setTaxSetting(e.target.value)}/></label><label className={s.field}>Redemption value of 1 point ({data.settings.currency})<input type="number" min="0" max="1000000" step="0.0001" value={pointSetting} onChange={e => setPointSetting(e.target.value)}/><small>Set zero to disable point redemption. Point earning rules remain in Promotions & Loyalty.</small></label><button className={s.primary} disabled={Boolean(busy)} onClick={saveSettings}>Save POS rates</button></div>}
+      {dialog === 'settings' && <div className={s.stack}><p className={s.paymentInfo}>Owner settings for POS only. Both rates start at zero; set the rates appropriate for your business. Loyalty must also be enabled in Promotions & Loyalty.</p><label className={s.field}>Tax rate (%)<input type="number" min="0" max="100" step="0.001" value={taxSetting} onChange={e => setTaxSetting(e.target.value)}/></label><label className={s.field}>Redemption value of 1 point ({data.settings.currency})<input type="number" min="0" max="1000000" step="0.0001" value={pointSetting} onChange={e => setPointSetting(e.target.value)}/><small>Set zero to disable point redemption. Point earning rules remain in Promotions & Loyalty.</small></label><label className={s.field}><span><input type="checkbox" role="switch" checked={requireRegister} onChange={e => setRequireRegister(e.target.checked)}/> Require an open register before payment</span><small>Applies to this branch. When disabled, sales without an open register will not be included in a register shift.</small></label><button className={s.primary} disabled={Boolean(busy)} onClick={saveSettings}>Save POS settings</button></div>}
       {dialog === 'hold' && <div className={s.stack}><p>{count} items · {branchName} · {cash(values.total)}</p><label className={s.field}>Held order label<input autoFocus value={holdLabel} onChange={e => setHoldLabel(e.target.value)} maxLength={80} placeholder="Customer name or order label"/></label><p className={s.paymentInfo}>Holds are saved to your account for this business. They do not reserve stock or record any payment. Prices, stock, points and payment are checked again when resumed.</p><button className={s.primary} disabled={Boolean(busy)} onClick={saveHold}><Clock size={17}/>Save held order</button></div>}
       {dialog === 'holds' && <div className={s.stack}><p className={s.muted}>Your saved holds for {data.businessName}. Other cashiers’ holds are not exposed.</p>{!data.holds.length && <div className={s.empty}><Clock size={30}/><h3>No held orders</h3><p>Add products, then choose Hold Order.</p></div>}{data.holds.map(h => <div className={s.heldCard} key={h.id}><div><strong>{h.label}</strong><p>{data.branches.find(b => b.id === h.draft.branchId)?.name || 'Unavailable branch'} · {h.draft.lines.reduce((sum,l) => sum+l.quantity,0)} items</p><small>Saved {new Date(h.updated_at).toLocaleString()}</small></div><div className={s.row}>{holdDelete === h.id ? <><span>Delete this hold?</span><button className={s.dangerButton} disabled={Boolean(busy)} onClick={() => removeHold(h)}>Delete</button><button className={s.button} onClick={() => setHoldDelete(null)}>Keep</button></> : <><button className={s.primary} disabled={Boolean(busy)} onClick={() => resume(h)}>Resume</button><button className={s.iconButton} aria-label={`Delete held order ${h.label}`} disabled={Boolean(busy)} onClick={() => setHoldDelete(h.id)}><Trash2 size={17}/></button></>}</div></div>)}</div>}
-      {dialog === 'receipt' && receipt && <div className={s.stack}><p className={`${s.notice} ${s.success}`}><Check size={18}/>{receipt.remaining > 0 ? `Sale saved · ${cash(receipt.remaining)} balance due` : 'Sale saved and payment recorded.'}</p><ReceiptContent receipt={receipt} context={data.receiptContext}/><div className={s.modalActions}><Link className={s.button} href={`/dashboard/orders/${receipt.orderId}`}>View Order</Link><Link className={s.button} href={`/dashboard/pos/receipt/${receipt.orderId}`} target="_blank" rel="noopener noreferrer"><Printer size={17}/>Print Receipt</Link><button className={s.primary} onClick={() => { setDialog(null); searchRef.current?.focus(); }}><Plus size={17}/>Next Sale</button></div></div>}
+      {dialog === 'receipt' && receipt && <div className={s.stack}><p className={`${s.notice} ${s.success}`}><Check size={18}/>{receipt.remaining > 0 ? `Sale saved · ${cash(receipt.remaining)} balance due` : 'Sale saved and payment recorded.'}</p><ReceiptContent receipt={receipt} context={data.receiptContext}/><OrderPrintMenu orderId={receipt.orderId}/><div className={s.modalActions}><Link className={s.button} href={`/dashboard/orders/${receipt.orderId}`}>View Order</Link><Link className={s.button} href={`/dashboard/pos/receipt/${receipt.orderId}`} target="_blank" rel="noopener noreferrer"><Printer size={17}/>Print Receipt</Link><button className={s.primary} onClick={() => { setDialog(null); searchRef.current?.focus(); }}><Plus size={17}/>Next Sale</button></div></div>}
       </fieldset>
     </Modal>}
   </main>;

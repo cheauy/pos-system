@@ -1,4 +1,5 @@
 'use client';
+import { realtimeTopic } from '@/lib/supabase/realtime-topic';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -8,7 +9,7 @@ export default function PermissionRefresh({businessId,userId,role}:{businessId:s
  useEffect(()=>{
   const db=createClient();let timer:ReturnType<typeof setTimeout>|undefined;
   const refresh=()=>{clearTimeout(timer);timer=setTimeout(()=>router.refresh(),300);};
-  const channel=db.channel(`access:${businessId}:${userId}`)
+  const channel=db.channel(realtimeTopic(`access:${businessId}:${userId}`))
    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'business_members',filter:`user_id=eq.${userId}`},refresh)
    .on('postgres_changes',{event:'*',schema:'public',table:'business_role_permissions',filter:`business_id=eq.${businessId}`},refresh)
    .on('postgres_changes',{event:'*',schema:'public',table:'branch_role_permissions',filter:`business_id=eq.${businessId}`},refresh)

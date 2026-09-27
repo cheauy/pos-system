@@ -11,6 +11,7 @@ module.exports = ({ config }) => {
   }
   return {
     ...config,
+    plugins: [...(config.plugins || []), 'expo-image', ['expo-audio', { microphonePermission: false, recordAudioAndroid: false, enableBackgroundPlayback: false }]],
     ios: { ...config.ios, infoPlist: { ...config.ios.infoPlist,
       ...(api.startsWith('http://') ? { NSAppTransportSecurity: { NSAllowsArbitraryLoads: true } } : {}),
     } },

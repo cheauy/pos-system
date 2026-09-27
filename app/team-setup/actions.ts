@@ -1,9 +1,11 @@
 'use server';
+import { passwordIssue } from '@/lib/auth/password-policy';
 import {createClient} from '@/lib/supabase/server';
 import {supabaseAdmin} from '@/lib/supabase/admin';
 export async function completeTeamPasswordSetup(password:string,confirm:string){
  try{
-  if(typeof password!=='string'||password.length<12||password.length>128||password!==confirm)throw new Error('Use matching passwords of 12–128 characters.');
+  if(typeof password!=='string'||password!==confirm)throw new Error('Passwords must match.');
+  const issue = passwordIssue(password); if (issue) throw new Error(issue);
   const db=await createClient();const {data:{user},error}=await db.auth.getUser();
   if(error||!user)throw new Error('Sign in again with the temporary password provided by your Owner.');
   const changed=await db.auth.updateUser({password});

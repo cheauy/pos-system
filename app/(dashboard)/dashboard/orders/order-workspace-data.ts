@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/branch-server";
 import type { OrderDetail, OrderRow, PaymentState, WorkspaceData, WorkspaceFilters } from "./order-workspace-types";
 
 type Customer = { id: string; name: string; phone: string | null; email: string | null; address: string | null };
-type Product = { name: string; image_url: string | null };
+type Product = { name: string; image_url: string | null; variant_image_url: string | null };
 type RawItem = { id: string; product_name: string | null; quantity: number; unit_price: number; subtotal: number; variant_label: string | null; selected_options: { name?: string }[] | null; products: Product | Product[] | null };
 type RawOrder = {
   id: string; order_number: string; customer_id: string | null; order_source: string;
@@ -45,7 +45,7 @@ export async function loadOrderDetail(businessId: string, orderId: string): Prom
     amount_paid,change_amount,remaining_balance,credit_amount,loyalty_points_earned,coupon_code,coupon_discount,
     created_at,updated_at,location_id,guest_name,guest_phone,guest_address,customer_note,table_name,requested_for,
     customers(id,name,phone,email,address),
-    order_items(id,product_name,quantity,unit_price,subtotal,variant_label,selected_options,products(name,image_url))
+    order_items(id,product_name,quantity,unit_price,subtotal,variant_label,selected_options,products(name,image_url,variant_image_url))
   `).eq("id", orderId).eq("business_id", businessId).is("archived_at", null).maybeSingle();
   if (error) { console.error("Order detail:", error.message); throw new Error("Unable to load this order. Please try again."); }
   if (!data) throw new Error("This order is no longer available. Refresh the Orders list.");
@@ -95,7 +95,7 @@ export async function loadOrderDetail(businessId: string, orderId: string): Prom
     returnsUnavailable: !!returns.error,
     items: (order.order_items ?? []).map((item) => ({
       id: item.id, name: item.product_name || one(item.products)?.name || "Deleted product",
-      imageUrl: imageUrl(one(item.products)?.image_url), variant: item.variant_label,
+      imageUrl: imageUrl(one(item.products)?.variant_image_url || one(item.products)?.image_url), variant: item.variant_label,
       returnedQuantity: returned.get(item.id) ?? 0, quantity: number(item.quantity), unitPrice: number(item.unit_price), subtotal: number(item.subtotal),
       options: Array.isArray(item.selected_options) ? item.selected_options.map((option) => option?.name ?? "").filter(Boolean) : [],
     })),

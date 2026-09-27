@@ -1,4 +1,5 @@
 'use client';
+import { PASSWORD_HELP, passwordIssue } from '@/lib/auth/password-policy';
 
 import Image from 'next/image';
 import Link from 'next/link';
@@ -19,7 +20,7 @@ export default function TeamSetupPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [saved, setSaved] = useState(false);
-  const validLength = password.length >= 12 && password.length <= 128;
+  const validLength = !passwordIssue(password);
   const matches = confirm.length > 0 && password === confirm;
 
   useEffect(() => {
@@ -52,7 +53,7 @@ export default function TeamSetupPage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
-    if (!validLength || !matches) { setMessage('Use 12–128 characters and enter the same password in both fields.'); return; }
+    if (!validLength || !matches) { setMessage(passwordIssue(password) || 'Passwords must match.'); return; }
     setBusy(true);
     setMessage('');
     try {
@@ -106,13 +107,13 @@ export default function TeamSetupPage() {
                     <label htmlFor={field} className="mb-2 block text-sm font-semibold">{isConfirm ? 'Confirm password' : 'New password'} <span className="text-blue-600" aria-hidden="true">*</span></label>
                     <div className="relative">
                       <LockKeyhole size={18} aria-hidden="true" className="pointer-events-none absolute left-4 top-4 text-slate-400" />
-                      <input id={field} name={field} type={visible[field] ? 'text' : 'password'} required minLength={12} maxLength={128} autoComplete="new-password" spellCheck={false} autoCapitalize="none" value={isConfirm ? confirm : password} onChange={event => { (isConfirm ? setConfirm : setPassword)(event.target.value); setMessage(''); }} disabled={busy} placeholder={isConfirm ? 'Re-enter your password' : 'Create a new password'} aria-invalid={mismatch || undefined} aria-describedby={isConfirm ? 'password-match' : 'password-length'} className={`h-12 w-full rounded-xl border bg-white pl-11 pr-12 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-50 ${mismatch ? 'border-rose-300' : 'border-slate-300'}`} />
+                      <input id={field} name={field} type={visible[field] ? 'text' : 'password'} required minLength={8} maxLength={72} autoComplete="new-password" spellCheck={false} autoCapitalize="none" value={isConfirm ? confirm : password} onChange={event => { (isConfirm ? setConfirm : setPassword)(event.target.value); setMessage(''); }} disabled={busy} placeholder={isConfirm ? 'Re-enter your password' : 'Create a new password'} aria-invalid={mismatch || undefined} aria-describedby={isConfirm ? 'password-match' : 'password-length'} className={`h-12 w-full rounded-xl border bg-white pl-11 pr-12 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-50 ${mismatch ? 'border-rose-300' : 'border-slate-300'}`} />
                       <button type="button" disabled={busy} aria-label={`${visible[field] ? 'Hide' : 'Show'} ${isConfirm ? 'confirmation password' : 'new password'}`} aria-pressed={visible[field]} onClick={() => setVisible(current => ({ ...current, [field]: !current[field] }))} className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-600">{visible[field] ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}</button>
                     </div>
                   </div>;
                 })}
                 <div className="space-y-2 rounded-xl bg-slate-50 p-4 text-xs" aria-live="polite">
-                  <p id="password-length" className={`flex items-center gap-2 ${validLength ? 'text-emerald-700' : 'text-slate-500'}`}>{validLength ? <Check size={15} aria-hidden="true" /> : <Circle size={13} aria-hidden="true" />}Use 12–128 characters</p>
+                  <p id="password-length" className={`flex items-center gap-2 ${validLength ? 'text-emerald-700' : 'text-slate-500'}`}>{validLength ? <Check size={15} aria-hidden="true" /> : <Circle size={13} aria-hidden="true" />}{PASSWORD_HELP}</p>
                   <p id="password-match" className={`flex items-center gap-2 ${matches ? 'text-emerald-700' : confirm ? 'text-rose-600' : 'text-slate-500'}`}>{matches ? <Check size={15} aria-hidden="true" /> : <Circle size={13} aria-hidden="true" />}{matches ? 'Passwords match' : confirm ? 'Passwords don’t match yet' : 'Enter the same password in both fields'}</p>
                 </div>
                 <button type="submit" disabled={busy} className={buttonStyle}>{busy ? <><LoaderCircle size={18} className="animate-spin" aria-hidden="true" />Saving password…</> : <>Save password & continue<ArrowRight size={18} aria-hidden="true" /></>}</button>

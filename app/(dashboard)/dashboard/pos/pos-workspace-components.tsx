@@ -15,7 +15,7 @@ export function Modal({ title, children, onClose, wide = false, locked = false, 
     if (dialog && !dialog.open) dialog.showModal();
     return () => { dialog?.close(); previous?.focus(); };
   }, []);
-  return <dialog ref={ref} aria-label={title} className={`${s.dialog} ${wide ? s.dialogWide : ''} ${paper ? s.paperDialog : ''}`} onCancel={event => { event.preventDefault(); if (!locked) onClose(); }} onClick={event => { if (event.target === event.currentTarget && !locked) onClose(); }}>
+  return <dialog ref={ref} aria-label={title} className={`${s.dialog} ${wide ? s.dialogWide : ''} ${paper ? s.paperDialog : ''}`} onCancel={event => { event.preventDefault(); if (!locked) onClose(); }}>
     <div className={s.modalInner}>
       <header className={s.modalHeader}><h2>{title}</h2><button type="button" className={s.iconButton} onClick={onClose} disabled={locked} aria-label="Close dialog"><X size={19} /></button></header>
       <div className={s.modalBody}>{children}</div>

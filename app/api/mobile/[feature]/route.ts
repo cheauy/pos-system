@@ -1,3 +1,10 @@
+import {accountAccess,mobileAccountRead} from '@/lib/mobile/account-read';
+import { mobileExpenseBreakdown } from '@/lib/mobile/expense-breakdown';
+import { mobileRegisterDetail } from '@/lib/mobile/register-detail';
+import { getCustomerFieldSettings } from '@/lib/customers/get-customer-field-settings';
+import { updateCustomerFieldSettings } from '@/app/(dashboard)/dashboard/settings/customers/actions';
+import { mobileOrderPageSize, incomingOrderStatus, loadMobileOrderPage } from '@/lib/mobile/order-list';
+import { mobileProductPage } from '@/lib/mobile/product-page';
 import { mobileRequest, mobileSelection, MobileSelectionError } from '@/lib/mobile/request-context';
 import { createClient as baseClient } from '@/lib/supabase/server';
 import { createClient as branchClient } from '@/lib/supabase/branch-server';
@@ -20,6 +27,7 @@ import { openRegisterShift, closeRegisterShift } from '@/app/(dashboard)/dashboa
 import { loadDetailedOrder } from '@/app/(dashboard)/dashboard/orders/[id]/order-detail-data';
 import { recordReceipt, one } from '@/app/(dashboard)/dashboard/orders/[id]/order-detail-model';
 import { loadReceiptContext } from '@/lib/receipts/load-receipt-context';
+import { orderQrSvg, parseOrderQr } from '@/lib/orders/order-qr';
 import { mobileReceiptHtml } from '@/lib/mobile/receipt-html';
 import { submitStockAdjustment } from '@/app/(dashboard)/dashboard/inventory/adjustments/actions';
 import { getIncomingOrders } from '@/lib/branches/incoming-orders';
@@ -30,6 +38,8 @@ import { loadShippingSettings } from '@/lib/receipts/shipping-design-store';
 import { mobileShippingHtml } from '@/lib/mobile/shipping-html';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { managementAccess, managementRead, managementWrite } from '@/lib/mobile/management';
+import { needsTeamPasswordSetup } from '@/lib/users/setup-state';
+import { loadMobileOrderPhotos } from '@/lib/mobile/order-photos';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -55,16 +65,17 @@ async function boundedBody(request: Request, limit: number) {
 }
 const access: Record<string, Permission> = {
   ...managementAccess,
+  ...accountAccess,
   purchases: 'purchases.view', 'purchase-detail': 'purchases.view',
   'purchase-receive': 'purchases.update', 'purchase-receipt-status': 'purchases.update',
   transfers: 'transfers.manage', 'transfer-detail': 'transfers.manage', 'transfer-action': 'transfers.manage',
   reports: 'reports.view',
   orders: 'orders.view', order: 'orders.view', stock: 'inventory.view',
-  customers: 'customers.view', expenses: 'expenses.manage', register: 'register.manage',
+  'customer-fields': 'customers.view', customers: 'customers.view', 'expense-breakdown': 'expenses.manage', expenses: 'expenses.manage', 'register-detail': 'register.manage', register: 'register.manage',
   pos: 'pos.access', quote: 'pos.access', sale: 'pos.access', 'sale-status': 'pos.access',
   hold: 'pos.access', 'delete-hold': 'pos.access',
   returns: 'orders.return', 'return-status': 'orders.return',
-  receipt: 'orders.view', 'shipping-label': 'orders.view',
+  'order-qr': 'orders.view', receipt: 'orders.view', 'shipping-label': 'orders.view',
   adjustment: 'products.stock_adjust',
   incoming: 'orders.view', 'incoming-detail': 'orders.view', 'incoming-scope': 'orders.view',
   'incoming-status': 'orders.update', payment: 'orders.update', proof: 'orders.view',
@@ -83,6 +94,15 @@ async function handle(request: Request, feature: string) {
       const base = await baseClient();
       const { data: { user }, error } = await base.auth.getUser(context.token);
       if (error || !user) return response({ error: 'Your session expired. Sign in again.' }, 401);
+      if (feature === 'team-setup' && request.method === 'POST') {
+        // The database checks the password fingerprint and reserved seat; metadata cannot activate access.
+        const finished = await supabaseAdmin.rpc('tenh_users_finish_setup', { p_user: user.id });
+        if (finished.error) return response({ error: finished.error.message }, 409);
+        return response({ success: true });
+      }
+      if (await needsTeamPasswordSetup(user.id)) {
+        return response({ error: 'Choose a new password to activate your team access.', code: 'team_setup_required' }, 403);
+      }
       if(feature==='push-unregister'&&request.method==='POST') {
         const body=JSON.parse((await boundedBody(request,1024)).toString('utf8'));
         if(!uuid(body.deviceId))throw new RequestError('Invalid device.');
@@ -113,11 +133,17 @@ async function handle(request: Request, feature: string) {
       const url = new URL(request.url);
       const page = Math.max(1, Math.min(10000, Number(url.searchParams.get('page')) || 1));
       if (!Number.isInteger(page)) throw new RequestError('Invalid page.');
-      const from = (page - 1) * 25;
+      const listLimit=['customers','expenses','register'].includes(feature)?10:['purchases','transfers'].includes(feature)&&url.searchParams.get('limit')==='10'?10:25;
+      const from = (page - 1) * listLimit;
+      const orderLimit = mobileOrderPageSize(url.searchParams.get('limit'));
+      const orderFrom = (page - 1) * orderLimit;
       const search = (url.searchParams.get('search') ?? '').trim().slice(0, 100);
       // PostgREST filter syntax must never come from unescaped search input.
       const term = search.replace(/[^\p{L}\p{N}\s_-]/gu, '');
       if (request.method === 'GET') {
+        if(feature==='account-profile'||feature in accountAccess)return response(await mobileAccountRead(db,feature,business,scope.branchId,user));
+        if(feature==='expense-breakdown') return response(await mobileExpenseBreakdown(db,business.id,scope.branchId,url.searchParams.get('range')||'30days'));
+        if(feature==='customer-fields') return response(await getCustomerFieldSettings(business.id));
         if(feature==='management-status') {
           const id=mobileSelection(url.searchParams.get('id')); if(!id) throw new RequestError('Choose a save request.');
           const result=await db.rpc('tenh_mobile_management_status',{p_business_id:business.id,p_branch_id:scope.branchId,p_request_id:id});
@@ -136,7 +162,7 @@ async function handle(request: Request, feature: string) {
           let query = db.from('purchase_orders').select('id,po_number,supplier_name,status,order_date,expected_date', { count: 'exact' })
             .eq('business_id', business.id).eq('location_id', scope.branchId);
           if (term) query = query.or(`po_number.ilike.%${term}%,supplier_name.ilike.%${term}%`);
-          const result = await query.order('created_at', { ascending: false }).order('id').range(from, from + 24);
+          const result = await query.order('created_at', { ascending: false }).order('id').range(from, from + listLimit - 1);
           if (result.error) throw new RequestError('Unable to load purchase orders.', 503);
           return response({ rows: result.data ?? [], total: result.count ?? 0 });
         }
@@ -171,7 +197,7 @@ async function handle(request: Request, feature: string) {
             return response({ ...result.data, canAct: !ready.error && ready.data?.ready === true, direction: result.data.source_location_id === scope.branchId ? 'Outgoing' : 'Incoming', items: items.data ?? [] });
           }
           if (term) query = query.ilike('transfer_number', `%${term}%`);
-          const result = await query.order('created_at', { ascending: false }).order('id').range(from, from + 24);
+          const result = await query.order('created_at', { ascending: false }).order('id').range(from, from + listLimit - 1);
           if (result.error) throw new RequestError('Unable to load stock transfers.', 503);
           return response({ rows: (result.data ?? []).map(row => ({ ...row, direction: row.source_location_id === scope.branchId ? 'Outgoing' : 'Incoming' })), total: result.count ?? 0 });
         }
@@ -193,7 +219,7 @@ async function handle(request: Request, feature: string) {
         }
         if (feature === 'reports') {
           const range = url.searchParams.get('range') || 'yesterday';
-          if (!['today', 'yesterday', '7days', '30days'].includes(range)) throw new RequestError('Choose a report period.');
+          if (!['today', 'yesterday', '7days', '30days', '365days'].includes(range)) throw new RequestError('Choose a report period.');
           return response(await loadMobileReports(db, business.id, scope.branchId, range));
         }
         if (feature === 'proof') {
@@ -206,13 +232,14 @@ async function handle(request: Request, feature: string) {
         }
         if (feature === 'incoming') {
           const result = await getIncomingOrders(business.id);
-          const filtered = result.orders.filter(order => `${order.order_number} ${order.guest_name || ''} ${order.guest_phone || ''}`.toLowerCase().includes(search.toLowerCase()));
+          const status=url.searchParams.get('status')||'all', payment=url.searchParams.get('payment')||'all';
+          const filtered = result.orders.filter(order => `${order.order_number} ${order.guest_name || ''} ${order.guest_phone || ''}`.toLowerCase().includes(search.toLowerCase()) && (status==='all'||incomingOrderStatus(order)===status) && (payment==='all'||order.payment_status===payment));
           const store = await db.from('business_storefronts').select('currency').eq('business_id', business.id).maybeSingle();
           if (store.error) throw new RequestError('Unable to load store currency.', 503);
-          return response({ receiveAll: result.receiveAll, currency: store.data?.currency || 'USD', total: filtered.length, page,
-            rows: filtered.slice(from, from + 25).map(order => ({ id: order.id, orderNumber: order.order_number, customerName: order.guest_name || 'Customer', total: order.total,
-              status: order.payment_status === 'refunded' ? 'refunded' : order.online_status === 'rejected' ? 'cancelled' : order.online_status === 'completed' ? 'completed' : 'pending',
-              paymentState: order.payment_status, onlineStatus: order.online_status, branchName: order.branch_name })) });
+          return response({ receiveAll: result.receiveAll, currency: store.data?.currency || 'USD', total: filtered.length, page, limit: orderLimit, alertIds: result.orders.filter(order=>order.online_status==='new').map(order=>order.id),
+            rows: filtered.slice(orderFrom, orderFrom + orderLimit).map(order => ({ id: order.id, orderNumber: order.order_number, customerName: order.guest_name || 'Customer', total: order.total,
+              status: incomingOrderStatus(order),
+              paymentState: order.payment_status, onlineStatus: order.online_status, branchName: order.branch_name, source: order.order_source, createdAt: order.created_at, customerPhone: order.guest_phone, fulfillment: order.fulfillment_type, itemCount: order.order_items.reduce((sum,item)=>sum+Number(item.quantity),0), itemsPreview: order.order_items.slice(0,3).map(item=>({id:item.id,name:item.product_name,imageUrl:item.image_url||null,fallbackImageUrl:null})) })) });
         }
         if (feature === 'incoming-detail') {
           const id = mobileSelection(url.searchParams.get('id'));
@@ -225,6 +252,16 @@ async function handle(request: Request, feature: string) {
             total: order.total, status: order.status, onlineStatus: order.online_status, paymentState: order.payment_status,
             paymentMethod: order.payment_method, source: order.order_source, updatedAt: order.updated_at, createdAt: order.created_at,
             items: order.order_items.map(item => ({ id: item.id, name: item.product_name, quantity: item.quantity, subtotal: item.subtotal, variant: item.variant_label, imageUrl: one(item.products)?.image_url })) });
+        }
+        if (feature === 'order-qr') {
+          const value = url.searchParams.get('value');
+          const id = value === null ? mobileSelection(url.searchParams.get('id')) : parseOrderQr(value);
+          if (!id) throw new RequestError('Scan a TENH POS order QR code.');
+          const order = await loadDetailedOrder(business.id, id);
+          if (!order) throw new RequestError('Order not found or unavailable in this branch.', 404);
+          const store = await db.from('business_storefronts').select('currency').eq('business_id', business.id).maybeSingle();
+          if (store.error) throw new RequestError('Unable to load store currency.', 503);
+          return response({ currency: store.data?.currency || 'USD', id: order.id, incoming: ['online', 'qr'].includes(order.order_source), svg: orderQrSvg(order.id) });
         }
         if (feature === 'receipt' || feature === 'shipping-label') {
           const id = mobileSelection(url.searchParams.get('id'));
@@ -247,14 +284,14 @@ async function handle(request: Request, feature: string) {
           }
           const branch = scope.branches.find(branch => branch.id === order.location_id);
           const receipt = recordReceipt(order, business.name, store.data?.currency || 'USD', branch?.name || '');
-          return response({ html: mobileReceiptHtml(receipt, receiptContext, url.origin), orderNumber: receipt.orderNumber });
+          return response({ html: mobileReceiptHtml(receipt, receiptContext, url.origin), width: parseInt(receiptContext.appearance.paperSize,10)*72/25.4, orderNumber: receipt.orderNumber });
         }
         if (feature === 'pos') {
-          const result = await loadPosWorkspace(business.id, scope.branchId);
+          const result = await loadPosWorkspace(business.id, scope.branchId, false);
           if (!result.success) return response(result, 409);
           const data = result.data;
           return response({ products: data.products.map(product => ({ ...product, available: stockFor(product, scope.branchId, data) })),
-            groups: data.groups, options: data.options, customers: data.customers, holds: data.holds, settings: data.settings, shift: data.shift });
+            categories: data.categories, groups: data.groups, options: data.options, customers: data.customers, holds: data.holds, settings: data.settings, shift: data.shift });
         }
         if (feature === 'sale-status') {
           const id = mobileSelection(url.searchParams.get('id'));
@@ -262,16 +299,26 @@ async function handle(request: Request, feature: string) {
           const result = await checkPosSale(business.id, id);
           return response(result, result.success ? 200 : 409);
         }
-        if (feature === 'orders') return response(await loadWorkspace(business.id, parseFilters({
-          search, page: String(page), limit: '20', branch: scope.branchId,
-          status: url.searchParams.get('status') ?? 'all',
-        })));
+        if (feature === 'orders') {
+          const orders = await loadMobileOrderPage(filters=>loadWorkspace(business.id,filters), parseFilters({
+          search, page: String(page), branch: scope.branchId,
+          status: url.searchParams.get('status') ?? 'all', payment: url.searchParams.get('payment') ?? 'all',
+          }),page,orderLimit);
+          try {
+            const photos = await loadMobileOrderPhotos(db, business.id, scope.branchId, orders.rows.map(order => order.id));
+            return response({ ...orders, rows: orders.rows.map(order => ({ ...order, itemsPreview: photos.get(order.id) || [] })) });
+          } catch {
+            return response({ ...orders, photosUnavailable: true });
+          }
+        }
         if (feature === 'order') {
           const id = mobileSelection(url.searchParams.get('id'));
           if (!id) throw new RequestError('Choose an order.');
           return response(await loadOrderDetail(business.id, id));
         }
         if (feature === 'stock') {
+          if(url.searchParams.get('grouped')==='true') return response({...await mobileProductPage(db,business.id,'id,variant_group_id,name,sku,barcode,image_url,variant_image_url,size,color,selling_price,stock_quantity,low_stock_quantity',page,{term,active:true,pageSize:Number(url.searchParams.get('limit')||25)}),page});
+
           let query = db.from('branch_products').select('id,name,sku,barcode,image_url,variant_image_url,size,color,selling_price,stock_quantity,low_stock_quantity', { count: 'exact' })
             .eq('business_id', business.id).eq('is_active', true);
           if (term) query = query.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`);
@@ -280,26 +327,33 @@ async function handle(request: Request, feature: string) {
           return response({ rows: result.data, total: result.count, page });
         }
         if (feature === 'customers') {
-          let query = db.from('customers').select('id,name,phone,email,address,loyalty_points', { count: 'exact' })
+          let query = db.from('customers').select('id,name,phone,email,birthday,address,loyalty_points', { count: 'exact' })
             .eq('business_id', business.id).eq('location_id', scope.branchId);
           if (term) query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%`);
-          const result = await query.order('name').order('id').range(from, from + 24);
+          const result = await query.order('name').order('id').range((page-1)*10,page*10-1);
           if (result.error) throw new RequestError('Unable to load customers.', 503);
-          return response({ rows: result.data, total: result.count, page });
+          return response({ rows: result.data, total: result.count, page, fieldSettings: await getCustomerFieldSettings(business.id) });
         }
         if (feature === 'expenses') {
           const result = await db.from('expenses').select('id,category,description,amount,expense_date,payee', { count: 'exact' })
             .eq('business_id', business.id).eq('location_id', scope.branchId)
-            .order('expense_date', { ascending: false }).order('id').range(from, from + 24);
+            .order('expense_date', { ascending: false }).order('id').range(from, from + listLimit - 1);
           if (result.error) throw new RequestError('Unable to load expenses.', 503);
-          return response({ rows: result.data, total: result.count, page, categories: CATEGORIES });
+          const settings=await db.from('branch_pos_settings').select('currency').eq('business_id',business.id).eq('location_id',scope.branchId).single();
+          if(settings.error)throw new RequestError('Unable to load currency.',503);
+          return response({ rows: result.data, total: result.count, page, categories: CATEGORIES, currency:settings.data.currency });
         }
+        if(feature==='register-detail'){const id=mobileSelection(url.searchParams.get('id'));if(!id)throw new RequestError('Choose a register shift.');return response(await mobileRegisterDetail(db,business.id,scope.branchId,id));}
         if (feature === 'register') {
           const result = await db.from('cash_register_shifts').select('id,status,opening_cash,opened_at,closed_at', { count: 'exact' })
             .eq('business_id', business.id).eq('location_id', scope.branchId)
-            .order('opened_at', { ascending: false }).order('id').range(from, from + 24);
+            .order('opened_at', { ascending: false }).order('id').range(from, from + listLimit - 1);
           if (result.error) throw new RequestError('Unable to load register shifts.', 503);
-          return response({ rows: result.data, total: result.count, page });
+          const open=await db.from('cash_register_shifts').select('id').eq('business_id',business.id).eq('location_id',scope.branchId).eq('status','open').limit(1);
+          if(open.error)throw new RequestError('Unable to check the open register.',503);
+          const settings=await db.from('branch_pos_settings').select('currency').eq('business_id',business.id).eq('location_id',scope.branchId).single();
+          if(settings.error)throw new RequestError('Unable to load register currency.',503);
+          return response({ rows: result.data, total: result.count, page, hasOpen:!!open.data?.length, currency:settings.data.currency });
         }
         if (feature === 'alerts') {
           const refresh = await db.rpc('refresh_business_notifications', { p_business_id: business.id });
@@ -401,6 +455,12 @@ async function handle(request: Request, feature: string) {
           const result = await submitStockAdjustment({ success: false, message: '', submittedAt: 0 }, form);
           return response(result, result.success ? 200 : 409);
         }
+        if(feature==='customer-fields') {
+          if(!permissions.includes('business.update')) throw new RequestError('You cannot change customer fields.',403);
+          if(typeof body.emailEnabled!=='boolean'||typeof body.birthdayEnabled!=='boolean') throw new RequestError('Choose valid customer fields.');
+          const form=new FormData();if(body.emailEnabled)form.set('emailEnabled','on');if(body.birthdayEnabled)form.set('birthdayEnabled','on');
+          await updateCustomerFieldSettings(form);return response({success:true});
+        }
         if (feature === 'customers') {
           if (!permissions.includes('customers.create') || !permissions.includes('pos.access')) throw new RequestError('You cannot create customers.', 403);
           if (typeof body.address !== 'string' || !body.address.trim()) throw new RequestError('Address is required.');
@@ -426,7 +486,7 @@ async function handle(request: Request, feature: string) {
         }
         if (feature === 'delete-hold') {
           if (!uuid(body.id) || !Number.isSafeInteger(body.version)) throw new RequestError('Choose a saved held order.');
-          const catalog = await loadPosWorkspace(business.id, scope.branchId);
+          const catalog = await loadPosWorkspace(business.id, scope.branchId, false);
           if (!catalog.success) return response(catalog, 409);
           const held = catalog.data.holds.find(hold => hold.id === body.id);
           if (!held || held.version !== body.version || held.draft.branchId !== scope.branchId) throw new RequestError('This held order changed or is unavailable. Reload held orders.', 409);
@@ -435,7 +495,7 @@ async function handle(request: Request, feature: string) {
         }
         if (feature === 'quote' || feature === 'hold') {
           if (!uuid(body.requestId) || !Array.isArray(body.items) || !body.items.length || body.items.length > 100) throw new RequestError('Add 1–100 items.');
-          const catalog = await loadPosWorkspace(business.id, scope.branchId);
+          const catalog = await loadPosWorkspace(business.id, scope.branchId, false);
           if (!catalog.success) return response(catalog, 409);
           const data = catalog.data;
           const holdId = body.holdId ?? null;

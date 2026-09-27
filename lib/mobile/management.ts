@@ -1,3 +1,4 @@
+import { mobileProductPage } from './product-page';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createHash } from 'node:crypto';
 import { compressPhoto } from '@/lib/images/compress-photo';
@@ -19,13 +20,17 @@ function data<T>(result: { data: T; error: { message: string } | null }): NonNul
   if(result.data==null) throw new Error('Record not found. Reload before continuing.');
   return result.data;
 }
-const fields='id,name,sku,barcode,description,category_id,image_url,variant_image_url,cost_price,selling_price,low_stock_quantity,stock_quantity,product_type,size,color,is_pos,is_online,is_active,updated_at';
+const fields='id,variant_group_id,name,sku,barcode,description,category_id,image_url,variant_image_url,cost_price,selling_price,low_stock_quantity,stock_quantity,product_type,size,color,is_pos,is_online,is_active,updated_at';
 export async function managementRead(db: SupabaseClient, feature: string, businessId: string, branchId: string, url: URL) {
   if (feature==='storefront') return data(await db.from('business_storefronts').select('display_name,description,phone,address,is_published,accept_online_orders,updated_at').eq('business_id',businessId).maybeSingle());
   if (feature==='catalog-options') {
-    const categories=data(await db.from('categories').select('id,name').eq('business_id',businessId).or(`branch_ids.is.null,branch_ids.cs.{${branchId}}`).order('name').limit(501));
+    const [categoryResult,businessResult]=await Promise.all([
+      db.from('categories').select('id,name').eq('business_id',businessId).or(`branch_ids.is.null,branch_ids.cs.{${branchId}}`).order('name').limit(501),
+      db.from('businesses').select('product_mode').eq('id',businessId).single(),
+    ]);
+    const categories=data(categoryResult);
     if(categories.length>500) throw new Error('Too many categories. Manage categories on the website.');
-    const business=data(await db.from('businesses').select('product_mode').eq('id',businessId).single());
+    const business=data(businessResult);
     return {categories,mode:business.product_mode};
   }
   if (feature==='draft-options') {
@@ -47,6 +52,16 @@ export async function managementRead(db: SupabaseClient, feature: string, busine
   if(['catalog','purchase-products','transfer-products'].includes(feature)) {
     const page=Number(url.searchParams.get('page')||1); if(!Number.isInteger(page)||page<1||page>10000) throw new Error('Invalid page.');
     const term=(url.searchParams.get('search')||'').slice(0,100).replace(/[^\p{L}\p{N}\s_-]/gu,'');
+    if(url.searchParams.get('grouped')==='true') {
+      const category=url.searchParams.get('category')||'';
+      if(category&&!id(category)) throw new Error('Choose a valid category.');
+      const [result,settingsResult]=await Promise.all([
+        mobileProductPage(db,businessId,fields,page,{term,pageSize:url.searchParams.get('limit')==='10'?10:25,bundles:url.searchParams.get('bundles')==='true',components:url.searchParams.get('components')==='true'||feature==='purchase-products'||feature==='transfer-products',active:url.searchParams.get('components')==='true'||feature==='purchase-products'||feature==='transfer-products',category}),
+        db.from('branch_pos_settings').select('currency').eq('business_id',businessId).eq('location_id',branchId).single(),
+      ]);
+      const settings=data(settingsResult);
+      return {...result,rows:result.rows.map(p=>({...p,image_url:p.variant_image_url||p.image_url})),currency:settings.currency};
+    }
     let query=db.from('branch_products').select(fields,{count:'exact'}).eq('business_id',businessId);
     if(term) query=query.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`);
     if(url.searchParams.get('bundles')==='true') query=query.eq('product_type','bundle');
@@ -82,7 +97,9 @@ export async function managementWrite(db: SupabaseClient, feature: string, busin
   if(result.error) return {success:false,message:result.error.message,uncertain:true};
   if(!result.data) return {success:false,message:'Save not confirmed. Retry the same request.',uncertain:true};
   if(result.data.success) {
-    for(const path of ['/dashboard/products','/dashboard/bundles','/dashboard/stock-transfers','/dashboard/purchase-orders','/dashboard/online-store','/dashboard/pos']) revalidatePath(path);
+    // A committed save stays successful even if refreshing the website cache fails.
+    try { for(const path of ['/dashboard/products','/dashboard/bundles','/dashboard/stock-transfers','/dashboard/purchase-orders','/dashboard/online-store','/dashboard/pos']) revalidatePath(path); }
+    catch (error) { console.error('Mobile post-save refresh failed', error); }
   }
   return {...result.data,uncertain:!result.data.rolledBack&&!result.data.success};
 }

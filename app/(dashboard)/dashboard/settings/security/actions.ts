@@ -1,4 +1,5 @@
 "use server";
+import { passwordIssue } from "@/lib/auth/password-policy";
 
 import { cookies } from "next/headers";
 
@@ -16,16 +17,6 @@ export type DeleteAccountState = {
   message: string;
 };
 
-function hasStrongPassword(value: string) {
-  return (
-    value.length >= 8 &&
-    /[A-Z]/.test(value) &&
-    /[a-z]/.test(value) &&
-    /\d/.test(value) &&
-    /[^A-Za-z0-9]/.test(value)
-  );
-}
-
 export async function changePassword(
   _previousState: ChangePasswordState,
   formData: FormData,
@@ -34,18 +25,11 @@ export async function changePassword(
   const newPassword = String(formData.get("new_password") ?? "");
   const confirmPassword = String(formData.get("confirm_password") ?? "");
 
-  if (!hasStrongPassword(newPassword)) {
+  if (passwordIssue(newPassword)) {
     return {
       success: false,
       message:
-        "Use at least 8 characters with uppercase, lowercase, a number and a symbol.",
-    };
-  }
-
-  if (newPassword.length > 72) {
-    return {
-      success: false,
-      message: "New password cannot exceed 72 characters.",
+        passwordIssue(newPassword)!,
     };
   }
 
@@ -327,4 +311,3 @@ export async function deleteOwnAccount(
     };
   }
 }
-

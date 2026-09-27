@@ -4,7 +4,7 @@ import Link from "next/link";
 import PrintButton from "@/components/print-button";
 import { useMemo, useState } from "react";
 import { ChevronLeft, Search, Truck } from "lucide-react";
-import { code39Bars } from "@/lib/barcode/code39";
+import { orderQrSvg } from "@/lib/orders/order-qr";
 type Customer={name?:string|null;phone?:string|null;address?:string|null};
 export type Order={id:string;order_number:string;total:number;payment_method:string|null;payment_status:string|null;guest_name:string|null;guest_phone:string|null;guest_address:string|null;fulfillment_type:string|null;created_at:string;customers:Customer|Customer[]|null;order_items:Array<{quantity:number}>};
 export default function ShippingLabelsClient({businessName,businessPhone,businessAddress,orders,settings}:{businessName:string;businessPhone:string;businessAddress:string;orders:Order[];settings:Record<string,unknown>}){
@@ -17,13 +17,13 @@ export function ShippingLabel({order,businessName,businessPhone,businessAddress,
  const c=Array.isArray(order.customers)?order.customers[0]:order.customers;
  const name=order.guest_name||c?.name||"Customer",phone=order.guest_phone||c?.phone||"",address=order.guest_address||c?.address||"";
  const qty=(order.order_items??[]).reduce((sum,item)=>sum+Number(item.quantity||0),0);
- const data=code39Bars(order.order_number.replace(/[^A-Za-z0-9 .\-$/%+]/g,"-").slice(0,32));
  const [w,h]=size.split("x").map(Number),compact=h<=100;
  const tight=compact||settings.density==='compact';
  const showName=Boolean(settings.shipping_show_store_name??settings.shipping_show_sender??true);
  const showAddress=Boolean(settings.shipping_show_store_address??settings.shipping_show_sender??true);
  const showPhone=Boolean(settings.shipping_show_store_phone??settings.shipping_show_sender??true);
- return <article data-width-mm={w} data-height-mm={h} className={`shipping-label border-2 border-black bg-white text-black ${tight?"p-2":"p-5"}`} style={{width:`${w}mm`,minHeight:`${h}mm`,boxSizing:"border-box",overflowWrap:"anywhere",flexShrink:0,fontSize:(compact?10:12)*printTextScale(settings.font_size),lineHeight:tight?1.2:1.5}}>
+ return <article data-width-mm={w} data-height-mm={h} className={`shipping-label border-2 border-black bg-white text-black ${tight?"p-2":"p-5"}`} style={{width:`${w}mm`,minHeight:`${h}mm`,boxSizing:"border-box",overflowWrap:"anywhere",flexShrink:0,fontSize:(compact?10:12)*printTextScale(settings.font_size),lineHeight:tight?1.2:1.5,display:"grid",gridTemplateColumns:settings.shipping_show_barcode!==false?"minmax(0,1fr) 26mm":"minmax(0,1fr)",columnGap:"2mm",alignContent:"start",alignItems:"start"}}>
+  <section>
   {(showName||(showAddress&&businessAddress)||(showPhone&&businessPhone))&&<div>
    <p style={{fontSize:"0.9em",fontWeight:700}}>Sender:</p>
    {showName&&<p style={{fontSize:"1.3em",fontWeight:900}}>{businessName}</p>}
@@ -31,16 +31,16 @@ export function ShippingLabel({order,businessName,businessPhone,businessAddress,
    {showPhone&&businessPhone&&<p>Tel: {businessPhone}</p>}
   </div>}
   <div className={`${tight?"my-1":"my-4"} border-t border-black`}/>
-  <p style={{fontSize:"1.5em",fontWeight:900}}>Customer Name: {name}</p>
+  <p style={{fontSize:h===50?"1.15em":"1.5em",fontWeight:900}}>Customer Name: {name}</p>
   {settings.shipping_show_phone!==false&&phone&&<p className="font-semibold">Tel: {phone}</p>}
   <p>Address: {address||"Delivery address missing"}</p>
   <div className={`${tight?"my-1":"my-4"} border-t border-black`}/>
-  <div className={`grid ${compact?"grid-cols-4 gap-1":"grid-cols-2 gap-3"}`} style={{fontSize:compact?"0.8em":"1em"}}>
+  </section>{settings.shipping_show_barcode!==false&&<div style={{width:"26mm",height:"26mm"}} aria-label="Order QR code" dangerouslySetInnerHTML={{__html:orderQrSvg(order.id)}}/>}
+  <div className={`grid ${compact?"grid-cols-4 gap-1":"grid-cols-2 gap-3"}`} style={{fontSize:compact?"0.8em":"1em",gridColumn:"1/-1"}}>
    {settings.shipping_show_order_number!==false&&<div><span>Order</span><p className="font-bold">{order.order_number}</p></div>}
    {settings.shipping_show_item_count!==false&&<div><span>Items</span><p className="font-bold">{qty}</p></div>}
    {settings.shipping_show_cod!==false&&<><div><span>Payment</span><p className="font-bold">{(order.payment_method||'').toUpperCase()}</p></div><div><span>Amount</span><p className="font-bold">${Number(order.total).toFixed(2)}</p></div></>}
   </div>
-  {settings.shipping_show_barcode!==false&&<div className={tight?"mt-1":"mt-6"}><svg shapeRendering="crispEdges" viewBox={`0 0 ${data.width} 44`} className={`${compact?"h-5":"h-14"} w-full`} preserveAspectRatio="none">{data.bars.map((bar,index)=><rect key={index} x={bar.x} y="0" width={bar.width} height="44" fill="black"/>)}</svg><p className="text-center tracking-[.2em]">{data.text}</p></div>}
  </article>;
 }
 export function ShippingPrintStyles({size}:{size:string}) {

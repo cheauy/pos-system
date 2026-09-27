@@ -65,7 +65,9 @@ export default function StorefrontShop({
   products,
   settings,
   tableToken,
+  productKey,
 }: {
+  productKey?: string;
   brand: StorefrontBrand;
   slug: string;
   categories: StorefrontCatalogCategory[];
@@ -74,6 +76,9 @@ export default function StorefrontShop({
   tableToken: string | null;
 }) {
   const { t } = useStorefrontLanguage();
+  const pageProduct = products.find(product => product.key === productKey);
+  const catalogHref = tableToken ? `?table=${encodeURIComponent(tableToken)}` : "?";
+  const productHref = (key: string) => `${catalogHref}${tableToken ? "&" : ""}product=${encodeURIComponent(key)}`;
   const storageKey = `tenh-cart:${slug}`;
   const [cart, setCart] = useState<CartItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
@@ -144,9 +149,14 @@ export default function StorefrontShop({
 
   return (
     <>
-      <StorefrontHero slug={slug} brand={brand} cartQuantity={cartQuantity} onOpenCart={() => setCartOpen(true)} />
-      <StorefrontCatalog products={products} categories={categories} settings={settings} onAdd={quickAdd} onQuickView={(product, variantId) => { setInitialVariantId(variantId); setSelectedProduct(product); }} />
+      <StorefrontHero compact={Boolean(productKey)} catalogHref={productKey ? catalogHref : ""} slug={slug} brand={brand} cartQuantity={cartQuantity} onOpenCart={() => setCartOpen(true)} />
+      {productKey ? <main className="store-product-detail">
+        <a className="inline-flex min-h-11 items-center text-sm font-semibold" href={`${catalogHref}#store-products`}>← {t("All products")}</a>
+        {pageProduct ? <ProductConfigurator key={pageProduct.key} fullPage product={pageProduct} cart={cart} businessType={settings.businessType} currency={settings.currency} canOrder={settings.orderingEnabled && hydrated} onClose={() => {}} onAdd={addConfiguredItem} /> : <p className="py-16 text-center">This product is no longer available.</p>}
+        {brand.socialLinks && <nav className="my-8 flex flex-wrap items-center gap-4" aria-label="Follow us"><span>{t("Social")}</span>{Object.entries(brand.socialLinks).filter(([,url]) => /^https?:\/\//i.test(url)).map(([name,url]) => <a className="rounded-xl border border-slate-200 px-4 py-3 capitalize" key={name} href={url} target="_blank" rel="noreferrer">{name}</a>)}</nav>}
+      </main> : <StorefrontCatalog productHref={productHref} products={products} categories={categories} settings={settings} onAdd={quickAdd} onQuickView={(product, variantId) => { setInitialVariantId(variantId); setSelectedProduct(product); }} />}
 
+      {brand.socialLinks?.telegram && /^https:\/\//i.test(brand.socialLinks.telegram) && <a className="store-telegram-contact" href={brand.socialLinks.telegram} target="_blank" rel="noreferrer" aria-label="Contact store on Telegram"><img src="/social/telegram.png" alt="" width={28} height={28}/><span>Chat with us</span></a>}
       {settings.orderingEnabled && cartQuantity > 0 && (
         <button
           type="button"
@@ -192,6 +202,7 @@ export default function StorefrontShop({
 }
 
 function ProductConfigurator({
+  fullPage = false,
   canOrder,
   product,
   initialVariantId,
@@ -201,6 +212,7 @@ function ProductConfigurator({
   onClose,
   onAdd,
 }: {
+  fullPage?: boolean;
   canOrder: boolean;
   product: StorefrontCatalogProduct;
   initialVariantId?: string;
@@ -330,12 +342,17 @@ function ProductConfigurator({
         .join(" / ") || null
     : [variant.color, variant.size].filter(Boolean).join(" / ") || null;
 
+  const gallery = <ProductGallery key={`${product.key}:${variant.imageUrl ?? product.imageUrl ?? ""}`} name={product.name} images={[...new Set([variant.imageUrl, product.imageUrl, ...(product.images ?? []), ...product.variants.map(row => row.imageUrl)].filter((url): url is string => Boolean(url)))]} />;
+  const Heading = fullPage ? 'h1' : 'h2';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <div role="dialog" aria-modal="true" aria-label={product.name} className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
-        <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-5">
+    <div className={fullPage ? "product-detail-content" : "fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"}>
+      <div role={fullPage ? undefined : "dialog"} aria-modal={fullPage ? undefined : true} aria-label={product.name} className={fullPage ? "product-detail-layout" : "max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"}>
+        {fullPage && <div className="product-detail-gallery">{gallery}</div>}
+        <div className={fullPage ? "product-detail-heading" : "sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-5"}>
           <div>
-            <h2 className="text-xl font-bold text-slate-950">{product.name}</h2>
+            <Heading className="text-xl font-bold text-slate-950">{product.name}</Heading>
+            {fullPage && <div className="mt-3 flex flex-wrap items-center gap-3"><strong className="text-2xl">{formatMoney(unitPrice, currency)}</strong><span className="text-sm">{remainingStock > 0 ? `${remainingStock} ${t("In stock")}` : t("Out of stock")}</span>{product.isBestseller && <span className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-800">{t("Bestseller")}</span>}{product.isNewArrival && <span className="rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-700">{t("New arrival")}</span>}</div>}
             {product.preorderVariantIds?.includes(variant.id) && <span className="mt-2 inline-flex rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">{t("Pre-order")}</span>}
             <p className="mt-1 text-sm text-slate-500">
               {isShoeProduct
@@ -347,6 +364,7 @@ function ProductConfigurator({
           </div>
           <button
             type="button"
+            hidden={fullPage}
             aria-label={t("Close")}
             onClick={onClose}
             className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
@@ -355,9 +373,9 @@ function ProductConfigurator({
           </button>
         </div>
 
-        <div className="space-y-6 p-5">
+        <div className={fullPage ? "product-detail-options space-y-6" : "space-y-6 p-5"}>
           {product.description && <p className="whitespace-pre-line text-sm leading-6 text-slate-600">{product.description}</p>}
-          <ProductGallery key={`${product.key}:${variant.imageUrl ?? product.imageUrl ?? ""}`} name={product.name} images={[...new Set([variant.imageUrl, product.imageUrl, ...(product.images ?? []), ...product.variants.map(row => row.imageUrl)].filter((url): url is string => Boolean(url)))]} />
+          {!fullPage && gallery}
 
           {product.productType === "variant" && isShoeProduct && (
             <div className="space-y-5">
@@ -571,7 +589,7 @@ function ProductConfigurator({
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             style={{ backgroundColor: "var(--store-primary-surface)", color: "var(--store-on-primary)" }}
           >
-            <ShoppingCart size={18} /> {t("Add to Order")}
+            <ShoppingCart size={18} /> {t("Add cart")}
           </button>
         </div>
       </div>

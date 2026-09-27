@@ -1,4 +1,6 @@
 "use client";
+import OrderQrScanner from '@/components/order-qr-scanner';
+import { realtimeTopic } from '@/lib/supabase/realtime-topic';
 
 import Image from "next/image";
 import Link from '@/components/ui/activity-link';
@@ -702,7 +704,7 @@ function PaymentNotificationToast({
           <p className="font-extrabold text-slate-950 dark:text-white">{notification.title}</p>
           <p className="mt-1 text-sm leading-5 text-slate-600 dark:text-slate-300">{notification.message}</p>
         </Link>
-        <button type="button" onClick={onClose} aria-label="Dismiss payment notification" className="rounded-lg p-1.5 text-slate-500 hover:bg-white/70 hover:text-slate-900 dark:hover:bg-slate-900/60 dark:hover:text-white">
+        <button type="button" onClick={onClose} aria-label="Dismiss notification" className="rounded-lg p-1.5 text-slate-500 hover:bg-white/70 hover:text-slate-900 dark:hover:bg-slate-900/60 dark:hover:text-white">
           <X size={16} />
         </button>
       </div>
@@ -872,6 +874,7 @@ function GlobalSearchPanel({
               <h2 className="text-[15px] font-bold text-slate-950 dark:text-white">
                 Global Search
               </h2>
+              <OrderQrScanner/>
             </div>
           </div>
           {!mobile && onClose ? (
@@ -1255,7 +1258,7 @@ function useBusinessNotifications(businessId: string, branchId: string) {
 
       if (announce && newest) {
 
-        if (newest && isSubscriptionPaymentNotification(newest)) {
+        if (newest && (isSubscriptionPaymentNotification(newest) || newest.notification_type === "new_order")) {
           setToast(newest);
         }
 
@@ -1302,7 +1305,7 @@ function useBusinessNotifications(businessId: string, branchId: string) {
     window.addEventListener("notification-preferences-changed", onRead);
     const timer = window.setInterval(() => void load(true), 30000);
     const channel = supabase
-      .channel(`sidebar-notifications:${businessId}`)
+      .channel(realtimeTopic(`sidebar-notifications:${businessId}`))
       .on("postgres_changes", { event: "*", schema: "public", table: "business_notification_reads" }, onRead)
       .on(
         "postgres_changes",

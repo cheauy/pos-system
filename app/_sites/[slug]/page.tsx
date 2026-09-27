@@ -34,6 +34,7 @@ type StorefrontPageProps = {
   }>;
   searchParams: Promise<{
     table?: string;
+    product?: string;
   }>;
 };
 
@@ -94,7 +95,7 @@ export default async function StorefrontPage({
   searchParams,
 }: StorefrontPageProps) {
   const { slug: rawSlug } = await params;
-  const { table: tableTokenRaw } = await searchParams;
+  const { table: tableTokenRaw, product: productKey } = await searchParams;
   const slug = normalizeTenantSlug(rawSlug);
 
   if (!slug) notFound();
@@ -397,9 +398,9 @@ export default async function StorefrontPage({
   return (
     <StorefrontLanguage><main className="public-store" id="store-home" style={storefrontTheme(primaryColor)}>
       <div className="store-shell">
-        <StorefrontShop
+        <StorefrontShop productKey={typeof productKey === "string" ? productKey : undefined}
           brand={{
-            locationUrl: storefront.social_links?.profile?.locationUrl, address: storefront.address, newArrivalsEnabled: storefront.social_links?.profile?.newArrivals?.enabled !== false, name: displayName, businessType: storefront.business_type, businessTypeLabel: formatBusinessType(storefront.business_type), logoUrl: storefront.logo_url, bannerUrl: storefront.banner_url, description: storefront.description, ownerUrl: getRootUrl("/login"), orderingEnabled: storefront.accept_online_orders, allowDelivery: storefront.allow_delivery, allowPickup: storefront.allow_pickup }}
+            socialLinks: Object.fromEntries(Object.entries(storefront.social_links ?? {}).filter(([key, value]) => key !== "profile" && typeof value === "string" && /^https?:\/\//i.test(value))) as Record<string,string>, locationUrl: storefront.social_links?.profile?.locationUrl, address: storefront.address, newArrivalsEnabled: storefront.social_links?.profile?.newArrivals?.enabled !== false, name: displayName, businessType: storefront.business_type, businessTypeLabel: formatBusinessType(storefront.business_type), logoUrl: storefront.logo_url, bannerUrl: storefront.banner_url, description: storefront.description, ownerUrl: getRootUrl("/login"), orderingEnabled: storefront.accept_online_orders, allowDelivery: storefront.allow_delivery, allowPickup: storefront.allow_pickup }}
           slug={slug}
           categories={categories as StorefrontCatalogCategory[]}
           products={catalogProducts.map(product => ({ ...product, isBestseller: bestsellers.has(product.key) }))}

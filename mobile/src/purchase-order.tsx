@@ -3,7 +3,7 @@ import { ActivityIndicator, Modal, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import { api, ApiError, deviceStorage, type Scope } from './client';
-import { Button, Card, Field, Label, styles, useTheme } from './ui';
+import { Badge, DetailRow, SectionTitle, Button, Card, Field, Label, styles, useTheme } from './ui';
 
 type Request = { requestId: string; orderId: string; items: { itemId: string; quantity: number; expectedReceived: number }[] };
 type Outcome = { purchaseOrderId?: string; rolledBack?: boolean; error?: string };
@@ -88,9 +88,10 @@ export function PurchaseOrder({ id, scope, online, canUpdate, close, saved }: { 
       <Button title="Retry same request" secondary disabled={!online || busy || !ready || !canUpdate} onPress={() => void run(() => submit(pending))} />
       {rollback && <Button title="Edit quantities" secondary disabled={!online || busy} onPress={() => void run(async () => { await deviceStorage.removeItem(key); setPending(null); setRollback(false); setQuantities({}); setOrder(null); setLoading(true); setVersion(v => v + 1); })} />}
     </Card> : order && <>
-      <Card><Label large>{order.po_number}</Label><Label>{order.supplier_name || 'Supplier'}</Label><Label>{order.status}</Label>{order.notes && <Label muted>{order.notes}</Label>}</Card>
-      {order.items.map(item => <Card key={item.id}><Label>{item.product_name}</Label><Label muted>{item.sku || ''}</Label>
-        <Label>{`Ordered ${item.ordered_quantity} · Received ${item.received_quantity} · Remaining ${item.ordered_quantity - item.received_quantity}`}</Label>
+      <Card><SectionTitle title={order.po_number} icon="clipboard-outline"/><Badge title={order.status} positive={order.status==='received'}/><DetailRow label="Supplier" value={order.supplier_name || '—'}/>{order.notes && <Label muted>{order.notes}</Label>}</Card>
+      <SectionTitle title="Receiving" icon="download-outline"/>{order.items.map(item => <Card key={item.id}><Label>{item.product_name}</Label><Label muted>{item.sku || ''}</Label>
+        <DetailRow label="Ordered" value={String(item.ordered_quantity)}/><DetailRow label="Received" value={String(item.received_quantity)}/><DetailRow label="Remaining" value={String(item.ordered_quantity-item.received_quantity)}/>
+        <View style={{height:6,borderRadius:4,backgroundColor:theme.border,overflow:'hidden'}}><View style={{height:6,backgroundColor:'#16765a',width:`${Math.min(100,Math.max(0,item.received_quantity/Math.max(1,item.ordered_quantity)*100))}%`}}/></View>
         {canReceive && item.ordered_quantity > item.received_quantity && <Field label="Received now" keyboardType="number-pad" value={quantities[item.id] || ''} editable={!busy && online} onChangeText={value => setQuantities(rows => ({ ...rows, [item.id]: value }))} />}
       </Card>)}
       {canReceive && <Button title="Review received stock" disabled={!online || busy || !ready} onPress={review} />}

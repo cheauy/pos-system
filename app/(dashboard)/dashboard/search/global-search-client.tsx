@@ -1,4 +1,5 @@
 "use client";
+import OrderQrScanner from '@/components/order-qr-scanner';
 
 import Link from "next/link";
 import {
@@ -328,7 +329,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
             <Search size={23} />
           </span>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">Global Search</h1>
+            <div className="flex items-center gap-3"><h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">Global Search</h1><OrderQrScanner/></div>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Find orders, products, customers, suppliers, purchase orders, transfers and more — all in one place.
             </p>

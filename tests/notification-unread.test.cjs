@@ -24,8 +24,8 @@ function harness(){
   const source=fs.readFileSync('app/(dashboard)/dashboard/sidebar-client.tsx','utf8');
   const hook=source.slice(source.indexOf('function useBusinessNotifications('),source.indexOf('function formatNotificationDate('));
   const output=ts.transpileModule(hook,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
-  const api=new Function('useState','useRef','useEffect','useCallback','createClient','markNotificationsRead','window','AudioContext',output+';return useBusinessNotifications;')(
-    react.useState,react.useRef,react.useEffect,react.useCallback,()=>client,async ids=>{if(failSave)throw Error('save');ids.forEach(id=>reads.add(id));},window,AudioContext,
+  const api=new Function('useState','useRef','useEffect','useCallback','createClient','markNotificationsRead','window','AudioContext','realtimeTopic',output+';return useBusinessNotifications;')(
+    react.useState,react.useRef,react.useEffect,react.useCallback,()=>client,async ids=>{if(failSave)throw Error('save');ids.forEach(id=>reads.add(id));},window,AudioContext,loadTs('lib/supabase/realtime-topic.ts').realtimeTopic,
   );
   const render=()=>{cursor=0;refCursor=0;effects.length=0;return api('business','branch');};
   const settle=()=>new Promise(resolve=>setImmediate(resolve));

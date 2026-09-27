@@ -1,4 +1,5 @@
 "use client";
+import { PASSWORD_HELP, passwordIssue } from '@/lib/auth/password-policy';
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -33,8 +34,8 @@ export default function ChangeTemporaryPasswordPage() {
     event.preventDefault();
     setError("");
 
-    if (password.length < 8) {
-      setError("Password must contain at least 8 characters.");
+    if (passwordIssue(password)) {
+      setError(passwordIssue(password)!);
       return;
     }
     if (password !== confirmPassword) {
@@ -79,7 +80,7 @@ export default function ChangeTemporaryPasswordPage() {
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300"><KeyRound className="h-7 w-7" /></div>
         <p className="mt-6 text-xs font-bold uppercase tracking-[0.2em] text-blue-600">First login security</p>
         <h1 className="mt-2 text-2xl font-bold text-slate-950 dark:text-white">Create your own password</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">Your business owner created a temporary password. Replace it before continuing to Tenh POS.</p>
+        <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">{PASSWORD_HELP}</p>
 
         <form onSubmit={submit} className="mt-7 space-y-4">
           <PasswordField label="New password" value={password} onChange={setPassword} shown={showPassword} onToggle={() => setShowPassword((current) => !current)} />
@@ -97,7 +98,7 @@ function PasswordField({ label, value, onChange, shown, onToggle }: { label: str
     <div>
       <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</label>
       <div className="relative">
-        <input type={shown ? "text" : "password"} value={value} onChange={(event) => onChange(event.target.value)} required minLength={8} autoComplete="new-password" className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 pr-12 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-blue-950/40" placeholder="At least 8 characters" />
+        <input type={shown ? "text" : "password"} value={value} onChange={(event) => onChange(event.target.value)} required minLength={8} maxLength={72} autoComplete="new-password" className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 pr-12 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-blue-950/40" placeholder="8–72 characters" />
         <button type="button" onClick={onToggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700" aria-label={shown ? "Hide password" : "Show password"}>{shown ? <EyeOff size={18} /> : <Eye size={18} />}</button>
       </div>
     </div>

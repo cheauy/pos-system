@@ -1,4 +1,5 @@
 "use client";
+import { PASSWORD_HELP, passwordIssue } from '@/lib/auth/password-policy';
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -87,9 +88,9 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    if (password.length < 8) {
+    if (passwordIssue(password)) {
       setErrorMessage(
-        "Password must contain at least 8 characters."
+        passwordIssue(password)!
       );
       return;
     }
@@ -197,7 +198,7 @@ export default function ResetPasswordPage() {
           </h1>
 
           <p className="mt-2 text-sm text-slate-500">
-            Enter a new password for your account.
+            {PASSWORD_HELP}
           </p>
         </div>
 
@@ -218,7 +219,7 @@ export default function ResetPasswordPage() {
                 id="password"
                 type={showPassword ? "text" : "password"}
                 required
-                minLength={8}
+                minLength={8} maxLength={72}
                 autoComplete="new-password"
                 value={password}
                 onChange={(event) =>
@@ -266,7 +267,7 @@ export default function ResetPasswordPage() {
                     : "password"
                 }
                 required
-                minLength={8}
+                minLength={8} maxLength={72}
                 autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(event) =>

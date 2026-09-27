@@ -1,4 +1,5 @@
 "use client";
+import { realtimeTopic } from '@/lib/supabase/realtime-topic';
 
 import Link from "next/link";
 import { Bell, CheckCheck, Settings2, Volume2, VolumeX } from "lucide-react";
@@ -69,7 +70,7 @@ export default function NotificationBell({ businessId }: { businessId: string })
   useEffect(() => {
     void load(false);
     const timer = window.setInterval(() => void load(true), 30000);
-    const channel = supabase.channel(`notifications:${businessId}`)
+    const channel = supabase.channel(realtimeTopic(`notifications:${businessId}`))
       .on("postgres_changes", { event: "*", schema: "public", table: "business_notifications", filter: `business_id=eq.${businessId}` }, () => void load(true))
       .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `business_id=eq.${businessId}` }, () => void load(true))
       .on("postgres_changes", { event: "*", schema: "public", table: "products", filter: `business_id=eq.${businessId}` }, () => void load(true))
