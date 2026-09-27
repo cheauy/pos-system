@@ -3,17 +3,16 @@
 import ProductPhoto from '@/components/product-photo';
 
 
-import { Eye, Sparkles, Award, ChevronDown, Grid2X2, List, Package, Search, ShoppingCart, SlidersHorizontal } from "lucide-react";
+import { Sparkles, Award, ChevronDown, Grid2X2, List, Package, Search, ShoppingCart, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { StorefrontCatalogCategory, StorefrontCatalogProduct } from "@/lib/storefront/catalog-types";
 
 import { useStorefrontLanguage } from "./storefront-language";
 
 type CatalogSettings = { currency: string; orderingEnabled: boolean };
-export default function StorefrontCatalog({ categories, products, settings, onAdd, onQuickView, productHref }: {
+export default function StorefrontCatalog({ categories, products, settings, onAdd, productHref }: {
   productHref: (key: string) => string;
   categories: StorefrontCatalogCategory[]; products: StorefrontCatalogProduct[];
-  onQuickView?: (product: StorefrontCatalogProduct, variantId?: string) => void;
   settings: CatalogSettings; onAdd: (product: StorefrontCatalogProduct, variantId?: string) => void;
 }) {
   const { t } = useStorefrontLanguage();
@@ -73,55 +72,45 @@ export default function StorefrontCatalog({ categories, products, settings, onAd
     <div className="catalog-categories"><div className="category-pills" role="group" aria-label="Product categories"><button type="button" aria-pressed={!newOnly && category === "all"} onClick={() => { setNewOnly(false); setCategory("all"); setLimit(24); }}><Grid2X2 size={14} />{t("All products")}</button>{products.some(product => product.isNewArrival) && <button type="button" aria-pressed={newOnly} onClick={() => { setNewOnly(!newOnly); setCategory("all"); setLimit(24); }}><Sparkles size={14} />{t("New arrivals")}</button>}{[...categories.filter(row => products.some(product => product.categoryId === row.id)), ...(products.some(product => !product.categoryId) ? [{ id: "other", name: t("Other") }] : [])].map(row => <button key={row.id} type="button" aria-pressed={!newOnly && row.id === category} onClick={() => { setNewOnly(false); setCategory(row.id); setLimit(24); }}>{row.id === "other" ? t("Other") : row.name}</button>)}</div><p className="catalog-count" aria-live="polite">{filtered.length} {t(filtered.length === 1 ? t("product") : t("products"))}</p></div>
     {!settings.orderingEnabled && <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Browse our collection. Online ordering is currently paused.</p>}
     <div className={`store-product-grid ${view === "list" ? "list-view" : ""}`}>
-      {filtered.slice(0, limit).map((product, index) => <CatalogCard href={productHref(product.key)} eager={index < 4} key={product.key} product={product} categoryName={categoryNames.get(product.categoryId ?? "") ?? t("Collection")} settings={settings} onAdd={variantId => onAdd(product, variantId)} onQuickView={variantId => onQuickView?.(product, variantId)} />)}
+      {filtered.slice(0, limit).map((product, index) => <CatalogCard href={productHref(product.key)} eager={index < 4} key={product.key} product={product} categoryName={categoryNames.get(product.categoryId ?? "") ?? t("Collection")} settings={settings} onAdd={() => onAdd(product)} />)}
     </div>
     {!filtered.length && <div className="catalog-empty"><Package size={36} /><h2>{products.length ? t("No matching products") : t("Our collection is coming soon")}</h2><p>{products.length ? t("Try another search, category, or price range.") : t("Check back soon for the latest arrivals.")}</p>{products.length > 0 && <button type="button" onClick={clearFilters}>{t("Clear filters")}</button>}</div>}
     {filtered.length > limit && <button type="button" className="load-products" onClick={() => setLimit(limit + 24)}>{t("Load more products")} <ChevronDown size={15} /></button>}
   </section>;
 }
 
-function CatalogCard({ product, categoryName, settings, onAdd, onQuickView, eager, href }: {
+function CatalogCard({ product, categoryName, settings, onAdd, eager, href }: {
   href: string; product: StorefrontCatalogProduct; categoryName: string; settings: CatalogSettings; eager: boolean;
   onAdd: (variantId?: string) => void;
-  onQuickView: (variantId?: string) => void;
 }) {
   const { t } = useStorefrontLanguage();
   const colors = [...new Set(product.variants.map(row => row.color?.trim()).filter((color): color is string => Boolean(color)))];
-  const [selectedColor, setSelectedColor] = useState<string | null>(null);
-  const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const sizes = [...new Set(product.variants.map(row => row.size?.trim()).filter((size): size is string => Boolean(size)))].sort((a, b) => {
     const order = ["XXXS", "XXS", "XS", "S", "M", "L", "XL", "XXL", "2XL", "XXXL", "3XL", "4XL", "5XL"];
     const left = order.indexOf(a.toUpperCase());
     const right = order.indexOf(b.toUpperCase());
     return left >= 0 && right >= 0 ? left - right : a.localeCompare(b, undefined, { numeric: true });
   });
-  const matches = product.variants.filter(row => (!selectedColor || row.color?.trim() === selectedColor) && (!selectedSize || row.size?.trim() === selectedSize));
-  const variant = matches.find(row => row.stockQuantity > 0) ?? matches[0];
-
-  const image = variant?.imageUrl || product.imageUrl;
-  const displayVariants=matches.length?matches:product.variants;
+  const matches = product.variants;
+  const image = product.imageUrl || matches.find(row => row.imageUrl)?.imageUrl;
+  const displayVariants = matches;
   const cheapest=displayVariants.reduce((best,row)=>row.sellingPrice<best.sellingPrice?row:best,displayVariants[0]);
   const originalPrice=cheapest?.originalPrice;
   const price = matches.length ? Math.min(...matches.map(row => row.sellingPrice)) : product.priceFrom;
-  const preorder = Boolean(
-    (selectedColor || selectedSize) &&
-    matches.length === 1 &&
-    product.preorderVariantIds?.includes(matches[0].id),
-  );
+  const preorder = false;
   const stock = matches.reduce((sum, row) => sum + Math.max(0, row.stockQuantity), 0);
   return <article className="store-product-card">
-    <div className="product-photo"><div className="product-badges">{product.isBestseller && <span className="product-bestseller-badge"><Award size={12} />{t("Bestseller")}</span>}{product.isNewArrival && <span className="product-new-badge">{t("New arrival")}</span>}</div>{image ? <a className="product-photo-open" aria-label={product.name} href={href}><ProductPhoto loading={eager ? 'eager' : 'lazy'} src={image} alt={product.name} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px" /></a> : <div className="product-photo-placeholder"><ShoppingCart size={32} /></div>}
+    <a className="product-card-link" aria-label={product.name} href={href} />
+    <div className="product-photo"><div className="product-badges">{product.isBestseller && <span className="product-bestseller-badge"><Award size={12} />{t("Bestseller")}</span>}{!product.isBestseller && product.isNewArrival && <span className="product-new-badge">{t("New arrival")}</span>}</div>{image ? <ProductPhoto loading={eager ? 'eager' : 'lazy'} src={image} alt={product.name} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px" /> : <div className="product-photo-placeholder"><ShoppingCart size={32} /></div>}
 
     </div>
-    <div className="product-card-body"><h3 title={product.name}><a href={href}>{product.name}</a></h3><p className="product-category">{categoryName}</p>
+    <div className="product-card-body"><h3 title={product.name}>{product.name}</h3><p className="product-category">{categoryName}</p>
       <div className="product-price-row">{originalPrice!==undefined&&originalPrice>price&&<del className="text-xs text-slate-500">{new Intl.NumberFormat("en-US",{style:"currency",currency:settings.currency}).format(originalPrice)}</del>}<p className="product-price">{new Intl.NumberFormat("en-US", { style: "currency", currency: settings.currency }).format(price)}{matches.some(row => row.sellingPrice !== price) && <small className="ml-1 text-[9px] font-normal">{t("from")}</small>}</p><span className={`product-stock ${preorder ? "preorder" : stock <= 0 ? "sold-out" : stock <= 3 ? "low" : ""}`}><i />{preorder ? t("Pre-order") : stock <= 0 ? t("Sold out") : stock <= 3 ? `${t("Only")} ${stock} ${t("left")}` : t("In stock")}</span></div>
-      <div className="product-swatches">{colors.map(color => <button key={color} type="button" title={color} aria-label={`${product.name}: ${color}`} aria-pressed={selectedColor === color} onClick={() => { setSelectedColor(selectedColor === color ? null : color); setSelectedSize(null); }} style={{ background: swatchColor(color) }} />)}{!colors.length && <small>{product.productType === "configurable" ? t("Customize your selection") : t("Ready to order")}</small>}</div>
-      {sizes.length > 0 && <div className="product-sizes" role="group" aria-label={`${product.name} sizes`}><span>{t("Size")}</span>{sizes.map(size => {
-        const available = product.variants.some(row => row.size?.trim() === size && (!selectedColor || row.color?.trim() === selectedColor) && row.stockQuantity > 0);
-        return <button key={size} type="button" disabled={!available} aria-label={`${product.name}: size ${size}${available ? "" : " sold out"}`} aria-pressed={selectedSize === size} title={available ? size : `${size} - sold out`} onClick={() => setSelectedSize(selectedSize === size ? null : size)}>{size}</button>;
-      })}</div>}
-
-      <div className="product-card-actions"><button type="button" className="product-add" onClick={() => onAdd(variant?.id)} disabled={!settings.orderingEnabled || stock <= 0}><ShoppingCart size={14} />{!settings.orderingEnabled ? t("Ordering paused") : stock <= 0 ? t("Sold out") : t("Add to cart")}</button><button type="button" className="product-quick-view" onClick={() => onQuickView(variant?.id)}><Eye size={14} />{t("Quick view")}</button></div>
+      {(colors.length > 0 || sizes.length > 0) && <div className="product-variant-summary">
+        {colors.length > 0 && <div className="product-color-preview">{colors.map(color => <span key={color} title={color} role="img" aria-label={color} style={{ background: swatchColor(color) }} />)}</div>}
+        {sizes.length > 0 && <p className="product-size-preview">{sizes.join(" · ")}</p>}
+      </div>}
+      <div className="product-card-actions"><button type="button" className="product-add" onClick={() => onAdd()} disabled={!settings.orderingEnabled || stock <= 0}><ShoppingCart size={14} />{!settings.orderingEnabled ? t("Ordering paused") : stock <= 0 ? t("Sold out") : t("Add to cart")}</button></div>
     </div>
   </article>;
 }

@@ -6,14 +6,16 @@ import { LoaderCircle, ScanLine } from 'lucide-react';
 import { Modal } from '@/app/(dashboard)/dashboard/pos/pos-workspace-components';
 import { resolveOrderQr } from '@/lib/orders/resolve-order-qr';
 
-export default function OrderQrScanner() {
+export default function OrderQrScanner({ onNavigate }: { onNavigate?: () => void } = {}) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   return <><button type="button" aria-label="Scan order QR code" title="Scan order QR code" onClick={() => setOpen(true)} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-blue-600 hover:bg-blue-50 dark:border-slate-700 dark:text-blue-300 xl:hidden"><ScanLine size={20}/></button>
-    {open && <ScanDialog close={close}/>}</>;
+    {open && <ScanDialog close={close} onNavigate={onNavigate}/>}</>;
 }
 
-function ScanDialog({ close }: { close: () => void }) {
+function ScanDialog({ close, onNavigate }: { close: () => void; onNavigate?: () => void }) {
+  const navigated = useRef(onNavigate);
+  useEffect(() => { navigated.current = onNavigate; }, [onNavigate]);
   const router = useRouter();
   const video = useRef<HTMLVideoElement>(null);
   const [busy, setBusy] = useState(false);
@@ -38,8 +40,10 @@ function ScanDialog({ close }: { close: () => void }) {
             const order = await resolveOrderQr(result.getText());
             if (cancelled) return;
             if ('error' in order) throw new Error(order.error);
+            window.dispatchEvent(new Event('tenh:close-navigation'));
             router.push(`/dashboard/orders/${order.id}?scanned=1`);
             close();
+            navigated.current?.();
           } catch (failure) {
             if (!cancelled) { setError(failure instanceof Error ? failure.message : 'Unable to open this order. Please try again.'); setBusy(false); }
           }

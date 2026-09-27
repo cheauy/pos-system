@@ -219,3 +219,14 @@
 :global(.dark) :is(.workspace,.dialog,.modal,.rowMenu) { --blue:#2563eb; --primary:#2563eb; --ink:#e2e8f0; --muted:#94a3b8; --border:#334155; --line:#334155; --panel:#0f172a; --surface:#0f172a; --screen-panel:#0f172a; --pale:#1e293b; --soft:#1e293b; color:var(--ink); }
 :global([data-high-contrast="true"].dark) :is(.workspace,.dialog,.modal,.rowMenu) { --ink:#fff; --muted:#e2e8f0; --border:#94a3b8; --line:#94a3b8; }
 }
+@media screen and (max-width:767px){
+  .search,.dateRange{height:auto;min-height:44px}
+  .dateRange{flex-wrap:wrap;gap:8px;padding-block:6px}
+  .dateRange label{min-width:0;flex:1}
+  .dateRange input{min-width:0;width:100%}
+  .headerActions .button{font-size:.8125rem;min-height:44px}
+  .tabs{max-width:100%;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
+  .tabs button{flex-shrink:0}
+  .modalFooter{flex-wrap:wrap;gap:8px;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+  .scopeNote{font-size:.75rem}
+}

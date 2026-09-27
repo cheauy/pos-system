@@ -20,8 +20,9 @@ export default function StorefrontContact({ name, settings }: { name: string; se
   return <footer id="contact-us" className="mt-12 scroll-mt-6">
     <div className="store-contact-footer">
       <section className="footer-shop-profile">
+        <p className="footer-description">{settings.description || "Find your favorites in our online collection."}</p>
         {settings.logo_url ? <img className="footer-shop-logo" src={settings.logo_url} alt={`${name} logo`} /> : <Store size={44} />}
-        <h2>{name}</h2><p className="footer-description">{settings.description || "Find your favorites in our online collection."}</p>
+        <h2>{name}</h2>
         {settings.phone && <a className="contact-line" href={`tel:${settings.phone.replace(/[^+\d]/g, "")}`}><PhoneCall size={15} /><span>{settings.phone}</span></a>}
         {settings.address && <a className="contact-line" href={profile?.locationUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.address)}`} target="_blank" rel="noreferrer"><MapPin size={15} />{settings.address}</a>}
       {hours?.enabled && <details className="footer-hours"><summary><Clock3 size={17} />{sameHours && firstDay ? `Mon - Sun, ${formatOpeningTime(firstDay.open)} - ${formatOpeningTime(firstDay.close)}` : t("Opening hours")}</summary>

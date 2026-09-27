@@ -8,5 +8,6 @@ export default async function SearchPage({
 }) {
   await requirePermission("business.view");
   const params = await searchParams;
-  return <GlobalSearchClient initialQuery={typeof params.q === "string" ? params.q : ""} />;
+  const query = typeof params.q === "string" ? params.q : "";
+  return <GlobalSearchClient key={query} initialQuery={query} />;
 }

@@ -241,7 +241,8 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
   }, []);
 
   useEffect(() => {
-    if (!debouncedQuery || debouncedQuery.length < 2 || debouncedQuery === lastSearched.current) return;
+    if (debouncedQuery.length < 2) { if (lastSearched.current) void searchNow(''); return; }
+    if (debouncedQuery === lastSearched.current) return;
     void searchNow(debouncedQuery);
     // searchNow is intentionally omitted to avoid recreating the debounce loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -372,14 +373,6 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
             ) : null}
             <div className="absolute right-1 top-1/2 -translate-y-1/2"><OrderQrScanner/></div>
           </div>
-          <button
-            type="submit"
-            disabled={isPending || !query.trim()}
-            className="inline-flex h-12 min-w-32 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            {isPending ? <Loader2 size={17} className="animate-spin" /> : <Search size={16} />}
-            Search
-          </button>
         </form>
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">

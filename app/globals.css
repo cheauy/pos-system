@@ -25,6 +25,37 @@
   .workspace-content :is(div, section):has(> table) { min-width: 0; max-width: 100%; overflow-x: auto; }
   .workspace-content :is(form, fieldset) { min-width: 0; }
   .workspace-theme dialog { max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+  .workspace-theme dialog.workspace-mobile-navigation { position: fixed; inset: 0; width: 100vw; height: 100dvh; max-width: 100vw; max-height: 100dvh; margin: 0; padding: 0; border: 0; background: transparent; overflow: hidden; }
+  .workspace-mobile-navigation::backdrop { background: rgb(15 23 42 / .45); }
+  .workspace-mobile-navigation [data-sidebar] { padding-bottom: env(safe-area-inset-bottom); }
+  .workspace-mobile-navigation :is(button, a) { flex-shrink: 0; }
+  .workspace-mobile-navigation nav > div { flex-shrink: 0; }
+  .workspace-content { padding-bottom: max(2rem, env(safe-area-inset-bottom)); }
+  .workspace-content > div, .workspace-content main, .workspace-content section { min-width: 0; }
+  .workspace-content :is(h1, h2, h3) { overflow-wrap: anywhere; }
+}
+@media screen and (max-width: 1279px) {
+  .workspace-header { position: sticky; top: 0; z-index: 40; padding-top: max(.75rem, env(safe-area-inset-top)); }
+  .workspace-content { padding-inline: max(1rem, env(safe-area-inset-left)); }
+  .workspace-theme dialog:not(.workspace-mobile-navigation) { overscroll-behavior: contain; }
+  .workspace-theme :is(input,select,textarea):not([type="checkbox"],[type="radio"],[type="range"],[type="color"]) { font-size: max(1rem, 1em); }
+  .workspace-mobile-navigation :is(button,a) { min-height: 44px; }
+}
+@media screen and (max-width: 639px) {
+  .workspace-header { gap: .5rem; padding-inline: max(.75rem, env(safe-area-inset-left)); }
+  .workspace-header > div:first-child { flex-basis: 100%; }
+  .workspace-header-actions { width: 100%; padding-left: 3.5rem; justify-content: space-between; }
+  .workspace-header-actions > button { flex: 1; }
+  .workspace-header-actions > span { flex-shrink: 0; }
+  .workspace-content { padding: 1rem .75rem max(1.5rem, env(safe-area-inset-bottom)); }
+  .workspace-content header:not(.receipt header) { flex-wrap: wrap; gap: .75rem; }
+  .workspace-content header > div { min-width: 0; max-width: 100%; }
+  .workspace-content header > div { flex-wrap: wrap; }
+  .workspace-content form.grid-cols-2 { grid-template-columns: minmax(0, 1fr); }
+  .workspace-content form.grid-cols-2 > .col-span-2 { grid-column: auto; }
+  .workspace-content :is(button,a[role="button"]):not(.receipt *,[role="switch"]) { min-height: 44px; }
+  .workspace-content :is(input,select,textarea):not([type="checkbox"],[type="radio"],[type="range"],[type="color"]) { min-height: 44px; }
+  .workspace-theme dialog:not(.workspace-mobile-navigation) { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
 }
 .workspace-theme [class~="bg-white"], .workspace-theme [class~="dark:bg-slate-900"], .workspace-theme dialog { background-color: var(--workspace-panel); }
 .workspace-theme [class~="bg-blue-600"] { background-color: var(--app-accent); }

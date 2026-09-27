@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
-import { AlertTriangle, ArrowRightLeft, Check, ChevronDown, Loader2, ShieldCheck, Store, X } from 'lucide-react';
+import { AlertTriangle, ArrowRightLeft, Check, ChevronDown, Loader2, Menu, ShieldCheck, Store, X } from 'lucide-react';
 import { branchChannelKey, branchDestination } from '@/lib/branches/switch-model';
 import { getOperatingBranchStatus, switchOperatingBranch } from './branch-actions';
 import { useTheme } from '@/components/providers/theme-provider';
@@ -105,13 +105,13 @@ export default function WorkspaceBranchProvider(p:Props) {
   }
   return <Context.Provider value={{requestSwitch,registerGuard}}>
     <div ref={content} inert={busy || Boolean(stale)} onInputCapture={()=>{dirty.current=true;}} onChangeCapture={()=>{dirty.current=true;}}>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 sm:px-6 lg:ml-16 dark:border-slate-800 dark:bg-slate-900" data-workspace-branch-header>
-        <div className="flex min-w-0 items-center gap-3"><Store size={22} className="shrink-0 text-blue-600"/><div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-widest text-blue-600">TENH POS workspace</p><p className="truncate font-bold text-slate-900 dark:text-white">{p.businessName}</p></div></div>
-        <div className="flex flex-wrap items-center gap-3">
-        {!sharedOnlineStore && <><span className="text-sm text-slate-500">{currentName}</span><button type="button" aria-label="Switch Branches" aria-haspopup="dialog" disabled={busy||Boolean(stale)||posLocked||p.branches.length<2} onClick={()=>{setSelected(p.branchId);setOpen(true);setError('');}} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
-          <ArrowRightLeft size={16}/>Switch Branches<ChevronDown size={15}/>
+      <div className="workspace-header flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 xl:ml-16 dark:border-slate-800 dark:bg-slate-900" data-workspace-branch-header>
+        <div className="flex min-w-0 flex-1 items-center gap-3"><button type="button" aria-label="Open dashboard navigation" aria-haspopup="dialog" onClick={()=>window.dispatchEvent(new Event('tenh:open-navigation'))} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-700 dark:border-slate-700 dark:text-slate-200 xl:hidden"><Menu size={22}/></button><Store size={22} className="hidden shrink-0 text-blue-600 xl:block"/><div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-widest text-blue-600">TENH POS workspace</p><p className="truncate font-bold text-slate-900 dark:text-white">{p.businessName}</p></div></div>
+        <div className="workspace-header-actions flex min-w-0 flex-wrap items-center gap-2">
+        {!sharedOnlineStore && <><span className="hidden text-sm text-slate-500 xl:inline">{currentName}</span><button type="button" aria-label="Switch Branches" aria-haspopup="dialog" disabled={busy||Boolean(stale)||posLocked||p.branches.length<2} onClick={()=>{setSelected(p.branchId);setOpen(true);setError('');}} className="inline-flex min-h-11 min-w-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
+          <ArrowRightLeft size={16} className="shrink-0"/><span className="max-w-36 truncate xl:hidden">{currentName}</span><span className="hidden xl:inline">Switch Branches</span><ChevronDown size={15} className="shrink-0"/>
         </button></>}
-        <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700"><ShieldCheck size={16}/><span>Role: <span className="capitalize">{p.role}</span></span></span>
+        <span className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700"><ShieldCheck size={16}/><span><span className="hidden sm:inline">Role: </span><span className="capitalize">{p.role}</span></span></span>
         </div>
       </div>
       {p.children}

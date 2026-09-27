@@ -104,3 +104,12 @@
 :global(.dark) :is(.workspace,.dialog,.modal,.rowMenu) { --blue:#2563eb; --primary:#2563eb; --ink:#e2e8f0; --muted:#94a3b8; --border:#334155; --line:#334155; --panel:#0f172a; --surface:#0f172a; --screen-panel:#0f172a; --pale:#1e293b; --soft:#1e293b; color:var(--ink); }
 :global([data-high-contrast="true"].dark) :is(.workspace,.dialog,.modal,.rowMenu) { --ink:#fff; --muted:#e2e8f0; --border:#94a3b8; --line:#94a3b8; }
 }
+@media screen and (max-width:767px){
+  .quantity button{min-width:36px;min-height:44px}
+  .quantity span{min-width:24px}
+  .modalActions{flex-wrap:wrap;padding-bottom:env(safe-area-inset-bottom)}
+  .modalActions>*{min-height:44px;font-size:.8125rem}
+  .modalBody{overscroll-behavior:contain}
+  .filterSelect{min-width:0;min-height:44px}
+  .headerStats{flex-wrap:wrap}
+}

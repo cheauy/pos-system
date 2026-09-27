@@ -114,7 +114,7 @@ export default async function DashboardLayout({
       <PermissionRefresh businessId={business.id} userId={branchContext.userId} role={business.role} />
       {effectivePermissions.includes("orders.view") && <OnlineOrderListener businessId={business.id} branchId={branchContext.branchId} receiveAll={onlineScope?.data === true} />}
 
-      <div className="lg:pl-16">
+      <div className="xl:pl-16">
         <main className="workspace-content min-w-0 max-w-full p-4 sm:p-6"><UpdateAlertBanner /><div className="min-w-0" key={branchContext.branchId}>{children}</div></main>
       </div>
       </WorkspaceBranchProvider>

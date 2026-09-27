@@ -153,8 +153,8 @@ export default function StorefrontShop({
       {productKey ? <main className="store-product-detail">
         <a className="inline-flex min-h-11 items-center text-sm font-semibold" href={`${catalogHref}#store-products`}>← {t("All products")}</a>
         {pageProduct ? <ProductConfigurator key={pageProduct.key} fullPage product={pageProduct} cart={cart} businessType={settings.businessType} currency={settings.currency} canOrder={settings.orderingEnabled && hydrated} onClose={() => {}} onAdd={addConfiguredItem} /> : <p className="py-16 text-center">This product is no longer available.</p>}
-        {brand.socialLinks && <nav className="my-8 flex flex-wrap items-center gap-4" aria-label="Follow us"><span>{t("Social")}</span>{Object.entries(brand.socialLinks).filter(([,url]) => /^https?:\/\//i.test(url)).map(([name,url]) => <a className="rounded-xl border border-slate-200 px-4 py-3 capitalize" key={name} href={url} target="_blank" rel="noreferrer">{name}</a>)}</nav>}
-      </main> : <StorefrontCatalog productHref={productHref} products={products} categories={categories} settings={settings} onAdd={quickAdd} onQuickView={(product, variantId) => { setInitialVariantId(variantId); setSelectedProduct(product); }} />}
+        {pageProduct?.description && <section className="product-detail-description"><h2>{t("Description")}</h2><p>{pageProduct.description}</p></section>}
+      </main> : <StorefrontCatalog productHref={productHref} products={products} categories={categories} settings={settings} onAdd={quickAdd} />}
 
       {brand.socialLinks?.telegram && /^https:\/\//i.test(brand.socialLinks.telegram) && <a className="store-telegram-contact" href={brand.socialLinks.telegram} target="_blank" rel="noreferrer" aria-label="Contact store on Telegram"><img src="/social/telegram.png" alt="" width={28} height={28}/><span>Chat with us</span></a>}
       {settings.orderingEnabled && cartQuantity > 0 && (
@@ -352,7 +352,7 @@ function ProductConfigurator({
         <div className={fullPage ? "product-detail-heading" : "sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-5"}>
           <div>
             <Heading className="text-xl font-bold text-slate-950">{product.name}</Heading>
-            {fullPage && <div className="mt-3 flex flex-wrap items-center gap-3"><strong className="text-2xl">{formatMoney(unitPrice, currency)}</strong><span className="text-sm">{remainingStock > 0 ? `${remainingStock} ${t("In stock")}` : t("Out of stock")}</span>{product.isBestseller && <span className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-800">{t("Bestseller")}</span>}{product.isNewArrival && <span className="rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-700">{t("New arrival")}</span>}</div>}
+            {fullPage && <div className="mt-3 flex flex-wrap items-center gap-3"><strong className="text-2xl">{formatMoney(unitPrice, currency)}</strong><span className="text-sm">{remainingStock > 0 ? `${remainingStock} ${t("In stock")}` : t("Out of stock")}</span>{product.isBestseller && <span className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-800">{t("Bestseller")}</span>}{!product.isBestseller && product.isNewArrival && <span className="rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-700">{t("New arrival")}</span>}</div>}
             {product.preorderVariantIds?.includes(variant.id) && <span className="mt-2 inline-flex rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">{t("Pre-order")}</span>}
             <p className="mt-1 text-sm text-slate-500">
               {isShoeProduct
@@ -374,7 +374,7 @@ function ProductConfigurator({
         </div>
 
         <div className={fullPage ? "product-detail-options space-y-6" : "space-y-6 p-5"}>
-          {product.description && <p className="whitespace-pre-line text-sm leading-6 text-slate-600">{product.description}</p>}
+          {!fullPage && product.description && <p className="whitespace-pre-line text-sm leading-6 text-slate-600">{product.description}</p>}
           {!fullPage && gallery}
 
           {product.productType === "variant" && isShoeProduct && (

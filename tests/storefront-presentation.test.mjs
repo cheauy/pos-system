@@ -68,3 +68,17 @@ test("custom location link is used by the top bar", () => {
  assert.match(html, /href="https:\/\/maps.app.goo.gl\/shop"/);
  assert.doesNotMatch(html, /#category-/);
 });
+
+test("compact cards link to details, display variants and prioritize bestseller badges", () => {
+  const Catalog = component("../app/_sites/[slug]/storefront-catalog.tsx");
+  const product = { key: "shirt", name: "Shirt", categoryId: null, productType: "variant", priceFrom: 10, totalStock: 5, isBestseller: true, isNewArrival: true, variants: [{ id: "one", color: "Blue", size: "M", stockQuantity: 5, sellingPrice: 10 }], optionGroups: [] };
+  const html = renderToStaticMarkup(createElement(Catalog, { products: [product], categories: [], settings: { currency: "USD", orderingEnabled: true }, productHref: key => "?product=" + key, onAdd() {} }));
+  const card = html.slice(html.indexOf('<article'), html.indexOf('</article>'));
+  assert.match(card, /class="product-card-link" aria-label="Shirt" href="\?product=shirt"/);
+  assert.match(card, /product-color-preview/);
+  assert.match(card, /product-size-preview">M/);
+  assert.match(card, /Bestseller/);
+  assert.doesNotMatch(card, /New arrival|Quick view|aria-pressed/);
+  assert.equal((card.match(/<button/g) || []).length, 1);
+  assert.match(card, /Add to cart/);
+});

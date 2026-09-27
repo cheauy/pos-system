@@ -17,6 +17,7 @@ import {
 
 import {
   ArrowRightLeft,
+  ChevronRight,
   BadgePercent,
   BarChart3,
   Barcode,
@@ -31,7 +32,6 @@ import {
   Loader2,
   LogOut,
   LockKeyhole,
-  Menu,
   Package,
   PackagePlus,
   Printer,
@@ -182,24 +182,31 @@ const searchScopes = [
 export default function SidebarClient({ businessId, branchId, effectivePermissions }: { businessId: string; branchId: string; effectivePermissions: Permission[] }) {
   const pathname = usePathname();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const drawer = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const open = () => setIsMobileOpen(true);
+    const close = () => setIsMobileOpen(false);
+    window.addEventListener('tenh:open-navigation', open);
+    window.addEventListener('tenh:close-navigation', close);
+    return () => { window.removeEventListener('tenh:open-navigation', open); window.removeEventListener('tenh:close-navigation', close); };
+  }, []);
+  useEffect(() => {
+    if (!isMobileOpen) return;
+    const dialog = drawer.current;
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    dialog?.showModal(); document.body.style.overflow = 'hidden';
+    const desktop = window.matchMedia('(min-width: 1280px)');
+    const resize = () => { if (desktop.matches) setIsMobileOpen(false); };
+    desktop.addEventListener('change', resize);
+    return () => { desktop.removeEventListener('change', resize); dialog?.close(); document.body.style.overflow = overflow; previous?.focus(); };
+  }, [isMobileOpen]);
   const groups = useMemo(() => filterMenuGroups(effectivePermissions), [effectivePermissions]);
 
   return (
     <>
-      {!isMobileOpen && (
-        <button
-          type="button"
-          onClick={() => setIsMobileOpen(true)}
-          aria-label="Open dashboard navigation"
-          className="fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200 lg:hidden"
-        >
-          <Menu size={19} />
-          Menu
-        </button>
-      )}
-
       {isMobileOpen && (
-        <div className="fixed inset-0 z-[80] lg:hidden">
+        <dialog ref={drawer} aria-label="Dashboard navigation" className="workspace-mobile-navigation" onCancel={() => setIsMobileOpen(false)}>
           <button
             type="button"
             aria-label="Close dashboard navigation"
@@ -208,10 +215,8 @@ export default function SidebarClient({ businessId, branchId, effectivePermissio
           />
 
           <aside data-sidebar="true"
-            role="dialog"
-            aria-modal="true"
             aria-label="Dashboard navigation"
-            className="absolute inset-y-0 left-0 w-[min(24rem,96vw)] overflow-hidden border-r border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950"
+            className="absolute inset-y-0 left-0 w-[min(26rem,100vw)] overflow-hidden border-r border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950"
           >
             <button
               type="button"
@@ -229,10 +234,10 @@ export default function SidebarClient({ businessId, branchId, effectivePermissio
               mobile
             />
           </aside>
-        </div>
+        </dialog>
       )}
 
-      <div className="fixed inset-y-0 left-0 z-50 hidden lg:block">
+      <div className="fixed inset-y-0 left-0 z-50 hidden xl:block">
         <SidebarShell key={branchId} pathname={pathname} businessId={businessId} branchId={branchId} groups={groups} />
       </div>
     </>
@@ -269,6 +274,11 @@ function SidebarShell({
   );
   const specialPanel=posLocked?null:selectedPanel;
   const [query, setQuery] = useState("");
+  useEffect(() => {
+    const close = () => { setOpenGroupTitle(null); setSpecialPanel(null); };
+    window.addEventListener('tenh:close-navigation', close);
+    return () => window.removeEventListener('tenh:close-navigation', close);
+  }, []);
   const notifications = useBusinessNotifications(businessId, branchId);
 
   useEffect(() => {
@@ -411,7 +421,7 @@ function SidebarShell({
               mobile
             />
           ) : (
-            <MobileRailHome />
+            <MobileRailHome groups={groups} onSelect={toggleGroup} onNavigate={onNavigate}/>
           )}
         </div>
       ) : specialPanel === "search" ? (
@@ -496,7 +506,7 @@ function IconRail({
         </Link>
       </div>
 
-      <nav className="flex w-full flex-1 flex-col items-center gap-2 overflow-hidden px-2 py-4">
+      <nav className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-x-hidden overflow-y-auto overscroll-contain px-2 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <RailActionButton
           label="Global Search"
           icon={Search}
@@ -849,6 +859,15 @@ function GlobalSearchPanel({
   mobile?: boolean;
 }) {
   const router = useRouter();
+  useEffect(() => {
+    const value = query.trim();
+    if (value.length < 2) return;
+    const timer = setTimeout(() => {
+      window.dispatchEvent(new Event('tenh:close-navigation'));
+      router.push(`/dashboard/search?q=${encodeURIComponent(value)}`);
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [query, router]);
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -904,15 +923,9 @@ function GlobalSearchPanel({
               style={{ paddingRight: 56 }}
               className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:border-blue-500 dark:focus:bg-slate-900 dark:focus:ring-blue-950"
             />
-            <div className="absolute right-1 top-1/2 -translate-y-1/2"><OrderQrScanner/></div>
+            <div className="absolute right-1 top-1/2 -translate-y-1/2"><OrderQrScanner onNavigate={onNavigate}/></div>
           </div>
-          <button
-            type="submit"
-            disabled={!query.trim()}
-            className="mt-2.5 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800"
-          >
-            Search TENH POS
-          </button>
+          <p className="mt-2 text-xs text-slate-500">Type at least 2 characters to search.</p>
         </form>
       </div>
 
@@ -1074,10 +1087,14 @@ function NotificationPanel({
   );
 }
 
-function MobileRailHome() {
+function MobileRailHome({groups,onSelect,onNavigate}:{groups:MenuGroup[];onSelect:(title:string)=>void;onNavigate?:()=>void}) {
+  const {locked}=usePosNavigationLock();
   return (
-    <div className="flex h-full items-center justify-center p-6 text-center text-sm text-slate-500">
-      Select an icon from the left rail.
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="border-b border-slate-100 p-4 pr-14 dark:border-slate-800"><p className="text-xs font-semibold text-blue-600">TENH POS</p><h2 className="mt-1 text-lg font-bold">Workspace menu</h2></div>
+      <nav className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-3">
+        {groups.map(group=>{const Icon=group.icon;const blocked=locked&&(group.href?!posLockAllows(group.href):group.items.every(item=>!posLockAllows(item.href)));const content=<><Icon size={20} className="shrink-0 text-blue-600"/><span className="flex-1 text-left">{group.title}</span>{blocked?<LockKeyhole size={16}/>:<ChevronRight size={16}/> }</>;const cls='flex min-h-12 w-full items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold dark:border-slate-700';return group.href&&!blocked?<Link key={group.title} href={group.href} onClick={onNavigate} className={cls}>{content}</Link>:<button key={group.title} type="button" disabled={blocked} onClick={()=>onSelect(group.title)} className={`${cls} disabled:opacity-40`}>{content}</button>;})}
+      </nav>
     </div>
   );
 }
