@@ -1299,6 +1299,7 @@ function useBusinessNotifications(businessId: string, branchId: string) {
     void load(false);
     const onRead = () => void load(false);
     window.addEventListener("notifications-read", onRead);
+    window.addEventListener("notification-preferences-changed", onRead);
     const timer = window.setInterval(() => void load(true), 30000);
     const channel = supabase
       .channel(`sidebar-notifications:${businessId}`)
@@ -1373,21 +1374,12 @@ function useBusinessNotifications(businessId: string, branchId: string) {
         },
         () => void load(true),
       )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "customer_credit_accounts",
-          filter: `business_id=eq.${businessId}`,
-        },
-        () => void load(true),
-      )
       .subscribe();
 
     return () => {
       ++versionRef.current;
       window.removeEventListener("notifications-read", onRead);
+      window.removeEventListener("notification-preferences-changed", onRead);
       window.clearInterval(timer);
       void supabase.removeChannel(channel);
     };

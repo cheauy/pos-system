@@ -10,29 +10,34 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   async function handleSubmit(
     event: React.FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
+    if (loading) return;
 
     setLoading(true);
     setMessage("");
+    setErrorMessage("");
 
     try {
-      await supabase.auth.resetPasswordForEmail(
+      const { error } = await supabase.auth.resetPasswordForEmail(
         email.trim(),
         {
           redirectTo:
             `${window.location.origin}/reset-password`,
         },
       );
+      if (error) {
+        setErrorMessage(error.status === 429 ? "Too many requests. Please wait a minute before trying again." : "Unable to send the reset link right now. Please try again shortly.");
+        return;
+      }
+      setMessage("If an account exists for that email, a password reset link has been sent. Open it in this browser. Check your spam folder too.");
     } catch {
-      // Keep the response indistinguishable from a successful request.
+      setErrorMessage("Unable to send the reset link. Check your connection and try again.");
     } finally {
-      setMessage(
-        "If an account exists for that email, a password reset link has been sent.",
-      );
       setLoading(false);
     }
   }
@@ -64,6 +69,8 @@ export default function ForgotPasswordPage() {
         >
           <input
             type="email"
+            aria-label="Email address"
+            autoComplete="email"
             required
             value={email}
             onChange={(event) =>
@@ -82,10 +89,11 @@ export default function ForgotPasswordPage() {
         </form>
 
         {message && (
-          <p className="mt-4 text-sm">
+          <p role="status" className="mt-4 text-sm">
             {message}
           </p>
         )}
+        {errorMessage && <p role="alert" className="mt-4 text-sm text-red-600">{errorMessage}</p>}
       </div>
     </main>
   );

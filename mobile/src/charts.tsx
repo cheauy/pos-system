@@ -1,0 +1,17 @@
+import React from 'react';
+import { View } from 'react-native';
+import Svg, { Circle, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
+import { Label, styles, useTheme } from './ui';
+const colours=['#3875ee','#16a085','#f59e0b','#a855f7','#ec4899','#0891b2','#64748b'];
+export function Donut({rows}:{rows:{name:string;value:number}[]}) {
+ const theme=useTheme();const values=rows.filter(r=>Number.isFinite(r.value)&&r.value>0);const total=values.reduce((s,r)=>s+r.value,0);
+ if(!total)return <Label muted>No data in this period.</Label>;
+ return <View style={{gap:12}}><View accessible accessibilityLabel={values.map(r=>`${theme.t(r.name)} ${Math.round(r.value/total*100)}%`).join(', ')} style={{alignItems:'center'}}><Svg width={190} height={190} viewBox="0 0 190 190"><Circle cx={95} cy={95} r={70} fill="none" stroke={theme.border} strokeWidth={28}/>{values.map((r,i)=>{const length=r.value/total*2*Math.PI*70;const start=values.slice(0,i).reduce((sum,value)=>sum+value.value,0)/total*2*Math.PI*70;return <Circle key={r.name} cx={95} cy={95} r={70} fill="none" stroke={colours[i%colours.length]} strokeWidth={28} strokeDasharray={`${length} ${2*Math.PI*70-length}`} strokeDashoffset={-start} rotation={-90} origin="95,95"/>;})}<SvgText x={95} y={101} fill={theme.text} fontSize={18} textAnchor="middle">{total.toLocaleString(undefined,{maximumFractionDigits:2})}</SvgText></Svg></View>{values.map((r,i)=><View key={r.name} style={styles.row}><View style={{width:10,height:10,borderRadius:5,backgroundColor:colours[i%colours.length]}}/><View style={{flex:1}}><Label>{r.name}</Label></View><Label>{`${r.value.toLocaleString(undefined,{maximumFractionDigits:2})} · ${(r.value/total*100).toFixed(1)}%`}</Label></View>)}</View>;
+}
+export function SalesChart({rows,line=false}:{rows:{date:string;value:number;profit?:number}[];line?:boolean}) {
+ const theme=useTheme();if(!rows.length)return <Label muted>No data in this period.</Label>;
+ const min=Math.min(0,...rows.flatMap(r=>[r.value,r.profit||0])),max=Math.max(1,...rows.flatMap(r=>[r.value,r.profit||0]));
+ const x=(i:number)=>25+(i+0.5)*300/rows.length,y=(value:number)=>140-(value-min)/(max-min)*120;
+ const curve=(profit:boolean)=>rows.map((row,i)=>{const px=x(i),py=y(profit?row.profit||0:row.value);if(!i)return `M ${px} ${py}`;const prev=rows[i-1],mid=(x(i-1)+px)/2;return `C ${mid} ${y(profit?prev.profit||0:prev.value)} ${mid} ${py} ${px} ${py}`;}).join(' ');
+ return <View accessible accessibilityLabel={rows.map(r=>`${r.date}: ${r.value}${line?`, ${theme.t('Gross profit')}: ${r.profit||0}`:''}`).join('; ')}><Svg width="100%" height={190} viewBox="0 0 350 190"><Line x1={25} x2={330} y1={y(0)} y2={y(0)} stroke={theme.border}/>{line?<><Path d={curve(false)} stroke={colours[0]} strokeWidth={3} fill="none"/><Path d={curve(true)} stroke={colours[1]} strokeWidth={3} fill="none"/>{rows.length===1&&<><Circle cx={x(0)} cy={y(rows[0].value)} r={4} fill={colours[0]}/><Circle cx={x(0)} cy={y(rows[0].profit||0)} r={4} fill={colours[1]}/></>}</>:rows.map((r,i)=><Rect key={r.date} x={x(i)-100/rows.length} y={Math.min(y(r.value),y(0))} width={200/rows.length} height={Math.max(1,Math.abs(y(r.value)-y(0)))} rx={2} fill={colours[0]}/>)}<SvgText x={25} y={175} fontSize={11} fill={theme.muted}>{rows[0].date.slice(5)}</SvgText><SvgText x={330} y={175} textAnchor="end" fontSize={11} fill={theme.muted}>{rows.at(-1)!.date.slice(5)}</SvgText></Svg>{line&&<Label muted>Revenue · blue / Gross profit · green</Label>}</View>;
+}

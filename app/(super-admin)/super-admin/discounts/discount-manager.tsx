@@ -34,6 +34,13 @@ export default function DiscountManager({rules,today}:{rules:Promotion[];today:s
   const [page,setPage]=useState(1);
   const [pageSize,setPageSize]=useState(10);
   const [busy,setBusy]=useState(false);
+  const [deleteTarget,setDeleteTarget]=useState<Promotion|null>(null);
+  const deleteDialog=useRef<HTMLDialogElement>(null);
+  const changing=useRef(false);
+  useEffect(()=>{
+    if(deleteTarget&&!deleteDialog.current?.open)deleteDialog.current?.showModal();
+    else if(!deleteTarget&&deleteDialog.current?.open)deleteDialog.current.close();
+  },[deleteTarget]);
   const panelRef=useRef<HTMLElement>(null);
   useEffect(()=>{
     if(panel){panelRef.current?.focus({preventScroll:true});if(window.innerWidth<1280)panelRef.current?.scrollIntoView({block:'start',behavior:'smooth'});}
@@ -46,16 +53,17 @@ export default function DiscountManager({rules,today}:{rules:Promotion[];today:s
   const count=(status:Status)=>status==='All'?rules.length:rules.filter(rule=>statusOf(rule,today)===status).length;
   const open=(mode:'new'|'edit'|'view',rule?:Promotion)=>{setPanel({mode,id:rule?.id});setVersion(value=>value+1);};
   async function change(rule:Promotion,operation:'enable'|'disable'|'delete') {
-    if(busy)return;
-    if(operation==='delete'&&!window.confirm(`Delete “${rule.name}”? This cannot be undone. Existing payment quotes will stay unchanged.`))return;
+    if(changing.current)return;
+    changing.current=true;
     setBusy(true);
     try {
       const result=await managePromotion(rule.id,operation);
       if(result.error){toast.error(result.error);return;}
       toast.success(operation==='delete'?'Discount deleted.':operation==='disable'?'Discount disabled.':'Discount enabled.');
       if(operation==='delete'&&panel?.id===rule.id)setPanel(null);
+      if(operation==='delete')setDeleteTarget(null);
     } catch {toast.error('Unable to change discount. Please try again.');}
-    finally {setBusy(false);}
+    finally {changing.current=false;setBusy(false);}
   }
   return <main className="space-y-5 pb-8 text-slate-900">
     <header className="flex flex-wrap items-center justify-between gap-4">
@@ -89,7 +97,7 @@ export default function DiscountManager({rules,today}:{rules:Promotion[];today:s
                   <button disabled={busy} onClick={()=>open('view',rule)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-slate-50"><Eye size={15}/>View details</button>
                   <button disabled={busy} onClick={()=>void change(rule,rule.enabled?'disable':'enable')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-slate-50"><Power size={15}/>{rule.enabled?'Disable':'Enable'}</button>
                   <button disabled={busy} onClick={()=>open('edit',rule)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-slate-50"><Pencil size={15}/>Edit</button>
-                  <button disabled={busy} onClick={()=>void change(rule,'delete')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-600 hover:bg-red-50"><Trash2 size={15}/>Delete</button>
+                  <button disabled={busy} onClick={()=>setDeleteTarget(rule)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-600 hover:bg-red-50"><Trash2 size={15}/>Delete</button>
                 </ActionMenu></td>
               </tr>)}</tbody>
             </table>{!shown.length&&<div className="px-4 py-12 text-center text-sm text-slate-500"><Gift className="mx-auto mb-3 text-slate-300" size={28}/>{rules.length?'No discounts match your filters.':'No discounts yet. Create your first offer.'}</div>}
@@ -106,6 +114,15 @@ export default function DiscountManager({rules,today}:{rules:Promotion[];today:s
           :panel.mode!=='view'?<DiscountForm key={`${panel.id??'new'}-${version}`} rule={panel.mode==='edit'?selected:null} today={today} onClose={()=>setPanel(null)}/>:<p className="p-5 text-sm text-slate-500">This discount is no longer available.</p>}
       </aside>}
     </div>
+    <dialog ref={deleteDialog} aria-labelledby="delete-discount-title" aria-describedby="delete-discount-description" onCancel={event=>{if(changing.current)event.preventDefault();}} onClose={()=>setDeleteTarget(null)} className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl backdrop:bg-slate-950/50 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+      <span className="mb-4 inline-flex rounded-full bg-red-50 p-3 text-red-600 dark:bg-red-950/40"><Trash2 size={24}/></span>
+      <h2 id="delete-discount-title" className="text-xl font-bold">Delete plan discount?</h2>
+      <p id="delete-discount-description" className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">Delete <strong className="break-words">{deleteTarget?.name}</strong>? This cannot be undone. Existing payment quotes keep their saved amount.</p>
+      <div className="mt-6 flex justify-end gap-3">
+        <button type="button" disabled={busy} onClick={()=>setDeleteTarget(null)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold disabled:opacity-50 dark:border-slate-700">Cancel</button>
+        <button type="button" disabled={busy||!deleteTarget} onClick={()=>{if(deleteTarget)void change(deleteTarget,'delete');}} className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"><Trash2 size={16}/>{busy?'Deleting…':'Delete discount'}</button>
+      </div>
+    </dialog>
   </main>;
 }
 

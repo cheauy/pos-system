@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
+import { REMEMBER_ME_COOKIE, sessionCookieOptions } from "@/lib/auth/session-persistence";
 
 import {
   APP_SUBDOMAIN,
@@ -235,10 +236,10 @@ async function refreshAuthIfNeeded(
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value, options }) => {
           request.cookies.set(name, value);
-          response.cookies.set(name, value, {
+          response.cookies.set(name, value, sessionCookieOptions(name, value, {
             ...cookieOptions,
             ...options,
-          });
+          }, request.cookies.get(REMEMBER_ME_COOKIE)?.value));
         });
       },
     },

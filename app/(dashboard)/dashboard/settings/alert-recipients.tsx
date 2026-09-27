@@ -1,12 +1,31 @@
 import { createClient } from "@/lib/supabase/branch-server";
-import { saveNotificationRoleSettings } from "../notifications/actions";
-export default async function AlertRecipients({businessId}: {businessId:string}) {
- const supabase=await createClient();
- const {data:roleSettings,error}=await supabase.from("branch_notification_role_settings").select("notification_type,target_roles").eq("business_id",businessId);
- if(error) return <p role="alert" className="text-red-600">Unable to load alert recipients. Please refresh.</p>;
- const defaults:Record<string,string[]>={new_order:["owner","admin","manager","cashier"],khqr_pending:["owner","admin","manager","cashier"],low_stock:["owner","admin","manager"],purchase_order:["owner","admin","manager"],stock_transfer:["owner","admin","manager"],register_variance:["owner","admin","manager"],credit_overdue:["owner","admin","manager"],scheduled_order:["owner","admin","manager","cashier"]};
- const currentRoles=new Map((roleSettings??[]).map((r:{notification_type:string;target_roles:string[]})=>[r.notification_type,r.target_roles as string[]]));
- const typeLabels:Record<string,string>={new_order:"New online / QR order",khqr_pending:"KHQR pending verification",low_stock:"Low stock",purchase_order:"Purchase order awaiting receipt",stock_transfer:"Stock transfer in transit",register_variance:"Register over / short",credit_overdue:"Overdue customer credit",scheduled_order:"Scheduled order reminder"};
+import { getBranchContext } from "@/lib/branches/context";
+import AlertRecipientsForm from "./alert-recipients-form";
+import NotificationPreferences from "./notification-preferences";
 
- return <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900"><h2 className="text-lg font-semibold">Who receives each alert?</h2><p className="mt-1 text-sm text-slate-500">Owner can control notification visibility by staff role.</p><form action={saveNotificationRoleSettings} className="mt-5 overflow-x-auto"><table className="w-full min-w-[680px] text-sm"><thead><tr className="border-b text-left text-xs uppercase text-slate-500"><th className="py-3">Alert</th>{["owner","admin","manager","cashier"].map(r=><th key={r} className="px-3 py-3 capitalize">{r}</th>)}</tr></thead><tbody>{Object.entries(typeLabels).map(([type,label])=>{const roles=currentRoles.get(type)??defaults[type]; return <tr key={type} className="border-b last:border-0"><td className="py-3 font-medium">{label}</td>{["owner","admin","manager","cashier"].map(role=><td key={role} className="px-3 py-3"><input type="checkbox" name={`${type}:${role}`} defaultChecked={roles.includes(role)} className="h-4 w-4 rounded border-slate-300"/></td>)}</tr>})}</tbody></table><button className="mt-5 rounded-xl bg-blue-600 px-4 py-2.5 font-semibold text-white hover:bg-blue-700">Save alert roles</button></form></section>;
+export default async function AlertRecipients({businessId}: {businessId:string}) {
+  const {branchId,userId,branches}=await getBranchContext();
+  const supabase=await createClient();
+  const [roles,preferences]=await Promise.all([
+    supabase.from("branch_notification_role_settings").select("notification_type,target_roles").eq("business_id",businessId).eq("location_id",branchId),
+    supabase.from("business_notification_preferences").select("sound_enabled,browser_enabled").eq("business_id",businessId).eq("user_id",userId).maybeSingle(),
+  ]);
+  if(roles.error||preferences.error)return <p role="alert" className="mt-5 text-red-600">Unable to load notification settings. Please refresh.</p>;
+  const settings=Object.fromEntries((roles.data??[]).map(row=>[row.notification_type,row.target_roles]));
+  return <div className="mt-5 space-y-5">
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+      <h2 className="text-lg font-semibold">Who receives each alert?</h2>
+      <p className="mt-1 text-sm text-slate-500">Choose recipients for {branches.find(branch=>branch.id===branchId)?.name??"this branch"}. Changes apply after saving.</p>
+      <AlertRecipientsForm key={branchId} branchId={branchId} settings={settings}/>
+    </section>
+    <NotificationPreferences soundEnabled={preferences.data?.sound_enabled??true} browserEnabled={preferences.data?.browser_enabled??false}/>
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+      <h2 className="text-lg font-semibold">Automatic account notices</h2>
+      <dl className="mt-4 divide-y divide-slate-200 text-sm dark:divide-slate-700">
+        <div className="flex flex-wrap justify-between gap-2 py-3"><dt>Subscription quotes and payment reviews</dt><dd className="text-slate-500">Owner only</dd></div>
+        <div className="flex flex-wrap justify-between gap-2 py-3"><dt>Business change credit payment reviews</dt><dd className="text-slate-500">Owner only</dd></div>
+        <div className="flex flex-wrap justify-between gap-2 py-3"><dt>System updates and announcements</dt><dd className="text-slate-500">Audience selected by Super Admin</dd></div>
+      </dl>
+    </section>
+  </div>;
 }

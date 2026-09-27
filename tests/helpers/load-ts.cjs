@@ -22,7 +22,7 @@ function queryDouble(table, result, log) {
   const call = {table, steps: []};
   log.push(call);
   const query = {};
-  for (const name of ['select','eq','in','order','range','or','limit','single','maybeSingle','update']) {
+  for (const name of ['select','eq','in','order','range','or','ilike','limit','single','maybeSingle','update']) {
     query[name] = (...args) => {call.steps.push([name, ...args]); return query;};
   }
   query.then = (ok, fail) => Promise.resolve(typeof result === 'function' ? result(call) : result).then(ok, fail);

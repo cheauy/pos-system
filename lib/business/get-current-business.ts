@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from 'react';
+import { mobileRequest } from '@/lib/mobile/request-context';
 import { needsTeamPasswordSetup } from "@/lib/users/setup-state";
 
 import { cookies } from "next/headers";
@@ -195,13 +196,9 @@ async function loadContext() {
     // This cookie is a locator only and never grants authorization.
     const cookieStore = await cookies();
     const selectedBusinessId =
-      cookieStore.get(SELECTED_BUSINESS_COOKIE)?.value?.trim() ?? "";
+      mobileRequest.getStore()?.businessId ?? cookieStore.get(SELECTED_BUSINESS_COOKIE)?.value?.trim() ?? "";
 
     if (selectedBusinessId) {
-      if (/^[0-9a-f-]{36}$/i.test(selectedBusinessId)) {
-        await applyDueSubscriptionRenewal(selectedBusinessId);
-      }
-
       const { data: selectedMember, error: selectedMemberError } =
         await supabase
           .from("business_members")
@@ -218,6 +215,8 @@ async function loadContext() {
       }
 
       if (selectedMember) {
+        // Verify membership before any privileged subscription maintenance.
+        await applyDueSubscriptionRenewal(selectedMember.business_id);
         const selectedBusiness = await loadBusiness(selectedMember.business_id);
 
         if (selectedBusiness) {
@@ -230,6 +229,7 @@ async function loadContext() {
     // Missing/stale selection falls back to TENH's existing first active
     // membership behavior so existing accounts remain backward-compatible.
     if (!member || !business) {
+      if (mobileRequest.getStore()?.businessId) throw new Error('This business is unavailable to your account.');
       const { data: memberData, error: memberError } =
         await supabase
           .from("business_members")

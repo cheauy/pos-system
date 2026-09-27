@@ -62,3 +62,25 @@ test('a missing offer is not reported as successfully changed', async () => {
   assert.ok((await action(id, 'delete')).error);
   assert.ok(!calls.some(call => call[0] === 'refresh'));
 });
+
+test('delete opens confirmation; Cancel preserves the offer and repeated confirmation deletes once', async () => {
+  const {loadTs}=require('./helpers/load-ts.cjs');
+  const state=[],refs=[],calls=[];let cursor=0,refCursor=0,finish;
+  const react={useState(initial){const i=cursor++;if(!(i in state))state[i]=initial;return[state[i],v=>{state[i]=typeof v==='function'?v(state[i]):v;}];},useRef(initial){const i=refCursor++;return refs[i]??(refs[i]={current:initial});},useEffect(){},useActionState(){}};
+  const Component=loadTs('app/(super-admin)/super-admin/discounts/discount-manager.tsx',{
+    react,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),
+    sonner:{toast:{success(){},error(){}}},'@/lib/subscriptions/plans':{subscriptionPlans:{},subscriptionTerms:[]},
+    './actions':{managePromotion:async(...args)=>{calls.push(args);await new Promise(resolve=>{finish=resolve;});return {error:null};},savePromotion(){}},
+  }).default;
+  const rule={id,name:'September offer',enabled:true,discount_percent:10,starts_on:'2026-09-01',ends_on:'2026-09-30',apply_new:true,apply_existing:true};
+  const render=()=>{cursor=0;refCursor=0;return Component({rules:[rule],today:'2026-09-26'});};
+  const nodes=value=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.props?.children)]:[];
+  const text=value=>Array.isArray(value)?value.map(text).join(''):typeof value==='string'?value:value?.props?text(value.props.children):'';
+  const button=(tree,label)=>nodes(tree).find(n=>n.type==='button'&&text(n)===label);
+  button(render(),'Delete').props.onClick();assert.deepEqual(calls,[]);
+  let tree=render();assert.ok(text(nodes(tree).find(n=>n.type==='dialog')).includes('September offer'));
+  button(tree,'Cancel').props.onClick();assert.deepEqual(calls,[]);assert.equal(button(render(),'Delete discount').props.disabled,true);
+  button(render(),'Delete').props.onClick();tree=render();
+  button(tree,'Delete discount').props.onClick();button(tree,'Delete discount').props.onClick();assert.deepEqual(calls,[[id,'delete']]);
+  finish();await new Promise(resolve=>setImmediate(resolve));assert.equal(button(render(),'Delete discount').props.disabled,true);
+});

@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from "react";
+import { mobileRequest } from '@/lib/mobile/request-context';
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
@@ -25,7 +26,11 @@ export const getBranchContext = cache(async () => {
   if (!owner && !assigned) throw new Error("Your assigned branch is unavailable. Ask the Owner to assign an active branch.");
   const branches = owner ? available : available.filter(b => b.id === assigned?.id);
   const ownBranchId = assigned?.id ?? branches[0]?.id ?? "";
-  const saved = (await cookies()).get(branchCookie(business.id, user.id))?.value;
+  const mobileBranch = mobileRequest.getStore()?.branchId;
+  if (mobileBranch && !branches.some(branch => branch.id === mobileBranch)) {
+    throw new Error('This branch is unavailable to your account.');
+  }
+  const saved = mobileBranch ?? (await cookies()).get(branchCookie(business.id, user.id))?.value;
   const branchId = owner ? branches.find(b => b.id === saved)?.id ?? ownBranchId : ownBranchId;
   return { business, userId: user.id, branches, ownBranchId, branchId };
 });

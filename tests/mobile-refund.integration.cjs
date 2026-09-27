@@ -1,0 +1,56 @@
+const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const { PGlite } = require('./helpers/pglite.cjs');
+const B='10000000-0000-0000-0000-000000000001', L='20000000-0000-0000-0000-000000000001', U='30000000-0000-0000-0000-000000000001', O='40000000-0000-0000-0000-000000000001', I='50000000-0000-0000-0000-000000000001', R='60000000-0000-0000-0000-000000000001';
+(async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(`create role anon; create role authenticated; create schema auth;
+      create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.user',true),'')::uuid$$;
+      create table businesses(id uuid primary key); create table business_locations(id uuid primary key);
+      create table orders(id uuid primary key,business_id uuid,location_id uuid);
+      create table refund_events(id uuid default gen_random_uuid(),order_id uuid);
+      insert into businesses values('${B}'); insert into business_locations values('${L}'); insert into orders values('${O}','${B}','${L}');
+      create function tenh_assert_effective_permission(uuid,text) returns void language plpgsql as $$begin if current_setting('test.denied',true)='yes' then raise exception 'permission denied' using errcode='42501';end if;end$$;
+      create function tenh_request_branch(uuid) returns uuid language sql as $$select nullif(current_setting('test.branch',true),'')::uuid$$;
+      create function tenh_assert_plan_branch(uuid,uuid) returns void language plpgsql as $$begin if current_setting('test.expired',true)='yes' then raise exception 'expired';end if;end$$;
+      create function tenh_run_branch_stock(uuid,text,jsonb) returns jsonb language plpgsql as $$declare id uuid;begin
+        insert into refund_events(order_id) values(($3->>'p_order_id')::uuid) returning refund_events.id into id;
+        if current_setting('test.badresult',true)='yes' then return null;end if;
+        return to_jsonb(id);end$$;
+      select set_config('test.user','${U}',false),set_config('test.branch','${L}',false);`);
+    const sql=readFileSync('supabase/migrations/20260927001000_mobile_refund_requests.sql','utf8');
+    await db.exec(sql); await db.exec(sql);
+    const args=[B,L,R,O,'Incorrect Size or Fit',JSON.stringify([{order_item_id:I,quantity:1}]),'cash'];
+    const call=values=>db.query('select tenh_mobile_return($1,$2,$3,$4,$5,$6::jsonb,$7) result',values);
+    const first=(await call(args)).rows[0].result;
+    assert.ok(first.returnId);
+    assert.deepEqual((await call(args)).rows[0].result,first);
+    assert.equal((await db.query('select count(*)::int n from refund_events')).rows[0].n,1);
+    await assert.rejects(call([...args.slice(0,4),'Different reason',...args.slice(5)]),/already used/);
+    await db.exec("select set_config('test.denied','yes',false)");
+    await assert.rejects(call(args),/permission denied/);
+    await db.exec("select set_config('test.denied','no',false); select set_config('test.expired','yes',false)");
+    await assert.rejects(call(args),/expired/);
+    await db.exec("select set_config('test.expired','no',false)");
+    await assert.rejects(call([B,B,...args.slice(2)]),/outside/);
+    const missing=(await call([B,L,'60000000-0000-0000-0000-000000000003',B,...args.slice(4)])).rows[0].result;
+    assert.equal(missing.rolledBack,true); assert.match(missing.error,/Order not found/);
+    await assert.rejects(call([...args.slice(0,5),JSON.stringify([{order_item_id:I,quantity:1},{order_item_id:I,quantity:1}]),'cash']),/only once/);
+    await db.exec("select set_config('test.badresult','yes',false)");
+    const failedArgs=[B,L,'60000000-0000-0000-0000-000000000002',...args.slice(3)];
+    const failed=(await call(failedArgs)).rows[0].result;
+    assert.equal(failed.rolledBack,true); assert.match(failed.error,/rolled back/);
+    await db.exec("select set_config('test.badresult','no',false)");
+    assert.deepEqual((await call(failedArgs)).rows[0].result,failed);
+    assert.equal((await db.query('select count(*)::int n from refund_events')).rows[0].n,1);
+    const status=await db.query('select tenh_mobile_return_status($1,$2,$3) result',[B,L,R]);
+    assert.deepEqual(status.rows[0].result,first);
+    await db.exec("select set_config('test.user','30000000-0000-0000-0000-000000000002',false)");
+    assert.equal((await db.query('select tenh_mobile_return_status($1,$2,$3) result',[B,L,R])).rows[0].result,null);
+    await assert.rejects(call(args),/already used/);
+    assert.equal((await db.query("select has_table_privilege('authenticated','mobile_refund_requests','SELECT') allowed")).rows[0].allowed,false);
+    assert.equal((await db.query("select has_function_privilege('anon','tenh_mobile_return(uuid,uuid,uuid,uuid,text,jsonb,text)','EXECUTE') allowed")).rows[0].allowed,false);
+    console.log('PASS: refund replay, ownership, permission/expiry/branch gates, duplicate items, atomic rollback, status isolation and table grants.');
+  } finally { await db.close(); }
+})().catch(error => { console.error(error); process.exitCode=1; });

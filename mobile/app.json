@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "TENH POS",
+    "slug": "tenh-pos-mobile",
+    "owner": "cheauy",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/tenh-pos-logo.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "tenhpos",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tenhpos.mobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocalNetworkUsageDescription": "Connect to your local TENH POS development server."
+      }
+    },
+    "android": {
+      "package": "com.tenhpos.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/tenh-pos-logo.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      ["expo-notifications", {"defaultChannel":"workspace"}],
+      ["expo-local-authentication", {"faceIDPermission": "Allow TENH POS to verify your identity when unlocking this app."}],
+      "expo-secure-store",
+      "expo-sharing",
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow TENH POS to scan product barcodes.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose a receipt or support screenshot.",
+          "cameraPermission": "Photograph receipts for your business.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-router"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e2e5731a-ff35-4493-a6f8-ce3f30f075d6"
+      }
+    }
+  }
+}

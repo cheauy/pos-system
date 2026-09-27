@@ -17,7 +17,7 @@ import {
 import { FaFacebookF } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getRememberMe, setRememberMe as saveRememberMeChoice } from "@/lib/supabase/client";
 
 const signInErrorMessage =
   "Unable to sign in. Check your credentials or account status.";
@@ -44,18 +44,16 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] =
     useState<OAuthProvider | null>(null);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState(() => oauthErrorMessages[searchParams.get("error") ?? ""] ?? "");
   const [showPassword, setShowPassword] = useState(false);
 
   const accountCreated = searchParams.get("registered") === "1";
 
   useEffect(() => {
-    const error = searchParams.get("error");
-
-    if (error && oauthErrorMessages[error]) {
-      setErrorMessage(oauthErrorMessages[error]);
-    }
-  }, [searchParams]);
+    // Read the browser preference after hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRememberMe(getRememberMe());
+  }, []);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,6 +62,7 @@ export default function LoginPage() {
     setErrorMessage("");
 
     try {
+      saveRememberMeChoice(rememberMe);
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
@@ -86,12 +85,6 @@ export default function LoginPage() {
         return;
       }
 
-      if (rememberMe) {
-        localStorage.setItem("rememberMe", "true");
-      } else {
-        localStorage.removeItem("rememberMe");
-      }
-
       router.replace("/auth/continue");
       router.refresh();
     } catch {
@@ -106,6 +99,7 @@ export default function LoginPage() {
     setOauthLoading(provider);
 
     try {
+      saveRememberMeChoice(rememberMe);
       const redirectTo = `${window.location.origin}/auth/callback`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider,

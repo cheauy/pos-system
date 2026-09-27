@@ -8,11 +8,16 @@ test('POS lock permits checkout, receipts, Orders and Register only',()=>{
  for(const path of ['/dashboard','/dashboard/online-orders','/dashboard/settings','/dashboard/pos-fake','/dashboard/orders-other','/dashboard/products'])assert.equal(lock.posLockAllows(path),false,path);
  assert.notEqual(lock.posLockCookie(B,U),lock.posLockCookie(B,A));
 });
-function branchContext({role='cashier',assigned=A,saved=C}={}){
+function branchContext({role='cashier',assigned=A,saved=C,mobileBranch}={}){
  const log=[];const business={id:B,role};
  const db={auth:{getUser:async()=>({data:{user:{id:U}}})},from(table){return queryDouble(table,{data:table==='business_members'?{default_location_id:assigned,role}:[{id:A,name:'A'},{id:C,name:'C'}],error:null},log);}};
- return loadTs('lib/branches/context.ts',{'server-only':{},react:{cache:fn=>fn},'next/headers':{cookies:async()=>({get:()=>({value:saved})})},'@/lib/supabase/server':{createClient:async()=>db},'@/lib/business/get-current-business':{getCurrentBusiness:async()=>business}});
+ return loadTs('lib/branches/context.ts',{'@/lib/mobile/request-context':{mobileRequest:{getStore:()=>mobileBranch?{branchId:mobileBranch}:undefined}},'server-only':{},react:{cache:fn=>fn},'next/headers':{cookies:async()=>({get:()=>({value:saved})})},'@/lib/supabase/server':{createClient:async()=>db},'@/lib/business/get-current-business':{getCurrentBusiness:async()=>business}});
 }
+test('mobile branch requests cannot bypass assigned staff branch',async()=>{
+ await assert.rejects(branchContext({mobileBranch:C}).getBranchContext(),/unavailable/);
+ assert.equal((await branchContext({mobileBranch:A}).getBranchContext()).branchId,A);
+ assert.equal((await branchContext({role:'owner',mobileBranch:A}).getBranchContext()).branchId,A);
+});
 test('staff assignment overrides another branch saved in the browser',async()=>{
  const api=branchContext();const context=await api.getBranchContext();assert.equal(context.branchId,A);assert.deepEqual(context.branches.map(b=>b.id),[A]);
  assert.equal(await api.getViewingBranchId('all'),A);await assert.rejects(api.getViewingBranchId(C),/not assigned/);await assert.rejects(api.assertOperatingBranch(C),/changed/);

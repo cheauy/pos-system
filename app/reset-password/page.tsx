@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Eye, EyeOff } from "lucide-react";
+import { hasPasswordRecovery } from "@/lib/auth/password-recovery";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     let mounted = true;
+    let recoveredUserId: string | undefined;
     const initializationTimeout = window.setTimeout(() => {
       if (!mounted) {
         return;
@@ -38,7 +40,27 @@ export default function ResetPasswordPage() {
       }
 
       window.clearTimeout(initializationTimeout);
+      recoveredUserId = session?.user.id;
       setCanResetPassword(Boolean(session));
+      setCheckingSession(false);
+    });
+
+    // Initialization can finish before this page subscribes. The browser client
+    // records verified recovery events so a reload can resume the same flow.
+    void supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (!mounted) return;
+      const params = new URLSearchParams(window.location.search);
+      const hash = new URLSearchParams(window.location.hash.slice(1));
+      let rememberedRecovery = false;
+      try { rememberedRecovery = Boolean(session && hasPasswordRecovery(window.sessionStorage, session.user.id)); } catch { /* Storage may be blocked. */ }
+      const valid = !error && !params.has("error") && !hash.has("error") && Boolean(session && (recoveredUserId === session.user.id || rememberedRecovery));
+      window.clearTimeout(initializationTimeout);
+      setCanResetPassword(valid);
+      setCheckingSession(false);
+    }).catch(() => {
+      if (!mounted) return;
+      window.clearTimeout(initializationTimeout);
+      setCanResetPassword(false);
       setCheckingSession(false);
     });
 
@@ -53,6 +75,7 @@ export default function ResetPasswordPage() {
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
+    if (loading || successMessage) return;
 
     setErrorMessage("");
     setSuccessMessage("");
@@ -290,7 +313,7 @@ export default function ResetPasswordPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || Boolean(successMessage)}
             className="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading

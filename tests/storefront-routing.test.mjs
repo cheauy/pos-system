@@ -18,7 +18,8 @@ function loadTypeScript(path, dependencies = {}) {
   return module.exports;
 }
 const domain = loadTypeScript("../lib/tenancy/domain.ts");
-const { proxy } = loadTypeScript("../proxy.ts", { "@/lib/tenancy/domain": domain });
+const persistence = loadTypeScript("../lib/auth/session-persistence.ts");
+const { proxy } = loadTypeScript("../proxy.ts", { "@/lib/tenancy/domain": domain, "@/lib/auth/session-persistence": persistence });
 const tenantHost = "melodyclothing.localhost:3000";
 const request = (path, host = tenantHost) => new NextRequest(`http://${host}${path}`, { headers: { host } });
 
