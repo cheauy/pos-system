@@ -38,7 +38,7 @@ function ScanDialog({ close }: { close: () => void }) {
             const order = await resolveOrderQr(result.getText());
             if (cancelled) return;
             if ('error' in order) throw new Error(order.error);
-            router.push(`/dashboard/orders/${order.id}`);
+            router.push(`/dashboard/orders/${order.id}?scanned=1`);
             close();
           } catch (failure) {
             if (!cancelled) { setError(failure instanceof Error ? failure.message : 'Unable to open this order. Please try again.'); setBusy(false); }

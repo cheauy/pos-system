@@ -874,7 +874,6 @@ function GlobalSearchPanel({
               <h2 className="text-[15px] font-bold text-slate-950 dark:text-white">
                 Global Search
               </h2>
-              <OrderQrScanner/>
             </div>
           </div>
           {!mobile && onClose ? (
@@ -890,7 +889,7 @@ function GlobalSearchPanel({
         </div>
 
         <form onSubmit={submit} className="mt-4">
-          <label className="relative block">
+          <div className="relative block">
             <Search
               size={15}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -901,9 +900,12 @@ function GlobalSearchPanel({
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
               placeholder="Search anything…"
+              aria-label="Global search"
+              style={{ paddingRight: 56 }}
               className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:border-blue-500 dark:focus:bg-slate-900 dark:focus:ring-blue-950"
             />
-          </label>
+            <div className="absolute right-1 top-1/2 -translate-y-1/2"><OrderQrScanner/></div>
+          </div>
           <button
             type="submit"
             disabled={!query.trim()}

@@ -329,7 +329,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
             <Search size={23} />
           </span>
           <div>
-            <div className="flex items-center gap-3"><h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">Global Search</h1><OrderQrScanner/></div>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">Global Search</h1>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Find orders, products, customers, suppliers, purchase orders, transfers and more — all in one place.
             </p>
@@ -344,10 +344,12 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
 
       <section className="space-y-3">
         <form onSubmit={submit} className="flex flex-col gap-3 sm:flex-row">
-          <label className="relative min-w-0 flex-1">
+          <div className="relative min-w-0 flex-1">
             <Search size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               ref={inputRef}
+              aria-label="Global search"
+              style={{ paddingRight: 96 }}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               autoFocus
@@ -363,12 +365,13 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
                   inputRef.current?.focus();
                 }}
                 aria-label="Clear search"
-                className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                className="absolute right-14 xl:right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               >
                 <X size={16} />
               </button>
             ) : null}
-          </label>
+            <div className="absolute right-1 top-1/2 -translate-y-1/2"><OrderQrScanner/></div>
+          </div>
           <button
             type="submit"
             disabled={isPending || !query.trim()}

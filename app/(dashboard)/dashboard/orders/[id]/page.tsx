@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import ScannedOrderComplete from '@/components/scanned-order-complete';
 import OrderPrintMenu from '@/components/order-print-menu';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
@@ -18,7 +19,8 @@ import { loadDetailedOrder } from './order-detail-data';
 import { numeric, one, orderType, paymentName, recordReceipt, titleCase } from './order-detail-model';
 import { money } from '../../pos/pos-workspace-helpers';
 import s from './order-detail.module.css';
-export default async function OrderDetailsPage({params}:{params:Promise<{id:string}>}){
+export default async function OrderDetailsPage({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{scanned?:string}>}){
+ const scanned=(await searchParams).scanned==='1';
  const business=await requirePermission('orders.view');const {id}=await params;
  const order=await loadDetailedOrder(business.id,id);if(!order)notFound();
  const db=await createClient();const context=await loadReceiptContext(business.id,business.name,id);
@@ -50,6 +52,7 @@ export default async function OrderDetailsPage({params}:{params:Promise<{id:stri
  const events=(activity.data || []).map((e:{id:string;description:string;created_at:string;action:string})=>({id:e.id,label:e.description,date:e.created_at})).reverse();
  if(!events.some((e:{date:string})=>e.date===order.created_at))events.unshift({id:'created',label:'Order created',date:order.created_at});
  return <main className={s.page}>
+ {scanned && ownBranch && allowEdit && ['new','pending'].includes(order.status) && <ScannedOrderComplete id={id} number={order.order_number} businessId={business.id} updatedAt={order.updated_at}/>}
  <header className={s.header}><div><Link className={s.back} href="/dashboard/orders"><ArrowLeft size={15}/>Back to orders</Link><h1>Order Details</h1><p>View customer, products and payment information.</p></div><div className={s.headerActions}>
  <OrderPrintMenu orderId={id} className={s.button}/>
  <OrderMoreActions id={id} number={order.order_number} businessId={business.id} updatedAt={order.updated_at} status={order.status} source={order.order_source} onlineStatus={order.online_status} canEdit={ownBranch && allowEdit} canDelete={canCancel && ['new','pending','cancelled'].includes(order.status)} note={order.customer_note || ''}/>

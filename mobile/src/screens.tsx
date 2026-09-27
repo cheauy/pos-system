@@ -286,7 +286,7 @@ function TransferSheet({ id, scope, online, close,workspace }: { id: string; sco
   </ScrollView></SafeAreaView></Modal>;
 }
 
-function OrderSheet({ id, scope, online, onClose, canUpdate, canReturn, currency, incoming }: { id: string; scope: Scope; online: boolean; onClose: () => void; canUpdate: boolean; canReturn: boolean; currency: string; incoming: boolean }) {
+function OrderSheet({ id, scope, online, onClose, canUpdate, canReturn, currency, incoming, scanned = false }: { id: string; scope: Scope; online: boolean; onClose: () => void; canUpdate: boolean; canReturn: boolean; currency: string; incoming: boolean; scanned?: boolean }) {
   const theme = useTheme();
   const { data, error, loading, refresh } = useData<Order>(`${incoming ? 'incoming-detail' : 'order'}?id=${encodeURIComponent(id)}`, scope, online);
   const [busy, setBusy] = useState(false);
@@ -342,7 +342,10 @@ function OrderSheet({ id, scope, online, onClose, canUpdate, canReturn, currency
         <Button title={charts?'Hide item insights':'View item insights'} secondary onPress={()=>setCharts(value=>!value)}/>
         {charts&&<><Card><SectionTitle title="Item value breakdown" icon="pie-chart-outline"/><Label muted>Line values before order-level discounts and delivery.</Label><Donut rows={(data.items||[]).map(item=>({name:[item.name,item.variant].filter(Boolean).join(' · '),value:Number(item.subtotal)}))}/></Card><Card><SectionTitle title="Item ranking" icon="trophy-outline"/><Label muted>Ranked by quantity in this order.</Label><Ranking rows={(data.items||[]).map(item=>({name:[item.name,item.variant].filter(Boolean).join(' · '),value:Number(item.quantity)}))}/></Card><Card><SectionTitle title="Item quantities" icon="bar-chart-outline"/><ItemBars rows={(data.items||[]).map(item=>({name:[item.name,item.variant].filter(Boolean).join(' · '),value:Number(item.quantity)}))}/></Card></>}
       </>}
-    </ScrollView><Photo uri={photo} close={() => setPhoto(null)} />
+      {scanned && <View style={{height:80}}/>}
+    </ScrollView>
+    {scanned && canUpdate && data && ['new','pending'].includes(data.status) && <View style={{position:'absolute',bottom:28,right:20}}><Button title="Complete" busy={busy} disabled={!online || loading || !data.updatedAt} onPress={() => theme.alert('Complete order?', `Mark ${data.orderNumber} as completed? This does not collect or change payment.`, [{text:'Cancel',style:'cancel'},{text:'Complete',onPress:()=>void update('completed')}])}/></View>}
+    <Photo uri={photo} close={() => setPhoto(null)} />
     {returning && <ReturnOrder id={id} scope={scope} online={online} close={() => { setReturning(false); refresh(); }} saved={() => { setReturning(false); clearCache(); refresh(); }} />}</SafeAreaView></ActionArea>
   </Modal>;
 }
@@ -394,6 +397,6 @@ export function OrderQrScanner({scope,online,permissions}:{scope:Scope;online:bo
   }
   return <><Pressable accessibilityRole="button" accessibilityLabel="Scan order QR code" disabled={!online||busy} onPress={()=>setScanning(true)} style={{padding:10,minHeight:44}}>{busy?<ActivityIndicator color={theme.text}/>:<Ionicons name="qr-code-outline" size={23} color={theme.text}/>}</Pressable>
     {scanning&&<Scanner order onClose={()=>setScanning(false)} onScan={resolve}/>}
-    {order&&<OrderSheet id={order.id} incoming={order.incoming} scope={scope} online={online} canUpdate={permissions.includes('orders.update')} canReturn={permissions.includes('orders.return')} currency={order.currency} onClose={()=>setOrder(null)}/>}
+    {order&&<OrderSheet scanned id={order.id} incoming={order.incoming} scope={scope} online={online} canUpdate={permissions.includes('orders.update')} canReturn={permissions.includes('orders.return')} currency={order.currency} onClose={()=>setOrder(null)}/>}
   </>;
 }
