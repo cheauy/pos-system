@@ -47,14 +47,14 @@ test('group pagination keeps all variants together and SKU search loads the whol
   const first=await mobileProductPage(db,'business','*',1,{term:'',active:true});
   const second=await mobileProductPage(db,'business','*',2,{term:'',active:true});
   assert.equal(first.total,27);
-  assert.equal(groupProducts(first.rows).length,25);
+  assert.equal(groupProducts(first.rows).length,15);
   assert.equal(first.rows.filter(row=>row.variant_group_id==='family').length,1050);
-  assert.equal(second.rows.length,2);
+  assert.equal(groupProducts(second.rows).length,12);
   const compact=await mobileProductPage(db,'business','*',1,{term:'',active:true,pageSize:10});
   const compactNext=await mobileProductPage(db,'business','*',2,{term:'',active:true,pageSize:10});
   assert.equal(groupProducts(compact.rows).length,10);
   assert.equal(groupProducts(compactNext.rows).length,10);
-  for(const size of [4,8,9]){
+  for(const size of [10,15]){
     const grid=await mobileProductPage(db,'business','*',1,{term:'',active:true,pageSize:size});
     assert.equal(groupProducts(grid.rows).length,size);
   }

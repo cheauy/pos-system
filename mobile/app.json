@@ -3,13 +3,14 @@
     "name": "TENH POS",
     "slug": "tenh-pos-mobile",
     "owner": "cheauy",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/tenh-pos-logo.png",
     "userInterfaceStyle": "automatic",
     "scheme": "tenhpos",
     "ios": {
       "supportsTablet": true,
+      "buildNumber": "2",
       "bundleIdentifier": "com.tenhpos.mobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,

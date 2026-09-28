@@ -78,7 +78,7 @@ export async function loadOrderDetail(businessId: string, orderId: string): Prom
     customerEmail: customer?.email || null, customerAddress: customer?.address || order.guest_address || null,
     guestName: order.guest_name, guestPhone: order.guest_phone, guestAddress: order.guest_address,
     source: order.order_source || "pos", fulfillment: !order.fulfillment_type || order.fulfillment_type === 'dine_in' ? 'walk_in' : order.fulfillment_type,
-    status: fullyReturned ? "refunded" : order.status, onlineStatus: order.online_status,
+    status: fullyReturned ? "refunded" : order.status === "pending" && ["online", "qr"].includes(order.order_source) && ["preparing", "ready"].includes(order.online_status ?? "") ? "in_progress" : order.status, onlineStatus: order.online_status,
     paymentState, paymentMethod: order.payment_method, total: number(order.total),
     amountPaid: number(order.amount_paid), createdAt: order.created_at, updatedAt: order.updated_at,
     branchId: order.location_id, branchName: branch.data?.name || "Unassigned",

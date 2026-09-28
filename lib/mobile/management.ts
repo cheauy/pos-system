@@ -21,13 +21,14 @@ function data<T>(result: { data: T; error: { message: string } | null }): NonNul
   return result.data;
 }
 const fields='id,variant_group_id,name,sku,barcode,description,category_id,image_url,variant_image_url,cost_price,selling_price,low_stock_quantity,stock_quantity,product_type,size,color,is_pos,is_online,is_active,updated_at';
+const listFields='id,variant_group_id,name,sku,image_url,variant_image_url,cost_price,selling_price,stock_quantity,product_type,size,color,is_pos,is_online,is_active';
 export async function managementRead(db: SupabaseClient, feature: string, businessId: string, branchId: string, url: URL) {
   if(feature==='category-products') {
     const category=url.searchParams.get('category');
     if(!id(category))throw new Error('Select a category.');
     data(await db.from('categories').select('id').eq('business_id',businessId).eq('id',category).or(`branch_ids.is.null,branch_ids.cs.{${branchId}}`).single());
     const page=Math.max(1,Math.min(10000,Number(url.searchParams.get('page'))||1));
-    return mobileProductPage(db,businessId,'id,variant_group_id,name,sku,size,color,image_url,variant_image_url,stock_quantity',page,{term:'',category,pageSize:10});
+    return mobileProductPage(db,businessId,'id,variant_group_id,name,sku,size,color,image_url,variant_image_url,stock_quantity',page,{term:'',category,pageSize:15});
   }
   if (feature==='storefront') {
     const result=await db.from('business_storefronts').select('display_name,description,phone,address,is_published,accept_online_orders,updated_at').eq('business_id',businessId).maybeSingle();
@@ -67,17 +68,17 @@ export async function managementRead(db: SupabaseClient, feature: string, busine
       const category=url.searchParams.get('category')||'';
       if(category&&!id(category)) throw new Error('Choose a valid category.');
       const [result,settingsResult]=await Promise.all([
-        mobileProductPage(db,businessId,fields,page,{term,pageSize:url.searchParams.get('limit')==='10'?10:25,bundles:url.searchParams.get('bundles')==='true',components:url.searchParams.get('components')==='true'||feature==='purchase-products'||feature==='transfer-products',active:url.searchParams.get('components')==='true'||feature==='purchase-products'||feature==='transfer-products',category}),
+        mobileProductPage(db,businessId,listFields,page,{term,pageSize:url.searchParams.get('limit')==='10'?10:15,bundles:url.searchParams.get('bundles')==='true',components:url.searchParams.get('components')==='true'||feature==='purchase-products'||feature==='transfer-products',active:url.searchParams.get('components')==='true'||feature==='purchase-products'||feature==='transfer-products',category}),
         db.from('branch_pos_settings').select('currency').eq('business_id',businessId).eq('location_id',branchId).single(),
       ]);
       const settings=data(settingsResult);
       return {...result,rows:result.rows.map(p=>({...p,image_url:p.variant_image_url||p.image_url})),currency:settings.currency};
     }
-    let query=db.from('branch_products').select(fields,{count:'exact'}).eq('business_id',businessId);
+    let query=db.from('branch_products').select(listFields,{count:'exact'}).eq('business_id',businessId);
     if(term) query=query.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`);
     if(url.searchParams.get('bundles')==='true') query=query.eq('product_type','bundle');
  if(url.searchParams.get('components')==='true'||feature==='purchase-products'||feature==='transfer-products') query=query.neq('product_type','bundle').eq('is_active',true);
-    const result=await query.order('name').order('id').range((page-1)*25,page*25-1);
+    const result=await query.order('name').order('id').range((page-1)*15,page*15-1);
  const settings=data(await db.from('branch_pos_settings').select('currency').eq('business_id',businessId).eq('location_id',branchId).single());
  return {rows:data(result).map(p=>({...p,image_url:p.variant_image_url||p.image_url})),total:result.count||0,currency:settings.currency};
   }

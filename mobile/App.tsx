@@ -1,7 +1,7 @@
 import {CurrencySettings} from './src/currency-settings';
 import {Subscription} from './src/subscription';
 import {AccountMenu} from './src/account-menu';
-import React, { createContext, lazy, Suspense, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, lazy, Suspense, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, BackHandler, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Switch, Text, View, useColorScheme } from 'react-native';
 import { Slot, router, usePathname, useGlobalSearchParams } from 'expo-router';
 import Constants from 'expo-constants';
@@ -114,6 +114,7 @@ function WorkspaceApp({ userId, onAppearance }: { userId: string; onAppearance: 
   const [branchId, setBranchId] = useState<string>();
   const [businesses, setBusinesses] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const lastSessionLoad = useRef({key:'',at:0});
   const [error, setError] = useState('');
   const pathname = usePathname();
   const [menuQuery, setMenuQuery] = useState('');
@@ -134,11 +135,12 @@ function WorkspaceApp({ userId, onAppearance }: { userId: string; onAppearance: 
   const [unread, setUnread] = useState(0);
   const [incomingNotice,setIncomingNotice]=useState(false);
   useEffect(()=>{if(!incomingNotice)return;const timer=setTimeout(()=>setIncomingNotice(false),5000);return()=>clearTimeout(timer);},[incomingNotice]);
-  usePush({userId,businessId:workspace?.business.id,branchId:workspace?.branchId},online,unread,()=>{if(!posLocked)setPage('Alerts');});
+  const openPushAlerts=useCallback(()=>{if(!posLocked)router.replace({pathname:'/[page]',params:{page:'Alerts'}});},[posLocked]);
+  usePush({userId,businessId:workspace?.business.id,branchId:workspace?.branchId},online,unread,openPushAlerts);
   const currentBusinessId = workspace?.business.id;
   const currentBranchId = workspace?.branchId;
   useEffect(() => {
-    if (!currentBusinessId || !currentBranchId || !online) return;
+    if (!currentBusinessId || !currentBranchId || !online || page === 'Alerts') return;
     let seen: Set<string> | null = null;
     let active = true, pending = false;
     const controller = new AbortController();
@@ -158,10 +160,10 @@ function WorkspaceApp({ userId, onAppearance }: { userId: string; onAppearance: 
     };
     void refresh(); const timer = setInterval(() => void refresh(), 30000);
     return () => { active = false; clearInterval(timer); controller.abort(); };
-  }, [currentBusinessId, currentBranchId, online]);
+  }, [currentBusinessId, currentBranchId, online, page]);
   useEffect(() => NetInfo.addEventListener(state => setOnline(state.isConnected !== false && state.isInternetReachable !== false)), []);
   useEffect(() => {
-    const listener = AppState.addEventListener('change', value => { if (value === 'active') setVersion(v => v + 1); });
+    const listener = AppState.addEventListener('change', value => { if (value === 'active' && Date.now()-lastSessionLoad.current.at >= 30000) setVersion(v => v + 1); });
     return () => listener.remove();
   }, []);
   useEffect(() => {
@@ -178,24 +180,26 @@ function WorkspaceApp({ userId, onAppearance }: { userId: string; onAppearance: 
       }).catch(() => { if (current) setLoading(false); });
       return () => { current = false; };
     }
+    const sessionKey=`${userId}:${businessId??''}:${branchId??''}`;
+    if(lastSessionLoad.current.key===sessionKey&&Date.now()-lastSessionLoad.current.at<30000)return;
     let current = true;
     const controller = new AbortController();
     // Expose the state of the external workspace refresh while preserving its last snapshot.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true); setError('');
     api<Workspace>('session', { businessId, branchId }, undefined, controller.signal).then(data => {
-      if (current) { setSetupRequired(false); setWorkspace(data); void offline.save(userId, 'workspace', data).catch(() => undefined); }
+      if (current) { lastSessionLoad.current={key:sessionKey,at:Date.now()}; setSetupRequired(false); setWorkspace(data); void offline.save(userId, 'workspace', data).catch(() => undefined); }
     }).catch(error => { if (current) { clearCache(userId); setWorkspace(null); setSetupRequired(error.code === 'team_setup_required'); setError(error.message); } }).finally(() => { if (current) setLoading(false); });
     return () => { current = false; controller.abort(); };
   }, [businessId, branchId, version, online, userId]);
   useEffect(() => {
-    if (!online) return;
+    if (!online || page !== 'More') return;
     let current = true;
     api<{ business_id: string; businesses: { id: string; name: string } | { id: string; name: string }[] | null }[]>('businesses')
       .then(rows => { if (current) setBusinesses(rows.flatMap(row => row.businesses ? Array.isArray(row.businesses) ? row.businesses : [row.businesses] : [])); })
       .catch(() => { if (current) setBusinesses([]); });
     return () => { current = false; };
-  }, [online]);
+  }, [online, page]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (page === 'POS' && checkout === '1') { router.setParams({ checkout: '' }); return true; }
@@ -257,7 +261,7 @@ function WorkspaceApp({ userId, onAppearance }: { userId: string; onAppearance: 
         : ['Profile','Users','Branches','Categories'].includes(currentPage) ? <AccountMenu key={currentPage} feature={currentPage as 'Profile'|'Users'|'Branches'|'Categories'} workspace={workspace} online={online} search={menuQuery}/>
         : currentPage === 'Reports' ? <Reports workspace={workspace} online={online} />
         : currentPage === 'POS' ? <Pos workspace={workspace} online={online} onLocked={setPosLocked} search={posQuery} />
-        : currentPage === 'Alerts' ? <Alerts scope={{ userId, businessId: workspace.business.id, branchId: workspace.branchId }} online={online} onUnread={setUnread} />
+        : currentPage === 'Alerts' ? <Alerts key={`${userId}:${workspace.business.id}:${workspace.branchId}`} scope={{ userId, businessId: workspace.business.id, branchId: workspace.branchId }} online={online} onUnread={setUnread} />
         : <Records key={currentPage} feature={currentPage} scope={{ userId: workspace.userId, businessId: workspace.business.id, branchId: workspace.branchId }} online={online} permissions={workspace.permissions} workspace={workspace} search={menuQuery} onSearch={value=>{setMenuQuery(value);setMenuSearch(true);}} />);
   }
   if (setupRequired) return <TeamSetup onComplete={() => setVersion(value => value + 1)} />;

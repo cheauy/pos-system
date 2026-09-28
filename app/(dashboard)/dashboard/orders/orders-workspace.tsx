@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import ReturnItemsForm from "./[id]/return-items-form";
+import { CancelOrderItem } from "./[id]/order-detail-controls";
 import OrderPrintMenu from "@/components/order-print-menu";
 import OrderPrintPreview, {type OrderPrintKind} from "@/components/order-print-preview";
 import { createPortal } from "react-dom";
@@ -27,7 +28,7 @@ import styles from "./orders-workspace.module.css";
 type Props = { businessId: string; businessName: string; showTableQr?: boolean; data: WorkspaceData; filters: WorkspaceFilters; permissions: WorkspacePermissions };
 type ActionDialog = { type: "edit" | "status" | "delete"; order: OrderRow };
 type QueueItem = { id: string; number: string };
-const statusTabs = ["all", "new", "pending", "completed", "cancelled", "refunded"];
+const statusTabs = ["all", "new", "pending", "in_progress", "completed", "cancelled", "refunded"];
 
 const orderHref = (id: string) => `/dashboard/orders/${encodeURIComponent(id)}`;
 
@@ -107,7 +108,7 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
   const firstShown = data.total === 0 ? 0 : (data.page - 1) * filters.limit + 1;
   const lastShown = Math.min(data.page * filters.limit, data.total);
   const activeFilters = !!(filters.search || filters.from || filters.to || [filters.branch, filters.source, filters.fulfillment, filters.payment, filters.status].some((value) => value !== "all"));
-  const detailContent = <DetailPanel onPrint={(id,kind)=>setPrintPreview({id,kind})} detail={detail} loading={detailLoading} error={detailError} currency={data.currency} timezone={data.timezone} permissions={permissions}
+  const detailContent = <DetailPanel onPrint={(id,kind)=>setPrintPreview({id,kind})} detail={detail} loading={detailLoading} error={detailError} currency={data.currency} timezone={data.timezone} permissions={permissions} businessId={businessId}
     onClose={() => { setPanelClosed(true); setMobileOpen(false); }} onRetry={() => setDetailReload((value) => value + 1)} onAction={openAction} onReturned={() => { setDetailReload(value => value + 1); refresh(); }} />;
 
   return <div className={styles.workspace}>
@@ -127,7 +128,7 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
           <Metric title="Total Orders Today" value={String(data.metrics.today)} tone="blue" icon={<ShoppingCart size={23} />}
             footer={data.metrics.yesterday > 0 ? <span className={data.metrics.today >= data.metrics.yesterday ? styles.positive : styles.negative}>{data.metrics.today >= data.metrics.yesterday ? <ArrowUp size={12} /> : <ArrowDown size={12} />}{Math.abs((data.metrics.today - data.metrics.yesterday) / data.metrics.yesterday * 100).toFixed(0)}% <small>vs. yesterday</small></span> : <span>Today · {data.timezone}</span>} />
           <Metric title="Completed Sales" value={money(data.metrics.completed, data.currency)} tone="green" icon={<DollarSign size={23} />} footer={<span>Completed orders · filtered period</span>} />
-          <Metric title="Pending Orders" value={String(data.metrics.pending)} tone="orange" icon={<Clock3 size={23} />} footer={<span>{money(data.metrics.pendingValue, data.currency)} · New + Pending</span>} />
+          <Metric title="Active Orders" value={String(data.metrics.pending)} tone="orange" icon={<Clock3 size={23} />} footer={<span>{money(data.metrics.pendingValue, data.currency)} · New + Confirmed + In Progress</span>} />
           <Metric title="Refunded" value={String(data.metrics.refunds)} tone="red" icon={<RotateCcw size={22} />} footer={<span>{money(data.metrics.refundedAmount, data.currency)} · Recorded refunds</span>} />
         </div>
         <form ref={filterForm} key={JSON.stringify(filters)} onSubmit={applyFilters} className={styles.filters} aria-label="Filter orders">
@@ -213,40 +214,54 @@ function pageButtons(current: number, total: number): (number | "gap")[] {
   return output;
 }
 
-function DetailPanel({ detail, loading, error, currency, timezone, permissions, onClose, onRetry, onAction, onReturned, onPrint }: {
+function DetailPanel({ detail, loading, error, currency, timezone, permissions, businessId, onClose, onRetry, onAction, onReturned, onPrint }: {
   onPrint: (id:string,kind:OrderPrintKind)=>void;
   onReturned: () => void;
-  detail: OrderDetail | null; loading: boolean; error: string; currency: string; timezone: string; permissions: WorkspacePermissions;
+  detail: OrderDetail | null; loading: boolean; error: string; currency: string; timezone: string; permissions: WorkspacePermissions; businessId: string;
   onClose: () => void; onRetry: () => void; onAction: (type: ActionDialog["type"], row: OrderRow) => void;
 }) {
+  const [statusBusy,setStatusBusy]=useState(false);
+  const [statusError,setStatusError]=useState("");
   if (loading) return <div className={styles.detailCard} aria-busy="true" aria-label="Loading order details"><div className={styles.skeletonTitle} /><div className={styles.skeletonLine} /><div className={styles.skeletonBlock} /><div className={styles.skeletonBlock} /><div className={styles.skeletonLine} /></div>;
   if (error) return <div className={styles.detailCard}><div className={styles.error} role="alert"><AlertCircle size={19} />{error}</div><button className={styles.button} type="button" onClick={onRetry}>Try again</button></div>;
   if (!detail) return <div className={styles.detailPlaceholder}><FileText size={30} /><p>Select an order to view its details.</p></div>;
   const order = detail;
   const initials = order.customerName.split(/\s+/).slice(0, 2).map((name) => name[0]).join("").toUpperCase();
-  const canStatus = permissions.edit && nextStatuses(order, permissions.cancel).length > 0;
+  const nextStatus = permissions.edit ? nextStatuses(order, permissions.cancel)[0] : undefined;
   const blockedDelete = deleteReason(order);
   const paid = Math.max(0, order.amountPaid - order.changeAmount);
   const returnedQuantity = order.items.reduce((total, item) => total + item.returnedQuantity, 0);
   const allReturned = order.items.length > 0 && order.items.every(item => item.returnedQuantity >= item.quantity);
+  const canCancelItem = permissions.cancel && ["online","qr"].includes(order.source) && ["new","pending","in_progress"].includes(order.status) && !order.deleteBlocked && !order.discount && !order.couponCode && !order.returnsUnavailable;
+  async function advanceStatus() {
+    if (!nextStatus || !order.updatedAt || statusBusy) return;
+    setStatusBusy(true); setStatusError("");
+    try {
+      const result = await changeOrderWorkspaceStatus(order.id, order.updatedAt, nextStatus.value, "", businessId);
+      if (!result.success) setStatusError(result.message);
+      else onReturned();
+    } catch { setStatusError("Refresh the order before trying again."); }
+    finally { setStatusBusy(false); }
+  }
   return <section className={styles.detailCard} aria-label={`Order ${order.orderNumber} details`}>
     <div className={styles.detailHeading}><div><h2>Order {order.orderNumber}</h2><div><Badge value={order.status} />{returnedQuantity > 0 && <span className={`${styles.badge} ${styles.orange}`}>{allReturned ? "Items returned" : "Partially returned"} · Refund recorded</span>}<small>{dateText(order.createdAt, timezone)} at {dateText(order.createdAt, timezone, true)}</small></div></div><button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close order details"><X size={16} /></button></div>
     <div className={styles.detailActions}>
       <Link className={styles.miniButton} href={orderHref(order.id)}><Eye size={13} />View</Link>
       <OrderPrintMenu orderId={order.id} className={styles.miniButton} onPreview={kind=>onPrint(order.id,kind)}/>
-      {permissions.refund && !order.returnsUnavailable && ["new", "pending", "completed"].includes(order.status) && <ReturnItemsForm key={order.id} orderId={order.id} orderNumber={order.orderNumber} triggerClassName={styles.miniButton} onReturned={onReturned} currency={currency} items={order.items.map(item => ({ id: item.id, product_name: [item.name, item.variant, ...item.options].filter(Boolean).join(" · "), quantity: item.quantity, unit_price: item.unitPrice, returned_quantity: item.returnedQuantity }))} />}
+      {permissions.refund && !order.returnsUnavailable && ["new", "pending", "in_progress", "completed"].includes(order.status) && <ReturnItemsForm key={order.id} orderId={order.id} orderNumber={order.orderNumber} triggerClassName={styles.miniButton} onReturned={onReturned} currency={currency} items={order.items.map(item => ({ id: item.id, product_name: [item.name, item.variant, ...item.options].filter(Boolean).join(" · "), quantity: item.quantity, unit_price: item.unitPrice, returned_quantity: item.returnedQuantity }))} />}
     </div>
     <div className={styles.manageActions}>
       <button type="button" className={styles.miniButton} disabled={!permissions.edit} title={!permissions.edit ? "Order update permission is required." : "Edit order details"} onClick={() => onAction("edit", order)}><Pencil size={13} />Edit</button>
-      <button type="button" className={styles.miniButton} disabled={!canStatus} title={!canStatus ? "No available status changes for this order." : "Change order status"} onClick={() => onAction("status", order)}><ArrowUpDown size={13} />Change Status</button>
       <button type="button" className={`${styles.miniButton} ${styles.dangerText}`} disabled={!permissions.delete || !!blockedDelete} title={blockedDelete || (!permissions.delete ? "Delete permission is required." : "Delete unpaid order")} onClick={() => onAction("delete", order)}><Trash2 size={13} />Delete</button>
     </div>
+    {nextStatus && <button type="button" className={`${styles.primary} ${styles.detailProgress}`} disabled={statusBusy||!order.updatedAt} onClick={()=>void advanceStatus()}><Check size={16}/>{statusBusy?"Updating…":nextStatus.label}</button>}
+    {statusError && <p role="alert" className={styles.error}>{statusError}</p>}
     <section className={styles.detailSection}><h3>Customer</h3><div className={styles.customerProfile}><div className={styles.avatar}>{initials}</div><div><strong>{order.customerName}</strong>{order.customerPhone && <a href={`tel:${order.customerPhone.replace(/[^\d+]/g, "")}`}><Phone size={11} />{order.customerPhone}</a>}{order.customerEmail && <a href={`mailto:${order.customerEmail}`}><Mail size={11} />{order.customerEmail}</a>}{!order.customerPhone && !order.customerEmail && <small>No contact information</small>}</div></div>{order.customerAddress && <p className={styles.address}><MapPin size={13} />{order.customerAddress}</p>}</section>
     <div className={styles.orderContext}><span><SourceIcon source={order.source} />{sourceLabels[order.source] || order.source}</span>{order.fulfillment && <span>{fulfillmentLabels[order.fulfillment] || order.fulfillment}</span>}<span><Store size={12} />{order.branchName}</span>{order.tableName && <span><QrCode size={12} />{order.tableName}</span>}{order.onlineStatus && <span>{statusLabels[order.onlineStatus] || order.onlineStatus}</span>}</div>
     {order.requestedFor && <p className={styles.scheduled}><Clock3 size={13} />Scheduled: {dateText(order.requestedFor, timezone)} · {dateText(order.requestedFor, timezone, true)}</p>}
     <section className={styles.detailSection}><h3>Items ({order.items.length})</h3><div className={styles.items}>{order.items.map((item) => <div key={item.id} className={styles.item}>
       <div className={styles.itemImage}>{item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <Package size={19} />}</div>
-      <div className={styles.itemText}><strong>{item.name}</strong>{item.variant && <small>{item.variant}</small>}{item.options.length > 0 && <small>{item.options.join(", ")}</small>}<small>{money(item.unitPrice, currency)} × {item.quantity}</small>{item.returnedQuantity > 0 && <small>Returned: {item.returnedQuantity} · Refund recorded</small>}</div><span>{money(item.subtotal, currency)}</span>
+      <div className={styles.itemText}><strong>{item.name}</strong>{item.variant && <small>{item.variant}</small>}{item.options.length > 0 && <small>{item.options.join(", ")}</small>}<small>{money(item.unitPrice, currency)} × {item.quantity}</small>{item.returnedQuantity > 0 && <small>Returned: {item.returnedQuantity} · Refund recorded</small>}{canCancelItem && <CancelOrderItem orderId={order.id} itemId={item.id} name={item.name} updatedAt={order.updatedAt} businessId={businessId} onCancelled={onReturned}/>}</div><span>{money(item.subtotal, currency)}</span>
     </div>)}</div></section>
     <div className={styles.totals}><div><span>Subtotal</span><span>{money(order.subtotal, currency)}</span></div><div><span>Discount{order.couponCode ? ` · ${order.couponCode}` : ""}</span><span>−{money(order.discount, currency)}</span></div><div><span>Delivery fee</span><span>{money(order.deliveryFee, currency)}</span></div><div className={styles.grandTotal}><strong>Total</strong><strong>{money(order.total, currency)}</strong></div></div>
     <section className={styles.detailSection}><div className={styles.sectionHeading}><h3>Payment</h3><Badge value={order.paymentState} payment /></div><div className={styles.paymentRow}><CreditCard size={20} /><div><strong>{methodLabel(order.paymentMethod)}</strong>{order.paymentReference && <small>Reference: {order.paymentReference}</small>}</div><strong>{money(paid, currency)}</strong></div>{order.changeAmount > 0 && <p className={styles.paymentExtra}>Change given <span>{money(order.changeAmount, currency)}</span></p>}{order.remainingBalance > 0 && <p className={styles.paymentExtra}>Balance due <strong>{money(order.remainingBalance, currency)}</strong></p>}</section>
@@ -335,7 +350,7 @@ function ManageOrderDialog({ action, businessId, permissions, onClose, onSuccess
     }).catch(() => { if (active) setError("The order could not be loaded. Please try again."); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [action.order.id, businessId, permissions.cancel, reload]);
-  const contactEditable = !!order && !order.customerId && ["new", "pending"].includes(order.status);
+  const contactEditable = !!order && !order.customerId && ["new", "pending", "in_progress"].includes(order.status);
   const options = order ? nextStatuses(order, permissions.cancel) : [];
   const blockedDelete = order ? deleteReason(order) : "";
   const title = action.type === "edit" ? "Edit Order Details" : action.type === "status" ? "Change Order Status" : "Delete Order";
@@ -373,8 +388,8 @@ function ManageOrderDialog({ action, businessId, permissions, onClose, onSuccess
           <p className={styles.fieldHelp}>This is the order note, not a private staff note. It may appear on order details and receipts.</p>
         </>}
         {action.type === "status" && <>
-          <p className={styles.modalHelp}>Choose the next step. A status change does not collect or refund payment.</p>
-          {options.length ? <label className={styles.fieldLabel}>New status<select value={status} onChange={(event) => setStatus(event.target.value)} disabled={saving}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : <div className={styles.info}><ShieldCheck size={18} />This order has no available status changes. Completed, cancelled, and refunded orders cannot be reopened here.</div>}
+          <p className={styles.modalHelp}>Next status: <strong>{options[0]?.label || "Unavailable"}</strong>. This does not collect or refund payment.</p>
+          {!options.length && <div className={styles.info}><ShieldCheck size={18} />This order has no available status changes. Completed, cancelled, and refunded orders cannot be reopened here.</div>}
           {status === "cancelled" && <><div className={styles.warning}><AlertCircle size={18} />Cancellation uses the existing stock-restoration procedure. This cannot be undone here.</div><label className={styles.fieldLabel}>Cancellation reason<textarea required value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} rows={3} disabled={saving} /></label></>}
         </>}
         {action.type === "delete" && <>

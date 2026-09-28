@@ -17,7 +17,7 @@ import { getEffectivePermissions } from '@/lib/auth/effective-permissions';
 import type { Permission } from '@/lib/auth/permissions';
 import { loadWorkspace, loadOrderDetail } from '@/app/(dashboard)/dashboard/orders/order-workspace-data';
 import { parseFilters } from '@/app/(dashboard)/dashboard/orders/order-workspace-types';
-import { saveOrderWorkspaceDetails, changeOrderWorkspaceStatus } from '@/app/(dashboard)/dashboard/orders/order-workspace-actions';
+import { saveOrderWorkspaceDetails, changeOrderWorkspaceStatus, cancelOrderWorkspaceItem } from '@/app/(dashboard)/dashboard/orders/order-workspace-actions';
 import { markNotificationsRead } from '@/app/(dashboard)/dashboard/notifications/read-actions';
 import { loadPosWorkspace, completePosSale, checkPosSale, savePosHold, deletePosHold } from '@/app/(dashboard)/dashboard/pos/pos-workspace-actions';
 import { configuredLine, cartIssue, stockFor, totals, uuid, shippingIssue, orderDetailsIssue, discountIssue } from '@/app/(dashboard)/dashboard/pos/pos-workspace-helpers';
@@ -73,7 +73,7 @@ const access: Record<string, Permission> = {
   'purchase-receive': 'purchases.update', 'purchase-receipt-status': 'purchases.update',
   transfers: 'transfers.manage', 'transfer-detail': 'transfers.manage', 'transfer-action': 'transfers.manage',
   reports: 'reports.view',
-  orders: 'orders.view', order: 'orders.view', stock: 'inventory.view',
+  orders: 'orders.view', order: 'orders.view', 'order-item-cancel': 'orders.cancel', stock: 'inventory.view',
   'customer-fields': 'customers.view', customers: 'customers.view', 'expense-breakdown': 'expenses.manage', expenses: 'expenses.manage', 'register-detail': 'register.manage', register: 'register.manage',
   'currency-settings': 'pos.access', pos: 'pos.access', quote: 'pos.access', sale: 'pos.access', 'sale-status': 'pos.access',
   hold: 'pos.access', 'delete-hold': 'pos.access',
@@ -136,7 +136,7 @@ async function handle(request: Request, feature: string) {
       const url = new URL(request.url);
       const page = Math.max(1, Math.min(10000, Number(url.searchParams.get('page')) || 1));
       if (!Number.isInteger(page)) throw new RequestError('Invalid page.');
-      const listLimit=['customers','expenses','register'].includes(feature)?10:url.searchParams.get('limit')==='10'?10:25;
+      const listLimit=feature==='account-categories'||url.searchParams.get('limit')==='10'?10:15;
       const from = (page - 1) * listLimit;
       const orderLimit = mobileOrderPageSize(url.searchParams.get('limit'));
       const orderFrom = (page - 1) * orderLimit;
@@ -152,12 +152,7 @@ async function handle(request: Request, feature: string) {
         }
 
         if(feature==='account-profile'||feature==='account-subscription'||feature in accountAccess){
-          const result=await mobileAccountRead(db,feature,business,scope.branchId,user);
-          if(feature!=='account-profile'&&url.searchParams.get('limit')==='10'){
-            const query=(url.searchParams.get('search')||'').trim().toLowerCase().slice(0,100);
-            const rows=result.rows.filter(row=>!query||['name','email','phone','code'].some(key=>String((row as Record<string,unknown>)[key]??'').toLowerCase().includes(query)));
-            return response({...result,rows:rows.slice((page-1)*10,page*10),total:rows.length});
-          }
+          const result=await mobileAccountRead(db,feature,business,scope.branchId,user,page,term);
           return response(result);
         }
         if(feature==='expense-breakdown') return response(await mobileExpenseBreakdown(db,business.id,scope.branchId,url.searchParams.get('range')||'30days'));
@@ -267,7 +262,7 @@ async function handle(request: Request, feature: string) {
           const customer = one(order.customers);
           return response({ id: order.id, orderNumber: order.order_number, customerName: order.guest_name || customer?.name || 'Customer',
             customerPhone: order.guest_phone || customer?.phone, customerAddress: order.guest_address || customer?.address,
-            total: order.total, status: order.status, onlineStatus: order.online_status, paymentState: order.payment_status,
+            total: order.total, discount: order.discount, couponCode: order.coupon_code, status: order.status, onlineStatus: order.online_status, paymentState: order.payment_status,
             note: order.customer_note, guestName: order.guest_name, guestPhone: order.guest_phone, guestAddress: order.guest_address, paymentMethod: order.payment_method, source: order.order_source, updatedAt: order.updated_at, createdAt: order.created_at,
             items: order.order_items.map(item => ({ id: item.id, name: item.product_name, quantity: item.quantity, subtotal: item.subtotal, variant: item.variant_label, imageUrl: one(item.products)?.image_url })) });
         }
@@ -337,7 +332,7 @@ async function handle(request: Request, feature: string) {
         if (feature === 'stock') {
           if(url.searchParams.get('grouped')==='true') {
             const [products, categories] = await Promise.all([
-              mobileProductPage(db,business.id,'id,variant_group_id,name,sku,barcode,image_url,variant_image_url,size,color,selling_price,stock_quantity,low_stock_quantity',page,{term,active:true,category:url.searchParams.get('category')||undefined,pageSize:Number(url.searchParams.get('limit')||25)}),
+              mobileProductPage(db,business.id,'id,variant_group_id,name,sku,image_url,variant_image_url,size,color,stock_quantity,low_stock_quantity',page,{term,active:true,category:url.searchParams.get('category')||undefined,pageSize:listLimit}),
               db.from('categories').select('id,name,branch_ids').eq('business_id',business.id).order('name'),
             ]);
             return response({...products,page,stockCategories:(categories.data||[]).filter(row=>!row.branch_ids||row.branch_ids.includes(scope.branchId)).map(({id,name})=>({id,name}))});
@@ -346,7 +341,7 @@ async function handle(request: Request, feature: string) {
           let query = db.from('branch_products').select('id,name,sku,barcode,image_url,variant_image_url,size,color,selling_price,stock_quantity,low_stock_quantity', { count: 'exact' })
             .eq('business_id', business.id).eq('is_active', true);
           if (term) query = query.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`);
-          const result = await query.order('name').order('id').range(from, from + 24);
+          const result = await query.order('name').order('id').range(from, from + listLimit - 1);
           if (result.error) throw new RequestError('Unable to load stock. Please retry.', 503);
           return response({ rows: result.data, total: result.count, page });
         }
@@ -354,7 +349,7 @@ async function handle(request: Request, feature: string) {
           let query = db.from('customers').select('id,name,phone,email,birthday,address,loyalty_points', { count: 'exact' })
             .eq('business_id', business.id).eq('location_id', scope.branchId);
           if (term) query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%`);
-          const result = await query.order('created_at',{ascending:false,nullsFirst:false}).order('id',{ascending:false}).range((page-1)*10,page*10-1);
+          const result = await query.order('created_at',{ascending:false,nullsFirst:false}).order('id',{ascending:false}).range(from,from+listLimit-1);
           if (result.error) throw new RequestError('Unable to load customers.', 503);
           return response({ rows: result.data, total: result.count, page, fieldSettings: await getCustomerFieldSettings(business.id) });
         }
@@ -410,6 +405,13 @@ async function handle(request: Request, feature: string) {
         let body;
         try { body = JSON.parse(bodyText); } catch { throw new RequestError('Invalid request.'); }
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw new RequestError('Invalid request.');
+        if (feature === 'order-item-cancel') {
+          const id = mobileSelection(typeof body.id === 'string' ? body.id : null);
+          const itemId = mobileSelection(typeof body.itemId === 'string' ? body.itemId : null);
+          if (!id || !itemId || typeof body.updatedAt !== 'string' || typeof body.reason !== 'string') throw new RequestError('Review the item and reason.');
+          const result = await cancelOrderWorkspaceItem(id, itemId, body.updatedAt, body.reason, business.id);
+          return response(result, result.success ? 200 : 409);
+        }
         if (feature === 'account-categories') {
           if (!permissions.includes('categories.manage')) throw new RequestError('You cannot manage categories.', 403);
           if (!['create','edit','delete'].includes(body.action)) throw new RequestError('Choose a category action.');
@@ -624,7 +626,7 @@ async function handle(request: Request, feature: string) {
             const result = await saveOrderWorkspaceDetails(id, body.updatedAt, {note:body.note,guestName:body.guestName,guestPhone:body.guestPhone,guestAddress:body.guestAddress}, business.id);
             return response(result, result.success ? 200 : 409);
           }
-          if (!id || typeof body.status !== 'string' || !['accepted', 'preparing', 'ready', 'completed'].includes(body.status)
+          if (!id || typeof body.status !== 'string' || !['pending', 'in_progress', 'accepted', 'preparing', 'ready', 'completed'].includes(body.status)
             || typeof body.updatedAt !== 'string' || !Number.isFinite(Date.parse(body.updatedAt))) throw new RequestError('Invalid order update. Refresh this order.');
           const result = await changeOrderWorkspaceStatus(id, body.updatedAt, body.status, '', business.id);
           return response(result, result.success ? 200 : 409);

@@ -17,7 +17,7 @@ function harness(){
  class ApiError extends Error{constructor(status){super('Denied');this.status=status;}}
  const deps={react,'react-native':{AppState:{currentState:'active',addEventListener:(_,fn)=>{listeners.add(fn);return {remove:()=>listeners.delete(fn)};}}},
   './client':{ApiError,api:(path,scope,body,signal)=>new Promise((resolve,reject)=>requests.push({path,scope,signal,resolve,reject}))},
-  './offline':{offline:{clear:async()=>{},read:async()=>undefined,save:async()=>{}}},'./offline-snapshots':{canSaveOffline:()=>false}};
+  './offline':{offline:{clear:async()=>{},remove:async()=>{},read:async()=>undefined,save:async()=>{}}},'./offline-snapshots':{canSaveOffline:()=>false}};
  const module={exports:{}};
  const js=ts.transpileModule(fs.readFileSync('mobile/src/data.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  new Function('require','module','exports','setInterval','clearInterval',js)(id=>{assert.ok(id in deps,id);return deps[id];},module,module.exports,fn=>{timers.add(fn);return fn;},fn=>timers.delete(fn));
@@ -52,6 +52,27 @@ test('cache capacity evicts one snapshot instead of clearing every menu',async()
 test('automatic refresh never cancels a slow request that is already in flight',()=>{
  const h=harness();h.render('orders?search=');assert.equal(h.requests.length,1);
  h.timers.forEach(fn=>fn());h.resume();assert.equal(h.requests.length,1);assert.equal(h.requests[0].signal.aborted,false);
+});
+
+test('identical reads share a request until the last subscriber leaves',async()=>{
+ let calls=0,signal;
+ const react={useCallback:v=>v,useEffect(){},useRef:v=>({current:v}),useState:v=>[v,()=>{}]};
+ const module={exports:{}};
+ const source=ts.transpileModule(fs.readFileSync('mobile/src/data.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ const deps={react,'react-native':{AppState:{}},'./client':{ApiError:Error,api:(_path,_scope,_body,abort)=>{calls++;signal=abort;return new Promise(()=>{});}},'./offline':{offline:{clear:async()=>{},remove:async()=>{}}},'./offline-snapshots':{canSaveOffline:()=>false}};
+ const read=new Function('require','module','exports',source+';return sharedRead;')(id=>deps[id],module,module.exports);
+ const first=read('u:b:one:orders?page=1','orders?page=1',{userId:'u',businessId:'b',branchId:'one'});
+ const second=read('u:b:one:orders?page=1','orders?page=1',{userId:'u',businessId:'b',branchId:'one'});
+ assert.equal(calls,1);assert.equal(first.promise,second.promise);
+ first.release();assert.equal(signal.aborted,false);
+ second.release();assert.equal(signal.aborted,true);
+});
+test('targeted invalidation keeps other accounts, branches and menus cached',()=>{
+ const h=harness();
+ for(const key of ['u:b:one:catalog?page=1','u:b:one:orders?page=1','u:b:two:catalog?page=1','other:b:one:catalog?page=1'])h.cache.set(key,{data:{},at:Date.now()});
+ h.invalidateCache(h.scope,['catalog?']);
+ assert.equal(h.cache.has('u:b:one:catalog?page=1'),false);
+ for(const key of ['u:b:one:orders?page=1','u:b:two:catalog?page=1','other:b:one:catalog?page=1'])assert.equal(h.cache.has(key),true);
 });
 
 test('unchanged offline snapshots avoid rewriting the keychain',async()=>{

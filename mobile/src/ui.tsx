@@ -15,6 +15,7 @@ const khmer: Record<string, string> = {
   'No records yet': 'មិនទាន់មានទិន្នន័យ', 'Previous': 'មុន', 'Next': 'បន្ទាប់',
   'Choose branch': 'ជ្រើសរើសសាខា', 'Choose business': 'ជ្រើសរើសអាជីវកម្ម',
   'You are offline': 'មិនមានអ៊ីនធឺណិត', 'Yesterday': 'ម្សិលមិញ', 'Pending': 'កំពុងរង់ចាំ',
+  'Confirmed': 'បានបញ្ជាក់', 'In Progress': 'កំពុងដំណើរការ', 'Cancel Item': 'បោះបង់ទំនិញ', 'Active orders': 'ការបញ្ជាទិញកំពុងដំណើរការ',
   'Accept order': 'ទទួលការបញ្ជាទិញ', 'Start packing': 'ចាប់ផ្ដើមវេចខ្ចប់',
   'Ready for delivery': 'រួចរាល់សម្រាប់ដឹកជញ្ជូន', 'Complete order': 'បញ្ចប់ការបញ្ជាទិញ',
   'Mark as read': 'សម្គាល់ថាបានអាន', 'Scan barcode': 'ស្កេនបារកូដ',
@@ -63,6 +64,7 @@ export function Button({ title, onPress, disabled = false, secondary = false, bu
   const professional = useContext(ActionContext);
   const action = professional ? /^Delete|^Remove|^Clear|^Discard/.test(title) ? { colour: '#c13c4c', icon: 'trash-outline' as const }
     : /^Open register$/.test(title) ? { colour: '#16765a', icon: 'lock-open-outline' as const }
+    : title === 'In Progress' ? { colour: '#275de8', icon: 'time-outline' as const }
     : /^Save|^Confirm|^Complete|^Receive|^Accept|^New sale/.test(title) ? { colour: '#16765a', icon: 'checkmark-circle-outline' as const }
     : /^Edit|^Count/.test(title) ? { colour: '#275de8', icon: 'create-outline' as const }
     : /^Add|^New|^Quick Add/.test(title) ? { colour: '#275de8', icon: 'add-circle-outline' as const }

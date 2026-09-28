@@ -1,16 +1,14 @@
 export function mobileOrderPageSize(value: string | null) {
   const size = Number(value);
-  return [8, 10, 15].includes(size) ? size : 8;
+  return [10, 15].includes(size) ? size : 15;
 }
 
 export function incomingOrderStatus(order: { payment_status: string | null; online_status: string | null }) {
-  return order.payment_status === 'refunded' ? 'refunded' : order.online_status === 'rejected' ? 'cancelled' : order.online_status === 'completed' ? 'completed' : 'pending';
+  return order.payment_status === 'refunded' ? 'refunded' : order.online_status === 'rejected' ? 'cancelled' : order.online_status === 'completed' ? 'completed' : ['preparing','ready'].includes(order.online_status || '') ? 'in_progress' : order.online_status === 'accepted' ? 'pending' : 'new';
 }
 
 export async function loadMobileOrderPage(load: (filters: WorkspaceFilters) => Promise<WorkspaceData>, filters: WorkspaceFilters, page: number, size: number) {
-  // The shared SQL accepts at least ten rows. Forty is divisible by eight,
-  // so mobile grid pages keep exact boundaries without changing web pagination.
-  const batch = size === 8 ? 40 : size;
+  const batch = size;
   const offset = (page - 1) * size;
   const sourcePage = Math.floor(offset / batch) + 1;
   const result = await load({ ...filters, page: sourcePage, limit: batch });

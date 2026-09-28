@@ -1,4 +1,4 @@
-export type OrderStatus = "new" | "pending" | "completed" | "cancelled" | "refunded";
+export type OrderStatus = "new" | "pending" | "in_progress" | "completed" | "cancelled" | "refunded";
 export type PaymentState = "paid" | "unpaid" | "partial" | "pending_verification" | "refunded";
 export type WorkspaceFilters = {
   search: string; status: string; branch: string; source: string;
@@ -44,8 +44,8 @@ export type EditOrderInput = {
 };
 
 export const statusLabels: Record<string, string> = {
-  all: "All", new: "New", pending: "Pending", completed: "Completed", cancelled: "Cancelled", refunded: "Returned",
-  accepted: "Accepted", preparing: "Preparing", ready: "Ready", rejected: "Rejected",
+  all: "All", new: "New", pending: "Confirmed", in_progress: "In Progress", completed: "Completed", cancelled: "Cancelled", refunded: "Returned",
+  accepted: "Confirmed", preparing: "In Progress", ready: "In Progress", rejected: "Rejected",
 };
 export const paymentLabels: Record<string, string> = {
   paid: "Paid", unpaid: "Unpaid", partial: "Part-paid", pending_verification: "Verification", refunded: "Refunded",
@@ -69,29 +69,29 @@ export function dateText(value: string, timezone: string, timeOnly = false) {
 }
 export function nextStatuses(order: OrderRow, canCancel: boolean): { value: string; label: string }[] {
   if (["completed", "cancelled", "refunded"].includes(order.status)) return [];
-  const options: { value: string; label: string }[] = [];
   if (["online", "qr"].includes(order.source)) {
     const next: Record<string, { value: string; label: string }> = {
-      new: { value: "accepted", label: "Accept order" },
-      accepted: { value: "preparing", label: "Start preparing" },
-      preparing: { value: "ready", label: "Mark ready" },
+      new: { value: "accepted", label: "Confirmed" },
+      accepted: { value: "preparing", label: "In Progress" },
+      preparing: { value: "completed", label: "Complete" },
       ready: { value: "completed", label: "Complete order" },
     };
     const choice = next[order.onlineStatus || "new"];
-    if (choice) options.push(choice);
-  } else {
-    if (order.status === "new") options.push({ value: "pending", label: "Mark pending" });
-    options.push({ value: "completed", label: "Mark completed" });
+    return choice ? [choice] : [];
   }
-  if (canCancel && !order.deleteBlocked) options.push({ value: "cancelled", label: "Cancel order (restore stock)" });
-  return options;
+  const next: Record<string, { value: string; label: string }> = {
+    new: { value: "pending", label: "Confirmed" },
+    pending: { value: "in_progress", label: "In Progress" },
+    in_progress: { value: "completed", label: "Complete" },
+  };
+  return next[order.status] ? [next[order.status]] : [];
 }
 export function deleteReason(order: OrderRow) {
-  if (!["new", "pending", "cancelled"].includes(order.status)) return "Completed and refunded records cannot be deleted. Use the return/refund workflow.";
+  if (!["new", "pending", "in_progress", "cancelled"].includes(order.status)) return "Completed and refunded records cannot be deleted. Use the return/refund workflow.";
   if (order.deleteBlocked) return "This order has payment, credit, loyalty, or return history. Use the return/refund workflow instead.";
   return "";
 }
-const validStatuses = ["all", "new", "pending", "completed", "cancelled", "refunded"];
+const validStatuses = ["all", "new", "pending", "in_progress", "completed", "cancelled", "refunded"];
 function choose(value: unknown, options: string[], fallback: string) { return typeof value === "string" && options.includes(value) ? value : fallback; }
 function dateParam(value: unknown) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return "";

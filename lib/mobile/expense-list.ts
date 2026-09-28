@@ -2,6 +2,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 
 export async function mobileExpenses(db:SupabaseClient,businessId:string,branchId:string,url:URL,now=new Date()) {
   const page=Math.max(1,Math.min(10000,Number(url.searchParams.get('page'))||1));
+  const pageSize=url.searchParams.get('limit')==='10'?10:15;
   const period=url.searchParams.get('period'),category=url.searchParams.get('category');
   const term=(url.searchParams.get('search')||'').slice(0,100).replace(/[^\p{L}\p{N}\s_-]/gu,'');
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Phnom_Penh',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
@@ -14,7 +15,7 @@ export async function mobileExpenses(db:SupabaseClient,businessId:string,branchI
     return query;
   };
   const ascending=url.searchParams.get('sort')==='oldest';
-  const result=await base('id,category,description,amount,expense_date,payee').order('expense_date',{ascending}).order('id').range((page-1)*10,page*10-1);
+  const result=await base('id,category,description,amount,expense_date,payee').order('expense_date',{ascending}).order('id').range((page-1)*pageSize,page*pageSize-1);
   if(result.error)throw new Error('Unable to load expenses.');
   let totalAmount=0;
   // ponytail: O(filtered expenses); replace with a database aggregate if large ledgers make this slow.

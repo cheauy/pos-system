@@ -24,7 +24,7 @@ test('new account readers scope profiles, staff branches and category visibility
   '@/lib/supabase/admin':{supabaseAdmin:{}},
   '@/lib/subscriptions/plans':{subscriptionPlans:{}},
  });
- const db={from:table=>queryDouble(table,{data:table==='profiles'?{full_name:'Me'}:[],error:null},calls)};
+ const db={from:table=>queryDouble(table,call=>({data:table==='profiles'?{full_name:'Me'}:[],count:0,error:null}),calls)};
  const business={id:'business',name:'Store',role:'staff'};
  const profile=await mobileAccountRead(db,'account-profile',business,'assigned',{id:'me',email:'me@example.com',user_metadata:{avatar_url:'https://images.example/avatar.webp'}});
  assert.equal(profile.rows[0].avatarUrl,'https://images.example/avatar.webp');
@@ -33,7 +33,7 @@ test('new account readers scope profiles, staff branches and category visibility
  assert.ok(calls[1].steps.some(s=>s[0]==='eq'&&s[1]==='business_id'&&s[2]==='business'));
  assert.ok(calls[1].steps.some(s=>s[0]==='eq'&&s[1]==='id'&&s[2]==='assigned'));
  await mobileAccountRead(db,'account-categories',business,'assigned',{id:'me'});
- assert.ok(calls[2].steps.some(s=>s[0]==='or'&&s[1]==='branch_ids.is.null,branch_ids.cs.{assigned}'));
+ assert.ok(calls.some(call=>call.table==='categories'&&call.steps.some(s=>s[0]==='or'&&s[1]==='branch_ids.is.null,branch_ids.cs.{assigned}')));
  const users=await mobileAccountRead(db,'account-users',business,'assigned',{id:'me'});assert.equal(users.summary,'1 / 2 users');
 });
 test('category counts group variants within the selected business and branch',async()=>{
@@ -43,7 +43,11 @@ test('category counts group variants within the selected business and branch',as
  });
  const categories=[{id:'c1',name:'Shirts',branch_ids:null,is_online:true},{id:'c2',name:'Shoes',branch_ids:['branch'],is_online:false}];
  const products=[{id:'p1',variant_group_id:'family',category_id:'c1'},{id:'p2',variant_group_id:'family',category_id:'c1'},{id:'p3',category_id:'c1'},{id:'p4',category_id:'c2'}];
- const db={from:table=>queryDouble(table,{data:table==='categories'?categories:products,error:null},calls)};
+ const db={from:table=>queryDouble(table,call=>({
+  data:table==='categories'?categories:products,
+  count:table==='categories'?(call.steps.some(step=>step[0]==='eq'&&step[1]==='is_online')?1:2):undefined,
+  error:null,
+ }),calls)};
  const result=await mobileAccountRead(db,'account-categories',{id:'business',role:'owner'},'branch',{id:'owner'});
  assert.deepEqual(result.categoryStats,{total:2,visible:1,hidden:1});
  assert.deepEqual(result.rows.map(row=>row.productCount),[2,1]);

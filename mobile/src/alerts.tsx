@@ -5,16 +5,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { api, ApiError, type Scope } from './client';
 import { Button, Label, SearchField, styles, useTheme } from './ui';
 import { LoadingState, Shimmer } from './loading';
+import { cache } from './data';
 
 type Notice = { id: string; title: string; message: string; occurred_at: string; read: boolean };
 export function Alerts({ scope, online, onUnread }: { scope: Scope; online: boolean; onUnread: (count: number) => void }) {
   const theme = useTheme();
+  const { userId, businessId, branchId } = scope;
   const [search,setSearch] = useState(''), [query,setQuery] = useState('');
   useEffect(()=>{const timer=setTimeout(()=>setQuery(search.trim()),350);return()=>clearTimeout(timer);},[search]);
-  const [rows, setRows] = useState<Notice[]>([]), [hasMore, setHasMore] = useState(false), [unread, setUnread] = useState(0), [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(online), [error, setError] = useState(''), [reading, setReading] = useState<string | null>(null);
-  const page = useRef(0), inFlight = useRef(false), request = useRef<AbortController | null>(null), readLock = useRef(false);
-  const { userId, businessId, branchId } = scope;
+  const cacheKey=`${userId}:${businessId}:${branchId}:alerts?search=${query}`;
+  const cached=cache.get(cacheKey)?.data as {rows:Notice[];total:number;unread:number}|undefined;
+  const [rows, setRows] = useState<Notice[]>(()=>cached?.rows??[]), [hasMore, setHasMore] = useState(()=>!!cached&&cached.rows.length<cached.total), [unread, setUnread] = useState(()=>cached?.unread??0), [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(online&&!cached), [error, setError] = useState(''), [reading, setReading] = useState<string | null>(null);
+  const page = useRef(cached?1:0), inFlight = useRef(false), request = useRef<AbortController | null>(null), readLock = useRef(false);
   const { markAllAlerts } = useLocalSearchParams<{ markAllAlerts?: string }>();
   useEffect(() => {
     if (!markAllAlerts || !online || loading || reading !== null) return;
@@ -26,8 +29,8 @@ export function Alerts({ scope, online, onUnread }: { scope: Scope; online: bool
         const ids = new Set<string>();
         let total = 1;
         for (let next = 1; next <= total; next++) {
-          const result = await api<{rows: Notice[]; total: number}>(`alerts?page=${next}&limit=10`, {userId,businessId,branchId});
-          if (next === 1) total = Math.ceil(result.total / 10);
+          const result = await api<{rows: Notice[]; total: number}>(`alerts?page=${next}&limit=15`, {userId,businessId,branchId});
+          if (next === 1) total = Math.ceil(result.total / 15);
           result.rows.filter(row => !row.read).forEach(row => ids.add(row.id));
         }
         const selected = [...ids];
@@ -42,18 +45,19 @@ export function Alerts({ scope, online, onUnread }: { scope: Scope; online: bool
     const controller = new AbortController(); request.current = controller;
     const next = reset ? 1 : page.current + 1;
     try {
-      const result = await api<{ rows: Notice[]; total: number; unread: number }>(`alerts?page=${next}&limit=10&search=${encodeURIComponent(query)}`, { userId, businessId, branchId }, undefined, controller.signal);
+      const result = await api<{ rows: Notice[]; total: number; unread: number }>(`alerts?page=${next}&limit=15&search=${encodeURIComponent(query)}`, { userId, businessId, branchId }, undefined, controller.signal);
       if (controller.signal.aborted) return;
+      if (reset) { if (!cache.has(cacheKey) && cache.size>=50) cache.delete(cache.keys().next().value!); cache.set(cacheKey,{data:result,at:Date.now()}); }
       setRows(previous => reset ? result.rows : [...new Map([...previous, ...result.rows].map(row => [row.id, row])).values()]);
-      page.current = next; setHasMore(next * 10 < result.total); setUnread(result.unread); onUnread(result.unread);
+      page.current = next; setHasMore(next * 15 < result.total); setUnread(result.unread); onUnread(result.unread);
     } catch (error) {
       if (!controller.signal.aborted) {
-        if (error instanceof ApiError && [401, 403].includes(error.status)) { setRows([]); setHasMore(false); setUnread(0); onUnread(0); }
+        if (error instanceof ApiError && [401, 403].includes(error.status)) { cache.delete(cacheKey); setRows([]); setHasMore(false); setUnread(0); onUnread(0); }
         setError((error as Error).message);
       }
     } finally { if (request.current === controller) { inFlight.current = false; setLoading(false); } }
-  }, [online, userId, businessId, branchId, onUnread, query]);
-  useEffect(()=>{setRows([]);setHasMore(false);page.current=0;},[query,userId,businessId,branchId]);
+  }, [online, userId, businessId, branchId, onUnread, query, cacheKey]);
+  useEffect(()=>{const saved=cache.get(cacheKey)?.data as {rows:Notice[];total:number;unread:number}|undefined;setRows(saved?.rows??[]);setHasMore(!!saved&&saved.rows.length<saved.total);page.current=saved?1:0;},[cacheKey]);
   useEffect(() => {
     if (online) void load(true);
     const listener = AppState.addEventListener('change', state => { if (state === 'active') void load(true); });
@@ -67,6 +71,7 @@ export function Alerts({ scope, online, onUnread }: { scope: Scope; online: bool
       await api('alerts', { businessId, branchId }, { ids: [row.id] });
       setRows(previous => previous.map(item => item.id === row.id ? { ...item, read: true } : item));
       const count = Math.max(0, unread - 1); setUnread(count); onUnread(count);
+      const saved=cache.get(cacheKey);if(saved){const data=saved.data as {rows:Notice[];total:number;unread:number};cache.set(cacheKey,{data:{...data,unread:count,rows:data.rows.map(item=>item.id===row.id?{...item,read:true}:item)},at:Date.now()});}
     } catch (error) { theme.alert('Unable to save', (error as Error).message); }
     finally { readLock.current = false; setReading(null); }
   }

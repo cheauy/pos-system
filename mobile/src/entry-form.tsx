@@ -29,9 +29,9 @@ export function EntryForm({ kind, scope, online, categories = [], shiftId, regis
   const [customerFields,setCustomerFields]=useState<CustomerFields|null>(null);
   useEffect(()=>{
     if(kind!=='customer'||!online)return;
-    let active=true;const controller=new AbortController();
-    const load=()=>api<CustomerFields>('customer-fields',scope,undefined,controller.signal).then(value=>{if(active)setCustomerFields(value);}).catch(e=>{if(active)setError(e.message);});
-    void load();const listener=AppState.addEventListener('change',state=>{if(state==='active')void load();});
+    let active=true,pending=false,last=0;const controller=new AbortController();
+    const load=()=>{if(pending||Date.now()-last<30000)return;pending=true;void api<CustomerFields>('customer-fields',scope,undefined,controller.signal).then(value=>{if(active){setCustomerFields(value);last=Date.now();}}).catch(e=>{if(active)setError(e.message);}).finally(()=>{pending=false;});};
+    load();const listener=AppState.addEventListener('change',state=>{if(state==='active')load();});
     return()=>{active=false;controller.abort();listener.remove();};
   },[kind,online,scope.userId,scope.businessId,scope.branchId]);
 

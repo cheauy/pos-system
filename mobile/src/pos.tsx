@@ -19,7 +19,7 @@ import { ProductPanel } from './product-panel';
 import * as Crypto from 'expo-crypto';
 import { api, ApiError, deviceStorage as storage, money, type Workspace } from './client';
 import { SectionTitle, Badge, ProductPhoto, Button, Card, Field, Label, styles, useTheme } from './ui';
-import { clearCache } from './data';
+import { invalidateCache } from './data';
 import { checkoutPayment } from './checkout-payment';
 import { matchesHeldOrder, type HoldRequest } from './held-order';
 
@@ -115,18 +115,20 @@ export default function Pos({ workspace, online, onLocked, search = '' }: { work
     }).catch(() => { if (active) setError('Unable to restore pending sale. Do not start another sale on this device until storage is available.'); });
     return () => { active = false; };
   }, [pendingKey, draftKey, holdRequestKey]);
+  const draftRevision = JSON.stringify({ items, customerId, paymentMethod, shipping, deliveryFee, discount, discountType, couponCode, redeemPoints, hold, holdLabel });
+  const [savedDraftRevision, setSavedDraftRevision] = useState('');
   useEffect(() => {
     if (!storageReady || pending || pendingHold || busy) return;
     const timer = setTimeout(() => {
       const draft: SavedDraft = { items, customerId, paymentMethod, shipping, deliveryFee, discount, discountType, couponCode, redeemPoints, hold, holdLabel };
-      storage.setItem(draftKey, JSON.stringify(draft)).catch(() => { if (current.current) setError('Cart could not be saved on this device. Keep the app open until checkout.'); });
+      storage.setItem(draftKey, JSON.stringify(draft)).then(() => { if (current.current) setSavedDraftRevision(draftRevision); }).catch(() => { if (current.current) setError('Cart could not be saved on this device. Keep the app open until checkout.'); });
     }, 250);
     return () => clearTimeout(timer);
-  }, [items, draftKey, pending, pendingHold, busy, storageReady, customerId, paymentMethod, shipping, deliveryFee, discount, discountType, couponCode, redeemPoints, hold, holdLabel]);
+  }, [items, draftKey, pending, pendingHold, busy, storageReady, customerId, paymentMethod, shipping, deliveryFee, discount, discountType, couponCode, redeemPoints, hold, holdLabel, draftRevision]);
   useEffect(() => {
     // Keep the cashier in this workspace until a saved sale is resolved.
-    onLocked(!!pending || !!pendingHold || busy || !storageReady || items.length > 0);
-  }, [pending, pendingHold, busy, storageReady, items.length, onLocked]);
+    onLocked(!!pending || !!pendingHold || busy || !storageReady || savedDraftRevision !== draftRevision);
+  }, [pending, pendingHold, busy, storageReady, savedDraftRevision, draftRevision, onLocked]);
   useEffect(() => {
     if (!online) return;
     const controller = new AbortController();
@@ -162,7 +164,7 @@ export default function Pos({ workspace, online, onLocked, search = '' }: { work
     await storage.removeItem(draftKey);
     await storage.removeItem(pendingKey);
     if (!current.current) return;
-    clearCache(); setPending(null); setQuote(null); setItems([]); setCartOpen(false); setDefiniteFailure(false);
+    invalidateCache({...scope,userId:workspace.userId},['orders?','stock?','reports?','register?','customers?','incoming?']); setPending(null); setQuote(null); setItems([]); setCartOpen(false); setDefiniteFailure(false);
     setCustomerId(''); setPaymentMethod(''); setShipping({ method: 'in_store', recipientName: '', phone: '', address: '', carrier: 'other', carrierOther: '' }); setDeliveryFee('0');
     setDiscount('0'); setDiscountType('amount'); setCouponCode(''); setRedeemPoints('0');
     setHold(null); setHoldLabel(''); setReceipt(saved); setCatalogRevision(value => value + 1);

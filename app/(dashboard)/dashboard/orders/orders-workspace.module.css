@@ -230,3 +230,5 @@
   .modalFooter{flex-wrap:wrap;gap:8px;padding-bottom:max(16px,env(safe-area-inset-bottom))}
   .scopeNote{font-size:.75rem}
 }
+
+.detailProgress{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:44px;border-radius:9px;margin:10px 0;font-weight:700}.detailProgress:disabled{opacity:.55}

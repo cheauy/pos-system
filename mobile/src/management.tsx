@@ -13,7 +13,7 @@ import {useViewPreference} from './view-preference';
 import { matchingVariants } from './variant-selection';
 import { groupProducts } from './product-groups';
 import { ProductPanel } from './product-panel';
-import { clearCache, useData, useInfiniteData } from './data';
+import { invalidateCache, useData, useInfiniteData } from './data';
 import { UploadProgress, Shimmer } from './loading';
 
 type Product = { id:string; variant_group_id?:string|null; name:string; sku:string; barcode:string|null; description:string|null; category_id:string|null; image_url:string|null; cost_price:number; selling_price:number; low_stock_quantity:number; stock_quantity:number; product_type:string; size:string|null; color:string|null; is_active:boolean; is_pos:boolean; is_online:boolean; updated_at:string|null; items?:{component_product_id:string;name?:string;quantity:number;selected_options?:{id?:string;optionId?:string}[]}[] };
@@ -46,7 +46,7 @@ export function Management({workspace,online,feature,search=''}:{search?:string;
  const productFamilies=useMemo(()=>groupProducts(data?.rows??[]),[data?.rows]);
  const details=useData<Product>(`catalog-detail?id=${selected?.id||''}`,scope,online&&!!selected&&!form);
  const detail=details.data||selected;
- if(feature==='Online Store')return <ManagementForm operation="storefront-save" scope={scope} online={online} workspace={workspace} close={()=>{}} saved={()=>clearCache()} embedded/>;
+ if(feature==='Online Store')return <ManagementForm operation="storefront-save" scope={scope} online={online} workspace={workspace} close={()=>{}} saved={()=>{}} embedded/>;
  return <View style={{flex:1}}><ScrollView {...scrolling} contentContainerStyle={[styles.page,{paddingBottom:92}]} keyboardShouldPersistTaps="handled">
   {viewError&&<Label>{viewError}</Label>}
   <View style={[styles.row,{justifyContent:'space-between'}]}><View style={{flex:1,minWidth:0}}><SelectMenu label="Category" value={category} options={[{value:'',label:'All categories'},...(categoryOptions.data?.categories??[]).map(row=>({value:row.id,label:row.name}))]} change={value=>{setCategory(value);}}/></View><LayoutPicker value={columns} change={value=>{setColumns(value);}}/></View>{data&&<View style={{alignItems:'flex-end'}}><Badge title={`${data.total} ${feature==='Bundles'?'bundles':'products'}`}/></View>}
@@ -72,7 +72,7 @@ export function Management({workspace,online,feature,search=''}:{search?:string;
       {workspace.permissions.includes('products.disable')&&<Button title="Delete bundle" secondary disabled={!online} onPress={()=>setForm('bundle-delete')}/>}
     </>}{family.length>0&&<Button title="Back to variants" secondary onPress={()=>setSelected(null)}/>}
   </>}</ProductPanel>
-  {form&&<ManagementForm initialOptions={categoryOptions.data} operation={form} id={selected?.id} scope={scope} online={online} workspace={workspace} close={()=>setForm(null)} saved={()=>{setForm(null);setSelected(null);setFamily([]);clearCache();refresh();}}/>}
+  {form&&<ManagementForm initialOptions={categoryOptions.data} operation={form} id={selected?.id} scope={scope} online={online} workspace={workspace} close={()=>setForm(null)} saved={()=>{setForm(null);setSelected(null);setFamily([]);refresh();}}/>}
  </ScrollView>{workspace.permissions.includes('products.create')&&<FloatingAdd label={feature==='Bundles'?'New bundle':'Add product'} disabled={!online} onPress={()=>{setSelected(null);setForm(feature==='Bundles'?'bundle-create':'product-create');}}/>}</View>;
 }
 
@@ -117,7 +117,7 @@ export function ManagementForm({operation,id,scope,online,workspace,close,saved,
  },[key,online,reload]);
  async function pickImage(){try{const result=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],quality:0.9,allowsMultipleSelection:false});if(!result.canceled){const a=result.assets[0];if((a.fileSize||0)>5*1024*1024)throw new Error('Choose an image smaller than 5 MB.');setImage({uri:a.uri,name:a.fileName||'product.jpg',type:a.mimeType||'image/jpeg'});setFlags(v=>({...v,removeImage:false}));}}catch(e){setError((e as Error).message);}}
  async function finish(result:{success:boolean;rolledBack?:boolean;message?:string}){
-  if(result.success){await deviceStorage.removeItem(key);setPending(null);clearCache();saved();if(embedded){setReload(v=>v+1);theme.alert(theme.t('Saved'));}return;}
+  if(result.success){await deviceStorage.removeItem(key);setPending(null);invalidateCache(scope,operation==='storefront-save'?['storefront']:operation==='purchase-create'?['purchases?']:operation==='transfer-save'?['transfers?','transfer-detail?id=','stock?']:['catalog?','catalog-detail?id=','stock?','category-products?']);saved();if(embedded){setReload(v=>v+1);theme.alert(theme.t('Saved'));}return;}
   if(result.rolledBack){await deviceStorage.removeItem(key);setPending(null);throw new Error(result.message||'Save failed. Review the form.');}
   throw new Error(result.message||'Save not confirmed. Keep this request and check again.');
  }

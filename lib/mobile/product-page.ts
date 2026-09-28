@@ -23,7 +23,7 @@ export async function mobileProductPage(db: SupabaseClient, businessId: string, 
     for (const row of rows) families.set(row.variant_group_id ? `variant:${row.variant_group_id}` : row.id, row);
     if (rows.length < 1000) break;
   }
-  const pageSize = [4,8,9,10,25].includes(filters.pageSize??25) ? filters.pageSize??25 : 25;
+  const pageSize = [10,15].includes(filters.pageSize??15) ? filters.pageSize??15 : 15;
   const selected = [...families.entries()].slice((page - 1) * pageSize, page * pageSize);
   if (!selected.length) return { rows: [], total: families.size };
   const groupIds = selected.map(([, row]) => row.variant_group_id).filter(Boolean);

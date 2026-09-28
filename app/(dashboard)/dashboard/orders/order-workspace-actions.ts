@@ -48,8 +48,22 @@ export async function saveOrderWorkspaceDetails(orderId: string, updatedAt: stri
 export async function changeOrderWorkspaceStatus(orderId: string, updatedAt: string | null, status: string, reason: string, expectedBusinessId: string): Promise<ActionResult> {
   const business = await requirePermission(status === "cancelled" ? "orders.cancel" : "orders.update");
   if (business.id !== expectedBusinessId) return { success: false, message: "Your selected business changed. Reload this page." };
-  if (!["pending", "accepted", "preparing", "ready", "completed", "cancelled"].includes(status)) return { success: false, message: "Invalid status." };
+  if (!["pending", "in_progress", "accepted", "preparing", "ready", "completed", "cancelled"].includes(status)) return { success: false, message: "Invalid status." };
   return manageOrder(business.id, orderId, updatedAt, "status", { status, reason });
+}
+export async function cancelOrderWorkspaceItem(orderId: string, itemId: string, updatedAt: string | null, reason: string, expectedBusinessId: string): Promise<ActionResult> {
+  const business = await requirePermission("orders.cancel");
+  if (business.id !== expectedBusinessId) return { success: false, message: "Your selected business changed. Reload this page." };
+  if (!validId(orderId) || !validId(itemId) || !updatedAt || !Number.isFinite(Date.parse(updatedAt))) return { success: false, message: "Refresh the order before cancelling an item." };
+  if (!reason.trim() || reason.length > 500) return { success: false, message: "Enter a cancellation reason (maximum 500 characters)." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("tenh_cancel_order_item", {
+    p_business_id: business.id, p_order_id: orderId, p_item_id: itemId,
+    p_expected_updated_at: updatedAt, p_reason: reason.trim(),
+  });
+  if (error) return { success: false, message: ["P0001", "40001", "42501"].includes(error.code) ? error.message : "The item could not be cancelled. Refresh and try again." };
+  refreshOrderPaths(orderId);
+  return { success: true, data: undefined, message: "Item cancelled and stock restored." };
 }
 export async function deleteOrderWorkspaceOrder(orderId: string, updatedAt: string | null, reason: string, expectedBusinessId: string): Promise<ActionResult> {
   const business = await requirePermission("orders.cancel");

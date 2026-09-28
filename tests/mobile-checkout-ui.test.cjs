@@ -54,7 +54,7 @@ test('increasing an item cannot exceed branch stock across cart lines', () => {
 });
 test('completed sale clears pending state and shows receipt without automatic printing', async () => {
   const removed = []; let displayed;
-  const context = {storage:{removeItem:async key=>removed.push(key)},draftKey:'draft',pendingKey:'pending',current:{current:true},clearCache(){},setReceipt:value=>displayed=value};
+  const context = {storage:{removeItem:async key=>removed.push(key)},draftKey:'draft',pendingKey:'pending',current:{current:true},scope:{businessId:'b',branchId:'branch'},workspace:{userId:'u'},invalidateCache:(_scope,paths)=>assert.deepEqual(paths,['orders?','stock?','reports?','register?','customers?','incoming?']),setReceipt:value=>displayed=value};
   for(const name of ['setPending','setQuote','setItems','setCartOpen','setDefiniteFailure','setCustomerId','setPaymentMethod','setShipping','setDeliveryFee','setDiscount','setDiscountType','setCouponCode','setRedeemPoints','setHold','setHoldLabel','setCatalogRevision']) context[name]=()=>{};
   const receipt={orderId:'order',total:12};
   await method('finish',context)(receipt);

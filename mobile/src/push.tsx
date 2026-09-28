@@ -39,7 +39,8 @@ export function PushSettings({scope,online}:{scope:Scope;online:boolean}){
 export function usePush(scope:Scope,online:boolean,unread:number,openAlerts:()=>void){
  const{userId,businessId,branchId}=scope;
  useEffect(()=>{if(!Notifications||!online||!userId||!businessId||!branchId)return;let current=true;
- const refresh=()=>{void deviceStorage.getItem(`tenh-push-${userId}`).then(enabled=>{if(current&&enabled==='true')return register({userId,businessId,branchId},false);}).catch(()=>undefined);};
+ let last=0,pending=false;
+ const refresh=()=>{if(pending||Date.now()-last<300000)return;pending=true;void deviceStorage.getItem(`tenh-push-${userId}`).then(enabled=>{if(current&&enabled==='true')return register({userId,businessId,branchId},false);}).then(()=>{last=Date.now();}).catch(()=>undefined).finally(()=>{pending=false;});};
  refresh();const listener=AppState.addEventListener('change',state=>{if(state==='active')refresh();});return()=>{current=false;listener.remove();};
  },[online,userId,businessId,branchId]);
  useEffect(()=>{if(Notifications)void Notifications.setBadgeCountAsync(unread).catch(()=>undefined);},[unread]);

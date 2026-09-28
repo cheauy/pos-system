@@ -4,16 +4,16 @@ const {loadMobileOrderPage,mobileOrderPageSize,incomingOrderStatus}=loadTs('lib/
 const platform={OS:'android'};
 const {outputOrderDocument}=loadTs('mobile/src/order-document.ts',{'react-native':{Platform:platform,Alert:{alert:(_title,_message,buttons)=>buttons[1].onPress()}}});
 
-test('8-card pages and 10/15-row lists have no skipped or duplicate orders under SQL minimum 10',async()=>{
+test('10/15-row lists have no skipped or duplicate orders',async()=>{
  const rows=Array.from({length:83},(_,id)=>({id}));
  const load=async filters=>{const size=Math.max(10,Math.min(50,filters.limit));const pages=Math.ceil(rows.length/size),page=Math.min(filters.page,pages);return {rows:rows.slice((page-1)*size,page*size),page,pages,total:rows.length};};
- for(const size of [8,10,15]){
+ for(const size of [10,15]){
   const found=[];
   for(let page=1;page<=Math.ceil(rows.length/size);page++){const result=await loadMobileOrderPage(load,{},page,size);assert.ok(result.rows.length<=size);found.push(...result.rows);}
   assert.deepEqual(found,rows);
   assert.deepEqual((await loadMobileOrderPage(load,{},100,size)).rows,[]);
  }
- assert.equal(mobileOrderPageSize('999'),8);
+ assert.equal(mobileOrderPageSize('999'),15);
  assert.equal(mobileOrderPageSize('15'),15);
  assert.equal(incomingOrderStatus({online_status:'completed',payment_status:'refunded'}),'refunded');
 });
