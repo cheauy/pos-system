@@ -5,6 +5,14 @@ const { spawnSync } = require('node:child_process');
 const query = require('../mobile/node_modules/query-string');
 const decode = require('../mobile/vendor/decode-uri-component');
 
+test('clean installs resolve the decoder to the committed vendor package', () => {
+  const lock = require('../mobile/package-lock.json');
+  const target = lock.packages['node_modules/decode-uri-component'];
+  assert.equal(target.resolved, 'vendor/decode-uri-component');
+  assert.equal(target.link, true);
+  assert.equal(lock.packages[target.resolved].version, require('../mobile/vendor/decode-uri-component/package.json').version);
+});
+
 test('fixed decoder retains CommonJS URL/query compatibility used by Expo Router', () => {
   assert.equal(typeof decode,'function');
   assert.deepEqual({...query.parse('name=TENH+POS&khmer=%E1%9E%81%E1%9F%92%E1%9E%98%E1%9F%82%E1%9E%9A&branch=a&branch=b')}, {name:'TENH POS',khmer:'ខ្មែរ',branch:['a','b']});

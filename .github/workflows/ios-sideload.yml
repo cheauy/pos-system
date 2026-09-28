@@ -47,6 +47,10 @@ jobs:
           }
           NODE
       - run: npm ci
+      - name: Verify clean-install decoder
+        run: node --test ../tests/mobile-decoder.test.cjs
+      - name: Check iOS JavaScript bundle before native compilation
+        run: npx expo export --platform ios --output-dir build/bundle-check
       - run: npx expo prebuild --platform ios --no-install
       - name: Install native dependencies
         run: cd ios && pod install
