@@ -36,6 +36,21 @@ test('new account readers scope profiles, staff branches and category visibility
  assert.ok(calls[2].steps.some(s=>s[0]==='or'&&s[1]==='branch_ids.is.null,branch_ids.cs.{assigned}'));
  const users=await mobileAccountRead(db,'account-users',business,'assigned',{id:'me'});assert.equal(users.summary,'1 / 2 users');
 });
+test('category counts group variants within the selected business and branch',async()=>{
+ const calls=[],{mobileAccountRead}=loadTs('lib/mobile/account-read.ts',{
+  '@/app/(dashboard)/dashboard/settings/users/users-workspace-actions':{},
+  '@/lib/subscriptions/branch-limits':{},'@/lib/supabase/admin':{},'@/lib/subscriptions/plans':{},
+ });
+ const categories=[{id:'c1',name:'Shirts',branch_ids:null,is_online:true},{id:'c2',name:'Shoes',branch_ids:['branch'],is_online:false}];
+ const products=[{id:'p1',variant_group_id:'family',category_id:'c1'},{id:'p2',variant_group_id:'family',category_id:'c1'},{id:'p3',category_id:'c1'},{id:'p4',category_id:'c2'}];
+ const db={from:table=>queryDouble(table,{data:table==='categories'?categories:products,error:null},calls)};
+ const result=await mobileAccountRead(db,'account-categories',{id:'business',role:'owner'},'branch',{id:'owner'});
+ assert.deepEqual(result.categoryStats,{total:2,visible:1,hidden:1});
+ assert.deepEqual(result.rows.map(row=>row.productCount),[2,1]);
+ const productQuery=calls.find(call=>call.table==='branch_products');
+ assert.ok(productQuery.steps.some(step=>step[0]==='eq'&&step[1]==='business_id'&&step[2]==='business'));
+ assert.ok(productQuery.steps.some(step=>step[0]==='eq'&&step[1]==='location_id'&&step[2]==='branch'));
+});
 test('subscription shows recorded usage and limits for the authorized business',async()=>{
  const calls=[];
  const admin={from:table=>queryDouble(table,{data:table==='businesses'?{subscription_plan_key:'custom',subscription_status:'active',subscription_user_limit:8,subscription_expires_at:'2026-11-16'}:null,count:3,error:null},calls)};

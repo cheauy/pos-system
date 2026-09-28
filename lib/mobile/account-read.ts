@@ -39,7 +39,15 @@ export async function mobileAccountRead(db:SupabaseClient,feature:string,busines
   const result=await db.from('categories').select('id,name,description,is_online,online_sort_order,branch_ids').eq('business_id',business.id).or(`branch_ids.is.null,branch_ids.cs.{${branchId}}`).order('online_sort_order').order('name').limit(501);
   if(result.error)throw new Error('Unable to load categories.');
   if(result.data.length>500)throw new Error('Open the website to view this large category list.');
-  return {rows:result.data.map(row=>({...row,branches:row.branch_ids===null?'All branches':`${row.branch_ids.length} selected branches`}))};
+  const products=new Map<string,Set<string>>();
+  // ponytail: O(branch catalog size) identity scan; replace with a grouped database count if large catalogs make it slow.
+  if(result.data.length)for(let offset=0;;offset+=1000){
+   const batch=await db.from('branch_products').select('id,variant_group_id,category_id').eq('business_id',business.id).eq('location_id',branchId).order('id').range(offset,offset+999);
+   if(batch.error)throw new Error('Unable to load category product counts.');
+   for(const product of batch.data){if(!product.category_id)continue;const ids=products.get(product.category_id)||new Set<string>();ids.add(product.variant_group_id?`variant:${product.variant_group_id}`:product.id);products.set(product.category_id,ids);}
+   if(batch.data.length<1000)break;
+  }
+  return {categoryStats:{total:result.data.length,visible:result.data.filter(row=>row.is_online).length,hidden:result.data.filter(row=>!row.is_online).length},rows:result.data.map(row=>({...row,productCount:products.get(row.id)?.size||0,branches:row.branch_ids===null?'All branches':`${row.branch_ids.length} selected branches`}))};
  }
  throw new Error('Unknown account menu.');
 }

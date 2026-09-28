@@ -62,6 +62,7 @@ export function Button({ title, onPress, disabled = false, secondary = false, bu
   const theme = useTheme();
   const professional = useContext(ActionContext);
   const action = professional ? /^Delete|^Remove|^Clear|^Discard/.test(title) ? { colour: '#c13c4c', icon: 'trash-outline' as const }
+    : /^Open register$/.test(title) ? { colour: '#16765a', icon: 'lock-open-outline' as const }
     : /^Save|^Confirm|^Complete|^Receive|^Accept|^New sale/.test(title) ? { colour: '#16765a', icon: 'checkmark-circle-outline' as const }
     : /^Edit|^Count/.test(title) ? { colour: '#275de8', icon: 'create-outline' as const }
     : /^Add|^New|^Quick Add/.test(title) ? { colour: '#275de8', icon: 'add-circle-outline' as const }

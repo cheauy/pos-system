@@ -1,3 +1,5 @@
+import {RegisterClosing,closingVariance} from './register-closing';
+import type {RegisterDetailData} from './register-detail';
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Image, Modal, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,14 +9,23 @@ import { api, type Scope } from './client';
 import { ActionArea, SectionTitle, Button, Card, Field, Label, styles, useTheme } from './ui';
 import type { CustomerFields } from './customer-fields';
 import { UploadProgress } from './loading';
+import { Ionicons } from '@expo/vector-icons';
+import {RegisterOpening,type RegisterContext} from './register-opening';
 
 type Kind = 'customer' | 'expense' | 'support' | 'register-open' | 'register-close';
 const reasons = ['Bug or Technical Issue', 'Billing or Payment', 'Account & User Access', 'Something Else'];
-export function EntryForm({ kind, scope, online, categories = [], shiftId, close, saved }: {
-  kind: Kind; scope: Scope; online: boolean; categories?: string[]; shiftId?: string; close: () => void; saved: () => void;
+export function EntryForm({ kind, scope, online, categories = [], shiftId, registerContext, close, saved }: {
+  kind: Kind; scope: Scope; online: boolean; categories?: string[]; shiftId?: string; registerContext?:RegisterContext; close: () => void; saved: () => void;
 }) {
   const theme = useTheme();
   const [error, setError] = useState('');
+  const [closingDetail,setClosingDetail]=useState<RegisterDetailData|null>(null);
+  useEffect(()=>{
+    if(kind!=='register-close'||!shiftId||!online)return;
+    const controller=new AbortController();setClosingDetail(null);
+    void api<RegisterDetailData>(`register-detail?id=${encodeURIComponent(shiftId)}`,scope,undefined,controller.signal).then(value=>{if(!controller.signal.aborted)setClosingDetail(value);}).catch(error=>{if(!controller.signal.aborted)setError(error.message);});
+    return()=>controller.abort();
+  },[kind,shiftId,online,scope.businessId,scope.branchId,scope.userId]);
   const [customerFields,setCustomerFields]=useState<CustomerFields|null>(null);
   useEffect(()=>{
     if(kind!=='customer'||!online)return;
@@ -59,7 +70,10 @@ export function EntryForm({ kind, scope, online, categories = [], shiftId, close
     if (working.current || !online || kind==='customer'&&!customerFields) return;
     working.current = true; setBusy(true); setError(''); setProgress(null);
     try {
+      if(kind==='register-close'&&(!closingDetail||closingDetail.status!=='open'||closingVariance(values.closingCash??'',closingDetail.summary.expected)===null))throw new Error('Load the open shift and enter a valid closing cash count.');
       if (kind === 'support' && !image) throw new Error('Add an image of the issue.');
+      if(kind==='register-open'&&(!registerContext||registerContext.hasOpen))throw new Error('Refresh the register. This branch must have no open shift.');
+      if(kind==='register-open'&&(!/^\d+(\.\d{1,2})?$/.test(values.openingCash??'')||!Number.isFinite(Number(values.openingCash))))throw new Error('Enter a valid opening cash amount with up to two decimal places.');
       if (kind === 'customer' && ['name', 'phone', 'address'].some(key => !values[key]?.trim())) throw new Error('Name, phone and address are required.');
       setAttempted(true);
       if (kind === 'expense' || kind === 'support') {
@@ -83,20 +97,20 @@ export function EntryForm({ kind, scope, online, categories = [], shiftId, close
     else close();
   }
   return <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={leave}><ActionArea><SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
-    <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled"><Label large>{title}</Label>
-      <Card><SectionTitle title={kind==='customer'?'Contact information':kind==='expense'?'Expense information':kind==='support'?'Tell us what happened':'Cash count'} icon={kind==='customer'?'person-outline':kind==='expense'?'wallet-outline':kind==='support'?'help-buoy-outline':'cash-outline'}/>{fields.map(([key, label]) => <Field key={key} label={label} value={values[key] ?? ''} editable={!busy} onChangeText={value => setValues(previous => ({ ...previous, [key]: value }))}
+    <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled"><View style={[styles.row,{gap:12}]}>{kind==='customer'&&<Pressable accessibilityRole="button" accessibilityLabel="Close" disabled={busy} onPress={leave} style={{padding:10,borderRadius:22,backgroundColor:theme.panel}}><Ionicons name="close" size={24} color={theme.text}/></Pressable>}<View style={{flex:1,gap:4}}><Label large>{title}</Label>{kind==='customer'&&<Label muted>Add a new customer to your database.</Label>}</View></View>
+      {kind==='register-close'?<RegisterClosing data={closingDetail} values={values} busy={busy} change={(key,value)=>setValues(previous=>({...previous,[key]:value}))}/>:kind==='register-open'?<RegisterOpening context={registerContext} values={values} busy={busy} change={(key,value)=>setValues(previous=>({...previous,[key]:value}))}/>:<Card><SectionTitle title={kind==='customer'?'Contact information':kind==='expense'?'Expense information':kind==='support'?'Tell us what happened':'Cash count'} icon={kind==='customer'?'person-outline':kind==='expense'?'wallet-outline':kind==='support'?'help-buoy-outline':'cash-outline'}/>{fields.map(([key, label]) => <View key={key} style={{flexDirection:'row',alignItems:'center',gap:12}}>{kind==='customer'&&<View style={{padding:10,borderRadius:12,backgroundColor:theme.background}}><Ionicons name={key==='name'?'person-outline':key==='phone'?'call-outline':key==='email'?'mail-outline':key==='birthday'?'calendar-outline':'location-outline'} size={21} color={theme.muted}/></View>}<View style={{flex:1}}><Field label={label} placeholder={key==='birthday'?'YYYY-MM-DD':`Enter ${label.replace(' *','').toLowerCase()}`}  value={values[key] ?? ''} editable={!busy} onChangeText={value => setValues(previous => ({ ...previous, [key]: value }))}
         keyboardType={['amount', 'openingCash', 'closingCash'].includes(key) ? 'decimal-pad' : key === 'phone' ? 'phone-pad' : key === 'email' ? 'email-address' : 'default'}
-        autoCapitalize={key === 'email' ? 'none' : 'sentences'} multiline={['description', 'address', 'note'].includes(key)} maxLength={key === 'description' ? 2000 : 500} />)}
+        autoCapitalize={key === 'email' ? 'none' : 'sentences'} multiline={['description', 'address', 'note'].includes(key)} maxLength={key === 'description' ? 2000 : 500} /></View></View>)}
         {kind === 'expense' && <Button title={`Category · ${values.category}`} secondary disabled={busy} onPress={() => setPicker('category')} />}
         {kind === 'support' && <Button title={`Reason · ${values.reason}`} secondary disabled={busy} onPress={() => setPicker('reason')} />}
-      </Card>
+      </Card>}
       {['expense', 'support'].includes(kind) && <Card><SectionTitle title={kind === 'support' ? 'Image *' : 'Receipt photo'} icon="image-outline"/>
         {image && <Image source={{ uri: image.uri }} style={{ height: 180, borderRadius: 12 }} resizeMode="contain" />}
         <View style={styles.row}><View style={{ flex: 1 }}><Button title="Choose image" secondary disabled={busy} onPress={() => void pick(false)} /></View><View style={{ flex: 1 }}><Button title="Take photo" secondary disabled={busy} onPress={() => void pick(true)} /></View></View>
       </Card>}
       {error && <Card><Label>{error}</Label></Card>}
       {busy && image && <UploadProgress progress={progress} />}
-      <Button title="Save" busy={busy} disabled={!online||kind==='customer'&&!customerFields} onPress={() => theme.alert(title, 'Save these details?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Save', onPress: () => void submit() }])} />
+      <Button title={kind==='customer'?'Save Customer':kind==='register-open'?'Open register':kind==='register-close'?'Confirm & close register':'Save'} busy={busy} disabled={!online||kind==='register-close'&&(!closingDetail||closingDetail.status!=='open')||kind==='customer'&&!customerFields||kind==='register-open'&&(!registerContext||registerContext.hasOpen)} onPress={() => theme.alert(title, kind==='register-open'?'Open this branch’s register with the cash amount shown?':'Save these details?', [{ text: 'Cancel', style: 'cancel' }, { text: kind==='register-open'?'Open register':kind==='register-close'?'Confirm & close register':'Save', onPress: () => void submit() }])} />
       <Button title="Cancel" secondary disabled={busy} onPress={leave} />
     </ScrollView>
     <Modal visible={!!picker} transparent animationType="fade" onRequestClose={() => setPicker(null)}><View style={{ flex: 1, backgroundColor: '#0008', justifyContent: 'center', padding: 24 }}><Pressable accessibilityRole="button" accessibilityLabel="Close selector" onPress={()=>setPicker(null)} style={{position:'absolute',inset:0}}/><View style={{ maxHeight: '80%', borderRadius: 20, backgroundColor: theme.panel }}><ScrollView contentContainerStyle={styles.page}>

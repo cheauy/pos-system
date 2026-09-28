@@ -1,3 +1,4 @@
+import {saveTaxRate} from '@/app/(dashboard)/dashboard/settings/pos-currency/tax-actions';
 import {mobileExpenses} from '@/lib/mobile/expense-list';
 import {accountAccess,mobileAccountRead} from '@/lib/mobile/account-read';
 import { createCategory, updateCategory, deleteCategoryById } from '@/app/(dashboard)/dashboard/categories/actions';
@@ -74,7 +75,7 @@ const access: Record<string, Permission> = {
   reports: 'reports.view',
   orders: 'orders.view', order: 'orders.view', stock: 'inventory.view',
   'customer-fields': 'customers.view', customers: 'customers.view', 'expense-breakdown': 'expenses.manage', expenses: 'expenses.manage', 'register-detail': 'register.manage', register: 'register.manage',
-  pos: 'pos.access', quote: 'pos.access', sale: 'pos.access', 'sale-status': 'pos.access',
+  'currency-settings': 'pos.access', pos: 'pos.access', quote: 'pos.access', sale: 'pos.access', 'sale-status': 'pos.access',
   hold: 'pos.access', 'delete-hold': 'pos.access',
   returns: 'orders.return', 'return-status': 'orders.return',
   'order-qr': 'orders.view', receipt: 'orders.view', 'shipping-label': 'orders.view',
@@ -143,6 +144,13 @@ async function handle(request: Request, feature: string) {
       // PostgREST filter syntax must never come from unescaped search input.
       const term = search.replace(/[^\p{L}\p{N}\s_-]/gu, '');
       if (request.method === 'GET') {
+        if(feature==='currency-settings'){
+          if(business.role!=='owner')throw new RequestError('Only the owner can manage currency settings.',403);
+          const {data,error}=await db.from('branch_pos_settings').select('currency,pos_tax_rate').eq('business_id',business.id).eq('location_id',scope.branchId).single();
+          if(error)throw new RequestError('Unable to load currency settings.',503);
+          return response({currency:data.currency,taxRate:Number(data.pos_tax_rate)});
+        }
+
         if(feature==='account-profile'||feature==='account-subscription'||feature in accountAccess){
           const result=await mobileAccountRead(db,feature,business,scope.branchId,user);
           if(feature!=='account-profile'&&url.searchParams.get('limit')==='10'){
@@ -346,22 +354,24 @@ async function handle(request: Request, feature: string) {
           let query = db.from('customers').select('id,name,phone,email,birthday,address,loyalty_points', { count: 'exact' })
             .eq('business_id', business.id).eq('location_id', scope.branchId);
           if (term) query = query.or(`name.ilike.%${term}%,phone.ilike.%${term}%`);
-          const result = await query.order('name').order('id').range((page-1)*10,page*10-1);
+          const result = await query.order('created_at',{ascending:false,nullsFirst:false}).order('id',{ascending:false}).range((page-1)*10,page*10-1);
           if (result.error) throw new RequestError('Unable to load customers.', 503);
           return response({ rows: result.data, total: result.count, page, fieldSettings: await getCustomerFieldSettings(business.id) });
         }
         if (feature === 'expenses') return response({...await mobileExpenses(db,business.id,scope.branchId,url),categories:CATEGORIES});
         if(feature==='register-detail'){const id=mobileSelection(url.searchParams.get('id'));if(!id)throw new RequestError('Choose a register shift.');return response(await mobileRegisterDetail(db,business.id,scope.branchId,id));}
         if (feature === 'register') {
-          const result = await db.from('cash_register_shifts').select('id,status,opening_cash,opened_at,closed_at', { count: 'exact' })
+          let query = db.from('cash_register_shifts').select('id,status,opening_cash,closing_cash,expected_cash,opened_at,closed_at', { count: 'exact' })
             .eq('business_id', business.id).eq('location_id', scope.branchId)
-            .order('opened_at', { ascending: false }).order('id').range(from, from + listLimit - 1);
+            .order('opened_at', { ascending: false }).order('id');
+          const status=url.searchParams.get('status');if(status==='open'||status==='closed')query=query.eq('status',status);
+          const result=await query.range(from,from+listLimit-1);
           if (result.error) throw new RequestError('Unable to load register shifts.', 503);
           const open=await db.from('cash_register_shifts').select('id').eq('business_id',business.id).eq('location_id',scope.branchId).eq('status','open').limit(1);
           if(open.error)throw new RequestError('Unable to check the open register.',503);
           const settings=await db.from('branch_pos_settings').select('currency').eq('business_id',business.id).eq('location_id',scope.branchId).single();
           if(settings.error)throw new RequestError('Unable to load register currency.',503);
-          return response({ rows: result.data, total: result.count, page, hasOpen:!!open.data?.length, currency:settings.data.currency });
+          return response({ rows: result.data, total: result.count, page, hasOpen:!!open.data?.length, currency:settings.data.currency, branchName:scope.branches.find(branch=>branch.id===scope.branchId)?.name||'Current branch', cashierName:String(user.user_metadata?.full_name||user.user_metadata?.name||user.email||'Current user') });
         }
         if (feature === 'alerts') {
           const refresh = await db.rpc('refresh_business_notifications', { p_business_id: business.id });
@@ -488,6 +498,7 @@ async function handle(request: Request, feature: string) {
           const result = await submitStockAdjustment({ success: false, message: '', submittedAt: 0 }, form);
           return response(result, result.success ? 200 : 409);
         }
+        if(feature==='currency-settings')return response(await saveTaxRate(business.id,scope.branchId,body.taxRate));
         if(feature==='customer-fields') {
           if(!permissions.includes('business.update')) throw new RequestError('You cannot change customer fields.',403);
           if(typeof body.emailEnabled!=='boolean'||typeof body.birthdayEnabled!=='boolean') throw new RequestError('Choose valid customer fields.');

@@ -1,7 +1,8 @@
+import {RegisterCard} from './register-card';
+import {OrderSheet,Photo} from './order-detail';
 import {compareVariants} from './variant-selection';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Linking, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
-import { Image as CachedImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { api, money, type Order, type Scope, type Workspace } from './client';
@@ -9,7 +10,6 @@ import { SearchField, Field, FloatingAdd, ActionArea, DetailRow, Metric, Section
 import { Ionicons } from '@expo/vector-icons';
 import { EntryForm } from './entry-form';
 import { AdjustStock } from './adjust-stock';
-import { ReturnOrder } from './return-order';
 import { PurchaseOrder } from './purchase-order';
 import { cache, clearCache, useData, useInfiniteData } from './data';
 import { Shimmer } from './loading';
@@ -21,7 +21,6 @@ import { CustomerFieldSettings, type CustomerFields } from './customer-fields';
 import { RegisterDetail } from './register-detail';
 import { IncomingAlerts } from './incoming-alerts';
 import { OrderCard } from './order-card';
-import { outputOrderDocument } from './order-document';
 import { groupProducts } from './product-groups';
 import { ProductPanel } from './product-panel';
 import { Donut, Ranking, SalesChart } from './charts';
@@ -29,7 +28,7 @@ import { Donut, Ranking, SalesChart } from './charts';
 import { ManagementForm } from './management';
 
 type Row = { id: string; variant_group_id?: string | null; size?: string | null; color?: string | null; [key: string]: unknown };
-type Page = { totalAmount?:number; stockCategories?: {id:string;name:string}[]; rows: Row[]; total: number; fieldSettings?: CustomerFields; hasOpen?:boolean; alertIds?: string[]; photosUnavailable?: boolean; unread?: number; receiveAll?: boolean; categories?: string[]; currency?: string; metrics?: { yesterday: number; pending: number; completed: number } };
+type Page = { branchName?:string; cashierName?:string; totalAmount?:number; stockCategories?: {id:string;name:string}[]; rows: Row[]; total: number; fieldSettings?: CustomerFields; hasOpen?:boolean; alertIds?: string[]; photosUnavailable?: boolean; unread?: number; receiveAll?: boolean; categories?: string[]; currency?: string; metrics?: { yesterday: number; pending: number; completed: number } };
 export function Home({ workspace, online, go }: { workspace: Workspace; online: boolean; go: (page: string) => void }) {
   const theme = useTheme();
   const scope = { userId: workspace.userId, businessId: workspace.business.id, branchId: workspace.branchId };
@@ -145,7 +144,7 @@ export function Records({ feature, scope, online, permissions, workspace, search
   const busyRef = useRef(false);
   useEffect(() => { const timer = setTimeout(() => {  setQuery(search); }, 350); return () => clearTimeout(timer); }, [search]);
   const endpoint = ({ 'Online Orders': 'incoming', 'Purchase Orders': 'purchases', 'Stock Transfers': 'transfers' } as Record<string, string>)[feature] || feature.toLowerCase();
-  const path = `${endpoint}?grouped=${feature==='Stock'}&search=${encodeURIComponent(query)}&category=${encodeURIComponent(feature==='Expenses'?expenseCategory:stockCategory)}&period=${expensePeriod}&sort=${expenseSort}${isOrder ? `&status=${status}&payment=${payment}` : ''}`;
+  const path = `${endpoint}?grouped=${feature==='Stock'}&search=${encodeURIComponent(query)}&category=${encodeURIComponent(feature==='Expenses'?expenseCategory:stockCategory)}&period=${expensePeriod}&sort=${expenseSort}${isOrder ? `&status=${status}&payment=${payment}` : feature==='Register'?`&status=${status}`:''}`;
   const { data, loading, error, refresh, more } = useInfiniteData<Page>(path, scope, online);
   const value = (row: Row, field: string) => String(row[field] ?? '');
   function record(row: Row) {
@@ -162,7 +161,7 @@ export function Records({ feature, scope, online, permissions, workspace, search
     }
     if(feature==='Customers'){const name=value(row,'name');const initials=name.trim().split(/\s+/).slice(0,2).map(part=>Array.from(part)[0]||'').join('').toUpperCase()||'?';const colors=['#299cd0','#ef4b40','#4967f5'];const color=colors[Array.from(row.id).reduce((sum,c)=>sum+c.charCodeAt(0),0)%colors.length];return <Pressable accessibilityRole="button" onPress={()=>setDetailRow(row)} style={{flexDirection:'row',alignItems:'center',gap:12,padding:16,backgroundColor:theme.panel,borderWidth:1,borderColor:theme.border,borderRadius:18}}><View style={{width:46,height:46,borderRadius:23,backgroundColor:color,alignItems:'center',justifyContent:'center'}}><Text style={{color:'#fff',fontSize:16,fontWeight:'600'}}>{initials}</Text></View><View style={{flex:1,gap:5}}><Text numberOfLines={1} style={{color:theme.text,fontSize:16,fontWeight:'600',fontFamily:theme.language==='km'?'Hanuman_400Regular':undefined}}>{name}</Text><Text numberOfLines={1} style={{color:theme.muted,fontSize:14}}>{value(row,'phone')}</Text></View><Ionicons name="chevron-forward" size={19} color={theme.muted}/></Pressable>;}
 
-    if(feature==='Register')return <Pressable accessibilityRole="button" onPress={()=>setDetailRow(row)} style={{flexDirection:'row',alignItems:'center',gap:12,padding:12,borderRadius:12,backgroundColor:theme.panel,borderWidth:1,borderColor:theme.border}}><Ionicons name="cash-outline" size={24} color="#5987ed"/><View style={{flex:1}}><Label>Cash register</Label><Label muted>{new Date(value(row,'opened_at')).toLocaleDateString()}</Label></View><View style={{alignItems:'flex-end',gap:4}}><Badge title={value(row,'status')} positive={row.status==='open'}/><Label>{money(Number(row.opening_cash),data?.currency)}</Label></View></Pressable>;
+    if(feature==='Register')return <RegisterCard row={row} currency={data?.currency} open={()=>setDetailRow(row)}/>;
     const icon = feature==='Customers'?'person-outline':feature==='Expenses'?'wallet-outline':'cash-outline';
     return <Pressable accessibilityRole="button" onPress={()=>setDetailRow(row)}><Card><View style={styles.row}><View style={{padding:13,borderRadius:15,backgroundColor:theme.background}}><Ionicons name={icon} size={25} color="#5987ed"/></View><View style={{flex:1}}><Label>{feature==='Customers'?value(row,'name'):feature==='Expenses'?value(row,'description'):'Cash register'}</Label><Label muted>{feature==='Customers'?value(row,'phone'):feature==='Expenses'?value(row,'category'):new Date(value(row,'opened_at')).toLocaleDateString()}</Label></View><Ionicons name="chevron-forward" size={18} color={theme.muted}/></View>{feature==='Customers'?<Badge title={`${row.loyalty_points??0} points`}/>:feature==='Expenses'?<DetailRow label="Amount" value={money(Number(row.amount),data?.currency)}/>:<View style={[styles.row,{justifyContent:'space-between'}]}><Badge title={value(row,'status')} positive={row.status==='open'}/><Label>{money(Number(row.opening_cash),data?.currency)}</Label></View>}</Card></Pressable>;
   }
@@ -177,8 +176,8 @@ export function Records({ feature, scope, online, permissions, workspace, search
       </>}
       {feature==='Expenses'&&<><Label muted>Track and manage your business expenses.</Label><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8}}>{[['all','All'],['month','This Month'],['year','This Year']].map(([value,label])=><Button key={value} title={label} secondary={expensePeriod!==value} onPress={()=>setExpensePeriod(value)}/>)}<SelectMenu label="Category" value={expenseCategory} change={setExpenseCategory} options={[{value:'',label:'All categories'},...(data?.categories||[]).map(value=>({value,label:value}))]}/></ScrollView><View style={[styles.row,{justifyContent:'space-between'}]}><Label muted>{`${data?.total??0} ${theme.t('expenses')}`}</Label><SelectMenu label="Sort" value={expenseSort} change={setExpenseSort} options={[{value:'latest',label:'Latest first'},{value:'oldest',label:'Oldest first'}]}/></View></>}
       {view.error&&<Label>{view.error}</Label>}
-      {data&&feature!=='Stock'&&feature!=='Expenses'&&<Badge title={`${data.total} ${theme.t(feature==='Stock'?'products':'records')}`}/>}
-      {feature === 'Register' && data && data.hasOpen===false && <Button title="Open register" disabled={!online} onPress={() => setForm('register-open')} />}
+      {data&&feature!=='Stock'&&feature!=='Expenses'&&feature!=='Register'&&<Badge title={`${data.total} ${theme.t(feature==='Stock'?'products':'records')}`}/>}
+      {feature==='Register'&&<><View style={[styles.row,{justifyContent:'space-between'}]}><View style={{flex:1}}><Label muted>Open a register or manage your sessions.</Label></View><Pressable accessibilityRole="button" accessibilityLabel="How registers work" onPress={()=>theme.alert('How registers work','Count your opening cash, record sales during the shift, then count and close the drawer. Cash differences are saved with the closing record.')} style={{padding:10}}><Ionicons name="help-circle-outline" size={25} color="#275de8"/></Pressable></View>{data?.hasOpen===false&&<Pressable accessibilityRole="button" disabled={!online} onPress={()=>setForm('register-open')} style={{padding:20,borderRadius:20,backgroundColor:'#275de8',flexDirection:'row',gap:14,alignItems:'center',opacity:online?1:0.5}}><Ionicons name="cash-outline" size={34} color="#fff"/><View style={{flex:1,gap:6}}><Text style={{color:'#fff',fontWeight:'700',fontSize:19}}>{theme.t('Open new register')}</Text><Text style={{color:'#e3ebff'}}>{theme.t('Start a new cash register session.')}</Text></View><Ionicons name="arrow-forward-circle" size={36} color="#fff"/></Pressable>}<View style={[styles.row,{justifyContent:'space-between',alignItems:'center'}]}><View style={{flex:1,minWidth:0}}><Label>Recent registers</Label></View><View style={{width:150,flexShrink:0}}><SelectMenu label="Status" value={status} change={setStatus} options={[{value:'all',label:'All statuses'},{value:'open',label:'Open'},{value:'closed',label:'Closed'}]}/></View></View></>}
       {!online && <Label muted>Offline · showing previously loaded records only</Label>}
       {error && <Card><Label>{error}</Label><Button title="Retry" onPress={refresh} disabled={!online} secondary /></Card>}
       {data?.photosUnavailable&&<Label muted>Product photos could not be loaded. Pull down to retry.</Label>}
@@ -190,7 +189,7 @@ export function Records({ feature, scope, online, permissions, workspace, search
     }}/>}
     {isOrder&&<Modal visible={orderPanel==='filters'} animationType="slide" presentationStyle="pageSheet" onRequestClose={()=>router.setParams({orderPanel:''})}><SafeAreaView style={{flex:1,backgroundColor:theme.background}}><ScrollView contentContainerStyle={styles.page}><SectionTitle title="Order filters" icon="options-outline"/><Label>Status</Label><View style={[styles.row,{flexWrap:'wrap'}]}>{[['all','All'],['pending','Pending'],['completed','Completed'],['refunded','Returned'],['cancelled','Cancelled']].map(([key,label])=><Button key={key} title={label} secondary={status!==key} onPress={()=>{setStatus(key);}}/>)}</View><Label>Payment</Label><View style={[styles.row,{flexWrap:'wrap'}]}>{[['all','All'],['paid','Paid'],['unpaid','Unpaid'],['partial','Partial'],['pending_verification','Verify payment'],['refunded','Refunded']].map(([key,label])=><Button key={key} title={label} secondary={payment!==key} onPress={()=>{setPayment(key);}}/>)}</View><Button title="Reset filters" secondary onPress={()=>{setStatus('all');setPayment('all');}}/><Button title="Done" onPress={()=>router.setParams({orderPanel:''})}/></ScrollView></SafeAreaView></Modal>}
     <FlatList key={`columns-${columns}`} numColumns={columns} columnWrapperStyle={columns>1?{gap:12}:undefined} data={feature==='Stock'?groupProducts(data?.rows??[]).map(rows=>rows.length>1?{...rows[0],variants:rows}:rows[0]):data?.rows??[]} keyExtractor={item => item.id} renderItem={({ item }) => columns>1?<View style={{flex:1,maxWidth:`${100/columns-1.5}%`}}>{record(item)}</View>:record(item)} initialNumToRender={pageSize} maxToRenderPerBatch={8} windowSize={5}
-      contentContainerStyle={[styles.page,isOrder||feature==='Expenses'?{gap:0,paddingTop:4}:null,['Customers','Register'].includes(feature)?{gap:0,paddingTop:4}:null,['Customers','Expenses'].includes(feature)?{paddingBottom:90}:null]} ItemSeparatorComponent={() => <View style={{ height: isOrder||feature==='Customers'?10:feature==='Register'?4:12 }} />}
+      contentContainerStyle={[styles.page,isOrder||feature==='Expenses'||feature==='Stock'?{gap:0,paddingTop:4}:null,['Customers','Register'].includes(feature)?{gap:0,paddingTop:4}:null,['Customers','Expenses'].includes(feature)?{paddingBottom:90}:null]} ItemSeparatorComponent={() => <View style={{ height: isOrder||feature==='Customers'||feature==='Stock'?10:12 }} />}
       refreshControl={<RefreshControl refreshing={loading&&!!data} onRefresh={refresh} enabled={online} tintColor={theme.text} />}
       ListEmptyComponent={loading&&online ? <Shimmer/> : <View style={{paddingVertical:42,alignItems:'center',gap:14}}><Ionicons name={feature==='Stock'?'cube-outline':'receipt-outline'} size={42} color={theme.muted}/><Label large>{online ? 'No records yet' : 'You are offline'}</Label><Label muted>{query||status!=='all'?'Try another search or filter.':'Your records will appear here.'}</Label></View>}
       onEndReached={more} onEndReachedThreshold={0.4} ListFooterComponent={loading&&data?<ActivityIndicator color={theme.text}/>:null} />
@@ -207,7 +206,7 @@ export function Records({ feature, scope, online, permissions, workspace, search
     {(feature==='Stock Transfers'||feature==='Purchase Orders'&&permissions.includes('purchases.create'))&&<View style={{padding:12}}><Button title={feature==='Stock Transfers'?'New transfer':'New purchase order'} disabled={!online} onPress={()=>setCreateDraft(true)}/></View>}
     {createDraft&&<ManagementForm operation={feature==='Stock Transfers'?'transfer-save':'purchase-create'} workspace={workspace} scope={scope} online={online} close={()=>setCreateDraft(false)} saved={()=>{setCreateDraft(false);clearCache();refresh();}}/>}
 
-    {form && <EntryForm kind={form} scope={scope} online={online} categories={data?.categories} shiftId={shiftId} close={() => { setForm(null); refresh(); }} saved={() => { setForm(null); clearCache(); refresh(); }} />}
+    {form && <EntryForm kind={form} scope={scope} online={online} categories={data?.categories} shiftId={shiftId} registerContext={data&&data.branchName&&data.cashierName&&data.currency?{branchName:data.branchName,cashierName:data.cashierName,currency:data.currency,hasOpen:data.hasOpen!==false}:undefined} close={() => { setForm(null); refresh(); }} saved={() => { setForm(null); clearCache(); refresh(); }} />}
     {feature==='Expenses'&&<View style={{padding:16,borderTopWidth:1,borderColor:theme.border,backgroundColor:theme.panel}}><View style={[styles.row,{justifyContent:'space-between'}]}><View><Label>Total Expenses</Label><Label muted>{`${data?.total??0} records`}</Label></View><Label large>{data?money(data.totalAmount??0,data.currency):'—'}</Label></View></View>}
     {feature==='Expenses'&&<FloatingAdd bottom={110} label="Add expense" disabled={!online||!data?.categories} onPress={()=>setForm('expense')}/>}
     {feature==='Customers'&&permissions.includes('customers.create')&&permissions.includes('pos.access')&&<FloatingAdd label="Add customer" disabled={!online} onPress={()=>setForm('customer')}/>}
@@ -252,77 +251,6 @@ function TransferSheet({ id, scope, online, close,workspace }: { id: string; sco
   </ScrollView></SafeAreaView></Modal>;
 }
 
-function OrderSheet({ id, scope, online, onClose, canUpdate, canReturn, currency, incoming, scanned = false }: { id: string; scope: Scope; online: boolean; onClose: () => void; canUpdate: boolean; canReturn: boolean; currency: string; incoming: boolean; scanned?: boolean }) {
-  const theme = useTheme();
-  const { data, error, loading, refresh } = useData<Order>(`${incoming ? 'incoming-detail' : 'order'}?id=${encodeURIComponent(id)}`, scope, online);
-  const [busy, setBusy] = useState(false);
-  const inFlight = useRef(false);
-  const [photo, setPhoto] = useState<string | null>(null);
-  const [returning, setReturning] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [edit, setEdit] = useState({ note: '', guestName: '', guestPhone: '', guestAddress: '' });
-  const next: Record<string, [string, string]> = { new: ['accepted', 'Accept order'], accepted: ['preparing', 'Start packing'], preparing: ['ready', 'Ready for delivery'], ready: ['completed', 'Complete order'] };
-  const step = data && ['online', 'qr'].includes(data.source) && !['completed', 'cancelled', 'refunded'].includes(data.status) ? next[data.onlineStatus ?? 'new'] : undefined;
-  async function update(status: string) {
-    if (!data || !online || inFlight.current) return;
-    inFlight.current = true; setBusy(true);
-    try { await api(incoming ? 'incoming-status' : 'order', scope, { id, updatedAt: data.updatedAt, status }); clearCache(); refresh(); }
-    catch (error) { theme.alert('Check order status', `${(error as Error).message}\nRefresh the order before retrying.`); refresh(); }
-    finally { setBusy(false); inFlight.current = false; }
-  }
-  async function printReceipt(share: boolean, shipping = false) {
-    if (inFlight.current || !online) return;
-    inFlight.current = true; setBusy(true);
-    try {
-      const Print = await import('expo-print');
-      const result = await api<{ html: string; width?: number; height?: number; size?: string }>(`${shipping ? 'shipping-label' : 'receipt'}?id=${encodeURIComponent(id)}`, scope);
-      await outputOrderDocument(result, share, shipping, Print, share ? await import('expo-sharing') : undefined);
-    } catch (error) { theme.alert('Receipt', (error as Error).message); }
-    finally { inFlight.current = false; setBusy(false); }
-  }
-  return <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { if (!busy) onClose(); }}>
-    <ActionArea><SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}><ScrollView contentContainerStyle={styles.page}>
-      <View style={[styles.row, { justifyContent: 'space-between' }]}><Label large>Order details</Label><Button title="Close" onPress={onClose} secondary disabled={busy} /></View>
-      {loading && !data && <Shimmer/>}{error && <Label>{error}</Label>}
-      {data && <><Card><SectionTitle title={data.orderNumber} icon="receipt-outline"/><View style={[styles.row,{flexWrap:'wrap'}]}><Badge title={data.status==='refunded'?'Returned':data.status} positive={data.status==='completed'}/><Badge title={data.paymentState} positive={data.paymentState==='paid'}/></View><Text style={{fontSize:34,fontWeight:'700',color:theme.text}}>{money(data.total,currency)}</Text><Label muted>Order total</Label></Card>
-        <Card><SectionTitle title="Customer & delivery" icon="person-outline"/><DetailRow label="Customer" value={data.customerName}/><DetailRow label="Phone" value={data.customerPhone}/><DetailRow label="Address" value={data.customerAddress}/></Card>
-        {incoming && data.paymentMethod === 'khqr' && <Button title="View payment proof" secondary disabled={!online || busy} onPress={() => {
-          if (inFlight.current) return; inFlight.current = true; setBusy(true);
-          api<{ url: string }>(`proof?id=${id}`, scope).then(result => setPhoto(result.url)).catch(error => theme.alert('Payment proof', error.message)).finally(() => { inFlight.current = false; setBusy(false); });
-        }} />}
-        {incoming && data.paymentMethod === 'khqr' && data.paymentState === 'pending_verification' && canUpdate && <Button title="Confirm payment received" disabled={!online || busy} onPress={() => theme.alert('Verify your bank account', 'A screenshot does not confirm payment. Only continue after checking that the money arrived in the store bank account.', [
-          { text: 'Cancel', style: 'cancel' }, { text: 'Payment received', onPress: () => {
-            if (inFlight.current) return; inFlight.current = true; setBusy(true);
-            api('payment', scope, { id, status: 'paid' }).then(() => { clearCache(); refresh(); }).catch(error => { theme.alert('Check payment status', error.message); refresh(); }).finally(() => { inFlight.current = false; setBusy(false); });
-          } },
-        ])} />}
-        <SectionTitle title="Order items" icon="bag-handle-outline"/>{(data.items ?? []).map(item => <Card key={item.id}><View style={styles.row}><Pressable disabled={!item.imageUrl} accessibilityRole="button" onPress={() => setPhoto(item.imageUrl)} accessibilityLabel="View product image"><ProductPhoto uri={item.imageUrl} size={76}/></Pressable>
-          <View style={{ flex: 1 }}><Label>{item.name}</Label><Label muted>{item.variant}</Label><Label>{`${item.quantity} items · ${money(item.subtotal, currency)}`}</Label></View></View></Card>)}
-        {step && canUpdate && <Button title={step[1]} busy={busy} disabled={!online || !data.updatedAt || loading} onPress={() => theme.alert(theme.t(step[1]), `${data.orderNumber} — confirm this change?`, [
-          { text: theme.t('Cancel'), style: 'cancel' }, { text: 'Confirm', onPress: () => void update(step[0]) },
-        ])} />}
-        <SectionTitle title="Order actions" icon="options-outline"/>
-        {canUpdate && <Button title="Edit order" secondary disabled={!online || busy || loading || !data.updatedAt || ['cancelled','refunded'].includes(data.status)} onPress={() => { setEdit({ note: data.note || '', guestName: data.guestName ?? data.customerName, guestPhone: data.guestPhone ?? data.customerPhone ?? '', guestAddress: data.guestAddress ?? data.customerAddress ?? '' }); setEditing(true); }} />}
-        {canUpdate && !step && ['new','pending'].includes(data.status) && <Button title="Complete order" disabled={!online || busy || loading || !data.updatedAt} onPress={() => theme.alert('Complete order?', 'This changes the order status without collecting payment.', [{text:'Cancel',style:'cancel'},{text:'Complete',onPress:()=>void update('completed')}])}/>}
-        {editing && <Card><SectionTitle title="Edit order" icon="create-outline"/>{([ ['guestName','Customer name'], ['guestPhone','Phone'], ['guestAddress','Address'], ['note','Note'] ] as const).map(([key,label]) => <Field key={key} label={label} value={edit[key]} editable={!busy} onChangeText={value=>setEdit(previous=>({...previous,[key]:value}))} maxLength={key==='note'?2000:500}/>)}<Button title="Save changes" busy={busy} disabled={!online || loading} onPress={()=>theme.alert('Save order changes?', data.orderNumber, [{text:'Cancel',style:'cancel'},{text:'Save',onPress:()=>{if(inFlight.current)return;inFlight.current=true;setBusy(true);void api('order',scope,{id,updatedAt:data.updatedAt,action:'edit',...edit}).then(()=>{setEditing(false);clearCache();refresh();}).catch(error=>theme.alert('Unable to save',error.message)).finally(()=>{inFlight.current=false;setBusy(false);});}}])}/><Button title="Cancel" secondary disabled={busy} onPress={()=>setEditing(false)}/></Card>}
-        <Button title="Print receipt" secondary disabled={!online || busy} onPress={() => void printReceipt(false)} />
-        <Button title="Share PDF receipt" secondary disabled={!online || busy} onPress={() => void printReceipt(true)} />
-        <Button title="Print shipping label" secondary disabled={!online || busy} onPress={() => void printReceipt(false, true)} />
-        {canReturn && <Button title="Return items / check refund" secondary disabled={!online || busy} onPress={() => setReturning(true)} />}
-      </>}
-      {scanned && <View style={{height:80}}/>}
-    </ScrollView>
-    {scanned && canUpdate && data && ['new','pending'].includes(data.status) && <View style={{position:'absolute',bottom:28,right:20}}><Button title="Complete" busy={busy} disabled={!online || loading || !data.updatedAt} onPress={() => theme.alert('Complete order?', `Mark ${data.orderNumber} as completed? This does not collect or change payment.`, [{text:'Cancel',style:'cancel'},{text:'Complete',onPress:()=>void update('completed')}])}/></View>}
-    <Photo uri={photo} close={() => setPhoto(null)} />
-    {returning && <ReturnOrder id={id} scope={scope} online={online} close={() => { setReturning(false); refresh(); }} saved={() => { setReturning(false); clearCache(); refresh(); }} />}</SafeAreaView></ActionArea>
-  </Modal>;
-}
-
-function Photo({ uri, close }: { uri: string | null; close: () => void }) {
-  return <Modal visible={!!uri} transparent={false} onRequestClose={close} animationType="fade"><SafeAreaView style={{ flex: 1, backgroundColor: '#000', padding: 16 }}>
-    <Button title="Close" onPress={close} />{uri && <ScrollView maximumZoomScale={4} minimumZoomScale={1} contentContainerStyle={{ flex: 1 }}><CachedImage source={{ uri }} style={{ flex: 1 }} contentFit="contain" cachePolicy="memory-disk" /></ScrollView>}
-  </SafeAreaView></Modal>;
-}
 function Scanner({ onClose, onScan, order = false }: { onClose: () => void; onScan: (value: string) => void | Promise<void>; order?: boolean }) {
   const theme = useTheme();
   const [busy, setBusy] = useState(false);

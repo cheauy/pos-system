@@ -49,7 +49,7 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
       db.from('branch_pos_settings').select('currency_format,enable_coupons,require_open_register').eq('business_id',business.id).eq('location_id',branchId).maybeSingle(),
       db.from('business_coupons').select('*').eq('business_id',business.id).eq('location_id',branchId).eq('apply_pos',true).eq('is_active',true),
       db.rpc('tenh_pos_receipt_update_ready', { p_business_id: business.id }),
-      db.from('customers').select('id,name,phone,address,loyalty_points').eq('business_id',business.id).eq('location_id',branchId).order('name'),
+      db.from('customers').select('id,name,phone,address,loyalty_points').eq('business_id',business.id).eq('location_id',branchId).order('created_at',{ascending:false,nullsFirst:false}).order('id',{ascending:false}),
       db.from('categories').select('id,name,branch_ids').eq('business_id',business.id),
       db.from('cash_register_shifts').select('id,location_id').eq('business_id',business.id).eq('location_id',branchId).eq('status','open').limit(2),
     ]);

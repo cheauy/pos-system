@@ -1,3 +1,4 @@
+import {CurrencySettings} from './src/currency-settings';
 import {Subscription} from './src/subscription';
 import {AccountMenu} from './src/account-menu';
 import React, { createContext, lazy, Suspense, useContext, useEffect, useRef, useState } from 'react';
@@ -247,6 +248,7 @@ function WorkspaceApp({ userId, onAppearance }: { userId: string; onAppearance: 
         : currentPage === 'Settings' ? <ScrollView contentContainerStyle={styles.page}>
           <SectionTitle title="Appearance & language" icon="color-palette-outline"/>
           <AppearanceSettings save={onAppearance}/>
+          {workspace.business.role==='owner'&&<CurrencySettings key={`${workspace.business.id}:${workspace.branchId}`} scope={{userId,businessId:workspace.business.id,branchId:workspace.branchId}} online={online}/>}
           <SectionTitle title="Security" icon="shield-checkmark-outline"/><DeviceLockSettings/>
           <SectionTitle title="Notifications" icon="notifications-outline"/><PushSettings scope={{userId,businessId:workspace.business.id,branchId:workspace.branchId}} online={online}/>
         </ScrollView>
