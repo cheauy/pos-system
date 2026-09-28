@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { PAYMENT_PROOF_BUCKET, proofPath } from "@/lib/storefront/checkout-validation";
 import { SELECTED_BUSINESS_COOKIE } from "@/lib/tenancy/domain";
 
 export type ChangePasswordState = {
@@ -98,6 +99,10 @@ const ACCOUNT_STORAGE_BUCKETS = [
   "product-images",
   "storefront-media",
   "tenh-pos-subscription-payment-proofs",
+  "tenh-expense-receipts",
+  "tenh-receipt-logos",
+  "tenh-printer-designs",
+  "support-report-images",
 ] as const;
 
 function isMissingBucketError(message: string) {
@@ -144,18 +149,49 @@ async function collectStorageFiles(
   return files;
 }
 
-async function eraseBusinessStorage(businessId: string) {
-  for (const bucket of ACCOUNT_STORAGE_BUCKETS) {
-    const files = await collectStorageFiles(bucket, businessId);
+async function removeStorageFiles(bucket: string, files: string[]) {
+  for (let index = 0; index < files.length; index += 100) {
+    const { error } = await supabaseAdmin.storage
+      .from(bucket)
+      .remove(files.slice(index, index + 100));
 
-    for (let index = 0; index < files.length; index += 100) {
-      const batch = files.slice(index, index + 100);
-      const { error } = await supabaseAdmin.storage.from(bucket).remove(batch);
-
-      if (error && !isMissingBucketError(error.message)) {
-        throw new Error(`Unable to erase ${bucket} files: ${error.message}`);
-      }
+    if (error && !isMissingBucketError(error.message)) {
+      throw new Error(`Unable to erase ${bucket} files: ${error.message}`);
     }
+  }
+}
+
+async function businessStorageFiles(businessId: string) {
+  return Promise.all(ACCOUNT_STORAGE_BUCKETS.map(async (bucket) => ({
+    bucket,
+    files: await collectStorageFiles(bucket, businessId),
+  })));
+}
+
+async function eraseBusinessStorage(
+  storageFiles: Awaited<ReturnType<typeof businessStorageFiles>>,
+  paymentProofs: string[],
+) {
+  for (const { bucket, files } of storageFiles) await removeStorageFiles(bucket, files);
+  await removeStorageFiles(PAYMENT_PROOF_BUCKET, paymentProofs);
+}
+
+async function businessPaymentProofs(businessId: string) {
+  const paths: string[] = [];
+  for (let start = 0; ; start += 500) {
+    const { data, error } = await supabaseAdmin
+      .from("orders")
+      .select("id,payment_reference")
+      .eq("business_id", businessId)
+      .like("payment_reference", "proof:%")
+      .order("id")
+      .range(start, start + 499);
+    if (error) throw new Error(`Unable to inspect order payment proofs: ${error.message}`);
+    for (const order of data ?? []) {
+      const path = proofPath(order.payment_reference);
+      if (path?.startsWith(`${order.id}/`)) paths.push(path);
+    }
+    if (!data || data.length < 500) return paths;
   }
 }
 
@@ -211,51 +247,33 @@ export async function deleteOwnAccount(
     return { success: false, message: ownedBusinessError.message };
   }
 
-  const { data: ownerMemberships, error: ownerMembershipError } =
-    await supabaseAdmin
-      .from("business_members")
-      .select("business_id")
-      .eq("user_id", user.id)
-      .eq("role", "owner");
+  // Only the immutable business owner may erase the business. A stale or
+  // incorrectly assigned "owner" membership never grants deletion rights.
+  const ownedBusinessIds = (directlyOwnedBusinesses ?? []).map((business) => business.id);
 
-  if (ownerMembershipError) {
-    return { success: false, message: ownerMembershipError.message };
-  }
-
-  const ownedBusinessIds = new Set<string>(
-    (directlyOwnedBusinesses ?? []).map((business) => business.id),
-  );
-
-  for (const membership of ownerMemberships ?? []) {
-    ownedBusinessIds.add(membership.business_id);
-  }
-
+  let erasedBusinesses = 0;
   try {
+    const createdTeamUserIds = new Set<string>();
     for (const businessId of ownedBusinessIds) {
-      await eraseBusinessStorage(businessId);
-
-      // Account deletion is an erase request, not a subscription purge. Remove
-      // the business-linked trial safety records too instead of leaving the
-      // business UUID behind as a detached anti-abuse record.
-      for (const table of [
-        "trial_signup_events",
-        "trial_claims",
-        "business_subscription_purge_log",
-      ] as const) {
-        const { error } = await supabaseAdmin
-          .from(table)
-          .delete()
-          .eq("business_id", businessId);
-
-        if (error) {
-          throw new Error(`Unable to erase ${table}: ${error.message}`);
+      const [members, paymentProofs, storageFiles] = await Promise.all([
+        supabaseAdmin.from("business_members").select("user_id,team_owner_id").eq("business_id", businessId),
+        businessPaymentProofs(businessId),
+        businessStorageFiles(businessId),
+      ]);
+      if (members.error) throw new Error(`Unable to inspect business users: ${members.error.message}`);
+      for (const member of members.data ?? []) {
+        if (member.user_id !== user.id && member.team_owner_id === user.id) {
+          createdTeamUserIds.add(member.user_id);
         }
       }
 
-      const { error: businessDeleteError } = await supabaseAdmin
+      const { data: deletedBusiness, error: businessDeleteError } = await supabaseAdmin
         .from("businesses")
         .delete()
-        .eq("id", businessId);
+        .eq("id", businessId)
+        .eq("owner_id", user.id)
+        .select("id")
+        .maybeSingle();
 
       if (businessDeleteError) {
         throw new Error(
@@ -264,6 +282,28 @@ export async function deleteOwnAccount(
             : `Unable to erase owned business data: ${businessDeleteError.message}`,
         );
       }
+      if (!deletedBusiness) throw new Error("Business ownership changed. No business data was erased.");
+      erasedBusinesses++;
+
+      // The database cascade is atomic. Storage is removed only after it
+      // succeeds, so a blocked deletion cannot leave a working store image-less.
+      await eraseBusinessStorage(storageFiles, paymentProofs);
+      const { error: purgeLogError } = await supabaseAdmin
+        .from("business_subscription_purge_log")
+        .delete()
+        .eq("business_id", businessId);
+      if (purgeLogError) throw new Error(`Unable to erase subscription purge history: ${purgeLogError.message}`);
+    }
+
+    for (const teamUserId of createdTeamUserIds) {
+      const [memberships, owned] = await Promise.all([
+        supabaseAdmin.from("business_members").select("id").eq("user_id", teamUserId).limit(1),
+        supabaseAdmin.from("businesses").select("id").eq("owner_id", teamUserId).limit(1),
+      ]);
+      if (memberships.error || owned.error) throw new Error("Unable to verify a team user's other workspaces.");
+      if (memberships.data?.length || owned.data?.length) continue;
+      const { error } = await supabaseAdmin.auth.admin.deleteUser(teamUserId, false);
+      if (error) throw new Error(`A team account could not be deleted: ${error.message}`);
     }
 
     // Remove this person from any other TENH businesses without touching those
@@ -304,10 +344,9 @@ export async function deleteOwnAccount(
   } catch (error) {
     return {
       success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unable to permanently delete the account.",
+      message: `${erasedBusinesses ? "Business data was erased, but cleanup is incomplete. Contact support before trying again. " : ""}${
+        error instanceof Error ? error.message : "Unable to permanently delete the account."
+      }`,
     };
   }
 }
