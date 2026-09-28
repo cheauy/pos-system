@@ -16,14 +16,19 @@ Before running, configure these repository Actions values:
 Use a backend compatible with the mobile source in the build. A local PC address
 will not work away from that PC's network. No real sale is needed to test building.
 
-Cloud build verified on September 28, 2026: GitHub Actions run `36421448734`,
-app source commit `092f3346183504c95cb50e099e4c2cbd07f502dc`.
+Cloud build verified on September 28, 2026: GitHub Actions run `36427049567`,
+app source commit `c89e2a076186a1b17b2a6ee4ec1e161fdd6dce0b`.
 The clean-install decoder tests, iOS bundle export, native build, and IPA packaging passed.
 The downloaded IPA was checked for ZIP integrity, the physical-iPhone arm64 executable,
 the bundled JavaScript, and the hosted API/Supabase URLs. App version: 1.0.0;
 bundle identifier: `com.tenhpos.mobile`; minimum iOS: 16.4.
-SHA-256: `32c21fe35de8bbdea4646e6734985da84d65a30f89b7fce654eac5f261b8ce50`.
+SHA-256: `7936d96da69b7808eb5d9b92da538ccc45cd64e9efa549377ff75cdfb32dd460`.
 Signing, installation, and launch on a physical iPhone still need verification.
+This update keeps cached lists visible, limits polling to operational lists, avoids
+interrupting slow reads, and separates keychain queues by record. Eighteen focused
+mobile checks and the mobile TypeScript check passed. The broader mobile-foundation
+API suite is blocked by an existing missing tax-actions mock; those API checks were
+not claimed as passing. On-device performance still needs verification.
 GitHub macOS runner usage may consume included minutes or incur charges; check
 the account's allowance before starting it.
 
