@@ -1,0 +1,77 @@
+name: Build iPhone test IPA
+
+# Build only the isolated iPhone branch, or run manually after merging.
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/ios-test-build]
+    paths:
+      - mobile/**
+      - .github/workflows/ios-sideload.yml
+
+permissions:
+  contents: read
+
+jobs:
+  iphone:
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile
+        shell: bash
+    env:
+      EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Check public app configuration
+        run: |
+          node <<'NODE'
+          const env = process.env;
+          for (const name of ['EXPO_PUBLIC_API_URL', 'EXPO_PUBLIC_SUPABASE_URL']) {
+            if (!env[name]?.startsWith('https://')) throw new Error(`${name} must be configured as an HTTPS repository variable.`);
+          }
+          const key = env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
+          let role;
+          try { role = JSON.parse(Buffer.from(key.split('.')[1], 'base64url').toString()).role; } catch {}
+          if (!key || key.startsWith('sb_secret_') || (!key.startsWith('sb_publishable_') && role !== 'anon')) {
+            throw new Error('Configure only the Supabase publishable/anon key. Never use a private service-role key.');
+          }
+          NODE
+      - run: npm ci
+      - run: npx expo prebuild --platform ios --no-install
+      - name: Install native dependencies
+        run: cd ios && pod install
+      - name: Build unsigned physical-iPhone app
+        run: |
+          set -euo pipefail
+          project=$(find ios -maxdepth 1 -name '*.xcodeproj' -print -quit)
+          test -n "$project"
+          scheme=$(basename "$project" .xcodeproj)
+          xcodebuild -workspace "ios/$scheme.xcworkspace" -scheme "$scheme" \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+      - name: Package IPA for Windows sideloading
+        run: |
+          set -euo pipefail
+          app=$(find build/ios/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$app"
+          test -f "$app/main.jsbundle"
+          mkdir -p build/package/Payload
+          ditto "$app" "build/package/Payload/$(basename "$app")"
+          cd build/package
+          /usr/bin/zip -qry ../TENH-POS-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TENH-POS-iPhone-sideload
+          path: mobile/build/TENH-POS-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7

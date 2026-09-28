@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "codex/ios-test-build": false
+    }
+  },
   "crons": [
     {
       "path": "/api/internal/subscriptions/purge",
