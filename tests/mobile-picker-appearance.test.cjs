@@ -10,13 +10,13 @@ test('purchase, transfer and bundle selectors show variants inside one screen an
  for(const operation of ['purchase-create','transfer-save','bundle-create']){
   let cursor=0;const states=[],paths=[],selected=[];
   const jsx=(type,props,...children)=>({type,props:{...props,children}});
-  const dependencies={React:{createElement:jsx,Fragment:'Fragment'},useState:initial=>{const index=cursor++;if(!(index in states))states[index]=initial;return [states[index],value=>{states[index]=typeof value==='function'?value(states[index]):value;}];},useEffect:()=>{},useTheme:()=>({text:'black',panel:'white',border:'grey'}),useData:path=>{paths.push(path);return {data:{rows,total:1,currency:'USD'},loading:false,refresh:()=>{}};},...loadTs('mobile/src/product-groups.ts'),...loadTs('mobile/src/variant-selection.ts'),money:String,styles:{row:{},page:{}},api:()=>assert.fail('ordinary variants need no detail request')};
-  for(const name of ['SafeAreaView','ScrollView','View','Label','ProductPhoto','ChoiceChip','Button','Field','Card','Shimmer','ActivityIndicator','Pressable','Pagination'])dependencies[name]=name;
+  const dependencies={React:{createElement:jsx,Fragment:'Fragment'},useState:initial=>{const index=cursor++;if(!(index in states))states[index]=initial;return [states[index],value=>{states[index]=typeof value==='function'?value(states[index]):value;}];},useEffect:()=>{},useTheme:()=>({text:'black',panel:'white',border:'grey'}),useInfiniteScroll:()=>({}),useInfiniteData:path=>{paths.push(path);return {data:{rows,total:1,currency:'USD'},loading:false,more:()=>{},refresh:()=>{}};},...loadTs('mobile/src/product-groups.ts'),...loadTs('mobile/src/variant-selection.ts'),money:String,styles:{row:{},page:{}},api:()=>assert.fail('ordinary variants need no detail request')};
+  for(const name of ['Ionicons','SafeAreaView','ScrollView','View','Label','ProductPhoto','ChoiceChip','Button','Field','Card','Shimmer','ActivityIndicator','Pressable','Pagination'])dependencies[name]=name;
   const component=new Function(...Object.keys(dependencies),`${source('mobile/src/management.tsx','ProductChooser')};return ProductChooser;`)(...Object.values(dependencies));
   function render(){cursor=0;return component({operation,visible:true,scope:{},online:true,selected:[],configure:operation==='bundle-create',choose:p=>selected.push(p.id),close:()=>{}});}
   function nodes(tree){return tree&&typeof tree==='object'?[tree,...(tree.props?.children||[]).flat(Infinity).flatMap(nodes)]:[];}
   let tree=render();assert.equal(nodes(tree).some(node=>node.type==='Modal'),false,'selector must share the form Modal');
-  nodes(tree).find(node=>node.type==='Pressable').props.onPress();
+  nodes(tree).find(node=>node.type==='Pressable'&&node.props.accessibilityLabel!=='Search products').props.onPress();
   tree=render();nodes(tree).find(node=>node.type==='ChoiceChip'&&node.props.title==='Blue').props.onPress();
   tree=render();nodes(tree).find(node=>node.type==='ChoiceChip'&&node.props.title==='L').props.onPress();
   tree=render();const add=nodes(tree).find(node=>node.type==='Button'&&node.props.title==='Add item');assert.equal(add.props.disabled,false);add.props.onPress();

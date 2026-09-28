@@ -1,7 +1,8 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {loadTs}=require('./helpers/load-ts.cjs');
 const {loadMobileOrderPage,mobileOrderPageSize,incomingOrderStatus}=loadTs('lib/mobile/order-list.ts');
-const {outputOrderDocument}=loadTs('mobile/src/order-document.ts');
+const platform={OS:'android'};
+const {outputOrderDocument}=loadTs('mobile/src/order-document.ts',{'react-native':{Platform:platform,Alert:{alert:(_title,_message,buttons)=>buttons[1].onPress()}}});
 
 test('8-card pages and 10/15-row lists have no skipped or duplicate orders under SQL minimum 10',async()=>{
  const rows=Array.from({length:83},(_,id)=>({id}));
@@ -31,4 +32,18 @@ test('receipt sharing and printing use generated PDF; oversized labels never pri
  await assert.rejects(()=>outputOrderDocument({html:'label'},false,true,printer),/one page/);
  await assert.rejects(()=>outputOrderDocument({html:''},false,false,printer),/empty/);
  await assert.rejects(()=>outputOrderDocument({html:'receipt'},true,false,printer,{isAvailableAsync:async()=>false}),/unavailable/);
+});
+
+test('iOS selects a printer and connection failures provide actionable feedback',async()=>{
+ platform.OS='ios';
+ try {
+  let printed;
+  const printer={printToFileAsync:async()=>({uri:'file:///receipt.pdf',numberOfPages:1}),selectPrinterAsync:async()=>({url:'printer://one',name:'Shop'}),printAsync:async options=>printed=options};
+  await outputOrderDocument({html:'receipt'},false,false,printer);
+  assert.equal(printed.printerUrl,'printer://one');
+  printer.selectPrinterAsync=async()=>({url:''});
+  await assert.rejects(()=>outputOrderDocument({html:'receipt'},false,false,printer),/Connect a compatible printer/);
+  printer.selectPrinterAsync=async()=>{throw new Error('offline');};
+  await assert.rejects(()=>outputOrderDocument({html:'receipt'},false,false,printer),/Your order is already saved/);
+ } finally { platform.OS='android'; }
 });

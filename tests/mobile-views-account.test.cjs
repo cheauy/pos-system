@@ -21,10 +21,13 @@ test('new account readers scope profiles, staff branches and category visibility
  const calls=[],{mobileAccountRead}=loadTs('lib/mobile/account-read.ts',{
   '@/app/(dashboard)/dashboard/settings/users/users-workspace-actions':{loadUsersWorkspace:async()=>({success:true,data:{rows:[],branches:[],seatsUsed:1,seatLimit:2}})},
   '@/lib/subscriptions/branch-limits':{getBranchEntitlement:async()=>({used:1,limit:2})},
+  '@/lib/supabase/admin':{supabaseAdmin:{}},
+  '@/lib/subscriptions/plans':{subscriptionPlans:{}},
  });
  const db={from:table=>queryDouble(table,{data:table==='profiles'?{full_name:'Me'}:[],error:null},calls)};
  const business={id:'business',name:'Store',role:'staff'};
- await mobileAccountRead(db,'account-profile',business,'assigned',{id:'me',email:'me@example.com'});
+ const profile=await mobileAccountRead(db,'account-profile',business,'assigned',{id:'me',email:'me@example.com',user_metadata:{avatar_url:'https://images.example/avatar.webp'}});
+ assert.equal(profile.rows[0].avatarUrl,'https://images.example/avatar.webp');
  assert.ok(calls[0].steps.some(s=>s[0]==='eq'&&s[1]==='id'&&s[2]==='me'));
  await mobileAccountRead(db,'account-branches',business,'assigned',{id:'me'});
  assert.ok(calls[1].steps.some(s=>s[0]==='eq'&&s[1]==='business_id'&&s[2]==='business'));
@@ -32,4 +35,17 @@ test('new account readers scope profiles, staff branches and category visibility
  await mobileAccountRead(db,'account-categories',business,'assigned',{id:'me'});
  assert.ok(calls[2].steps.some(s=>s[0]==='or'&&s[1]==='branch_ids.is.null,branch_ids.cs.{assigned}'));
  const users=await mobileAccountRead(db,'account-users',business,'assigned',{id:'me'});assert.equal(users.summary,'1 / 2 users');
+});
+test('subscription shows recorded usage and limits for the authorized business',async()=>{
+ const calls=[];
+ const admin={from:table=>queryDouble(table,{data:table==='businesses'?{subscription_plan_key:'custom',subscription_status:'active',subscription_user_limit:8,subscription_expires_at:'2026-11-16'}:null,count:3,error:null},calls)};
+ const {mobileAccountRead}=loadTs('lib/mobile/account-read.ts',{
+  '@/app/(dashboard)/dashboard/settings/users/users-workspace-actions':{},
+  '@/lib/subscriptions/branch-limits':{getBranchEntitlement:async id=>{assert.equal(id,'business');return {used:2,limit:4};}},
+  '@/lib/supabase/admin':{supabaseAdmin:admin},
+  '@/lib/subscriptions/plans':{subscriptionPlans:{custom:{name:'Custom Plan',description:'Custom limits',teamEnabled:true}}},
+ });
+ const result=await mobileAccountRead({},'account-subscription',{id:'business',name:'Store',role:'owner'},'branch',{id:'owner'});
+ assert.equal(result.rows[0].planName,'Custom Plan');assert.equal(result.rows[0].usersUsed,3);assert.equal(result.rows[0].userLimit,8);assert.equal(result.rows[0].branchesUsed,2);assert.equal(result.rows[0].branchLimit,4);
+ assert.ok(calls.every(call=>call.steps.some(step=>step[0]==='eq'&&step[1]==='business_id'&&step[2]==='business'||step[0]==='eq'&&step[1]==='id'&&step[2]==='business')));
 });

@@ -1,0 +1,10 @@
+import React, {useRef,useState} from 'react';
+import {Modal,ScrollView,Switch,View} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import {api,type Scope} from './client';
+import {Button,Field,Label,styles,useTheme} from './ui';
+export function CategoryForm({category,scope,online,close,saved}:{category?:{id:string;name:string;description?:unknown;is_online?:unknown};scope:Scope;online:boolean;close:()=>void;saved:()=>void}){
+ const theme=useTheme(),[name,setName]=useState(category?.name||''),[description,setDescription]=useState(String(category?.description||'')),[isOnline,setOnline]=useState(category?.is_online===true),[busy,setBusy]=useState(false),[error,setError]=useState('');const lock=useRef(false);
+ async function save(){if(lock.current||!online)return;if(name.trim().length<2){setError('Enter a category name of 2–50 characters.');return;}lock.current=true;setBusy(true);setError('');try{await api('account-categories',scope,{action:category?'edit':'create',id:category?.id,name:name.trim(),description,isOnline});saved();}catch(e){setError((e as Error).message);}finally{lock.current=false;setBusy(false);}}
+ return <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={()=>{if(!busy)close();}}><SafeAreaView style={{flex:1,backgroundColor:theme.background}}><ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled"><Label large>{category?'Edit category':'Add category'}</Label><Field label="Name *" value={name} onChangeText={setName} editable={!busy} maxLength={50}/><Field label="Description" value={description} onChangeText={setDescription} editable={!busy} maxLength={200} multiline/><View style={[styles.row,{justifyContent:'space-between'}]}><Label>Show on Online Store</Label><Switch value={isOnline} onValueChange={setOnline} disabled={busy}/></View>{!category&&<Label muted>Applies to the current branch.</Label>}{!!error&&<Label>{error}</Label>}<Button title="Save" busy={busy} disabled={!online} onPress={()=>void save()}/><Button title="Cancel" secondary disabled={busy} onPress={close}/></ScrollView></SafeAreaView></Modal>;
+}

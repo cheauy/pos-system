@@ -1,13 +1,25 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
 import {loadUsersWorkspace} from '@/app/(dashboard)/dashboard/settings/users/users-workspace-actions';
 import {getBranchEntitlement} from '@/lib/subscriptions/branch-limits';
+import {supabaseAdmin} from '@/lib/supabase/admin';
+import {subscriptionPlans,type SubscriptionPlanKey} from '@/lib/subscriptions/plans';
 
 export const accountAccess={'account-users':'users.view','account-branches':'locations.manage','account-categories':'categories.manage'} as const;
-export async function mobileAccountRead(db:SupabaseClient,feature:string,business:{id:string;name:string;role:string},branchId:string,user:{id:string;email?:string}){
+export async function mobileAccountRead(db:SupabaseClient,feature:string,business:{id:string;name:string;role:string},branchId:string,user:{id:string;email?:string;user_metadata?:Record<string,unknown>}){
+ if(feature==='account-subscription'){
+  const [planResult,members,branches]=await Promise.all([
+   supabaseAdmin.from('businesses').select('*').eq('id',business.id).single(),
+   supabaseAdmin.from('business_members').select('id',{count:'exact',head:true}).eq('business_id',business.id).eq('is_active',true),
+   getBranchEntitlement(business.id),
+  ]);
+  if(planResult.error||!planResult.data||members.error)throw new Error('Unable to load subscription details.');
+  const b=planResult.data,plan=subscriptionPlans[b.subscription_plan_key as SubscriptionPlanKey];
+  return {rows:[{id:business.id,name:business.name,planName:plan?.name||(b.subscription_status==='trial'?'Trial':'Current plan'),description:plan?.description||'',status:b.subscription_status,expiresAt:b.subscription_expires_at,usersUsed:members.count??0,userLimit:Math.max(1,Number(b.subscription_user_limit)||1),branchesUsed:branches.used,branchLimit:branches.limit,teamEnabled:plan?.teamEnabled??Number(b.subscription_user_limit)>1}]};
+ }
  if(feature==='account-profile'){
   const result=await db.from('profiles').select('full_name').eq('id',user.id).maybeSingle();
   if(result.error)throw new Error('Unable to load your profile.');
-  return {rows:[{id:user.id,name:result.data?.full_name||user.email||'Profile',email:user.email,business:business.name,role:business.role}]};
+  return {rows:[{id:user.id,name:result.data?.full_name||user.email||'Profile',email:user.email,avatarUrl:typeof user.user_metadata?.avatar_url==='string'?user.user_metadata.avatar_url:null,business:business.name,role:business.role}]};
  }
  if(feature==='account-users'){
   const result=await loadUsersWorkspace(business.id);if(!result.success)throw new Error(result.message);

@@ -108,7 +108,7 @@ export type Order = {
   id: string; orderNumber: string; customerName: string; customerPhone: string | null;
   customerAddress?: string | null; total: number; status: string; onlineStatus: string | null;
   paymentState: string; source: string; createdAt: string; updatedAt: string | null;
-  paymentMethod?: string;
+  paymentMethod?: string; note?: string | null; guestName?: string | null; guestPhone?: string | null; guestAddress?: string | null;
   items?: { id: string; name: string; variant: string | null; imageUrl: string | null; quantity: number; subtotal: number }[];
 };
 export const money = (value: number, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(value));

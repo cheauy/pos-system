@@ -22,7 +22,7 @@ export function EntryForm({ kind, scope, online, categories = [], shiftId, close
     const load=()=>api<CustomerFields>('customer-fields',scope,undefined,controller.signal).then(value=>{if(active)setCustomerFields(value);}).catch(e=>{if(active)setError(e.message);});
     void load();const listener=AppState.addEventListener('change',state=>{if(state==='active')void load();});
     return()=>{active=false;controller.abort();listener.remove();};
-  },[kind,online,scope]);
+  },[kind,online,scope.userId,scope.businessId,scope.branchId]);
 
   const [values, setValues] = useState<Record<string, string>>(() => {
     const date = new Date();

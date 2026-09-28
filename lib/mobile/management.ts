@@ -12,7 +12,7 @@ export const managementAccess = {
   'bundle-delete': 'products.disable',
   'purchase-create': 'purchases.create', 'transfer-save': 'transfers.manage',
   'draft-options': 'purchases.create', 'purchase-products': 'purchases.create', 'transfer-products': 'transfers.manage',
-  storefront: 'storefront.view', 'storefront-save': 'storefront.update',
+  storefront: 'storefront.view', 'storefront-save': 'storefront.update', 'category-products':'categories.manage',
 } as const;
 const id = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 function data<T>(result: { data: T; error: { message: string } | null }): NonNullable<T> {
@@ -22,7 +22,18 @@ function data<T>(result: { data: T; error: { message: string } | null }): NonNul
 }
 const fields='id,variant_group_id,name,sku,barcode,description,category_id,image_url,variant_image_url,cost_price,selling_price,low_stock_quantity,stock_quantity,product_type,size,color,is_pos,is_online,is_active,updated_at';
 export async function managementRead(db: SupabaseClient, feature: string, businessId: string, branchId: string, url: URL) {
-  if (feature==='storefront') return data(await db.from('business_storefronts').select('display_name,description,phone,address,is_published,accept_online_orders,updated_at').eq('business_id',businessId).maybeSingle());
+  if(feature==='category-products') {
+    const category=url.searchParams.get('category');
+    if(!id(category))throw new Error('Select a category.');
+    data(await db.from('categories').select('id').eq('business_id',businessId).eq('id',category).or(`branch_ids.is.null,branch_ids.cs.{${branchId}}`).single());
+    const page=Math.max(1,Math.min(10000,Number(url.searchParams.get('page'))||1));
+    return mobileProductPage(db,businessId,'id,variant_group_id,name,sku,size,color,image_url,variant_image_url,stock_quantity',page,{term:'',category,pageSize:10});
+  }
+  if (feature==='storefront') {
+    const result=await db.from('business_storefronts').select('display_name,description,phone,address,is_published,accept_online_orders,updated_at').eq('business_id',businessId).maybeSingle();
+    if(result.error)throw new Error(result.error.message);
+    return result.data?{...result.data,configured:true}:{configured:false};
+  }
   if (feature==='catalog-options') {
     const [categoryResult,businessResult]=await Promise.all([
       db.from('categories').select('id,name').eq('business_id',businessId).or(`branch_ids.is.null,branch_ids.cs.{${branchId}}`).order('name').limit(501),

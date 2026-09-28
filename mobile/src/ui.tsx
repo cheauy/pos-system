@@ -50,9 +50,9 @@ export function useTheme() {
     text: value.dark ? '#f1f5f9' : '#17243b', muted: value.dark ? '#a9b9d0' : '#728096', border: value.dark ? '#2a374e' : '#e8edf5',
     t,alert:(title:string,message?:string,buttons?:Parameters<typeof Alert.alert>[2],options?:Parameters<typeof Alert.alert>[3])=>Alert.alert(t(title),message?t(message):message,buttons?.map(button=>({...button,text:button.text?t(button.text):button.text})),options) };
 }
-export function FloatingAdd({ label, disabled, onPress }: { label: string; disabled?: boolean; onPress: () => void }) {
+export function FloatingAdd({ label, disabled, onPress, bottom=18 }: { label: string; disabled?: boolean; onPress: () => void; bottom?:number }) {
   const theme = useTheme();
-  return <Pressable accessibilityRole="button" accessibilityLabel={theme.t(label)} disabled={disabled} onPress={onPress} style={({pressed})=>({position:'absolute',right:20,bottom:18,width:56,height:56,borderRadius:28,backgroundColor:'#275de8',alignItems:'center',justifyContent:'center',elevation:5,boxShadow:'0 4px 12px #0003',opacity:disabled?0.4:pressed?0.8:1})}><Ionicons name="add" size={29} color="#fff"/></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={theme.t(label)} disabled={disabled} onPress={onPress} style={({pressed})=>({position:'absolute',right:20,bottom,width:56,height:56,borderRadius:28,backgroundColor:'#275de8',alignItems:'center',justifyContent:'center',elevation:5,boxShadow:'0 4px 12px #0003',opacity:disabled?0.4:pressed?0.8:1})}><Ionicons name="add" size={29} color="#fff"/></Pressable>;
 }
 export function Label({ children, muted = false, large = false }: { children: React.ReactNode; muted?: boolean; large?: boolean }) {
   const theme = useTheme();
@@ -103,13 +103,13 @@ export function Brand({ compact = false }: { compact?: boolean }) {
     <View><Text style={{ fontSize: compact ? 19 : 28, fontWeight: '800', letterSpacing: -0.5, color: theme.text }}>TENH <Text style={{ color: '#275de8' }}>POS</Text></Text>{!compact && <Label muted>Your business, in your pocket.</Label>}</View>
   </View>;
 }
-export const ProductPhoto = React.memo(function ProductPhoto({ uri, fallbackUri, size = 64, fill = false }: { uri?: string | null; fallbackUri?: string | null; size?: number; fill?: boolean }) {
+export const ProductPhoto = React.memo(function ProductPhoto({ uri, fallbackUri, size = 64, fill = false, fit = 'cover' }: { uri?: string | null; fallbackUri?: string | null; size?: number; fill?: boolean; fit?: 'cover' | 'contain' }) {
   const theme = useTheme();
   const [failed, setFailed] = useState<string[]>([]);
   const source = [uri, fallbackUri].find(value => value && !failed.includes(value));
   const dimensions = fill ? { width: '100%' as const, aspectRatio: 1 } : { width: size, height: size };
   return <View style={[dimensions, { borderRadius: 14, backgroundColor: theme.dark ? '#233148' : '#f0f3f8', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }]}>
-    {source ? <CachedImage source={{ uri: source }} style={{ width: '100%', height: '100%' }} contentFit="cover" cachePolicy="memory-disk" recyclingKey={source} transition={120} onError={() => setFailed(previous => [...previous.slice(-1), source])} accessibilityLabel="Product photo" /> : <Ionicons name="image-outline" size={fill ? 34 : 24} color={theme.muted} />}
+    {source ? <CachedImage source={{ uri: source }} style={{ width: '100%', height: '100%' }} contentFit={fit} cachePolicy="memory-disk" recyclingKey={source} transition={120} onError={() => setFailed(previous => [...previous.slice(-1), source])} accessibilityLabel="Product photo" /> : <Ionicons name="image-outline" size={fill ? 34 : 24} color={theme.muted} />}
   </View>;
 });
 export const menuIcons: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
@@ -131,11 +131,11 @@ export function Badge({ title, positive = false }: { title: string; positive?: b
   const waiting=professional&&['pending','draft','in_transit','partial','pending_verification'].includes(title);
   return <View style={{ alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8, backgroundColor: waiting?theme.dark?'#45371f':'#fff4dd':positive ? theme.dark ? '#183e37' : '#e9f7f0' : theme.dark ? '#2a374e' : '#f0f3f8' }}><Text style={{ fontSize: 12, fontWeight: '600', color: waiting?theme.dark?'#f4cb80':'#8b6218':positive ? theme.dark ? '#8cdec0' : '#23785a' : theme.muted }}>{theme.t(label)}</Text></View>;
 }
-export function MenuRow({ title, onPress }: { title: string; onPress: () => void }) {
+export function MenuRow({ title, onPress, description, color }: { title: string; onPress: () => void; description?: string; color?: string }) {
   const theme = useTheme();
   return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 56, paddingVertical: 7, opacity: pressed ? 0.6 : 1 })}>
-    <View style={{ padding: 10, borderRadius: 12, backgroundColor: theme.dark ? '#233858' : '#eef3ff' }}><Ionicons name={menuIcons[title] || 'grid-outline'} size={21} color={theme.dark ? '#91b4ff' : '#275de8'} /></View>
-    <View style={{ flex: 1 }}><Label>{title}</Label></View><Ionicons name="chevron-forward" size={16} color={theme.muted} />
+    <View style={{ padding: 10, borderRadius: 12, backgroundColor: theme.dark ? '#233858' : color ? `${color}12` : '#eef3ff' }}><Ionicons name={menuIcons[title] || 'grid-outline'} size={21} color={color || (theme.dark ? '#91b4ff' : '#275de8')} /></View>
+    <View style={{ flex: 1, gap: 4 }}><Text style={{color:theme.text,fontSize:14,fontWeight:'600'}}>{theme.t(title)}</Text>{description&&<Text style={{color:theme.muted,fontSize:11}}>{theme.t(description)}</Text>}</View><Ionicons name="chevron-forward" size={16} color={theme.muted} />
   </Pressable>;
 }
 export function SectionTitle({ title, icon = 'grid-outline' }: { title: string; icon?: React.ComponentProps<typeof Ionicons>['name'] }) {

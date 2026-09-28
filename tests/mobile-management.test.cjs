@@ -1,6 +1,18 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {loadTs,queryDouble}=require('./helpers/load-ts.cjs');
 const {checkoutPayment}=loadTs('mobile/src/checkout-payment.ts');
+test('Online Store distinguishes initial setup from database errors and preserves existing settings',async()=>{
+ const management=loadTs('lib/mobile/management.ts',{'./product-page':{},'node:crypto':require('node:crypto'),'@/lib/images/compress-photo':{},'@/lib/public-photo-cache':{},'next/cache':{}});
+ const calls=[];let result={data:null,error:null};
+ const db={from:table=>queryDouble(table,()=>result,calls)};
+ assert.deepEqual(await management.managementRead(db,'storefront','business','branch',new URL('https://local')), {configured:false});
+ result={data:{display_name:'Shop',is_published:false,updated_at:'version'},error:null};
+ assert.deepEqual(await management.managementRead(db,'storefront','business','branch',new URL('https://local')), {...result.data,configured:true});
+ result={data:null,error:{message:'Access unavailable'}};
+ await assert.rejects(()=>management.managementRead(db,'storefront','business','branch',new URL('https://local')),/Access unavailable/);
+ assert.ok(calls.every(call=>call.steps.some(step=>step[0]==='eq'&&step[1]==='business_id'&&step[2]==='business')));
+ assert.equal(management.managementAccess['category-products'],'categories.manage');
+});
 test('split payments preserve exact totals for all supported pairs and reject duplicates',()=>{
  for(const first of ['cash','bank_transfer','other'])for(const second of ['cash','bank_transfer','other']){
   if(first===second){assert.throws(()=>checkoutPayment('split',10.01,'3.33',[first,second]),/different/);continue;}

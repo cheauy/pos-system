@@ -1,4 +1,6 @@
+import {mobileExpenses} from '@/lib/mobile/expense-list';
 import {accountAccess,mobileAccountRead} from '@/lib/mobile/account-read';
+import { createCategory, updateCategory, deleteCategoryById } from '@/app/(dashboard)/dashboard/categories/actions';
 import { mobileExpenseBreakdown } from '@/lib/mobile/expense-breakdown';
 import { mobileRegisterDetail } from '@/lib/mobile/register-detail';
 import { getCustomerFieldSettings } from '@/lib/customers/get-customer-field-settings';
@@ -14,7 +16,7 @@ import { getEffectivePermissions } from '@/lib/auth/effective-permissions';
 import type { Permission } from '@/lib/auth/permissions';
 import { loadWorkspace, loadOrderDetail } from '@/app/(dashboard)/dashboard/orders/order-workspace-data';
 import { parseFilters } from '@/app/(dashboard)/dashboard/orders/order-workspace-types';
-import { changeOrderWorkspaceStatus } from '@/app/(dashboard)/dashboard/orders/order-workspace-actions';
+import { saveOrderWorkspaceDetails, changeOrderWorkspaceStatus } from '@/app/(dashboard)/dashboard/orders/order-workspace-actions';
 import { markNotificationsRead } from '@/app/(dashboard)/dashboard/notifications/read-actions';
 import { loadPosWorkspace, completePosSale, checkPosSale, savePosHold, deletePosHold } from '@/app/(dashboard)/dashboard/pos/pos-workspace-actions';
 import { configuredLine, cartIssue, stockFor, totals, uuid, shippingIssue, orderDetailsIssue, discountIssue } from '@/app/(dashboard)/dashboard/pos/pos-workspace-helpers';
@@ -133,7 +135,7 @@ async function handle(request: Request, feature: string) {
       const url = new URL(request.url);
       const page = Math.max(1, Math.min(10000, Number(url.searchParams.get('page')) || 1));
       if (!Number.isInteger(page)) throw new RequestError('Invalid page.');
-      const listLimit=['customers','expenses','register'].includes(feature)?10:['purchases','transfers'].includes(feature)&&url.searchParams.get('limit')==='10'?10:25;
+      const listLimit=['customers','expenses','register'].includes(feature)?10:url.searchParams.get('limit')==='10'?10:25;
       const from = (page - 1) * listLimit;
       const orderLimit = mobileOrderPageSize(url.searchParams.get('limit'));
       const orderFrom = (page - 1) * orderLimit;
@@ -141,7 +143,15 @@ async function handle(request: Request, feature: string) {
       // PostgREST filter syntax must never come from unescaped search input.
       const term = search.replace(/[^\p{L}\p{N}\s_-]/gu, '');
       if (request.method === 'GET') {
-        if(feature==='account-profile'||feature in accountAccess)return response(await mobileAccountRead(db,feature,business,scope.branchId,user));
+        if(feature==='account-profile'||feature==='account-subscription'||feature in accountAccess){
+          const result=await mobileAccountRead(db,feature,business,scope.branchId,user);
+          if(feature!=='account-profile'&&url.searchParams.get('limit')==='10'){
+            const query=(url.searchParams.get('search')||'').trim().toLowerCase().slice(0,100);
+            const rows=result.rows.filter(row=>!query||['name','email','phone','code'].some(key=>String((row as Record<string,unknown>)[key]??'').toLowerCase().includes(query)));
+            return response({...result,rows:rows.slice((page-1)*10,page*10),total:rows.length});
+          }
+          return response(result);
+        }
         if(feature==='expense-breakdown') return response(await mobileExpenseBreakdown(db,business.id,scope.branchId,url.searchParams.get('range')||'30days'));
         if(feature==='customer-fields') return response(await getCustomerFieldSettings(business.id));
         if(feature==='management-status') {
@@ -250,7 +260,7 @@ async function handle(request: Request, feature: string) {
           return response({ id: order.id, orderNumber: order.order_number, customerName: order.guest_name || customer?.name || 'Customer',
             customerPhone: order.guest_phone || customer?.phone, customerAddress: order.guest_address || customer?.address,
             total: order.total, status: order.status, onlineStatus: order.online_status, paymentState: order.payment_status,
-            paymentMethod: order.payment_method, source: order.order_source, updatedAt: order.updated_at, createdAt: order.created_at,
+            note: order.customer_note, guestName: order.guest_name, guestPhone: order.guest_phone, guestAddress: order.guest_address, paymentMethod: order.payment_method, source: order.order_source, updatedAt: order.updated_at, createdAt: order.created_at,
             items: order.order_items.map(item => ({ id: item.id, name: item.product_name, quantity: item.quantity, subtotal: item.subtotal, variant: item.variant_label, imageUrl: one(item.products)?.image_url })) });
         }
         if (feature === 'order-qr') {
@@ -317,7 +327,13 @@ async function handle(request: Request, feature: string) {
           return response(await loadOrderDetail(business.id, id));
         }
         if (feature === 'stock') {
-          if(url.searchParams.get('grouped')==='true') return response({...await mobileProductPage(db,business.id,'id,variant_group_id,name,sku,barcode,image_url,variant_image_url,size,color,selling_price,stock_quantity,low_stock_quantity',page,{term,active:true,pageSize:Number(url.searchParams.get('limit')||25)}),page});
+          if(url.searchParams.get('grouped')==='true') {
+            const [products, categories] = await Promise.all([
+              mobileProductPage(db,business.id,'id,variant_group_id,name,sku,barcode,image_url,variant_image_url,size,color,selling_price,stock_quantity,low_stock_quantity',page,{term,active:true,category:url.searchParams.get('category')||undefined,pageSize:Number(url.searchParams.get('limit')||25)}),
+              db.from('categories').select('id,name,branch_ids').eq('business_id',business.id).order('name'),
+            ]);
+            return response({...products,page,stockCategories:(categories.data||[]).filter(row=>!row.branch_ids||row.branch_ids.includes(scope.branchId)).map(({id,name})=>({id,name}))});
+          }
 
           let query = db.from('branch_products').select('id,name,sku,barcode,image_url,variant_image_url,size,color,selling_price,stock_quantity,low_stock_quantity', { count: 'exact' })
             .eq('business_id', business.id).eq('is_active', true);
@@ -334,15 +350,7 @@ async function handle(request: Request, feature: string) {
           if (result.error) throw new RequestError('Unable to load customers.', 503);
           return response({ rows: result.data, total: result.count, page, fieldSettings: await getCustomerFieldSettings(business.id) });
         }
-        if (feature === 'expenses') {
-          const result = await db.from('expenses').select('id,category,description,amount,expense_date,payee', { count: 'exact' })
-            .eq('business_id', business.id).eq('location_id', scope.branchId)
-            .order('expense_date', { ascending: false }).order('id').range(from, from + listLimit - 1);
-          if (result.error) throw new RequestError('Unable to load expenses.', 503);
-          const settings=await db.from('branch_pos_settings').select('currency').eq('business_id',business.id).eq('location_id',scope.branchId).single();
-          if(settings.error)throw new RequestError('Unable to load currency.',503);
-          return response({ rows: result.data, total: result.count, page, categories: CATEGORIES, currency:settings.data.currency });
-        }
+        if (feature === 'expenses') return response({...await mobileExpenses(db,business.id,scope.branchId,url),categories:CATEGORIES});
         if(feature==='register-detail'){const id=mobileSelection(url.searchParams.get('id'));if(!id)throw new RequestError('Choose a register shift.');return response(await mobileRegisterDetail(db,business.id,scope.branchId,id));}
         if (feature === 'register') {
           const result = await db.from('cash_register_shifts').select('id,status,opening_cash,opened_at,closed_at', { count: 'exact' })
@@ -360,12 +368,13 @@ async function handle(request: Request, feature: string) {
           if (refresh.error) throw new RequestError('Unable to refresh notifications.', 503);
           const result = await db.rpc('tenh_branch_notifications', { p_business: business.id, p_branch: scope.branchId });
           if (result.error) throw new RequestError('Unable to load notifications.', 503);
-          const notifications = ((result.data ?? []) as { id: string; is_active: boolean }[]).filter(item => item.is_active !== false);
+          const notifications = ((result.data ?? []) as { id: string; is_active: boolean; title?:string; message?:string }[]).filter(item => item.is_active !== false);
           const ids = notifications.map(item => item.id);
           const reads = ids.length ? await db.from('business_notification_reads').select('notification_id').eq('user_id', user.id).in('notification_id', ids) : { data: [], error: null };
           if (reads.error) throw new RequestError('Unable to load read status.', 503);
           const read = new Set((reads.data ?? []).map(item => item.notification_id));
-          return response({ rows: notifications.slice(from, from + 25).map(item => ({ ...item, read: read.has(item.id) })), total: notifications.length, unread: notifications.filter(item => !read.has(item.id)).length, page });
+          const matching = notifications.filter(item=>`${item.title||''} ${item.message||''}`.toLowerCase().includes(search.toLowerCase()));
+          return response({ rows: matching.slice(from, from + listLimit).map(item => ({ ...item, read: read.has(item.id) })), total: matching.length, unread: notifications.filter(item => !read.has(item.id)).length, page });
         }
       }
       if (request.method === 'POST') {
@@ -391,6 +400,30 @@ async function handle(request: Request, feature: string) {
         let body;
         try { body = JSON.parse(bodyText); } catch { throw new RequestError('Invalid request.'); }
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw new RequestError('Invalid request.');
+        if (feature === 'account-categories') {
+          if (!permissions.includes('categories.manage')) throw new RequestError('You cannot manage categories.', 403);
+          if (!['create','edit','delete'].includes(body.action)) throw new RequestError('Choose a category action.');
+          let existing;
+          if (body.action !== 'create') {
+            if (!uuid(body.id)) throw new RequestError('Choose a valid category.');
+            const row = await db.from('categories').select('id,branch_ids,online_sort_order').eq('business_id', business.id).eq('id', body.id).maybeSingle();
+            if (row.error || !row.data || row.data.branch_ids !== null && !row.data.branch_ids.includes(scope.branchId)) throw new RequestError('Category is unavailable in this branch.', 404);
+            existing = row.data;
+          }
+          if (body.action === 'delete') {
+            const result = await deleteCategoryById(body.id);
+            return response({success:result.ok,message:result.message},result.ok?200:409);
+          }
+          if (typeof body.name !== 'string' || body.name.trim().length < 2 || body.name.trim().length > 50 || typeof body.description !== 'string' || body.description.length > 200 || typeof body.isOnline !== 'boolean') throw new RequestError('Enter a name of 2–50 characters and a description up to 200 characters.');
+          const form = new FormData();
+          form.set('name',body.name);form.set('description',body.description);form.set('isOnline',body.isOnline?'on':'off');
+          if(existing){form.set('categoryId',existing.id);form.set('index',String(existing.online_sort_order));}
+          // Preserve existing visibility; a new mobile category belongs to the operating branch.
+          const branches = existing ? existing.branch_ids : [scope.branchId];
+          if(branches !== null){form.set('branchMode','selected');for(const branch of branches)form.append('branchIds',branch);}
+          const result = existing ? await updateCategory(form) : await createCategory(form);
+          return response({success:result.ok,message:result.message},result.ok?200:409);
+        }
         if(feature==='push-register') {
           if(!uuid(body.deviceId)||typeof body.token!=='string'||body.token.length>300)throw new RequestError('Invalid device.');
           const result=await db.rpc('tenh_mobile_push_device',{p_device_id:body.deviceId,p_business_id:business.id,p_branch_id:scope.branchId,p_token:body.token,p_enabled:true});
@@ -574,6 +607,12 @@ async function handle(request: Request, feature: string) {
         if (feature === 'order') {
           if (!permissions.includes('orders.update')) throw new RequestError('You cannot update orders.', 403);
           const id = mobileSelection(typeof body.id === 'string' ? body.id : null);
+          if (body.action === 'edit') {
+            if (!id || typeof body.updatedAt !== 'string' || !Number.isFinite(Date.parse(body.updatedAt)) || ['note','guestName','guestPhone','guestAddress'].some(key => typeof body[key] !== 'string' || body[key].length > (key === 'note' ? 2000 : 500))) throw new RequestError('Review order details and refresh before saving.');
+            await loadOrderDetail(business.id, id);
+            const result = await saveOrderWorkspaceDetails(id, body.updatedAt, {note:body.note,guestName:body.guestName,guestPhone:body.guestPhone,guestAddress:body.guestAddress}, business.id);
+            return response(result, result.success ? 200 : 409);
+          }
           if (!id || typeof body.status !== 'string' || !['accepted', 'preparing', 'ready', 'completed'].includes(body.status)
             || typeof body.updatedAt !== 'string' || !Number.isFinite(Date.parse(body.updatedAt))) throw new RequestError('Invalid order update. Refresh this order.');
           const result = await changeOrderWorkspaceStatus(id, body.updatedAt, body.status, '', business.id);

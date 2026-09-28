@@ -1,0 +1,27 @@
+import React, {useEffect,useState} from 'react';
+import {FlatList,Modal,Pressable,Text,View} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import {Ionicons} from '@expo/vector-icons';
+import {Label,SearchField,styles,useTheme} from './ui';
+import {Shimmer} from './loading';
+
+type Customer={id:string;name:string;phone:string|null;address?:string|null};
+const colours=['#4967f5','#0b9e88','#e88720','#963bb1','#e64b3f','#299cd0'];
+export function CustomerSelector({customers,selectedId,allowWalkIn,loading=false,close,select,add,settings}:{customers:Customer[];selectedId:string;allowWalkIn:boolean;loading?:boolean;close:()=>void;select:(customer:Customer|null)=>void;add?:()=>void;settings?:()=>void}){
+ const theme=useTheme();const [search,setSearch]=useState(''),[limit,setLimit]=useState(10);
+ useEffect(()=>setLimit(10),[search]);
+ const query=search.trim().toLocaleLowerCase(),digits=query.replace(/\D/g,'');
+ const rows=customers.filter(customer=>customer.name.toLocaleLowerCase().includes(query)||(customer.phone||'').toLocaleLowerCase().includes(query)||(digits.length>0&&(customer.phone||'').replace(/\D/g,'').includes(digits)));
+ const font=theme.language==='km'?'Hanuman_400Regular':undefined;
+ return <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={close}><SafeAreaView style={{flex:1,backgroundColor:theme.panel}}>
+  <View style={{padding:20,gap:16,borderBottomWidth:1,borderColor:theme.border}}>
+   <View style={[styles.row,{justifyContent:'space-between'}]}><View style={{flex:1,gap:4}}><Label large>Select customer</Label><Label muted>{`${customers.length} ${theme.t('saved')} · ${theme.t('tap to attach to this order')}`}</Label></View>{settings&&<Pressable accessibilityRole="button" accessibilityLabel="Customer settings" onPress={settings} style={{padding:12,minHeight:44,borderWidth:1,borderColor:theme.border,borderRadius:14}}><Ionicons name="settings-outline" size={25} color={theme.text}/></Pressable>}</View>
+   <SearchField placeholder="Search name or phone" value={search} onChangeText={setSearch}/>
+  </View>
+  <FlatList style={{backgroundColor:theme.background}} contentContainerStyle={{padding:16,gap:12,paddingBottom:24}} data={rows.slice(0,limit)} keyExtractor={customer=>customer.id} keyboardShouldPersistTaps="handled" initialNumToRender={10} maxToRenderPerBatch={10} windowSize={5} onEndReachedThreshold={0.4} onEndReached={()=>{if(limit<rows.length)setLimit(count=>Math.min(count+10,rows.length));}}
+   ListHeaderComponent={<View style={{gap:18,marginBottom:4}}>{allowWalkIn&&<Pressable accessibilityRole="button" accessibilityLabel="Walk-in customer" accessibilityState={{selected:!selectedId}} onPress={()=>select(null)} style={[styles.row,{padding:16,borderWidth:1,borderStyle:'dashed',borderColor:theme.border,borderRadius:18,backgroundColor:theme.panel}]}><View style={{padding:12,borderRadius:12,backgroundColor:theme.background}}><Ionicons name="person-outline" size={24} color={theme.muted}/></View><View style={{flex:1,gap:4}}><Text style={{fontSize:17,fontWeight:'600',color:theme.text,fontFamily:font}}>{theme.t('Walk-in customer')}</Text><Label muted>No account needed</Label></View>{!selectedId&&<Ionicons name="checkmark" size={20} color="#4967f5"/>}</Pressable>}<Label muted>ALL CUSTOMERS</Label></View>}
+   renderItem={({item})=>{const initials=item.name.trim().split(/\s+/).slice(0,2).map(part=>Array.from(part)[0]||'').join('').toLocaleUpperCase()||'?';const colour=colours[Array.from(item.id).reduce((sum,char)=>sum+char.charCodeAt(0),0)%colours.length];return <Pressable accessibilityRole="button" accessibilityLabel={`${item.name}, ${item.phone||''}`} accessibilityState={{selected:selectedId===item.id}} onPress={()=>select(item)} style={({pressed})=>[styles.row,{padding:16,borderWidth:1,borderColor:selectedId===item.id?'#4967f5':theme.border,borderRadius:18,backgroundColor:theme.panel,opacity:pressed?0.75:1}]}><View style={{width:46,height:46,borderRadius:23,backgroundColor:colour,alignItems:'center',justifyContent:'center'}}><Text style={{color:'#fff',fontSize:17,fontWeight:'600',fontFamily:font}}>{initials}</Text></View><View style={{flex:1,gap:4}}><Text numberOfLines={2} style={{color:theme.text,fontSize:17,fontWeight:'600',fontFamily:font}}>{item.name}</Text><Text style={{color:theme.muted,fontSize:15,fontFamily:font}}>{item.phone||theme.t('No phone number')}</Text></View><Ionicons name={selectedId===item.id?'checkmark':'chevron-forward'} size={20} color={selectedId===item.id?'#4967f5':theme.muted}/></Pressable>;}}
+   ListEmptyComponent={loading?<Shimmer rows={3}/>:<View style={{paddingVertical:24}}><Label muted>{query?'No matching customers':'No saved customers yet'}</Label></View>}/>
+  <View style={{padding:16,gap:10,borderTopWidth:1,borderColor:theme.border}}>{add&&<Pressable accessibilityRole="button" accessibilityLabel="Add customer" onPress={add} style={[styles.row,{justifyContent:'center',minHeight:44}]}><Ionicons name="person-add-outline" size={19} color="#4967f5"/><Text style={{color:theme.dark?'#a5bcff':'#3452d8',fontFamily:font}}>{theme.t('Cannot find customer? Add customer')}</Text></Pressable>}<Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={close} style={{minHeight:52,borderRadius:14,backgroundColor:theme.background,alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:17,fontWeight:'600',color:theme.text,fontFamily:font}}>{theme.t('Close')}</Text></Pressable></View>
+ </SafeAreaView></Modal>;
+}

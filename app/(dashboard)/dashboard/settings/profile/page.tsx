@@ -1,3 +1,4 @@
+import ProfilePhotoForm from './profile-photo-form';
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -90,7 +91,7 @@ export default async function ProfilePage() {
       <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex min-w-0 items-center gap-4">
           <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300">
-            <CircleUserRound className="h-9 w-9" />
+            {typeof user.user_metadata?.avatar_url === 'string' && user.user_metadata.avatar_url.startsWith('https://') ? <img src={user.user_metadata.avatar_url} alt="Profile" className="h-16 w-16 rounded-full object-cover" /> : <CircleUserRound className="h-9 w-9" />}
           </div>
           <div className="min-w-0">
             <h2 className="truncate text-lg font-bold text-slate-950 dark:text-white">
@@ -117,6 +118,7 @@ export default async function ProfilePage() {
         </div>
       </section>
 
+      <ProfilePhotoForm />
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.75fr)_minmax(300px,0.95fr)]">
         <ProfileForm
           defaultFullName={profile.full_name ?? ""}
