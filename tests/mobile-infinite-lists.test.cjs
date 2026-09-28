@@ -26,3 +26,15 @@ test('errors do not advance pages; filters, branches and denied access clear old
  h.respond({loading:false,data:{rows:[{id:'pending'}],total:1}});state=h.branch();assert.equal(state.data,undefined);
  h.respond({loading:false,data:{rows:[{id:'private'}],total:1}});state=h.respond({loading:false,denied:true,error:'Forbidden'});assert.equal(state.data,undefined);
 });
+
+test('cached rows stay visible during background refresh and manual refresh replaces pages',()=>{
+ const h=harness();h.render();
+ let state=h.respond({loading:true,data:{rows:[{id:'cached'}],total:20}});
+ assert.equal(state.data.rows[0].id,'cached');assert.equal(state.loading,false);
+ state=h.respond({loading:false,data:{rows:[{id:'first'}],total:20}});
+ state.more();h.render();state=h.respond({loading:false,data:{rows:[{id:'second'}],total:20}});
+ state.refresh();state=h.render();assert.deepEqual(state.data.rows.map(r=>r.id),['first','second']);
+ assert.equal(state.refreshing,true);assert.match(h.url,/page=1$/);
+ state=h.respond({loading:false,data:{rows:[{id:'replacement'}],total:1}});
+ assert.deepEqual(state.data.rows.map(r=>r.id),['replacement']);assert.equal(state.hasMore,false);
+});

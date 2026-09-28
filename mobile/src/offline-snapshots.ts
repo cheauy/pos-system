@@ -25,7 +25,10 @@ export function offlineSnapshots(storage: Storage) {
     save: (userId: string, key: string, data: unknown) => serial(async () => {
       const encoded = JSON.stringify(data);
       if (encoded.length > 24000) return; // Large reports remain online; never truncate business totals.
-      let saved = (await rows(userId)).filter(row => row.key !== key);
+      const previous = await rows(userId);
+      const existing = previous.find(row => row.key === key);
+      if (existing && Date.now() - existing.at < 300000 && JSON.stringify(existing.data) === encoded) return;
+      let saved = previous.filter(row => row.key !== key);
       saved.push({ key, data, at: Date.now() });
       saved = saved.slice(-8);
       while (JSON.stringify(saved).length > 80000) saved.shift();

@@ -40,7 +40,7 @@ export function Shimmer({ rows = 4 }: { rows?: number }) {
   }, []);
   useEffect(() => {
     if (reduceMotion) return;
-    const animation = Animated.loop(Animated.timing(phase, { toValue: 1, duration: 1300, easing: Easing.linear, useNativeDriver: true, isInteraction: false }));
+    const animation = Animated.loop(Animated.timing(phase, { toValue: 1, duration: 900, easing: Easing.linear, useNativeDriver: true, isInteraction: false }));
     const start = () => { phase.setValue(0); animation.start(); };
     if (AppState.currentState === 'active') start();
     const listener = AppState.addEventListener('change', state => { if (state === 'active') start(); else animation.stop(); });

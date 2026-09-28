@@ -38,6 +38,30 @@ test('mobile Supabase requests use the bearer token and scoped headers without w
   }
 });
 
+test('keychain snapshot writes do not block another record, while same-record reads stay ordered', async () => {
+  const values = new Map(); let release; let started;
+  const blocked = new Promise(resolve => { release = resolve; });
+  const writing = new Promise(resolve => { started = resolve; });
+  const store = storageModule.secureStorage({
+    getItemAsync: async key => values.get(key) ?? null,
+    setItemAsync: async (key, value) => {
+      if (key.startsWith('snapshot.') && key.endsWith('.0')) { started(); await blocked; }
+      values.set(key, value);
+    },
+    deleteItemAsync: async key => { values.delete(key); },
+  });
+  await store.setItem('auth', 'token');
+  const save = store.setItem('snapshot', 'offline data'); await writing;
+  let sameRecordFinished = false;
+  const same = store.getItem('snapshot').then(value => { sameRecordFinished = true; return value; });
+  try {
+    const read = store.getItem('auth');
+    const value = await Promise.race([read, new Promise(resolve => setImmediate(() => resolve('blocked')))]);
+    assert.equal(value, 'token'); assert.equal(sameRecordFinished, false);
+  } finally { release(); }
+  await save; assert.equal(await same, 'offline data');
+});
+
 test('keychain chunk storage preserves Unicode, serializes refresh and logout, and survives failed replacement', async () => {
   const values = new Map(); let fail = false;
   const store = storageModule.secureStorage({

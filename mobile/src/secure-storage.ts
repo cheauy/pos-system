@@ -18,11 +18,14 @@ export function chunks(value: string) {
   return result;
 }
 export function secureStorage(store: Keychain) {
-  let queue: Promise<unknown> = Promise.resolve();
+  const queues = new Map<string, Promise<unknown>>();
   let counter = 0;
-  function serial<T>(operation: () => Promise<T>): Promise<T> {
-    const pending = queue.then(operation, operation);
-    queue = pending.catch(() => undefined);
+  function serial<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    // Preserve atomic writes per record without making sign-in wait for offline snapshots.
+    const pending = (queues.get(key) ?? Promise.resolve()).then(operation, operation);
+    const settled = pending.catch(() => undefined);
+    queues.set(key, settled);
+    void settled.then(() => { if (queues.get(key) === settled) queues.delete(key); });
     return pending;
   }
   async function manifest(key: string): Promise<Manifest | null> {
@@ -36,14 +39,14 @@ export function secureStorage(store: Keychain) {
     if (value) await Promise.all(Array.from({ length: value.count }, (_, i) => store.deleteItemAsync(`${key}.${value.version}.${i}`)));
   }
   return {
-    getItem: (key: string) => serial(async () => {
+    getItem: (key: string) => serial(key, async () => {
       const saved = await manifest(key);
       if (!saved) return null;
       const parts = await Promise.all(Array.from({ length: saved.count }, (_, i) => store.getItemAsync(`${key}.${saved.version}.${i}`)));
       if (parts.some(value => value === null)) return null;
       return parts.join('');
     }),
-    setItem: (key: string, value: string) => serial(async () => {
+    setItem: (key: string, value: string) => serial(key, async () => {
       const previous = await manifest(key);
       const parts = chunks(value);
       if (parts.length > 256) throw new Error('Sign-in data is too large to save securely.');
@@ -55,7 +58,7 @@ export function secureStorage(store: Keychain) {
       // The new token is committed; old-chunk cleanup cannot fail the login.
       await removeParts(key, previous).catch(() => undefined);
     }),
-    removeItem: (key: string) => serial(async () => {
+    removeItem: (key: string) => serial(key, async () => {
       const previous = await manifest(key);
       await store.deleteItemAsync(`${key}.manifest`);
       await removeParts(key, previous).catch(() => undefined);
