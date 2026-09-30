@@ -124,8 +124,6 @@ export default async function ProfilePage() {
           defaultFullName={profile.full_name ?? ""}
           email={user.email ?? ""}
           role={profile.role}
-          businessName={business.name}
-          canEditBusinessName={business.role === "owner"}
         />
 
         <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900">

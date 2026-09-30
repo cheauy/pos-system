@@ -21,6 +21,7 @@ import {
   Search,
   SlidersHorizontal,
   Store,
+  X,
 } from "lucide-react";
 import {
   useActionState,
@@ -30,7 +31,9 @@ import {
   useState,
 } from "react";
 
-import { submitStockAdjustment } from "./actions";
+import { submitStockAdjustment, submitStockAdjustmentBatch } from "./actions";
+import { compareColorSize } from "@/lib/products/variant-editor";
+import { MAX_STOCK_ADJUSTMENT_ITEMS, STOCK_SELECTION_PREFIX, isUuid, parseStockAdjustmentItems, readStockSelection, stockAfter, type StockMode } from "@/lib/inventory/stock-adjustment";
 import { initialStockAdjustmentState } from "./state";
 import { useBranchSwitchGuard } from "../../workspace-branch-provider";
 
@@ -74,10 +77,14 @@ type Props = {
   branchName: string;
   branchId: string;
   initialProductId?: string;
+  initialProductIds?: string[];
+  initialSelectionToken?: string;
+  initialSelectionError?: string;
   recoveryKey: string;
 };
 
-type Mode = "increase" | "decrease" | "set";
+type Mode = StockMode;
+type AdjustmentDraftRow = { productId: string; mode: Mode; quantity: string; expectedQuantity: number };
 type DateRange = "7" | "30" | "90" | "all";
 
 const reasons = [
@@ -178,12 +185,12 @@ function stockStatus(product: AdjustmentProduct) {
 
 function ProductVariantPicker({
   products,
-  value,
+  values,
   onChange,
 }: {
   products: AdjustmentProduct[];
-  value: string;
-  onChange: (id: string) => void;
+  values: string[];
+  onChange: (ids: string[]) => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -193,7 +200,7 @@ function ProductVariantPicker({
   const [colour, setColour] = useState("all");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
 
-  const selected = products.find((product) => product.id === value) ?? null;
+  const selected = products.find((product) => product.id === values[0]) ?? null;
 
   const categories = useMemo(
     () =>
@@ -242,12 +249,7 @@ function ProductVariantPicker({
         if (categoryCompare !== 0) return categoryCompare;
         const nameCompare = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
         if (nameCompare !== 0) return nameCompare;
-        const colourCompare = (a.color ?? "").localeCompare(b.color ?? "", undefined, {
-          numeric: true,
-          sensitivity: "base",
-        });
-        if (colourCompare !== 0) return colourCompare;
-        return (a.size ?? "").localeCompare(b.size ?? "", undefined, { numeric: true, sensitivity: "base" });
+        return compareColorSize({ color: a.color ?? "", size: a.size ?? "", sku: a.sku ?? "" }, { color: b.color ?? "", size: b.size ?? "", sku: b.sku ?? "" });
       });
   }, [category, colour, products, query]);
 
@@ -282,9 +284,8 @@ function ProductVariantPicker({
   }, [category, colour, query]);
 
   function selectProduct(product: AdjustmentProduct) {
-    onChange(product.id);
-    setOpen(false);
-    setQuery("");
+    if (values.includes(product.id)) onChange(values.filter(id => id !== product.id));
+    else if (values.length < MAX_STOCK_ADJUSTMENT_ITEMS) onChange([...values, product.id]);
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -307,7 +308,6 @@ function ProductVariantPicker({
 
   return (
     <div ref={rootRef} className="relative">
-      <input type="hidden" name="productId" value={value} />
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
@@ -329,11 +329,11 @@ function ProductVariantPicker({
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-slate-900">
-            {selected ? selected.name : "Choose product / variant"}
+            {values.length > 1 ? `${values.length} products / variants selected` : selected ? selected.name : "Choose products / variants"}
           </p>
           <p className="truncate text-xs text-slate-500">
             {selected
-              ? `${variantText(selected)}${selected.sku ? ` · SKU: ${selected.sku}` : ""}`
+              ? values.length > 1 ? "Open to add or remove items" : `${variantText(selected)}${selected.sku ? ` · SKU: ${selected.sku}` : ""}`
               : "Search by product, colour, size or SKU"}
           </p>
         </div>
@@ -409,6 +409,11 @@ function ProductVariantPicker({
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-3 py-2 text-xs">
+            <button type="button" onClick={() => onChange(Array.from(new Set([...values, ...filtered.map(item => item.id)])).slice(0, MAX_STOCK_ADJUSTMENT_ITEMS))} className="font-semibold text-blue-700">Select filtered</button>
+            <button type="button" onClick={() => onChange([])} className="text-slate-600">Clear selection</button>
+            <span className="ml-auto text-slate-500">{values.length} / {MAX_STOCK_ADJUSTMENT_ITEMS} selected</span>
+          </div>
           <div className="max-h-[430px] overflow-y-auto bg-white p-2">
             {groups.length === 0 ? (
               <div className="px-4 py-12 text-center">
@@ -426,7 +431,7 @@ function ProductVariantPicker({
                     {groupProducts.map((product) => {
                       const globalIndex = filtered.findIndex((item) => item.id === product.id);
                       const status = stockStatus(product);
-                      const isSelected = product.id === value;
+                      const isSelected = values.includes(product.id);
                       const isHighlighted = globalIndex === highlightedIndex;
                       return (
                         <button
@@ -434,6 +439,9 @@ function ProductVariantPicker({
                           type="button"
                           onMouseEnter={() => setHighlightedIndex(globalIndex)}
                           onClick={() => selectProduct(product)}
+                          aria-pressed={isSelected}
+                          aria-label={`Select ${product.name} ${variantText(product)}`}
+                          disabled={!isSelected && values.length >= MAX_STOCK_ADJUSTMENT_ITEMS}
                           className={`flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-left transition last:border-b-0 ${
                             isSelected || isHighlighted
                               ? "bg-blue-50/80"
@@ -475,7 +483,7 @@ function ProductVariantPicker({
           </div>
 
           <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-            <span>↑ ↓ navigate · Enter select</span>
+            <span>↑ ↓ navigate · Enter toggles</span><button type="button" onClick={() => setOpen(false)} className="rounded-lg bg-blue-600 px-3 py-2 font-semibold text-white">Done ({values.length})</button>
             <span>{filtered.length} results shown</span>
           </div>
         </div>
@@ -487,7 +495,7 @@ function ProductVariantPicker({
 export default function StockAdjustmentClient({
   products,
   recentAdjustments,
-  branchName, branchId, initialProductId = "", recoveryKey,
+  branchName, branchId, initialProductId = "", initialProductIds = [], initialSelectionToken, initialSelectionError = "", recoveryKey,
 }: Props) {
   const router = useRouter();
   const [recovery, setRecovery] = useState<Record<string, string> | null>(null);
@@ -510,7 +518,7 @@ export default function StockAdjustmentClient({
       try {
         const request = new FormData();
         for (const [key, value] of Object.entries(payload)) request.set(key, value);
-        const result = await submitStockAdjustment(previous, request);
+        const result = await (payload.items ? submitStockAdjustmentBatch : submitStockAdjustment)(previous, request);
         if (!result.uncertain) { sessionStorage.removeItem(recoveryKey); setRecovery(null); }
         return result;
       } catch {
@@ -520,7 +528,11 @@ export default function StockAdjustmentClient({
     initialStockAdjustmentState,
   );
 
-  const [productId, setProductId] = useState(initialProductId);
+  const [rows, setRows] = useState<AdjustmentDraftRow[]>(() => {
+    const ids = initialProductIds.length ? initialProductIds : initialProductId ? [initialProductId] : [];
+    return ids.flatMap(id => { const product = products.find(p => p.id === id); return product ? [{ productId: id, mode: "increase" as Mode, quantity: "1", expectedQuantity: product.stockQuantity }] : []; });
+  });
+  const [selectionError, setSelectionError] = useState(initialSelectionError);
   const [mode, setMode] = useState<Mode>("increase");
   const [quantity, setQuantity] = useState("1");
   const [reason, setReason] = useState(reasons[0]);
@@ -529,34 +541,57 @@ export default function StockAdjustmentClient({
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>("30");
 
-  const selectedProduct = useMemo(
-    () => products.find((product) => product.id === productId) ?? null,
-    [productId, products],
-  );
-
+  const selectedProduct = rows.length === 1 ? products.find(product => product.id === rows[0].productId) ?? null : null;
+  const productMap = new Map(products.map(product => [product.id, product]));
+  function selectProducts(ids: string[]) {
+    setRows(previous => ids.map(id => previous.find(row => row.productId === id) ?? {
+      productId: id, mode, quantity, expectedQuantity: productMap.get(id)?.stockQuantity ?? 0,
+    }));
+  }
+  function updateRow(id: string, change: Partial<Pick<AdjustmentDraftRow, "mode" | "quantity">>) {
+    setRows(current => current.map(row => row.productId === id ? { ...row, ...change } : row));
+  }
+  function rowValid(row: AdjustmentDraftRow) {
+    const qty = Number(row.quantity), after = stockAfter(row.expectedQuantity, row.mode, qty);
+    return productMap.has(row.productId) && row.quantity.trim() !== "" && Number.isSafeInteger(qty)
+      && qty >= (row.mode === "set" ? 0 : 1) && qty <= 2147483647 && after >= 0 && after <= 2147483647;
+  }
   const quantityNumber = Number(quantity);
-  useBranchSwitchGuard(() => pending || recovery ? "Finish or retry the pending stock adjustment before switching branches." : null);
+  const bulkValid = quantity.trim() !== "" && Number.isSafeInteger(quantityNumber) && quantityNumber >= (mode === "set" ? 0 : 1) && quantityNumber <= 2147483647;
+  useBranchSwitchGuard(() => pending || recovery ? "Finish or retry the pending stock adjustment before switching branches." : rows.length ? "Leave unsaved stock adjustment rows?" : null);
+  useEffect(() => {
+    const onLeave = (event: BeforeUnloadEvent) => { if (rows.length || recovery || pending) { event.preventDefault(); event.returnValue = ""; } };
+    window.addEventListener("beforeunload", onLeave);
+    return () => window.removeEventListener("beforeunload", onLeave);
+  }, [rows.length, recovery, pending]);
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem(recoveryKey);
       if (saved) {
         const draft = JSON.parse(saved) as Record<string, string>;
-        if (draft.locationId === branchId && draft.requestId) {
-          setRecovery(draft); setProductId(draft.productId); setMode(draft.mode as Mode);
-          setQuantity(draft.quantity); setReason(draft.reason); setReference(draft.reference ?? ""); setNotes(draft.notes ?? "");
+        if (draft.locationId === branchId && isUuid(draft.requestId)) {
+          const recovered = parseStockAdjustmentItems(draft.items || JSON.stringify([{ productId: draft.productId, mode: draft.mode, quantity: Number(draft.quantity), expectedQuantity: Number(draft.expectedQuantity) }]));
+          setRecovery(draft);
+          setRows(recovered.map((row: { productId: string; mode: Mode; quantity: number; expectedQuantity: number }) => ({ ...row, quantity: String(row.quantity) })));
+          setReason(draft.reason); setReference(draft.reference ?? ""); setNotes(draft.notes ?? "");
+          return;
         }
       }
-    } catch { /* Saving remains protected by the storage check in the action. */ }
+      if (initialSelectionToken) {
+        const savedSelection = sessionStorage.getItem(STOCK_SELECTION_PREFIX + initialSelectionToken);
+        if (!savedSelection) throw new Error("The stock selection is not available in this tab. Select products again.");
+        const ids = readStockSelection(savedSelection, branchId);
+        const available = ids.filter(id => products.some(product => product.id === id));
+        setRows(available.map(id => ({ productId: id, mode: "increase", quantity: "1", expectedQuantity: products.find(product => product.id === id)!.stockQuantity })));
+        if (available.length !== ids.length) setSelectionError(`${ids.length - available.length} selected items are unavailable in this branch.`);
+      }
+    } catch (error) { setSelectionError(error instanceof Error ? error.message : "Unable to restore the selection. Select products again."); }
     finally { setReady(true); }
-  }, [branchId, recoveryKey]);
-  const currentStock = selectedProduct?.stockQuantity ?? 0;
-  const safeQuantity = Number.isFinite(quantityNumber) ? quantityNumber : 0;
-  const newStock =
-    mode === "increase"
-      ? currentStock + Math.max(0, safeQuantity)
-      : mode === "decrease"
-        ? Math.max(0, currentStock - Math.max(0, safeQuantity))
-        : Math.max(0, safeQuantity);
+    // Initial selection is consumed once per mounted branch, not on cache refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchId, recoveryKey, initialSelectionToken]);
+  const currentStock = rows.reduce((sum, row) => sum + row.expectedQuantity, 0);
+  const newStock = rows.reduce((sum, row) => sum + stockAfter(row.expectedQuantity, row.mode, Number(row.quantity) || 0), 0);
   const delta = newStock - currentStock;
 
   const filteredAdjustments = useMemo(() => {
@@ -586,18 +621,15 @@ export default function StockAdjustmentClient({
 
   useEffect(() => {
     if (!state.submittedAt || !state.success) return;
+    setRows([]);
     setQuantity("1");
     setReference("");
     setNotes("");
     router.refresh();
   }, [router, state.submittedAt, state.success]);
 
-  const canSubmit = Boolean(
-    ready && selectedProduct && quantity.trim().length > 0 &&
-      Number.isInteger(quantityNumber) &&
-      (mode === "set" ? quantityNumber >= 0 : quantityNumber > 0) &&
-      !(mode === "decrease" && quantityNumber > currentStock),
-  );
+  const canSubmit = Boolean(ready && rows.length && rows.length <= MAX_STOCK_ADJUSTMENT_ITEMS && rows.every(rowValid) && reason.trim().length >= 2);
+
 
   return (
     <main className="mx-auto w-full max-w-[1680px] space-y-5 pb-10">
@@ -627,12 +659,12 @@ export default function StockAdjustmentClient({
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <PackageCheck size={18} />
-          {pending ? "Saving…" : recovery ? "Retry / Check Adjustment" : "Save Adjustment"}
+          {pending ? "Saving…" : recovery ? "Retry / Check Adjustment" : rows.length ? `Save ${rows.length} Adjustment${rows.length === 1 ? "" : "s"}` : "Save Adjustments"}
         </button>
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,.8fr)]">
-        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-4">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
               <FileText size={18} />
@@ -640,7 +672,7 @@ export default function StockAdjustmentClient({
             <div>
               <h2 className="font-semibold text-slate-950">Adjustment Details</h2>
               <p className="mt-0.5 text-xs text-slate-500">
-                Select a product, choose the adjustment type and record a reason.
+                Select multiple products or variants, set each quantity, then save all changes together.
               </p>
             </div>
           </div>
@@ -648,23 +680,25 @@ export default function StockAdjustmentClient({
           <form
             id="stock-adjustment-form"
             action={formAction}
+            noValidate
+            onSubmit={event => { if (!ready || pending || (!canSubmit && !recovery)) event.preventDefault(); }}
             className="space-y-5 p-5"
           >
             {recovery && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">An adjustment is awaiting confirmation. Retry checks the same request without adding stock twice.</p>}
             <fieldset disabled={pending || Boolean(recovery)} className="min-w-0 space-y-5">
             <input type="hidden" name="locationId" value={branchId} />
-            <input type="hidden" name="expectedQuantity" value={currentStock} />
-            <input type="hidden" name="mode" value={mode} />
+            <input type="hidden" name="items" value={JSON.stringify(rows.map(row => ({ ...row, quantity: Number(row.quantity) })))} />
+            {selectionError && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{selectionError}</p>}
 
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  Product / Variant <span className="text-red-500">*</span>
+                  Products / Variants <span className="text-red-500">*</span>
                 </span>
                 <ProductVariantPicker
                   products={products}
-                  value={productId}
-                  onChange={setProductId}
+                  values={rows.map(row => row.productId)}
+                  onChange={selectProducts}
                 />
               </div>
 
@@ -685,7 +719,7 @@ export default function StockAdjustmentClient({
             <div className="grid gap-4 lg:grid-cols-[1.35fr_.65fr]">
               <div>
                 <span className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  Adjustment Type <span className="text-red-500">*</span>
+                  Apply one adjustment to all selected rows
                 </span>
                 <div className="grid overflow-hidden rounded-xl border border-slate-200 sm:grid-cols-3">
                   <ModeButton
@@ -711,7 +745,7 @@ export default function StockAdjustmentClient({
 
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  Quantity <span className="text-red-500">*</span>
+                  Quantity for all rows
                 </span>
                 <div className="relative">
                   <Hash
@@ -719,8 +753,7 @@ export default function StockAdjustmentClient({
                     className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                   />
                   <input
-                    name="quantity"
-                    required
+                    aria-label="Quantity for all rows"
                     type="number"
                     min={mode === "set" ? 0 : 1}
                     step={1}
@@ -729,13 +762,29 @@ export default function StockAdjustmentClient({
                     className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
-                {mode === "decrease" && quantityNumber > currentStock && (
-                  <p className="mt-1 text-xs font-medium text-red-600">
-                    Quantity exceeds current stock ({currentStock}).
-                  </p>
-                )}
+                <button type="button" disabled={!rows.length || !bulkValid} onClick={() => setRows(current => current.map(row => ({ ...row, mode, quantity })))} className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 disabled:opacity-40">Apply to {rows.length} selected rows</button>
               </label>
             </div>
+
+            {rows.length > 0 && <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full min-w-[650px] text-left text-xs">
+                <thead className="bg-slate-50 text-slate-600"><tr><th className="p-3">Product / Variant</th><th className="p-3">Current</th><th className="p-3">Adjustment</th><th className="p-3">Quantity</th><th className="p-3">After</th><th className="p-3"><span className="sr-only">Remove</span></th></tr></thead>
+                <tbody>{rows.map(row => {
+                  const product = productMap.get(row.productId), valid = rowValid(row);
+                  const label = product ? `${product.name} ${variantText(product)}` : row.productId;
+                  const after = stockAfter(row.expectedQuantity, row.mode, Number(row.quantity) || 0);
+                  return <tr key={row.productId} className={`border-t border-slate-100 ${valid ? "" : "bg-red-50"}`}>
+                    <td className="max-w-[220px] p-3"><p className="truncate font-semibold text-slate-900">{product?.name ?? "Unavailable product"}</p><p className="mt-1 text-slate-500">{product ? variantText(product) : row.productId}</p><p className="mt-1 text-[10px] text-slate-400">{product?.sku}</p>{!valid && <p className="mt-1 text-red-700">{product ? "Check quantity / available stock" : "Remove this unavailable item"}</p>}</td>
+                    <td className="p-3 font-semibold">{row.expectedQuantity}</td>
+                    <td className="p-3"><select aria-label={`Adjustment for ${label}`} value={row.mode} onChange={event => updateRow(row.productId, { mode: event.target.value as Mode })} className="h-10 rounded-lg border border-slate-300 bg-white px-2"><option value="increase">Increase</option><option value="decrease">Decrease</option><option value="set">Set exact</option></select></td>
+                    <td className="p-3"><input aria-label={`Quantity for ${label}`} type="number" min={row.mode === "set" ? 0 : 1} max={2147483647} step={1} required value={row.quantity} onChange={event => updateRow(row.productId, { quantity: event.target.value })} className="h-10 w-24 rounded-lg border border-slate-300 bg-white px-2" /></td>
+                    <td className={`p-3 font-bold ${valid ? "text-blue-700" : "text-red-700"}`}>{after}</td>
+                    <td className="p-3"><button type="button" aria-label={`Remove ${label} from adjustment`} onClick={() => setRows(current => current.filter(item => item.productId !== row.productId))} className="rounded-lg p-2 text-red-600 hover:bg-red-50"><X size={16} /></button></td>
+                  </tr>;
+                })}</tbody>
+              </table>
+              <p className="border-t border-slate-100 px-3 py-2 text-[11px] text-slate-500">Review every row. One Save applies all {rows.length} rows together; nothing is saved while editing.</p>
+            </div>}
 
             <div className="grid gap-4 lg:grid-cols-2">
               <label className="block">
@@ -839,7 +888,7 @@ export default function StockAdjustmentClient({
             <div className="flex items-start gap-2 text-xs text-slate-500">
               <Info size={15} className="mt-0.5 shrink-0 text-blue-600" />
               <p>
-                This adjustment is applied immediately and recorded in the stock adjustment ledger with its reason and reference.
+                Save applies all selected rows in one transaction, with a ledger entry for each changed item. A failed row rolls back the entire batch.
               </p>
             </div>
             </fieldset>
@@ -847,7 +896,7 @@ export default function StockAdjustmentClient({
           </form>
         </section>
 
-        <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <aside className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
               <Box size={18} />
@@ -857,7 +906,7 @@ export default function StockAdjustmentClient({
 
           {!selectedProduct ? (
             <div className="p-8 text-center text-sm text-slate-500">
-              Select a product to see inventory information.
+              {rows.length > 1 ? `${rows.length} items selected. Review each item’s Current and After quantities in the table before saving.` : "Select one or more products to see the stock impact."}
             </div>
           ) : (
             <div className="p-5">

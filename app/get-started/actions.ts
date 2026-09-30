@@ -3,6 +3,7 @@
 import {
   getBusinessModeDefaults,
   getBusinessModePreset,
+  isBusinessModeSelectable,
 } from "@/lib/business/business-mode-presets";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -10,14 +11,6 @@ import { getTenantDashboardUrl } from "@/lib/tenancy/domain";
 import { getStoreSlugAvailability } from "@/lib/tenancy/store-slug-availability";
 
 import type { GetStartedState } from "./state";
-
-const selectableGetStartedBusinessModes = new Set([
-  "general",
-  "shoes",
-  "fashion",
-  "grocery",
-  "accessories",
-]);
 
 export type GetStartedStoreAddressAvailabilityResult = {
   slug: string;
@@ -187,7 +180,7 @@ export async function createOwnerBusiness(
     const selectedMode = requiredText(formData, "businessMode");
     const preset = getBusinessModePreset(selectedMode);
 
-    if (!preset || !selectableGetStartedBusinessModes.has(selectedMode)) {
+    if (!preset || !isBusinessModeSelectable(selectedMode)) {
       return {
         success: false,
         message: "This business type is coming soon. Choose an available business type.",

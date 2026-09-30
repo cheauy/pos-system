@@ -1,5 +1,6 @@
 "use server";
 
+import { validateEditableVariants, MAX_EDIT_VARIANTS } from "@/lib/products/variant-editor";
 import { compressPhoto } from "@/lib/images/compress-photo";
 import { PUBLIC_PHOTO_CACHE_SECONDS } from "@/lib/public-photo-cache";
 
@@ -96,6 +97,33 @@ async function getImageFile(formData: FormData, key = "image"): Promise<File | n
   return compressPhoto(value);
 }
 
+async function resolveProductGallery(formData: FormData, allowed: Set<string>, upload: (file: File) => Promise<string>): Promise<string[] | null> {
+  const raw = formData.get("productGallery");
+  if (raw === null) return null;
+  if (typeof raw !== "string") throw new Error("Invalid product gallery.");
+  const entries = JSON.parse(raw);
+  if (!Array.isArray(entries) || entries.length > 8) throw new Error("Use up to 8 product images.");
+  const images: (string | File)[] = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") throw new Error("Invalid gallery image.");
+    if (typeof entry.url === "string" && allowed.has(entry.url) && !entry.slot) images.push(entry.url);
+    else if (typeof entry.slot === "string" && /^[a-zA-Z0-9-]{1,80}$/.test(entry.slot) && !entry.url) {
+      const file = await getImageFile(formData, `gallery_${entry.slot}`);
+      if (!file) throw new Error("Choose the gallery image again.");
+      images.push(file);
+    } else throw new Error("Choose an existing photo from this product or upload a new image.");
+  }
+  const urls: string[] = [];
+  for (const image of images) urls.push(typeof image === "string" ? image : await upload(image));
+  return [...new Set(urls)];
+}
+
+function checkProductBarcodes(values: string[]): string | null {
+  if (values.some(value => value.length > 80 || /[\x00-\x1f\x7f]/.test(value))) return "Keep barcodes within 80 printable characters.";
+  const nonEmpty = values.filter(Boolean);
+  return new Set(nonEmpty).size === nonEmpty.length ? null : "Each variant must use a different barcode.";
+}
+
 function getImageExtension(file: File) {
   switch (file.type) {
     case "image/jpeg":
@@ -187,10 +215,10 @@ export async function createProduct(
     "description",
   );
 
-  const barcodeInput = isGeneralShop
-    ? getOptionalText(formData, "barcode")
-    : null;
-  const barcode = isGeneralShop ? barcodeInput ?? sku : sku;
+  const barcodeInput = getOptionalText(formData, "barcode");
+  const barcode = barcodeInput ?? sku;
+  const barcodeError = checkProductBarcodes([barcode]);
+  if (barcodeError) return { success: false, message: barcodeError };
   const size = isGeneralShop ? getOptionalText(formData, "size") : null;
   const color = isGeneralShop ? getOptionalText(formData, "color") : null;
   const isOnline = isGeneralShop ? formData.get("isOnline") === "on" : true;
@@ -298,7 +326,7 @@ export async function createProduct(
     };
   }
 
-  if (isGeneralShop && barcode) {
+  if (barcode) {
     const { data: existingBarcode, error: barcodeCheckError } = await supabase
       .from("branch_products")
       .select("id")
@@ -361,6 +389,23 @@ export async function createProduct(
       publicUrlData.publicUrl;
   }
 
+  const galleryPaths: string[] = [];
+  let gallery: string[] | null = null;
+  try {
+    gallery = await resolveProductGallery(formData, new Set(), async file => {
+      const path = `${business.id}/${user.id}/${crypto.randomUUID()}.${getImageExtension(file)}`;
+      const { error } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, file, { contentType: file.type, cacheControl: PUBLIC_PHOTO_CACHE_SECONDS, upsert: false });
+      if (error) throw new Error(error.message);
+      galleryPaths.push(path);
+      return supabase.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
+    });
+    if (gallery !== null) imageUrl = gallery[0] ?? null;
+  } catch (error) {
+    if (uploadedImagePath) galleryPaths.push(uploadedImagePath);
+    if (galleryPaths.length) await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(galleryPaths);
+    return { success: false, message: error instanceof Error ? error.message : "Unable to save gallery." };
+  }
+
   const { data: product, error } =
     await supabase
       .from("products")
@@ -372,6 +417,7 @@ export async function createProduct(
         sku,
         barcode,
         image_url: imageUrl,
+        ...(gallery !== null ? { image_urls: gallery } : {}),
         description,
         cost_price: costPrice,
         selling_price: sellingPrice,
@@ -388,6 +434,7 @@ export async function createProduct(
       .single();
 
   if (error) {
+    if (galleryPaths.length) await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(galleryPaths);
     if (uploadedImagePath) {
       await supabase.storage
         .from(PRODUCT_IMAGE_BUCKET)
@@ -840,12 +887,13 @@ export async function toggleProductOnline(
   });
 
   revalidatePath("/dashboard/products");
-  revalidatePath("/dashboard/online-store");
+  revalidatePath("/dashboard/settings/online-store");
   revalidatePath(`/_sites/${business.slug}`);
 }
 
 
 export type ProductRowActionResult = {
+  remainingProductId?: string;
   success: boolean;
   message: string;
 };
@@ -921,7 +969,7 @@ export async function setProductGroupOnline(
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/products");
-  revalidatePath("/dashboard/online-store");
+  revalidatePath("/dashboard/settings/online-store");
   revalidatePath(`/_sites/${business.slug}`);
 
   return {
@@ -985,7 +1033,7 @@ export async function setProductGroupActive(
   revalidatePath("/dashboard/products");
   revalidatePath("/dashboard/inventory");
   revalidatePath("/dashboard/pos");
-  revalidatePath("/dashboard/online-store");
+  revalidatePath("/dashboard/settings/online-store");
   revalidatePath(`/_sites/${business.slug}`);
   return {
     success: true,
@@ -999,8 +1047,10 @@ export async function setProductVariantsActive(
   productId: string,
   variantIds: string[],
   active: boolean,
+  expectedBranchId?: string,
 ): Promise<ProductRowActionResult> {
   const business = await requirePermission("products.disable");
+  if (expectedBranchId && (await getBranchContext()).branchId !== expectedBranchId) return { success: false, message: "Your branch changed. Reload before changing visibility." };
   const uniqueIds = Array.from(new Set(variantIds.filter(Boolean)));
   if (!productId || uniqueIds.length === 0) {
     return { success: false, message: "Select at least one variant." };
@@ -1052,7 +1102,7 @@ export async function setProductVariantsActive(
   revalidatePath(`/dashboard/products/${representative.id}/edit`);
   revalidatePath("/dashboard/inventory");
   revalidatePath("/dashboard/pos");
-  revalidatePath("/dashboard/online-store");
+  revalidatePath("/dashboard/settings/online-store");
   revalidatePath(`/_sites/${business.slug}`);
   return {
     success: true,
@@ -1063,8 +1113,13 @@ export async function setProductVariantsActive(
 export async function deleteProductVariants(
   productId: string,
   variantIds: string[],
+  expectedBranchId?: string,
+  allowWholeProduct = false,
 ): Promise<ProductRowActionResult> {
   const business = await requirePermission("products.disable");
+  if (expectedBranchId && (await getBranchContext()).branchId !== expectedBranchId) {
+    return { success: false, message: "Your branch changed. Reload before removing variants." };
+  }
   const uniqueIds = Array.from(new Set(variantIds.filter(Boolean)));
   if (!productId || uniqueIds.length === 0) {
     return { success: false, message: "Select at least one variant." };
@@ -1083,7 +1138,7 @@ export async function deleteProductVariants(
 
   let groupQuery = supabase
     .from("branch_products")
-    .select("id, image_url, variant_image_url")
+    .select("id, image_url, variant_image_url, stock_quantity")
     .eq("business_id", business.id);
   groupQuery = representative.product_type === "variant" && representative.variant_group_id
     ? groupQuery.eq("variant_group_id", representative.variant_group_id)
@@ -1095,9 +1150,11 @@ export async function deleteProductVariants(
   if (uniqueIds.some((id) => !allowedIds.has(id))) {
     return { success: false, message: "One selected variant does not belong to this product." };
   }
-  if (rows.length - uniqueIds.length < 1) {
+  if (!allowWholeProduct && rows.length - uniqueIds.length < 1) {
     return { success: false, message: "Keep at least one variant. Use Delete Product to remove the whole style." };
   }
+
+  // The database clears current-branch stock and archives the rows atomically.
 
   const { error: deleteError } = await supabase
     .from("branch_products")
@@ -1112,6 +1169,7 @@ export async function deleteProductVariants(
   }
 
 
+  try {
   await createAuditLog({
     action: "delete",
     entityType: "product",
@@ -1120,19 +1178,29 @@ export async function deleteProductVariants(
     metadata: { variant_ids: uniqueIds },
   });
 
+  } catch { /* The database deletion and stock ledger have already committed. */ }
+
+  try {
   revalidatePath("/dashboard/products");
   revalidatePath(`/dashboard/products/${representative.id}/edit`);
   revalidatePath("/dashboard/inventory");
+  revalidatePath("/dashboard/inventory/adjustments");
+  revalidatePath("/dashboard/low-stock");
   revalidatePath("/dashboard/pos");
-  revalidatePath("/dashboard/online-store");
+  revalidatePath("/dashboard/settings/online-store");
   revalidatePath(`/_sites/${business.slug}`);
-  return { success: true, message: `${uniqueIds.length} variants deleted.` };
+  } catch { /* Do not report a committed deletion as failed on cache errors. */ }
+  return { success: true, message: `${uniqueIds.length} variants removed from this branch. Remaining stock was cleared; history is kept.`, remainingProductId: rows.find((row) => !uniqueIds.includes(row.id))?.id };
 }
 
 export async function deleteProductGroup(
   productId: string,
+  expectedBranchId?: string,
 ): Promise<ProductRowActionResult> {
   const business = await requirePermission("products.disable");
+  if (expectedBranchId && (await getBranchContext()).branchId !== expectedBranchId) {
+    return { success: false, message: "Your branch changed. Reload before removing the product." };
+  }
 
   if (!productId) {
     return { success: false, message: "Invalid product ID." };
@@ -1191,6 +1259,7 @@ export async function deleteProductGroup(
   }
 
 
+  try {
   await createAuditLog({
     action: "delete",
     entityType: "product",
@@ -1202,17 +1271,23 @@ export async function deleteProductGroup(
     },
   });
 
+  } catch { /* The database deletion and stock ledger have already committed. */ }
+
+  try {
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/products");
   revalidatePath("/dashboard/inventory");
+  revalidatePath("/dashboard/inventory/adjustments");
+  revalidatePath("/dashboard/low-stock");
   revalidatePath("/dashboard/pos");
-  revalidatePath("/dashboard/online-store");
+  revalidatePath("/dashboard/settings/online-store");
   revalidatePath("/dashboard/audit-logs");
   revalidatePath(`/_sites/${business.slug}`);
 
+  } catch { /* Do not report a committed deletion as failed on cache errors. */ }
   return {
     success: true,
-    message: `${product.name} deleted successfully.`,
+    message: `${product.name} removed from this branch. Remaining stock was cleared; history is kept.`,
   };
 }
 
@@ -1224,6 +1299,7 @@ export async function deleteProductGroup(
 // those rows into one public-store product card.
 // ---------------------------------------------------------------------------
 type VariantInput = {
+  barcode: string;
   size: string;
   color: string;
   sku: string;
@@ -1244,6 +1320,7 @@ function parseVariantInputs(value: FormDataEntryValue | null): VariantInput[] {
         if (!row || typeof row !== "object") return null;
         const source = row as Record<string, unknown>;
         const sku = typeof source.sku === "string" ? source.sku.trim() : "";
+      const barcode = typeof source.barcode === "string" ? source.barcode.trim() : sku;
         const size = typeof source.size === "string" ? source.size.trim() : "";
         const color = typeof source.color === "string" ? source.color.trim() : "";
         const costPrice = Number(source.costPrice);
@@ -1265,6 +1342,7 @@ function parseVariantInputs(value: FormDataEntryValue | null): VariantInput[] {
           size,
           color,
           sku,
+          barcode,
           costPrice,
           sellingPrice,
           stockQuantity,
@@ -1347,6 +1425,10 @@ export async function createVariantProduct(
     return { success: false, message: "Each variant must use a unique SKU." };
   }
 
+  const barcodeError = checkProductBarcodes(variants.map(variant => variant.barcode || variant.sku));
+  if (barcodeError) return { success: false, message: barcodeError };
+  const barcodeCheck = await supabaseAdmin.from("products").select("id").eq("business_id", business.id).in("barcode", variants.map(variant => variant.barcode || variant.sku)).limit(1);
+  if (barcodeCheck.error || barcodeCheck.data?.length) return { success: false, message: barcodeCheck.error?.message ?? "A barcode is already used by another product." };
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -1378,6 +1460,7 @@ export async function createVariantProduct(
     ),
   );
   let imageUrl: string | null = null;
+  let gallery: string[] | null = null;
   const runImageUrls = new Map<string, string>();
   const uploadedImagePaths: string[] = [];
 
@@ -1418,6 +1501,13 @@ export async function createVariantProduct(
     };
   }
 
+  try {
+    gallery = await resolveProductGallery(formData, new Set(), file => uploadVariantImage(file, "gallery image"));
+    if (gallery !== null) imageUrl = gallery[0] ?? null;
+  } catch (error) {
+    if (uploadedImagePaths.length) await supabaseAdmin.storage.from(PRODUCT_IMAGE_BUCKET).remove(uploadedImagePaths);
+    return { success: false, message: error instanceof Error ? error.message : "Unable to save gallery." };
+  }
   const variantGroupId = crypto.randomUUID();
   const rows = variants.map((variant) => ({
     owner_id: userId,
@@ -1425,10 +1515,11 @@ export async function createVariantProduct(
     category_id: categoryId,
     name,
     sku: variant.sku,
-    barcode: variant.sku,
+    barcode: variant.barcode || variant.sku,
     size: variant.size || null,
     color: variant.color || null,
     image_url: imageUrl,
+    ...(gallery !== null ? { image_urls: gallery } : {}),
     variant_image_url: variant.imageSlot
       ? runImageUrls.get(variant.imageSlot) ?? null
       : null,
@@ -1470,7 +1561,7 @@ export async function createVariantProduct(
 
   revalidatePath("/dashboard/products");
   revalidatePath("/dashboard/pos");
-  revalidatePath("/dashboard/online-store");
+  revalidatePath("/dashboard/settings/online-store");
 
   return {
     success: true,
@@ -1731,7 +1822,7 @@ export async function createConfigurableProduct(
 
   revalidatePath("/dashboard/products");
   revalidatePath("/dashboard/pos");
-  revalidatePath("/dashboard/online-store");
+  revalidatePath("/dashboard/settings/online-store");
 
   return {
     success: true,
@@ -1748,385 +1839,255 @@ export async function createConfigurableProduct(
 export type UpdateProductGroupState = {
   success: boolean;
   message: string;
+  refreshRequired?: boolean;
 };
 
 type EditVariantInput = {
+  barcode?: string;
   id: string | null;
-  size: string;
-  color: string;
-  sku: string;
-  costPrice: number;
-  sellingPrice: number;
-  stockQuantity: number;
-  lowStockQuantity: number;
+  size: string; color: string; sku: string;
+  costPrice: number; sellingPrice: number; stockQuantity: number; lowStockQuantity: number;
   isActive: boolean;
+  isOnline?: boolean;
   imageSlot: string | null;
+  imageAction: "keep" | "remove" | "existing" | "upload";
+  variantImageUrl: string | null;
+  expectedUpdatedAt: string | null;
 };
 
+// Reject the entire payload if any row is malformed. Never silently drop rows.
 function parseEditVariants(value: FormDataEntryValue | null): EditVariantInput[] {
   if (typeof value !== "string") return [];
-
   try {
     const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((row): EditVariantInput | null => {
-        if (!row || typeof row !== "object") return null;
-        const source = row as Record<string, unknown>;
-        const id = typeof source.id === "string" && source.id.trim() ? source.id.trim() : null;
-        const size = typeof source.size === "string" ? source.size.trim() : "";
-        const color = typeof source.color === "string" ? source.color.trim() : "";
-        const sku = typeof source.sku === "string" ? source.sku.trim() : "";
-        const costPrice = Number(source.costPrice);
-        const sellingPrice = Number(source.sellingPrice);
-        const stockQuantity = Number(source.stockQuantity);
-        const lowStockQuantity = Number(source.lowStockQuantity);
-        const isActive = Boolean(source.isActive);
-        const imageSlot =
-          typeof source.imageSlot === "string" && source.imageSlot.trim()
-            ? source.imageSlot.trim()
-            : null;
-
-        if (
-          !sku ||
-          !Number.isFinite(costPrice) || costPrice < 0 ||
-          !Number.isFinite(sellingPrice) || sellingPrice < 0 ||
-          !Number.isInteger(stockQuantity) || stockQuantity < 0 ||
-          !Number.isInteger(lowStockQuantity) || lowStockQuantity < 0
-        ) {
-          return null;
-        }
-
-        return {
-          id,
-          size,
-          color,
-          sku,
-          costPrice,
-          sellingPrice,
-          stockQuantity,
-          lowStockQuantity,
-          isActive,
-          imageSlot,
-        };
-      })
-      .filter((row): row is EditVariantInput => row !== null);
-  } catch {
-    return [];
-  }
+    if (!Array.isArray(parsed) || parsed.length < 1 || parsed.length > MAX_EDIT_VARIANTS) return [];
+    const rows: EditVariantInput[] = [];
+    const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
+    const number = (value: unknown) => (typeof value === "number" || (typeof value === "string" && value.trim())) ? Number(value) : NaN;
+    for (const value of parsed) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+      const source = value as Record<string, unknown>;
+      const imageSlot = text(source.imageSlot) || null;
+      const action = source.imageAction ?? (imageSlot ? "upload" : "keep");
+      if (!["keep", "remove", "existing", "upload"].includes(String(action))) return [];
+      if (imageSlot && !/^[a-zA-Z0-9_-]{1,80}$/.test(imageSlot)) return [];
+      if (typeof source.isActive !== "boolean") return [];
+      if (source.isOnline !== undefined && typeof source.isOnline !== "boolean") return [];
+      const row: EditVariantInput = {
+        id: text(source.id) || null, size: text(source.size), color: text(source.color), sku: text(source.sku),
+      barcode: typeof source.barcode === "string" ? source.barcode.trim() : undefined,
+        costPrice: number(source.costPrice), sellingPrice: number(source.sellingPrice),
+        stockQuantity: number(source.stockQuantity), lowStockQuantity: number(source.lowStockQuantity),
+        isActive: source.isActive, isOnline: source.isOnline as boolean | undefined, imageSlot, imageAction: action as EditVariantInput["imageAction"],
+        variantImageUrl: text(source.variantImageUrl) || null,
+        expectedUpdatedAt: text(source.expectedUpdatedAt) || null,
+      };
+      if (validateEditableVariants([row], false)) return [];
+      rows.push(row);
+    }
+    return rows;
+  } catch { return []; }
 }
 
 export async function updateProductGroup(
+  previousState: UpdateProductGroupState,
+  formData: FormData,
+): Promise<UpdateProductGroupState> {
+  try {
+    return await saveEditedProductGroup(previousState, formData);
+  } catch (error) {
+    // A transport, authorization or post-write failure has an uncertain outcome.
+    // Force a fresh read instead of inviting duplicate new-variant submissions.
+    return { success: false, refreshRequired: true, message: `${error instanceof Error ? error.message : "Unable to save the product."} Reload the product to review its current state before retrying.` };
+  }
+}
+
+async function saveEditedProductGroup(
   _previousState: UpdateProductGroupState,
   formData: FormData,
 ): Promise<UpdateProductGroupState> {
   const business = await requirePermission("products.update");
-  const currentBusinessMode = await getCurrentBusinessMode({
-    businessId: business.id,
-    productMode: business.productMode,
-  });
+  const context = await getBranchContext();
+  const expectedBranch = getOptionalText(formData, "branchId");
+  if (context.business.id !== business.id || (expectedBranch && expectedBranch !== context.branchId)) {
+    return { success: false, refreshRequired: true, message: "Your operating branch changed. Reload this product before saving." };
+  }
+  const currentBusinessMode = await getCurrentBusinessMode({ businessId: business.id, productMode: business.productMode });
   const isGeneralShop = currentBusinessMode.value === "general";
-  const productIdValue = formData.get("productId");
-  const nameValue = formData.get("name");
-  const productId = typeof productIdValue === "string" ? productIdValue.trim() : "";
-  const name = typeof nameValue === "string" ? nameValue.trim() : "";
+  const productId = getOptionalText(formData, "productId");
+  const name = getOptionalText(formData, "name") ?? "";
   const categoryId = getOptionalText(formData, "categoryId");
   const description = getOptionalText(formData, "description");
   const isOnline = formData.get("isOnline") === "true";
   const variants = parseEditVariants(formData.get("variants"));
-  const requestedBarcode = isGeneralShop ? getOptionalText(formData, "barcode") : null;
-
-  if (!productId) return { success: false, message: "Invalid product ID." };
-  if (name.length < 2) return { success: false, message: "Product name must contain at least 2 characters." };
-  if (variants.length === 0) return { success: false, message: "Add at least one valid variant." };
-
+  const fail = (message: string): UpdateProductGroupState => ({ success: false, message });
+  if (!productId) return fail("Invalid product ID.");
+  if (name.length < 2 || name.length > 160) return fail("Enter a product name with 2–160 characters.");
+  if (!variants.length) return fail("Every variant needs a SKU, valid prices and whole-number initial stock / low-stock values. No changes were saved.");
+  const validation = validateEditableVariants(variants, false);
+  if (validation) return fail(validation);
   await assertCategoryBelongsToBusiness(business.id, categoryId);
-
-  const localSkus = variants.map((variant) => variant.sku.toLowerCase());
-  if (new Set(localSkus).size !== localSkus.length) {
-    return { success: false, message: "Every variant must use a unique SKU." };
-  }
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  if (!user) return fail("Your session has expired. Sign in again.");
   const userId = user.id;
-
-  const { data: representative, error: representativeError } = await supabase
-    .from("branch_products")
+  const { data: representative, error: representativeError } = await supabase.from("branch_products")
     .select("id, name, product_type, variant_group_id, image_url, is_online")
-    .eq("id", productId)
-    .eq("business_id", business.id)
-    .maybeSingle();
-
-  if (representativeError || !representative) {
-    return {
-      success: false,
-      message: representativeError?.message ?? "Product was not found.",
-    };
-  }
-
-  let currentQuery = supabase
-    .from("branch_products")
-    .select("id, sku, stock_quantity, image_url, variant_image_url")
+    .eq("id", productId).eq("business_id", business.id).maybeSingle();
+  if (representativeError || !representative) return fail(representativeError?.message ?? "Product was not found.");
+  const supportsVariants = representative.product_type === "variant" && Boolean(representative.variant_group_id);
+  let currentQuery = supabase.from("branch_products")
+    .select("id, sku, barcode, stock_quantity, image_url, image_urls, variant_image_url, updated_at, is_active")
     .eq("business_id", business.id);
-
-  currentQuery =
-    representative.product_type === "variant" && representative.variant_group_id
-      ? currentQuery.eq("variant_group_id", representative.variant_group_id)
-      : currentQuery.eq("id", representative.id);
-
-  const { data: currentRows, error: currentRowsError } = await currentQuery;
-  if (currentRowsError) {
-    return { success: false, message: currentRowsError.message };
+  currentQuery = supportsVariants ? currentQuery.eq("variant_group_id", representative.variant_group_id) : currentQuery.eq("id", representative.id);
+  const { data: currentRows, error: currentError } = await currentQuery;
+  if (currentError) return fail(currentError.message);
+  const current = (currentRows ?? []) as Array<{
+    id: string; sku: string | null; stock_quantity: number;
+    image_url: string | null; image_urls?: string[]; barcode?: string | null; variant_image_url: string | null;
+    updated_at: string; is_active: boolean;
+  }>;
+  const currentById = new Map(current.map(row => [row.id, row] as const));
+  const submittedIds = variants.flatMap(row => row.id ? [row.id] : []);
+  if (submittedIds.some(id => !currentById.has(id))) return fail("One of these variants no longer belongs to this product. Reload before saving.");
+  if (submittedIds.length !== current.length) return fail("The variant list changed or a saved row is missing. Reload before saving; use the separate Remove action to remove variants.");
+  if (!supportsVariants && (variants.length !== 1 || variants[0].id !== representative.id)) return fail("This product does not support multiple variants.");
+  if (variants.some(row => !row.id)) await requirePermission("products.create");
+  if (variants.some(row => row.id && currentById.get(row.id)?.is_active !== row.isActive)) await requirePermission("products.disable");
+  const optionsError = validateEditableVariants(variants, supportsVariants);
+  if (optionsError) return fail(optionsError);
+  if (variants.some(row => row.id && row.expectedUpdatedAt && currentById.get(row.id)?.updated_at !== row.expectedUpdatedAt)) {
+    return { ...fail("Another user changed this product. Reload and review their changes before saving."), refreshRequired: true };
   }
-
-  const current = currentRows ?? [];
-  const currentIds = new Set(current.map((row) => row.id));
-  const submittedExistingIds = variants
-    .map((variant) => variant.id)
-    .filter((value): value is string => Boolean(value));
-
-  if (submittedExistingIds.some((id) => !currentIds.has(id))) {
-    return { success: false, message: "One of these variants does not belong to this product." };
+  const generalBarcode = isGeneralShop && !supportsVariants ? getOptionalText(formData, "barcode") ?? variants[0].sku : null;
+  if (generalBarcode) {
+    const { data, error } = await supabase.from("branch_products").select("id").eq("business_id", business.id).eq("barcode", generalBarcode).neq("id", representative.id).limit(1);
+    if (error) return fail(error.message);
+    if (data?.length) return fail("This barcode is already used by another product in this branch.");
   }
+  const { data: duplicates, error: duplicateError } = await supabase.from("branch_products").select("id, sku")
+    .eq("business_id", business.id).in("sku", variants.map(row => row.sku));
+  if (duplicateError) return fail(duplicateError.message);
+  const externalDuplicate = (duplicates ?? []).find(row => !currentById.has(row.id));
+  if (externalDuplicate) return fail(`SKU ${externalDuplicate.sku ?? ""} is already used by another product.`);
 
-  const supportsVariants =
-    representative.product_type === "variant" && Boolean(representative.variant_group_id);
+  const barcodes = variants.map(row => row.barcode === undefined ? (currentById.get(row.id ?? "")?.barcode ?? row.sku) : row.barcode || row.sku);
+  const barcodeError = checkProductBarcodes(barcodes);
+  if (barcodeError) return fail(barcodeError);
+  const barcodeCheck = await supabase.from("branch_products").select("id,barcode").eq("business_id", business.id).in("barcode", barcodes);
+  if (barcodeCheck.error) return fail(barcodeCheck.error.message);
+  if (barcodeCheck.data?.some(row => !currentById.has(row.id))) return fail("A barcode is already used by another product in this branch.");
 
-  if (!supportsVariants && (variants.length !== 1 || variants[0].id !== representative.id)) {
-    return { success: false, message: "This product does not support multiple variants." };
+  const allowedImages = new Set<string>(current.flatMap(row => [row.image_url, row.variant_image_url, ...(row.image_urls ?? [])]).filter((url): url is string => Boolean(url)));
+  const mainAction = getOptionalText(formData, "mainImageAction") ?? "keep";
+  const mainExistingUrl = getOptionalText(formData, "mainImageUrl");
+  const mainSlot = getOptionalText(formData, "mainImageSlot");
+  if (!["keep", "remove", "existing", "upload"].includes(mainAction)) return fail("Invalid main image action.");
+  if (mainAction === "existing" && (!mainExistingUrl || !allowedImages.has(mainExistingUrl))) return fail("Choose an existing image from this product, or upload a new one.");
+  if (mainAction === "upload" && (!mainSlot || !/^[a-zA-Z0-9_-]{1,80}$/.test(mainSlot))) return fail("Choose the main image again.");
+  for (const row of variants) {
+    if (row.imageAction === "existing" && (!row.variantImageUrl || !allowedImages.has(row.variantImageUrl))) return fail("A variant image is not part of this product. Choose it again.");
+    if (row.imageAction === "upload" && !row.imageSlot) return fail("Choose the variant image again.");
   }
-
-  const generalBarcode = isGeneralShop && !supportsVariants
-    ? requestedBarcode ?? variants[0]?.sku ?? null
-    : null;
-
-  if (isGeneralShop && !supportsVariants && generalBarcode) {
-    const { data: barcodeMatches, error: barcodeCheckError } = await supabase
-      .from("branch_products")
-      .select("id")
-      .eq("business_id", business.id)
-      .eq("barcode", generalBarcode)
-      .neq("id", representative.id)
-      .limit(1);
-
-    if (barcodeCheckError) {
-      return { success: false, message: barcodeCheckError.message };
+  const slots = new Set(variants.filter(row => row.imageAction === "upload").map(row => row.imageSlot!));
+  if (mainAction === "upload") slots.add(mainSlot!);
+  // Validate every upload before writing files or product rows.
+  const imageFiles = new Map<string, File>();
+  let legacyMain: File | null = null;
+  try {
+    legacyMain = await getImageFile(formData);
+    for (const slot of slots) {
+      const image = await getImageFile(formData, `runImage_${slot}`);
+      if (!image) return fail("An image upload is missing. Choose that image again; no product changes were saved.");
+      imageFiles.set(slot, image);
     }
-    if ((barcodeMatches ?? []).length > 0) {
-      return { success: false, message: "This barcode is already used by another product in this business." };
-    }
-  }
-
-  if (supportsVariants) {
-    const normalizedPairs = variants
-      .map((variant) => `${variant.color.toLowerCase()}|${variant.size.toLowerCase()}`)
-      .filter((pair) => pair !== "|");
-    if (new Set(normalizedPairs).size !== normalizedPairs.length) {
-      return { success: false, message: "Each size and colour combination must be unique." };
-    }
-  }
-
-  const { data: duplicateRows, error: duplicateError } = await supabase
-    .from("branch_products")
-    .select("id, sku")
-    .eq("business_id", business.id)
-    .in("sku", variants.map((variant) => variant.sku));
-
-  if (duplicateError) {
-    return { success: false, message: duplicateError.message };
-  }
-
-  const externalDuplicate = (duplicateRows ?? []).find((row) => !currentIds.has(row.id));
-  if (externalDuplicate) {
-    return {
-      success: false,
-      message: `SKU ${externalDuplicate.sku ?? ""} is already used by another product.`,
-    };
-  }
-
-  const imageFile = await getImageFile(formData);
-  const imageSlots = Array.from(
-    new Set(
-      variants
-        .map((variant) => variant.imageSlot)
-        .filter((value): value is string => Boolean(value)),
-    ),
-  );
-  let newImageUrl: string | null = representative.image_url;
-  const runImageUrls = new Map<string, string>();
-  const uploadedImagePaths: string[] = [];
-
-  async function uploadEditImage(file: File, label: string) {
-    const extension = getImageExtension(file);
-    const path = `${business.id}/${userId}/${crypto.randomUUID()}.${extension}`;
-    const { error: uploadError } = await supabase.storage
-      .from(PRODUCT_IMAGE_BUCKET)
-      .upload(path, file, {
-        contentType: file.type,
-        cacheControl: PUBLIC_PHOTO_CACHE_SECONDS,
-        upsert: false,
-      });
-    if (uploadError) throw new Error(`Unable to upload ${label}: ${uploadError.message}`);
-    uploadedImagePaths.push(path);
+  } catch (error) { return fail(error instanceof Error ? error.message : "Invalid image upload."); }
+  const uploadedPaths: string[] = [], uploadedUrls = new Map<string, string>();
+  let gallery: string[] | null = null;
+  let newImageUrl: string | null = mainAction === "remove" ? null : mainAction === "existing" ? mainExistingUrl : representative.image_url;
+  async function upload(file: File): Promise<string> {
+    const path = `${business.id}/${userId}/${crypto.randomUUID()}.${getImageExtension(file)}`;
+    const { error } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, file, { contentType: file.type, cacheControl: PUBLIC_PHOTO_CACHE_SECONDS, upsert: false });
+    if (error) throw new Error(`Unable to upload image: ${error.message}`);
+    uploadedPaths.push(path);
     return supabase.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
   }
-
   try {
-    if (imageFile) newImageUrl = await uploadEditImage(imageFile, "product image");
-    for (const slot of imageSlots) {
-      const runImageFile = await getImageFile(formData, `runImage_${slot}`);
-      if (!runImageFile) continue;
-      runImageUrls.set(
-        slot,
-        await uploadEditImage(runImageFile, "colour / size-run image"),
-      );
-    }
+    if (legacyMain) newImageUrl = await upload(legacyMain);
+    for (const [slot, file] of imageFiles) uploadedUrls.set(slot, await upload(file));
+    if (mainAction === "upload") newImageUrl = uploadedUrls.get(mainSlot!)!;
+    gallery = await resolveProductGallery(formData, allowedImages, async file => {
+      const path = `${business.id}/${userId}/${crypto.randomUUID()}.${getImageExtension(file)}`;
+      const { error } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, file, { contentType: file.type, cacheControl: PUBLIC_PHOTO_CACHE_SECONDS, upsert: false });
+      if (error) throw new Error(error.message);
+      uploadedPaths.push(path);
+      return supabase.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
+    });
   } catch (error) {
-    if (uploadedImagePaths.length > 0) {
-      await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(uploadedImagePaths);
-    }
-    return {
-      success: false,
-      message: error instanceof Error ? error.message : "Unable to upload product image.",
-    };
+    // Nothing has referenced these new uploads yet. Existing files are never removed.
+    if (uploadedPaths.length) await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(uploadedPaths);
+    return fail(error instanceof Error ? error.message : "Unable to upload images.");
   }
-
-  const currentById = new Map(current.map((row) => [row.id, row]));
+  if (gallery !== null) newImageUrl = gallery[0] ?? null;
+  const imageChanged = gallery !== null || mainAction !== "keep" || Boolean(legacyMain);
   const now = new Date().toISOString();
-
   try {
     for (const variant of variants) {
+      const existing = variant.id ? currentById.get(variant.id) : null;
+      const variantImage = variant.imageAction === "remove" ? null
+        : variant.imageAction === "existing" ? variant.variantImageUrl
+        : variant.imageAction === "upload" ? uploadedUrls.get(variant.imageSlot!)!
+        : existing?.variant_image_url ?? null;
       if (variant.id) {
-        const existing = currentById.get(variant.id);
-        if (!existing) throw new Error("Variant was not found.");
-
-        const updatePayload: Record<string, unknown> = {
-          category_id: categoryId,
-          name,
-          sku: variant.sku,
-          barcode:
-            isGeneralShop && !supportsVariants
-              ? generalBarcode ?? variant.sku
-              : variant.sku,
-          description,
-          size: variant.size || null,
-          color: variant.color || null,
-          cost_price: variant.costPrice,
-          selling_price: variant.sellingPrice,
-          low_stock_quantity: variant.lowStockQuantity,
-          is_active: variant.isActive,
-          is_online: isOnline,
-          updated_at: now,
+        const payload: Record<string, unknown> = {
+          category_id: categoryId, name, sku: variant.sku, barcode: generalBarcode ?? (variant.barcode === undefined ? existing?.barcode ?? variant.sku : variant.barcode || variant.sku),
+          description, size: variant.size || null, color: variant.color || null,
+          cost_price: variant.costPrice, selling_price: variant.sellingPrice,
+          low_stock_quantity: variant.lowStockQuantity, is_active: variant.isActive,
+          is_online: (variant.isOnline ?? isOnline) && variant.isActive, updated_at: now,
         };
-
-        const { error: updateError } = await supabase
-          .from("branch_products")
-          .update(updatePayload)
-          .eq("id", variant.id)
-          .eq("business_id", business.id);
-
-        if (updateError) throw new Error(updateError.message);
-
-
-      } else {
-        if (!supportsVariants || !representative.variant_group_id) {
-          throw new Error("This product does not support adding variants.");
+        if (imageChanged) payload.image_url = newImageUrl;
+        if (gallery !== null) payload.image_urls = gallery;
+        if (variant.imageAction !== "keep") payload.variant_image_url = variantImage;
+        // No stock_quantity update: the inventory workflow owns saved stock.
+        let query = supabase.from("branch_products").update(payload).eq("id", variant.id).eq("business_id", business.id);
+        if (variant.expectedUpdatedAt) query = query.eq("updated_at", variant.expectedUpdatedAt);
+        const { data: updated, error } = await query.select("id");
+        if (error) throw new Error(error.message);
+        if (!updated?.length) throw new Error("A variant changed while saving. Reload to review its latest values.");
+        if (gallery !== null) {
+          // Storefront reads the shared catalog; only explicit gallery edits change its media.
+          const { error: mediaError } = await supabaseAdmin.from("products").update({ image_url: newImageUrl, image_urls: gallery }).eq("business_id", business.id).eq("id", variant.id);
+          if (mediaError) throw new Error(mediaError.message);
         }
-
-        const { data: newVariant, error: insertError } = await supabaseAdmin
-          .from("products")
-          .insert({
-            owner_id: userId,
-            business_id: business.id,
-            category_id: categoryId,
-            name,
-            sku: variant.sku,
-            barcode: variant.sku,
-            size: variant.size || null,
-            color: variant.color || null,
-            image_url: newImageUrl,
-            variant_image_url: variant.imageSlot
-              ? runImageUrls.get(variant.imageSlot) ?? null
-              : null,
-            description,
-            cost_price: variant.costPrice,
-            selling_price: variant.sellingPrice,
-            stock_quantity: variant.stockQuantity,
-            low_stock_quantity: variant.lowStockQuantity,
-            product_type: "variant",
-            variant_group_id: representative.variant_group_id,
-            is_active: variant.isActive,
-            is_online: isOnline,
-          }).select("id").single();
-
-        if (insertError) throw new Error(insertError.message);
-        const context = await getBranchContext();
-        const assignment = await assignCreatedProducts(business.id, context.branchId, [newVariant.id]);
+      } else {
+        if (!supportsVariants) throw new Error("This product does not support adding variants.");
+        const { data: created, error } = await supabaseAdmin.from("products").insert({
+          owner_id: userId, business_id: business.id, category_id: categoryId, name,
+          sku: variant.sku, barcode: variant.sku, size: variant.size, color: variant.color,
+          image_url: newImageUrl, image_urls: gallery ?? current[0]?.image_urls ?? [], variant_image_url: variantImage, description,
+          cost_price: variant.costPrice, selling_price: variant.sellingPrice,
+          stock_quantity: variant.stockQuantity, low_stock_quantity: variant.lowStockQuantity,
+          product_type: "variant", variant_group_id: representative.variant_group_id,
+          is_active: variant.isActive, is_online: (variant.isOnline ?? isOnline) && variant.isActive,
+        }).select("id").single();
+        if (error || !created) throw new Error(error?.message ?? "Unable to add variant.");
+        const assignment = await assignCreatedProducts(business.id, context.branchId, [created.id]);
         if (assignment) throw new Error(assignment);
       }
     }
   } catch (error) {
-    // Earlier variants may already reference these uploads. Never delete a
-    // potentially committed photo after a partial or interrupted save.
-    return {
-      success: false,
-      message: `${error instanceof Error ? error.message : "Unable to update product."} Refresh to review saved variants before retrying.`,
-    };
+    // The existing branch API is multi-request, not an atomic transaction.
+    // Keep possibly committed uploads and block blind retries of new rows.
+    return { success: false, refreshRequired: true, message: `${error instanceof Error ? error.message : "Save was interrupted."} Some rows may already be saved. Reload and review before retrying.` };
   }
-
-  if (imageFile) {
-    const primaryTargetIds = supportsVariants
-      ? current.map((row) => row.id)
-      : [representative.id];
-
-    if (primaryTargetIds.length > 0) {
-      const { error: imageUpdateError } = await supabase
-        .from("branch_products")
-        .update({ image_url: newImageUrl, updated_at: now })
-        .eq("business_id", business.id)
-        .in("id", primaryTargetIds);
-
-      if (imageUpdateError) {
-        return {
-          success: false,
-          message: `Unable to update product image: ${imageUpdateError.message}`,
-        };
-      }
-    }
-
-
-  }
-
-  await createAuditLog({
-    action: "update",
-    entityType: "product",
-    entityId: representative.id,
-    description: `Updated product ${name}`,
-    metadata: {
-      variant_group_id: representative.variant_group_id,
-      variants: variants.length,
-      image_changed: Boolean(imageFile),
-      run_images_added: runImageUrls.size,
-      is_online: isOnline,
-    },
-  });
-
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/products");
-  revalidatePath(`/dashboard/products/${representative.id}/edit`);
-  revalidatePath("/dashboard/inventory");
-  revalidatePath("/dashboard/pos");
-  revalidatePath("/dashboard/online-store");
-  revalidatePath("/dashboard/audit-logs");
-  revalidatePath(`/_sites/${business.slug}`);
-
-  return {
-    success: true,
-    message: `${name} updated successfully.`,
-  };
+  await createAuditLog({ action: "update", entityType: "product", entityId: representative.id,
+    description: `Updated product ${name}`, metadata: { variant_group_id: representative.variant_group_id,
+      variants: variants.length, image_changed: imageChanged, variant_images_changed: variants.filter(row => row.imageAction !== "keep").length,
+      run_images_added: uploadedUrls.size, is_online: isOnline } });
+  for (const path of ["/dashboard", "/dashboard/products", `/dashboard/products/${representative.id}/edit`, "/dashboard/inventory", "/dashboard/pos", "/dashboard/settings/online-store", "/dashboard/audit-logs", `/_sites/${business.slug}`]) revalidatePath(path);
+  return { success: true, message: `${name} updated successfully.` };
 }
 
 async function initialProductBranch(businessId:string,form:FormData){

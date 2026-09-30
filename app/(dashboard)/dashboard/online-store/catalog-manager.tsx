@@ -18,8 +18,8 @@ export type ManagedProduct = {
 export type ManagedCategory = { id: string; name: string; is_online: boolean };
 const control = "rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs disabled:opacity-40";
 
-export default function CatalogManager({ products, categories, currency, canEdit, storeUrl, featuredIds = [] }: {
-  products: ManagedProduct[]; categories: ManagedCategory[]; currency: string; canEdit: boolean; storeUrl: string; featuredIds?: string[];
+export default function CatalogManager({ products, categories, currency, canEdit, featuredIds = [] }: {
+  products: ManagedProduct[]; categories: ManagedCategory[]; currency: string; canEdit: boolean; featuredIds?: string[];
 }) {
   const [search, setSearch] = useState("");
   const [visibility, setVisibility] = useState("all");
@@ -65,7 +65,7 @@ export default function CatalogManager({ products, categories, currency, canEdit
   return <section className="bg-white p-4 sm:p-6" id="catalog" aria-busy={pending}>
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><p className="text-xs text-slate-500">Online Store</p><h2 id="catalog-dialog-title" className="text-xl font-bold text-slate-900">Storefront Products</h2><p className="mt-1 text-xs text-slate-500">Control your online catalog. One shared online catalog and price; stock is fulfilled by eligible branches.</p></div>
-      <div className="flex gap-2"><a href={storeUrl} target="_blank" rel="noreferrer" className={control}>Preview store</a><Link href="/dashboard/products" className={`${control} !bg-blue-600 text-white`}>Manage products</Link></div>
+      <div className="flex gap-2"><Link href="/dashboard/products" className={`${control} !bg-blue-600 text-white`}>Manage products</Link></div>
     </div>
     <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
       {[{ icon: Eye, value: visibleCount, title: "Visible products", note: "Shown on your online store" }, { icon: EyeOff, value: products.length - visibleCount, title: "Hidden products", note: "Not visible to customers" }, { icon: TriangleAlert, value: products.filter(p => p.stock_quantity > 0 && p.stock_quantity <= 5).length, title: "Low stock", note: "Stock is 5 or less" }, { icon: RefreshCw, value: products.length, title: "Synced with inventory", note: "Active products and variants" }].map(item => <div key={item.title} className="flex gap-3 rounded-lg border border-slate-200 p-3"><item.icon size={20} className="mt-1 shrink-0 text-blue-600" /><div><strong className="text-lg">{item.value}</strong><p className="text-xs font-semibold">{item.title}</p><p className="text-[10px] text-slate-500">{item.note}</p></div></div>)}

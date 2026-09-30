@@ -3,7 +3,8 @@
 import { useActionState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
-import ImageUpload from "@/components/image-upload";
+import ProductGalleryInput from "@/components/product-gallery-input";
+import { generateInternalBarcode } from "@/lib/barcode/generate";
 import { getProductExperience } from "@/lib/business/product-experience";
 import {
   createProduct,
@@ -126,7 +127,7 @@ export default function StandardProductForm({
           />
         </div>
 
-        {generalShop ? (
+        {(
           <div>
             <label htmlFor="barcode" className="mb-2 block text-sm font-medium text-slate-700">
               Barcode <span className="font-normal text-slate-400">(optional)</span>
@@ -138,10 +139,9 @@ export default function StandardProductForm({
               placeholder="Scan or enter barcode"
               className={inputClass}
             />
-            <p className="mt-1.5 text-[11px] text-slate-400">If empty, SKU is used as the barcode.</p>
+            <button type="button" className="mt-2 text-xs font-semibold text-teal-700" onClick={() => { const input = formRef.current?.elements.namedItem("barcode") as HTMLInputElement | null; if (input && !input.value.trim()) input.value = generateInternalBarcode(); }}>Generate if empty</button>
+            <p className="mt-1.5 text-[11px] text-slate-400">Keep an existing barcode, or generate an internal code. If empty, SKU is used.</p>
           </div>
-        ) : (
-          <ImageUpload />
         )}
       </div>
 
@@ -161,10 +161,10 @@ export default function StandardProductForm({
               <input id="size" name="size" type="text" placeholder="500ml, 128GB, Large..." className={inputClass} />
             </div>
           </div>
-          <ImageUpload />
         </>
       )}
 
+      <ProductGalleryInput />
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label

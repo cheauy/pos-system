@@ -32,7 +32,6 @@ import {
   Loader2,
   LogOut,
   LockKeyhole,
-  Package,
   PackagePlus,
   Printer,
   ReceiptText,
@@ -40,7 +39,6 @@ import {
   Search,
   Settings,
   Settings2,
-  ShoppingBag,
   ShoppingCart,
   Store,
   Tags,
@@ -62,6 +60,7 @@ import { usePosNavigationLock } from './pos-lock-provider';
 import { posLockAllows } from '@/lib/pos/navigation-lock';
 
 type MenuItem = {
+  anyPermission?: Permission[];
   name: string;
   href: string;
   icon: ElementType;
@@ -108,8 +107,6 @@ const menuGroups: MenuGroup[] = [
     items: [
       { name: "POS", href: "/dashboard/pos", permission: "pos.access", icon: ShoppingCart },
       { name: "Orders", href: "/dashboard/orders", permission: "orders.view", icon: ReceiptText },
-      { name: "Online Orders", href: "/dashboard/online-orders", permission: "orders.view", icon: ShoppingBag },
-      { name: "Online Store", href: "/dashboard/online-store", permission: "storefront.view", icon: Store },
       { name: "Promotions & Loyalty", href: "/dashboard/promotions", permission: "business.view", icon: BadgePercent },
       { name: "Returns", href: "/dashboard/returns", permission: "orders.return", icon: RotateCcw },
       { name: "Customers", href: "/dashboard/customers", permission: "customers.view", icon: Users },
@@ -119,10 +116,9 @@ const menuGroups: MenuGroup[] = [
     title: "Inventory",
     icon: Boxes,
     items: [
-      { name: "Inventory", href: "/dashboard/inventory", permission: "inventory.view", icon: Boxes },
+      { name: "Products & Stock", href: "/dashboard/products", anyPermission: ["products.view", "inventory.view"], icon: Boxes },
       { name: "Bundle Items", href: "/dashboard/bundles", permission: "products.view", icon: PackagePlus },
       { name: "Stock Transfers", href: "/dashboard/stock-transfers", permission: "transfers.manage", icon: ArrowRightLeft },
-      { name: "Products", href: "/dashboard/products", permission: "products.view", icon: Package },
       { name: "Categories", href: "/dashboard/categories", permission: "categories.manage", icon: Tags },
       { name: "Barcode & Labels", href: "/dashboard/barcodes", permission: "inventory.view", icon: Barcode },
     ],
@@ -133,7 +129,6 @@ const menuGroups: MenuGroup[] = [
     items: [
       { name: "All Suppliers", href: "/dashboard/suppliers", permission: "suppliers.manage", icon: Truck },
       { name: "Purchase Orders", href: "/dashboard/purchase-orders", permission: "purchases.view", icon: PackagePlus },
-      { name: "Low Stock", href: "/dashboard/low-stock", permission: "inventory.view", icon: TriangleAlert },
     ],
   },
   {
@@ -148,11 +143,11 @@ const menuGroups: MenuGroup[] = [
   },
   {
     title: "Subscription",
+    href: "/dashboard/settings/subscription",
     icon: CreditCard,
     permission: "business.update",
     items: [
       { name: "Subscription & Plan", href: "/dashboard/settings/subscription", permission: "business.update", icon: CreditCard },
-      { name: "Business Details", href: "/dashboard/settings/business", permission: "business.update", icon: Store },
     ],
   },
   {
@@ -351,6 +346,12 @@ function SidebarShell({
     setSpecialPanel(null);
   };
 
+  // Close the flyout for every selected destination, including the current page.
+  const handleNavigate = () => {
+    closePanels();
+    onNavigate?.();
+  };
+
   const toggleGroup = (title: string) => {
     setSpecialPanel(null);
 
@@ -379,10 +380,7 @@ function SidebarShell({
         onSelect={toggleGroup}
         onSearch={() => toggleSpecialPanel("search")}
         onNotifications={() => toggleSpecialPanel("notifications")}
-        onDirectNavigate={() => {
-          closePanels();
-          onNavigate?.();
-        }}
+        onDirectNavigate={handleNavigate}
         mobile={mobile}
       />
 
@@ -392,8 +390,7 @@ function SidebarShell({
           onClose={notifications.dismissToast}
           onNavigate={() => {
             notifications.dismissToast();
-            closePanels();
-            onNavigate?.();
+            handleNavigate();
           }}
         />
       ) : null}
@@ -404,24 +401,24 @@ function SidebarShell({
             <GlobalSearchPanel
               query={query}
               onQueryChange={setQuery}
-              onNavigate={onNavigate}
+              onNavigate={handleNavigate}
               mobile
             />
           ) : specialPanel === "notifications" ? (
             <NotificationPanel
               notifications={notifications}
-              onNavigate={onNavigate}
+              onNavigate={handleNavigate}
               mobile
             />
           ) : openGroup ? (
             <NavigationPanel
               group={openGroup}
               pathname={pathname}
-              onNavigate={onNavigate}
+              onNavigate={handleNavigate}
               mobile
             />
           ) : (
-            <MobileRailHome groups={groups} onSelect={toggleGroup} onNavigate={onNavigate}/>
+            <MobileRailHome groups={groups} onSelect={toggleGroup} onNavigate={handleNavigate}/>
           )}
         </div>
       ) : specialPanel === "search" ? (
@@ -430,6 +427,7 @@ function SidebarShell({
             query={query}
             onQueryChange={setQuery}
             onClose={() => setSpecialPanel(null)}
+            onNavigate={handleNavigate}
           />
         </div>
       ) : specialPanel === "notifications" ? (
@@ -437,6 +435,7 @@ function SidebarShell({
           <NotificationPanel
             notifications={notifications}
             onClose={() => setSpecialPanel(null)}
+            onNavigate={handleNavigate}
           />
         </div>
       ) : openGroup ? (
@@ -445,7 +444,7 @@ function SidebarShell({
             group={openGroup}
             pathname={pathname}
             onClose={() => setOpenGroupTitle(null)}
-            onNavigate={onNavigate}
+            onNavigate={handleNavigate}
           />
         </div>
       ) : null}
@@ -1516,7 +1515,7 @@ function filterMenuGroups(effectivePermissions: Permission[]): MenuGroup[] {
   return menuGroups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => !item.permission || allowed.has(item.permission)),
+      items: group.items.filter((item) => item.anyPermission ? item.anyPermission.some(permission => allowed.has(permission)) : !item.permission || allowed.has(item.permission)),
     }))
     .filter((group) =>
       group.href
@@ -1553,6 +1552,7 @@ function isSubscriptionRoute(pathname: string) {
 
 function isDirectRailRoute(pathname: string) {
   return (
+    isSubscriptionRoute(pathname) ||
     pathname === "/dashboard" ||
     isSearchRoute(pathname) ||
     pathname === "/dashboard/settings/profile" ||
@@ -1562,6 +1562,7 @@ function isDirectRailRoute(pathname: string) {
 }
 
 function isItemActive(pathname: string, href: string) {
+  if (href === "/dashboard/products" && (pathname === "/dashboard/inventory" || pathname.startsWith("/dashboard/inventory/"))) return true;
   if (href === "/dashboard") {
     return pathname === "/dashboard";
   }

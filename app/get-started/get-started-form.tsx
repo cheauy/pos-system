@@ -37,7 +37,8 @@ import {
 } from "lucide-react";
 
 import {
-  businessModePresets,
+  visibleBusinessModePresets,
+  getBusinessModeAvailability,
   getBusinessModePreset,
   type BusinessModePreset,
 } from "@/lib/business/business-mode-presets";
@@ -81,37 +82,6 @@ const businessIllustrationByMode = {
   electronics: "/business-types/electronics.svg",
   other: "/business-types/other-business.svg",
 } as const;
-
-const businessModeOrder = new Map(
-  [
-    "general",
-    "milk_tea",
-    "shoes",
-    "restaurant",
-    "cafe",
-    "fashion",
-    "grocery",
-    "accessories",
-    "beauty",
-    "electronics",
-    "other",
-  ].map((value, index) => [value, index]),
-);
-
-const orderedBusinessModePresets = [...businessModePresets].sort(
-  (a, b) =>
-    (businessModeOrder.get(a.value) ?? 999) -
-    (businessModeOrder.get(b.value) ?? 999),
-);
-
-const comingSoonBusinessModes = new Set([
-  "milk_tea",
-  "restaurant",
-  "cafe",
-  "beauty",
-  "electronics",
-  "other",
-]);
 
 export default function GetStartedForm({ accountEmail }: { accountEmail: string }) {
   const [state, formAction, pending] = useActionState(
@@ -236,8 +206,8 @@ export default function GetStartedForm({ accountEmail }: { accountEmail: string 
                 </p>
 
                 <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {orderedBusinessModePresets.map((preset) => {
-                    const comingSoon = comingSoonBusinessModes.has(preset.value);
+                  {visibleBusinessModePresets.map((preset) => {
+                    const comingSoon = getBusinessModeAvailability(preset.value) === "coming-soon";
 
                     return (
                       <BusinessModeCard

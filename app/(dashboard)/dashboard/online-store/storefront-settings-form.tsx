@@ -3,14 +3,8 @@
 import {
   AtSign,
   Camera,
-  ChevronRight,
-  Clock3,
-  CreditCard,
-  ExternalLink,
-  ImageIcon,
   Link2,
   Loader2,
-  MapPin,
   MessageCircle,
   MessagesSquare,
   Music2,
@@ -21,17 +15,19 @@ import {
   Send,
   Share2,
   Store,
-  WalletCards,
-  X,
+  Truck,
+  Utensils,
 } from "lucide-react";
 import { useActionState, useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { toast } from "sonner";
+import { createPortal } from "react-dom";
+import { storefrontFormSnapshot } from "@/lib/storefront/form-snapshot";
 import { useRouter } from "next/navigation";
 
+import Link from "next/link";
 import type { StorefrontSettings } from "@/lib/storefront/types";
-import FulfillmentFields from "./ordering/fulfillment-fields";
-import OpeningHoursEditor from "./opening-hours-editor";
 import { formatBusinessType } from "@/lib/storefront/types";
+import { supportsDineIn } from "@/lib/storefront/profile";
 import { updateStorefrontSettings, type UpdateStorefrontState } from "./actions";
 
 const initialState: UpdateStorefrontState = {
@@ -54,9 +50,22 @@ export default function StorefrontSettingsForm({
   children?: React.ReactNode;
 }) {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
+  const baselineRef = useRef<string | null>(null);
+  const submittedRef = useRef<string | null>(null);
+  const submittingRef = useRef(false);
+  const checkFrameRef = useRef<number | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [saveTarget, setSaveTarget] = useState<HTMLElement | null>(null);
+  const [publishTarget, setPublishTarget] = useState<HTMLElement | null>(null);
+  const [ordersTarget, setOrdersTarget] = useState<HTMLElement | null>(null);
   const [state, formAction, pending] = useActionState(updateStorefrontSettings, initialState);
-  const [displayName, setDisplayName] = useState(settings.display_name ?? businessName);
-  const [description, setDescription] = useState(settings.description ?? "");
+  const displayName = settings.display_name ?? businessName;
+  const description = settings.description ?? "";
+  const [currency, setCurrency] = useState(settings.currency || "USD");
+  const [defaultLanguage, setDefaultLanguage] = useState<"en" | "km">(
+    settings.social_links?.profile?.defaultLanguage === "km" ? "km" : "en",
+  );
 
   const businessType = settings.business_type;
   const [seoTitle, setSeoTitle] = useState(settings.social_links?.profile?.seoTitle ?? "");
@@ -69,194 +78,95 @@ export default function StorefrontSettingsForm({
   const metaDescription = seoDescription ||
     description || `Shop ${displayName || businessName} online and discover our latest products.`;
 
+  // Snapshot after React commits: also captures hidden inputs controlled by
+  // language/hour/image buttons, not just native input/change events.
+  function scheduleDirtyCheck() {
+    if (checkFrameRef.current !== null) cancelAnimationFrame(checkFrameRef.current);
+    checkFrameRef.current = requestAnimationFrame(() => {
+      checkFrameRef.current = null;
+      if (!formRef.current || submittingRef.current || baselineRef.current === null) return;
+      setDirty(storefrontFormSnapshot(new FormData(formRef.current)) !== baselineRef.current);
+    });
+  }
+  useEffect(() => {
+    setSaveTarget(document.getElementById("storefront-save-slot"));
+    setPublishTarget(document.getElementById("storefront-publish-slot"));
+    setOrdersTarget(document.getElementById("storefront-orders-slot"));
+    return () => { if (checkFrameRef.current !== null) cancelAnimationFrame(checkFrameRef.current); };
+  }, []);
+  useEffect(() => {
+    if (!formRef.current || !publishTarget || !ordersTarget || baselineRef.current !== null) return;
+    baselineRef.current = storefrontFormSnapshot(new FormData(formRef.current));
+    setDirty(false);
+  }, [publishTarget, ordersTarget]);
   useEffect(() => {
     if (!state.message) return;
-    if (state.success) { toast.success(state.message); router.refresh(); }
-    else toast.error(state.message);
+    submittingRef.current = false;
+    if (state.success) {
+      // Only mark the submitted values as saved. Failed saves keep the button.
+      if (submittedRef.current !== null) baselineRef.current = submittedRef.current;
+      setDirty(formRef.current ? storefrontFormSnapshot(new FormData(formRef.current)) !== baselineRef.current : false);
+      toast.success(state.message);
+      router.refresh();
+    } else { toast.error(state.message); scheduleDirtyCheck(); }
   }, [state, router]);
 
   return (
     <>
-    <form id="store-settings-form" onSubmit={event => { event.preventDefault(); if (pending) return; const data = new FormData(event.currentTarget); startTransition(() => formAction(data)); }} className="space-y-3">
-      <div className="columns-1 gap-3 xl:columns-2">
-        <div className="contents">
+    <form ref={formRef} id="store-settings-form"
+      onChangeCapture={scheduleDirtyCheck} onClickCapture={scheduleDirtyCheck} onInputCapture={scheduleDirtyCheck}
+      onSubmit={event => {
+        event.preventDefault();
+        if (pending || submittingRef.current || !canEdit || !dirty) return;
+        const data = new FormData(event.currentTarget);
+        submittedRef.current = storefrontFormSnapshot(data);
+        submittingRef.current = true;
+        startTransition(() => formAction(data));
+      }} className="space-y-3">
+      <input type="hidden" name="businessId" value={settings.business_id} />
+      <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">Business information, store images, description, and hours are managed in <Link href="/dashboard/settings/business#business-info" className="font-semibold text-blue-600 underline underline-offset-2">Business Settings</Link>.</p>
+      <fieldset disabled={pending} className="min-w-0 space-y-3">
+      <div className="grid items-start gap-3 xl:grid-cols-2">
+        <div className="min-w-0 space-y-3">
           <Card
-            icon={<Store size={17} />}
-            iconClass="bg-blue-50 text-blue-600"
-            title="Store Status"
-            description="Control your storefront visibility and online ordering."
-          >
-            <div className="grid gap-2 md:grid-cols-2">
-              <TogglePanel
-                name="isPublished"
-                title="Publish storefront"
-                description="Make your store visible to customers online."
-                defaultChecked={settings.is_published}
-                disabled={!canEdit}
-                status={settings.is_published ? "Your store is currently public" : "Your store is currently private"}
-                statusTone={settings.is_published ? "green" : "slate"}
-              />
-
-              <TogglePanel name="acceptOnlineOrders" title="Online order availability" description="Allow customers to place orders." defaultChecked={settings.accept_online_orders} disabled={!canEdit} status={settings.accept_online_orders ? "Accepting orders" : "Orders paused"} statusTone={settings.accept_online_orders ? "green" : "amber"} />
-            </div>
-          </Card>
-
-          <Card
-            icon={<Store size={17} />}
-            iconClass="bg-blue-50 text-blue-600"
-            title="Store Profile"
-            description="Basic information about your online store."
-          >
-            <div className="grid gap-3 md:grid-cols-2">
-              <CompactField label="Business type" htmlFor="businessType">
-                <input id="businessType" value={formatBusinessType(businessType)} readOnly className={`${inputClass} bg-slate-50 text-slate-600`} />
-                <p className="mt-1 text-xs text-slate-500">Managed in Business Settings.</p>
-              </CompactField>
-
-              <CompactField label="Display name" htmlFor="displayName">
-                <input
-                  id="displayName"
-                  name="displayName"
-                  value={displayName}
-                  onChange={(event) => setDisplayName(event.target.value)}
-                  maxLength={80}
-                  disabled={!canEdit}
-                  className={inputClass}
-                />
-              </CompactField>
-
-              <div className="md:col-span-2">
-                <CompactField label="Store description" htmlFor="description">
-                  <textarea
-                    id="description"
-                    name="description"
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    rows={2}
-                    maxLength={500}
-                    disabled={!canEdit}
-                    placeholder="Tell customers what you sell and what makes your shop special."
-                    className={`${inputClass} min-h-[72px] resize-none py-2`}
-                  />
-                </CompactField>
-              </div>
-
-              <CompactField label="Currency" htmlFor="currency">
-                <select
-                  id="currency"
-                  name="currency"
-                  defaultValue={settings.currency || "USD"}
-                  disabled={!canEdit}
-                  className={inputClass}
-                >
-                  <option value="USD">USD - US Dollar</option>
-                  <option value="KHR">KHR - Cambodian Riel</option>
-                </select>
-              </CompactField>
-
-            </div>
-          </Card>
-
-          <Card
-            icon={<CreditCard size={17} />}
-            iconClass="bg-blue-50 text-blue-600"
-            title="Online Payment"
-            description="Choose how customers can pay for online orders."
-          >
-            <div className="grid gap-2 md:grid-cols-2">
-              <MethodToggle
-                name="acceptCod"
-                title="Pay Later / Cash"
-                description="Customer pays at pickup, delivery, or in person."
-                icon={<WalletCards size={16} />}
-                defaultChecked={settings.accept_cod}
-                disabled={!canEdit}
-              />
-              <MethodToggle
-                name="acceptKhqr"
-                title="KHQR"
-                description="Show your KHQR code for online payment."
-                icon={<CreditCard size={16} />}
-                defaultChecked={settings.accept_khqr}
-                disabled={!canEdit}
-              />
-            </div>
-
-            <div className="mt-3 grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
-              <ImageField
-                label="KHQR image"
-                name="khqr"
-                preview={settings.khqr_image_url}
-                disabled={!canEdit}
-                imageClass="h-24 w-full rounded-lg"
-              />
-              <div className="grid content-start gap-3">
-                <CompactField label="KHQR account / merchant name" htmlFor="khqrAccountName">
-                  <input
-                    id="khqrAccountName"
-                    name="khqrAccountName"
-                    maxLength={120}
-                    defaultValue={settings.khqr_account_name ?? ""}
-                    disabled={!canEdit}
-                    placeholder="Example: Melody Clothing"
-                    className={inputClass}
-                  />
-                </CompactField>
-                <CompactField label="Payment instructions" htmlFor="khqrInstructions">
-                  <input
-                    id="khqrInstructions"
-                    name="khqrInstructions"
-                    maxLength={300}
-                    defaultValue={settings.khqr_instructions ?? ""}
-                    disabled={!canEdit}
-                    placeholder="Scan the QR and include your order number in the remark."
-                    className={inputClass}
-                  />
-                </CompactField>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        <div className="contents">
-          <Card
-            icon={<Clock3 size={17} />}
-            iconClass="bg-blue-50 text-blue-600"
-            title="Store Hours"
-            description="Edit your weekly opening hours for customers visiting or contacting your shop."
-          >
-            <OpeningHoursEditor value={settings.social_links?.profile?.openingHours} disabled={!canEdit} />
-          </Card>
-
-          <Card icon={<Store size={17} />} iconClass="bg-emerald-50 text-emerald-600" title="New Arrivals" description="Highlight recently added products in your shop, banner links, and footer.">
-            <ToggleRow name="newArrivalsEnabled" label="Show new arrivals" defaultChecked={settings.social_links?.profile?.newArrivals?.enabled !== false} disabled={!canEdit} />
-            <div className="mt-3"><CompactField label="Keep products new for (days)" htmlFor="newArrivalDays"><input id="newArrivalDays" name="newArrivalDays" type="number" min="1" max="365" required defaultValue={settings.social_links?.profile?.newArrivals?.days ?? 30} disabled={!canEdit} className={inputClass} /></CompactField><p className="mt-2 text-xs text-slate-500">Uses the date the product was first created. Choose between 1 and 365 days.</p></div>
-          </Card>
-
-          <Card
+            id="branding"
             icon={<Palette size={17} />}
             iconClass="bg-violet-50 text-violet-600"
             title="Branding"
-            description="Customize your store's look and feel."
+            description="Customize your store's color, currency, language, and fulfillment options."
           >
-            <div className="grid gap-3 lg:grid-cols-[140px_minmax(0,1fr)]">
-              <ImageField
-                label="Store logo"
-                name="logo"
-                preview={settings.logo_url}
-                disabled={!canEdit}
-                imageClass="h-24 w-full rounded-lg"
-              />
-              <ImageField
-                label="Store banner"
-                name="banner"
-                preview={settings.banner_url}
-                disabled={!canEdit}
-                imageClass="h-24 w-full rounded-lg"
-              />
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <p id="store-default-currency-label" className="mb-1.5 text-xs font-medium text-slate-700">Default storefront currency</p>
+                <input type="hidden" name="currency" value={currency} />
+                <div role="group" aria-labelledby="store-default-currency-label" className="flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                  {["USD", "KHR"].map(option => (
+                    <button key={option} type="button" aria-pressed={currency === option} disabled={!canEdit}
+                      onClick={() => setCurrency(option)}
+                      className={`min-h-9 flex-1 rounded-md px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${currency === option ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-white"}`}>
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p id="store-default-language-label" className="mb-1.5 text-xs font-medium text-slate-700">Default storefront language</p>
+                <input type="hidden" name="defaultLanguage" value={defaultLanguage} />
+                <div role="group" aria-labelledby="store-default-language-label" className="flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                  {([{ value: "en", label: "English" }, { value: "km", label: "ខ្មែរ" }] as const).map(option => (
+                    <button key={option.value} type="button" lang={option.value} data-i18n-ignore="true"
+                      aria-pressed={defaultLanguage === option.value} disabled={!canEdit}
+                      onClick={() => setDefaultLanguage(option.value)}
+                      className={`min-h-9 flex-1 rounded-md px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${defaultLanguage === option.value ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-white"}`}>
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[11px] text-slate-500">The language customers see when they first open your store. Customers can still switch languages.</p>
+              </div>
             </div>
 
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <div className="mt-3 max-w-md">
               <CompactField label="Primary color" htmlFor="primaryColor">
                 <div className="flex gap-2">
                   <input
@@ -280,62 +190,88 @@ export default function StorefrontSettingsForm({
                   />
                 </div>
               </CompactField>
-              <div>
-                <p className="mb-1.5 text-xs font-medium text-slate-700">Theme preview</p>
-                <a
-                  href={storeUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex h-9 items-center justify-between rounded-lg border border-slate-200 bg-blue-50/60 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50"
-                >
-                  Your store theme
-                  <ChevronRight size={14} />
-                </a>
+            </div>
+
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <p className="text-xs font-semibold text-slate-900">Fulfillment</p>
+              <p className="mt-0.5 text-[11px] leading-4 text-slate-500">Choose how customers can receive orders from your storefront.</p>
+              <div className={`mt-3 grid gap-2 ${supportsDineIn(businessType) ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
+                <FulfillmentOption
+                  name="allowPickup"
+                  title="Pickup"
+                  description="Customer collects from your shop."
+                  icon={<Store size={17} />}
+                  defaultChecked={settings.allow_pickup}
+                  disabled={!canEdit}
+                />
+                <FulfillmentOption
+                  name="allowDelivery"
+                  title="Delivery"
+                  description="Deliver orders to customers."
+                  icon={<Truck size={17} />}
+                  defaultChecked={settings.allow_delivery}
+                  disabled={!canEdit}
+                />
+                {supportsDineIn(businessType) ? (
+                  <FulfillmentOption
+                    name="allowDineIn"
+                    title="Dine-in"
+                    description="Allow table or dine-in ordering."
+                    icon={<Utensils size={17} />}
+                    defaultChecked={settings.allow_dine_in}
+                    disabled={!canEdit}
+                  />
+                ) : null}
               </div>
             </div>
           </Card>
 
 
+        </div>
+
+        <div className="min-w-0 space-y-3">
+          <Card icon={<Store size={17} />} iconClass="bg-emerald-50 text-emerald-600" title="New Arrivals" description="Highlight recently added products in your shop, banner links, and footer.">
+            <ToggleRow name="newArrivalsEnabled" label="Show new arrivals" defaultChecked={settings.social_links?.profile?.newArrivals?.enabled !== false} disabled={!canEdit} />
+            <div className="mt-3"><CompactField label="Keep products new for (days)" htmlFor="newArrivalDays"><input id="newArrivalDays" name="newArrivalDays" type="number" min="1" max="365" required defaultValue={settings.social_links?.profile?.newArrivals?.days ?? 30} disabled={!canEdit} className={inputClass} /></CompactField><p className="mt-2 text-xs text-slate-500">Uses the date the product was first created. Choose between 1 and 365 days.</p></div>
+          </Card>
 
           <Card
-            icon={<Share2 size={17} />}
+            icon={<Search size={17} />}
             iconClass="bg-blue-50 text-blue-600"
-            title="Contact"
-            description="Your shop phone, email and address."
+            title="SEO / Meta Preview"
+            description="Preview how your store can appear when shared or indexed."
           >
-            <div className="grid gap-3 md:grid-cols-2">
-              <CompactField label="Phone" htmlFor="phone">
-                <input
-                  id="phone"
-                  name="phone"
-                  defaultValue={settings.phone ?? ""}
-                  disabled={!canEdit}
-                  className={inputClass}
-                />
-              </CompactField>
-
-              <CompactField label="Contact email" htmlFor="contactEmail">
-                <input id="contactEmail" name="contactEmail" type="email" maxLength={254} defaultValue={settings.social_links?.profile?.contactEmail ?? ""} disabled={!canEdit} placeholder="hello@yourstore.com" className={inputClass} />
-              </CompactField>
-              <div className="md:col-span-2"><CompactField label="Location URL" htmlFor="locationUrl"><input id="locationUrl" name="locationUrl" type="url" maxLength={2000} defaultValue={settings.social_links?.profile?.locationUrl ?? ""} disabled={!canEdit} placeholder="https://maps.google.com/..." className={inputClass} /></CompactField><p className="mt-1 text-xs text-slate-500">View Our Location opens this link. Leave blank to use your address.</p></div>
-              <div className="md:col-span-2">
-                <CompactField label="Address" htmlFor="address">
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                    <input
-                      id="address"
-                      name="address"
-                      defaultValue={settings.address ?? ""}
-                      disabled={!canEdit}
-                      className={`${inputClass} pl-9`}
-                    />
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px]">
+              <div className="space-y-3">
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-xs font-medium text-slate-700">
+                    <label htmlFor="seoTitle">Meta title</label>
+                    <span className="text-slate-400">{Math.min(metaTitle.length, 60)}/60</span>
                   </div>
-                </CompactField>
+                  <input id="seoTitle" name="seoTitle" value={seoTitle} onChange={event => setSeoTitle(event.target.value)} maxLength={60} placeholder={defaultMetaTitle} disabled={!canEdit} className={inputClass} />
+                </div>
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-xs font-medium text-slate-700">
+                    <label htmlFor="seoDescription">Meta description</label>
+                    <span className="text-slate-400">{Math.min(metaDescription.length, 160)}/160</span>
+                  </div>
+                  <textarea id="seoDescription" name="seoDescription" value={seoDescription} onChange={event => setSeoDescription(event.target.value)} maxLength={160} rows={3} placeholder={description || `Shop ${displayName || businessName} online and discover our latest products.`} disabled={!canEdit} className={`${inputClass} h-auto py-2`} />
+                  <p className="mt-2 text-[11px] text-slate-500">Leave blank to use your store name and description. Saved text is used for search and social sharing.</p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                <p className="text-xs font-semibold text-slate-800">Search preview</p>
+                <p className="mt-2 truncate text-[11px] text-slate-400">{storeUrl}</p>
+                <p className="mt-1 line-clamp-1 text-xs font-semibold text-blue-700">{metaTitle}</p>
+                <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-500">{metaDescription}</p>
               </div>
             </div>
           </Card>
+        </div>
+      </div>
+
           <Card icon={<Share2 size={17} />} iconClass="bg-blue-50 text-blue-600" title="Social" description="Add your social account name and its direct link.">
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <SocialLinkField
                 label="Facebook"
                 name="facebookUrl"
@@ -414,83 +350,44 @@ export default function StorefrontSettingsForm({
             </p>
           </Card>
 
-          <Card
-            icon={<Search size={17} />}
-            iconClass="bg-blue-50 text-blue-600"
-            title="SEO / Meta Preview"
-            description="Preview how your store can appear when shared or indexed."
-          >
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px]">
-              <div className="space-y-3">
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-xs font-medium text-slate-700">
-                    <label htmlFor="seoTitle">Meta title</label>
-                    <span className="text-slate-400">{Math.min(metaTitle.length, 60)}/60</span>
-                  </div>
-                  <input id="seoTitle" name="seoTitle" value={seoTitle} onChange={event => setSeoTitle(event.target.value)} maxLength={60} placeholder={defaultMetaTitle} disabled={!canEdit} className={inputClass} />
-                </div>
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-xs font-medium text-slate-700">
-                    <label htmlFor="seoDescription">Meta description</label>
-                    <span className="text-slate-400">{Math.min(metaDescription.length, 160)}/160</span>
-                  </div>
-                  <textarea id="seoDescription" name="seoDescription" value={seoDescription} onChange={event => setSeoDescription(event.target.value)} maxLength={160} rows={3} placeholder={description || `Shop ${displayName || businessName} online and discover our latest products.`} disabled={!canEdit} className={`${inputClass} h-auto py-2`} />
-                  <p className="mt-2 text-[11px] text-slate-500">Leave blank to use your store name and description. Saved text is used for search and social sharing.</p>
-                </div>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-                <p className="text-xs font-semibold text-slate-800">Search preview</p>
-                <p className="mt-2 truncate text-[11px] text-slate-400">{storeUrl}</p>
-                <p className="mt-1 line-clamp-1 text-xs font-semibold text-blue-700">{metaTitle}</p>
-                <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-500">{metaDescription}</p>
-              </div>
-            </div>
-          </Card>
-
-        </div>
-      </div>
-
-      <FulfillmentFields settings={{ ...settings, business_type: businessType }} canEdit={canEdit} />
       <input type="hidden" name="allowScheduledOrders" value={settings.allow_scheduled_orders ? "on" : ""} />
       <input type="hidden" name="minScheduleLeadMinutes" value={settings.min_schedule_lead_minutes ?? 30} />
       <input type="hidden" name="maxScheduleDays" value={settings.max_schedule_days ?? 7} />
+      </fieldset>
     </form>
     {children}
-      <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-slate-500">
-          Changes apply to your public TENH online store after saving.
-        </p>
-        <div className="flex items-center justify-end gap-2">
-          <a
-            href={storeUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Preview <ExternalLink size={13} />
-          </a>
-          {canEdit ? (
-            <button
-              type="submit"
-              form="store-settings-form"
-              disabled={pending}
-              className="inline-flex h-9 min-w-[126px] items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {pending ? <Loader2 size={15} className="animate-spin" /> : <Save size={14} />}
-              {pending ? "Saving..." : "Save Changes"}
-            </button>
-          ) : (
-            <span className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-              View only
-            </span>
-          )}
-        </div>
-      </div>
+      {publishTarget && createPortal(
+        <SummarySwitch
+          name="isPublished"
+          label="Publish storefront"
+          defaultChecked={settings.is_published}
+          disabled={!canEdit || pending}
+          onChanged={scheduleDirtyCheck}
+        />,
+        publishTarget,
+      )}
+      {ordersTarget && createPortal(
+        <SummarySwitch
+          name="acceptOnlineOrders"
+          label="Online order availability"
+          defaultChecked={settings.accept_online_orders}
+          disabled={!canEdit || pending}
+          onChanged={scheduleDirtyCheck}
+        />,
+        ordersTarget,
+      )}
+      {canEdit && saveTarget && (dirty || pending) && createPortal(
+        <button type="submit" form="store-settings-form" disabled={pending} aria-busy={pending}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
+          {pending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+          {pending ? "Saving..." : "Save Changes"}
+        </button>, saveTarget)}
     </>
   );
 }
 
 function Card({
+  id,
   icon,
   iconClass,
   title,
@@ -498,6 +395,7 @@ function Card({
   action,
   children,
 }: {
+  id?: string;
   icon: React.ReactNode;
   iconClass: string;
   title: string;
@@ -506,7 +404,7 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mb-3 break-inside-avoid rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section id={id} className="scroll-mt-5 mb-3 break-inside-avoid rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-2.5">
           <div className={`rounded-lg p-2 ${iconClass}`}>{icon}</div>
@@ -533,47 +431,39 @@ function CompactField({ label, htmlFor, children }: { label: string; htmlFor: st
   );
 }
 
-function TogglePanel({
+function SummarySwitch({
   name,
-  title,
-  description,
+  label,
   defaultChecked,
   disabled,
-  status,
-  statusTone,
+  onChanged,
 }: {
   name: string;
-  title: string;
-  description: string;
+  label: string;
   defaultChecked: boolean;
   disabled: boolean;
-  status: string;
-  statusTone: "green" | "amber" | "slate";
+  onChanged: () => void;
 }) {
-  const tone =
-    statusTone === "green"
-      ? "bg-emerald-50 text-emerald-700"
-      : statusTone === "amber"
-        ? "bg-amber-50 text-amber-700"
-        : "bg-slate-100 text-slate-600";
-
   return (
-    <div className="rounded-lg border border-slate-200 p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold text-slate-900">{title}</p>
-          <p className="mt-0.5 text-[11px] leading-4 text-slate-500">{description}</p>
-        </div>
-        <Switch name={name} label={title} defaultChecked={defaultChecked} disabled={disabled} />
-      </div>
-      <span className={`mt-2 inline-flex rounded-md px-2 py-1 text-[10px] font-medium ${tone}`}>
-        {status}
-      </span>
-    </div>
+    <span className="relative inline-flex h-6 w-11 shrink-0 items-center">
+      <input
+        form="store-settings-form"
+        type="checkbox"
+        name={name}
+        aria-label={label}
+        role="switch"
+        defaultChecked={defaultChecked}
+        disabled={disabled}
+        onChange={onChanged}
+        className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+      />
+      <span className="pointer-events-none absolute inset-0 rounded-full bg-slate-300 transition peer-checked:bg-blue-600 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 peer-disabled:opacity-50" />
+      <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
+    </span>
   );
 }
 
-function MethodToggle({
+function FulfillmentOption({
   name,
   title,
   description,
@@ -589,8 +479,8 @@ function MethodToggle({
   disabled: boolean;
 }) {
   return (
-    <label className="relative flex min-h-[64px] cursor-pointer items-start gap-2.5 rounded-lg border border-slate-200 p-3 transition has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50/60">
-      <span className="rounded-md bg-blue-50 p-2 text-blue-600">{icon}</span>
+    <label className="flex min-h-[66px] cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-3 transition has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50/60">
+      <span className="rounded-lg bg-blue-50 p-2 text-blue-600">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block text-xs font-semibold text-slate-900">{title}</span>
         <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{description}</span>
@@ -647,46 +537,6 @@ function Switch({
   );
 }
 
-
-function ImageField({ label, name, preview, disabled, imageClass }: {
-  label: string; name: string; preview: string | null; disabled: boolean; imageClass: string;
-}) {
-  const input = useRef<HTMLInputElement>(null);
-  const [selected, setSelected] = useState<File | null>(null);
-  const [removed, setRemoved] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const [localPreview, setLocalPreview] = useState<string | null>(null);
-  const [dimensions, setDimensions] = useState("");
-  useEffect(() => {
-    if (!selected) return;
-    const url = URL.createObjectURL(selected);
-    const frame = requestAnimationFrame(() => setLocalPreview(url));
-    return () => { cancelAnimationFrame(frame); URL.revokeObjectURL(url); };
-  }, [selected]);
-  const source = removed ? null : selected ? localPreview : preview;
-  const recommendation = name === "logo" ? "Recommended: 512 x 512 px (square)." : name === "banner" ? "Recommended: 1600 x 600 px (wide). Keep important content near the center." : "Recommended: at least 600 px wide. Upload the full QR image with clear white margins.";
-  function remove() {
-    setRemoved(true); setSelected(null); setLocalPreview(null); setDimensions("");
-    if (input.current) input.current.value = "";
-  }
-  return <div>
-    <p className="mb-1.5 text-xs font-medium text-slate-700">{label}</p>
-    <input type="hidden" name={`remove-${name}`} value={removed ? "on" : "off"} />
-    <div className="relative">
-      {source ? <button type="button" aria-label={`Preview ${label}`} className="block w-full" onClick={() => setExpanded(true)}><img src={source} alt={`${label} preview`} onLoad={event => setDimensions(`${event.currentTarget.naturalWidth} x ${event.currentTarget.naturalHeight} px`)} className={`${imageClass} border border-slate-200 bg-slate-50 object-contain`} /></button> : <div className={`${imageClass} flex items-center justify-center border border-dashed border-slate-300 bg-slate-50 text-slate-400`}><ImageIcon size={20} /></div>}
-      {source && !disabled && <button type="button" aria-label={`Remove ${label}`} title={`Remove ${label}`} onClick={remove} className="absolute right-1 top-1 rounded-full border border-slate-200 bg-white p-1.5 text-slate-600 shadow"><X size={14} /></button>}
-    </div>
-    <p className="mt-2 text-[11px] leading-4 text-slate-500">{recommendation} JPG, PNG or WebP, up to 5 MB.{dimensions && ` Current: ${dimensions}.`}</p>
-    <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-blue-600 hover:bg-blue-50"><ImageIcon size={12} /> Upload {label.toLowerCase()}<input ref={input} aria-label={`Upload ${label}`} type="file" name={name} accept="image/jpeg,image/png,image/webp" disabled={disabled} onChange={event => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) { toast.error("Choose a JPG, PNG or WebP image up to 5 MB."); event.target.value = ""; return; }
-      setSelected(file); setRemoved(false); setDimensions("");
-    }} className="sr-only" /></label>
-    {removed && preview && <button type="button" onClick={() => setRemoved(false)} className="ml-2 text-xs text-blue-600">Undo removal</button>}
-    {expanded && source && <div role="dialog" aria-modal="true" aria-label={`${label} preview`} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6" onKeyDown={event => { if (event.key === "Escape") setExpanded(false); }}><button type="button" aria-label="Close image preview" onClick={() => setExpanded(false)} className="absolute left-5 top-5 flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-900"><X size={20} /> Close preview</button><img src={source} alt={label} className="max-h-[85vh] max-w-full rounded-xl bg-white object-contain" /></div>}
-  </div>;
-}
 
 function SocialLinkField({
   label,

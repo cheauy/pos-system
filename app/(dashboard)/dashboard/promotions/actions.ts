@@ -7,7 +7,7 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/branch-server";
 import { getBranchContext } from '@/lib/branches/context';
 
-function refreshPromotions(){for(const path of ['/dashboard/promotions','/dashboard/pos','/dashboard/online-store'])revalidatePath(path);revalidatePath('/_sites/[slug]','page');}
+function refreshPromotions(){for(const path of ['/dashboard/promotions','/dashboard/pos','/dashboard/settings/online-store'])revalidatePath(path);revalidatePath('/_sites/[slug]','page');}
 
 function text(formData: FormData, key: string) {
   const value = formData.get(key);

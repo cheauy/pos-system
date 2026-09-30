@@ -258,7 +258,7 @@ function Scanner({ onClose, onScan, order = false }: { onClose: () => void; onSc
   const scanned = useRef(false);
   return <Modal visible onRequestClose={() => { if (!busy) onClose(); }}><SafeAreaView style={{ flex: 1, backgroundColor: '#0f172a', padding: 20, gap: 20, justifyContent: 'flex-end' }}>
 
-    {busy ? <View style={{flex:1,alignItems:'center',justifyContent:'center',gap:16}}><ActivityIndicator size="large" color="#fff"/><Text accessibilityRole="alert" style={{color:'#fff'}}>Loading order details…</Text></View> : error ? <View style={{gap:16}}><Text style={{color:'#fff'}}>{error}</Text><Button title="Scan again" onPress={()=>{scanned.current=false;setError(null);}}/></View> : permission?.granted ? <CameraView style={{ flex: 1 }} barcodeScannerSettings={{ barcodeTypes: order ? ['qr'] : ['ean13', 'ean8', 'code128', 'code39', 'upc_a', 'upc_e', 'qr'] }} onBarcodeScanned={async result => {
+    {busy ? <View style={{flex:1,alignItems:'center',justifyContent:'center',gap:16}}><ActivityIndicator size="large" color="#fff"/><Text accessibilityRole="alert" style={{color:'#fff'}}>Loading order details…</Text></View> : error ? <View style={{gap:16}}><Text style={{color:'#fff'}}>{error}</Text><Button title="Scan again" onPress={()=>{scanned.current=false;setError(null);}}/></View> : permission?.granted ? <CameraView style={{ flex: 1 }} barcodeScannerSettings={{ barcodeTypes: order ? ['qr', 'code39'] : ['ean13', 'ean8', 'code128', 'code39', 'upc_a', 'upc_e', 'qr'] }} onBarcodeScanned={async result => {
       if (scanned.current) return;
       scanned.current = true;
       setBusy(true);
@@ -267,7 +267,7 @@ function Scanner({ onClose, onScan, order = false }: { onClose: () => void; onSc
       finally { setBusy(false); }
     }} /> : <><Text style={{ color: '#fff' }}>Allow camera access to scan barcodes.</Text><Button title="Allow camera" onPress={() => void requestPermission()} />
       {permission && !permission.canAskAgain && <Button title="Open device settings" onPress={() => void Linking.openSettings()} />}</>}
-    <Button title="Close" disabled={busy} onPress={onClose} /><Text style={{color:'#fff'}}>{order?'Scan a TENH POS order QR code.':'Scan a product barcode.'}</Text>
+    <Button title="Close" disabled={busy} onPress={onClose} /><Text style={{color:'#fff'}}>{order?'Scan a TENH POS order QR code or barcode.':'Scan a product barcode.'}</Text>
   </SafeAreaView></Modal>;
 }
 
@@ -278,6 +278,14 @@ export function OrderQrScanner({scope,online,permissions}:{scope:Scope;online:bo
   const [order,setOrder]=useState<{id:string;incoming:boolean;currency:string}|null>(null);
   const active=useRef(true);
   useEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
+  const {orderCode}=useLocalSearchParams<{orderCode?:string}>();
+  // Opened from an order link: resolve it exactly like a scan, once.
+  useEffect(()=>{
+    if(typeof orderCode!=='string'||!/^[1-9][0-9]{11}$/.test(orderCode)||!online)return;
+    router.setParams({orderCode:''});
+    resolve(orderCode).catch(failure=>theme.alert('Unable to open order',failure instanceof Error?failure.message:'Order not found or unavailable in this branch.'));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[orderCode,online]);
   async function resolve(value:string){
     setBusy(true);
     try{

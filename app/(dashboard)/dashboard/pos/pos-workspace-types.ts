@@ -50,7 +50,7 @@ export type CheckoutInput = {
 export type SaleReceipt = {
   initialStatus?: string; cashierName?: string; timezone?: string; isOrderRecord?: boolean;
   customerId?: string | null; customerCreated?: boolean; currencyQuote?: CurrencyQuote;
-  orderId: string; orderNumber: string; createdAt: string; businessName: string;
+  orderId: string; orderNumber: string; orderCode?: string; createdAt: string; businessName: string;
   customerName: string; branchName: string; currency: string; subtotal: number;
   manualDiscount: number; discount: number; deliveryFee: number; taxRate: number;
   taxAmount: number; total: number; amountPaid: number; change: number; remaining: number;

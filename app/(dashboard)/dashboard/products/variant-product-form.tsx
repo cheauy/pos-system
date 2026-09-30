@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import ProductGalleryInput from "@/components/product-gallery-input";
+import { generateInternalBarcode } from "@/lib/barcode/generate";
 
 import {
   createVariantProduct,
@@ -27,6 +29,7 @@ type VariantRow = {
   size: string;
   color: string;
   sku: string;
+  barcode: string;
   costPrice: string;
   sellingPrice: string;
   stockQuantity: string;
@@ -35,6 +38,7 @@ type VariantRow = {
 };
 
 type RunImageSlot = {
+  file?: File;
   id: string;
   preview: string | null;
   name: string;
@@ -71,6 +75,7 @@ function createVariant(
     size: "",
     color: "",
     sku: "",
+    barcode: "",
     costPrice: "0",
     sellingPrice: "0",
     stockQuantity: "0",
@@ -111,18 +116,12 @@ export default function VariantProductForm({
   const [quickCost, setQuickCost] = useState("0");
   const [quickPrice, setQuickPrice] = useState("0");
   const [quickStock, setQuickStock] = useState("0");
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageName, setImageName] = useState("");
   const [runImageSlots, setRunImageSlots] = useState<RunImageSlot[]>(() => [createRunImageSlot("initial-run")]);
 
   const activeRunImageSlot =
     runImageSlots.find((slot) => !slot.locked) ?? runImageSlots[runImageSlots.length - 1];
 
-  useEffect(() => {
-    return () => {
-      if (imagePreview) URL.revokeObjectURL(imagePreview);
-    };
-  }, [imagePreview]);
+
 
   useEffect(() => {
     if (!state.message) return;
@@ -136,9 +135,7 @@ export default function VariantProductForm({
       setQuickCost("0");
       setQuickPrice("0");
       setQuickStock("0");
-      setImagePreview(null);
-      setImageName("");
-      for (const slot of runImageSlots) {
+        for (const slot of runImageSlots) {
         if (slot.preview) URL.revokeObjectURL(slot.preview);
       }
       setRunImageSlots([createRunImageSlot()]);
@@ -224,67 +221,36 @@ export default function VariantProductForm({
     }
   }
 
-  function handleImageChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) {
-      setImageName("");
-      setImagePreview(null);
-      return;
-    }
-
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      toast.error("Only JPG, PNG or WebP images are allowed.");
-      event.target.value = "";
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image size must not exceed 5 MB.");
-      event.target.value = "";
-      return;
-    }
-
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImagePreview(URL.createObjectURL(file));
-    setImageName(file.name);
-  }
-
   function handleRunImageChange(
     slotId: string,
     event: React.ChangeEvent<HTMLInputElement>,
+    variantId?: string,
   ) {
     const file = event.target.files?.[0];
-    if (!file) {
-      setRunImageSlots((current) =>
-        current.map((slot) => {
-          if (slot.id !== slotId) return slot;
-          if (slot.preview) URL.revokeObjectURL(slot.preview);
-          return { ...slot, preview: null, name: "" };
-        }),
-      );
-      return;
-    }
+    if (!file) return;
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
       toast.error("Only JPG, PNG or WebP images are allowed.");
       event.target.value = "";
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
+    if (!file.size || file.size > 5 * 1024 * 1024) {
       toast.error("Image size must not exceed 5 MB.");
       event.target.value = "";
       return;
     }
-    setRunImageSlots((current) =>
-      current.map((slot) => {
-        if (slot.id !== slotId) return slot;
-        if (slot.preview) URL.revokeObjectURL(slot.preview);
-        return { ...slot, preview: URL.createObjectURL(file), name: file.name };
-      }),
-    );
+    const preview = URL.createObjectURL(file);
+    const previous = runImageSlots.find(slot => slot.id === slotId);
+    if (previous?.preview) URL.revokeObjectURL(previous.preview);
+    setRunImageSlots(current => {
+      const next = { ...(current.find(slot => slot.id === slotId) ?? createRunImageSlot(slotId)), file, preview, name: file.name, locked: Boolean(variantId) || Boolean(previous?.locked) };
+      return current.some(slot => slot.id === slotId) ? current.map(slot => slot.id === slotId ? next : slot) : [...current, next];
+    });
+    if (variantId) setVariants(rows => rows.map(row => row.id === variantId ? { ...row, imageSlot: slotId } : row));
   }
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-4">
-      <label className="block text-sm font-semibold text-slate-700">Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
+    <form ref={formRef} action={formAction} className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+      <label className="col-span-full flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 sm:flex-row sm:items-center sm:justify-between">Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm sm:max-w-xs"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
       <input
         type="hidden"
         name="variants"
@@ -293,6 +259,7 @@ export default function VariantProductForm({
             size: variant.size.trim(),
             color: variant.color.trim(),
             sku: variant.sku.trim(),
+            barcode: variant.barcode.trim(),
             costPrice: Number(variant.costPrice),
             sellingPrice: Number(variant.sellingPrice),
             stockQuantity: Number(variant.stockQuantity),
@@ -302,11 +269,12 @@ export default function VariantProductForm({
         )}
       />
 
-      {runImageSlots.map((slot) => (
+      {runImageSlots.filter(slot => !slot.locked || variants.some(row => row.imageSlot === slot.id)).map((slot) => (
         <input
           key={slot.id}
           id={`run-image-${slot.id}`}
           name={`runImage_${slot.id}`}
+          ref={node => { if (node && slot.file) { const data = new DataTransfer(); data.items.add(slot.file); node.files = data.files; } }}
           type="file"
           accept=".jpg,.jpeg,.png,.webp"
           onChange={(event) => handleRunImageChange(slot.id, event)}
@@ -314,8 +282,8 @@ export default function VariantProductForm({
         />
       ))}
 
-      <section>
-        <h2 className="mb-3 text-sm font-bold text-slate-900">Basic Information</h2>
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 lg:col-span-2">
+        <div><h2 className="text-sm font-bold text-slate-900">Product information</h2><p className="mt-1 text-xs text-slate-500">Add the name, category and details customers will see.</p></div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label={isShoes ? "Shoe / Model name" : isFashion ? "Style / Model name" : "Product name"} required>
             <input
@@ -340,38 +308,6 @@ export default function VariantProductForm({
             </select>
           </Field>
         </div>
-      </section>
-
-      <section>
-        <p className="mb-2 text-xs font-semibold text-slate-800">Product Image</p>
-        <label className="group flex min-h-28 cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center transition hover:border-blue-400 hover:bg-blue-50/40">
-          {imagePreview ? (
-            <div className="flex w-full items-center gap-3 p-3 text-left">
-              <img src={imagePreview} alt="Product preview" className="h-20 w-20 rounded-xl border border-slate-200 object-cover" />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-800">{imageName}</p>
-                <p className="mt-1 text-xs text-slate-500">Click to replace image</p>
-              </div>
-            </div>
-          ) : (
-            <div className="px-4 py-5">
-              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                <Upload size={19} />
-              </div>
-              <p className="mt-2 text-sm font-semibold text-slate-700">Upload product image</p>
-              <p className="mt-1 text-[11px] text-slate-400">JPG, PNG or WebP · Max 5 MB</p>
-            </div>
-          )}
-          <input
-            name="image"
-            type="file"
-            accept=".jpg,.jpeg,.png,.webp"
-            onChange={handleImageChange}
-            className="sr-only"
-          />
-        </label>
-      </section>
-
       <Field label="Description">
         <textarea
           name="description"
@@ -386,9 +322,14 @@ export default function VariantProductForm({
           className={`${inputClass} resize-none`}
         />
       </Field>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><ProductGalleryInput /></section>
+
+
 
       {isGeneral && (
-        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+        <label className="col-span-full flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
           <input
             type="checkbox"
             name="isOnline"
@@ -403,7 +344,7 @@ export default function VariantProductForm({
       )}
 
       {isSpecialVariant && (
-        <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-3">
+        <section className="col-span-full rounded-2xl border border-teal-200 bg-teal-50/50 p-4 sm:p-5">
           <div className="flex items-start gap-2">
             <Zap size={17} className="mt-0.5 shrink-0 text-blue-600" />
             <div>
@@ -416,7 +357,7 @@ export default function VariantProductForm({
             </div>
           </div>
 
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <MiniField label="Colour" value={quickColor} placeholder="Black" onChange={setQuickColor} />
             <MiniField label="SKU prefix" value={quickSkuPrefix} placeholder="TEE01" onChange={setQuickSkuPrefix} />
             <MiniField label="Cost price" value={quickCost} type="number" min="0" step="0.01" onChange={setQuickCost} />
@@ -461,8 +402,8 @@ export default function VariantProductForm({
         </section>
       )}
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-3">
+      <section className="col-span-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4">
           <div className="flex min-w-0 items-start gap-2">
             {isGeneral ? (
               <PackagePlus size={17} className="mt-0.5 shrink-0 text-slate-600" />
@@ -484,7 +425,8 @@ export default function VariantProductForm({
               </p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button type="button" onClick={() => setVariants(rows => rows.map(row => row.barcode.trim() ? row : { ...row, barcode: generateInternalBarcode() }))} className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700">Generate missing barcodes</button>
             {variants.length > 0 && (
               <button
                 type="button"
@@ -518,6 +460,7 @@ export default function VariantProductForm({
                 <th className="px-2 py-2 text-left font-semibold">{isGeneral ? "Size / option" : "Size"}</th>
                 <th className="px-2 py-2 text-left font-semibold">{isGeneral ? "Color" : "Colour"}</th>
                 <th className="px-2 py-2 text-left font-semibold">SKU</th>
+                <th className="px-2 py-2 text-left font-semibold">Barcode</th>
                 <th className="px-2 py-2 text-left font-semibold">Cost</th>
                 <th className="px-2 py-2 text-left font-semibold">Price</th>
                 <th className="px-2 py-2 text-left font-semibold">Stock</th>
@@ -528,7 +471,7 @@ export default function VariantProductForm({
             <tbody className="divide-y divide-slate-100">
               {variants.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center">
+                  <td colSpan={10} className="px-4 py-8 text-center">
                     <p className="text-xs font-semibold text-slate-600">{isGeneral ? "No variants added" : "No sizes or variants added"}</p>
                     <p className="mt-1 text-[11px] text-slate-400">
                       {isGeneral
@@ -543,25 +486,14 @@ export default function VariantProductForm({
                 const duplicate = duplicateCombinations.has(pairKey);
                 return (
                   <tr key={variant.id} className={duplicate ? "bg-amber-50" : "bg-white"}>
-                    <td className="w-14 px-2 py-2">
-                      {(() => {
-                        const runPreview = variant.imageSlot
-                          ? runImageSlots.find((slot) => slot.id === variant.imageSlot)?.preview ?? null
-                          : null;
-                        const preview = runPreview ?? imagePreview;
-
-                        return preview ? (
-                          <img
-                            src={preview}
-                            alt={`${variant.color || "Variant"} ${variant.size || "image"}`}
-                            className="h-8 w-8 rounded-md border border-slate-200 object-cover"
-                          />
-                        ) : (
-                          <span className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-300">
-                            <Shirt size={14} />
-                          </span>
-                        );
-                      })()}
+                    <td className="w-20 px-2 py-2">
+                      <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg p-1 text-teal-700 hover:bg-teal-50" title="Upload or replace this size's image">
+                        {runImageSlots.find(slot => slot.id === variant.imageSlot)?.preview ? (
+                          <img src={runImageSlots.find(slot => slot.id === variant.imageSlot)?.preview ?? ""} alt={`${variant.color || "Variant"} ${variant.size || "image"}`} className="h-10 w-10 rounded-lg border border-slate-200 object-contain" />
+                        ) : <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-dashed border-teal-300 bg-teal-50"><Upload size={16} /></span>}
+                        <span className="text-[10px] font-semibold">{variant.imageSlot ? "Replace" : "Upload"}</span>
+                        <input type="file" accept=".jpg,.jpeg,.png,.webp" aria-label={`Upload image for ${variant.color || "variant"} ${variant.size || "new size"}`} className="sr-only" onChange={event => { handleRunImageChange(`size-${variant.id}`, event, variant.id); event.target.value = ""; }} />
+                      </label>
                     </td>
                     <CellInput
                       value={variant.size}
@@ -582,6 +514,7 @@ export default function VariantProductForm({
                       onChange={(value) => updateVariant(variant.id, "sku", value)}
                       wide
                     />
+                    <CellInput value={variant.barcode} placeholder="Scan, type or generate" wide onChange={(value) => updateVariant(variant.id, "barcode", value)} />
                     <CellInput value={variant.costPrice} type="number" min="0" step="0.01" required onChange={(value) => updateVariant(variant.id, "costPrice", value)} />
                     <CellInput value={variant.sellingPrice} type="number" min="0" step="0.01" required onChange={(value) => updateVariant(variant.id, "sellingPrice", value)} />
                     <CellInput value={variant.stockQuantity} type="number" min="0" required onChange={(value) => updateVariant(variant.id, "stockQuantity", value)} />
@@ -605,10 +538,12 @@ export default function VariantProductForm({
         </div>
       </section>
 
+      <div className="sticky -bottom-4 col-span-full flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:-bottom-6 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-slate-500"><span className="font-semibold text-slate-800">{variants.length} variants</span> · {totalStock} units ready to create</p>
       <button
         type="submit"
         disabled={pending || variants.length === 0 || duplicateCombinations.size > 0}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {pending ? (
           <>
@@ -626,6 +561,7 @@ export default function VariantProductForm({
           </>
         )}
       </button>
+      </div>
     </form>
   );
 }

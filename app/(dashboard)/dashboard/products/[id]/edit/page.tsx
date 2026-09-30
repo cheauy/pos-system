@@ -1,3 +1,5 @@
+import { businessHasPermission } from "@/lib/auth/effective-permissions";
+import { getBranchContext } from "@/lib/branches/context";
 import { notFound } from "next/navigation";
 
 import { requirePermission } from "@/lib/auth/require-permission";
@@ -22,6 +24,7 @@ type ProductRow = {
   sku: string | null;
   barcode: string | null;
   image_url: string | null;
+  image_urls: string[];
   variant_image_url: string | null;
   description: string | null;
   size: string | null;
@@ -34,11 +37,13 @@ type ProductRow = {
   low_stock_quantity: number;
   is_active: boolean;
   is_online: boolean;
+  updated_at: string;
 };
 
 export default async function EditProductPage({ params }: EditProductPageProps) {
   const { id } = await params;
   const business = await requirePermission("products.update");
+  const [context, canCreateVariants, canDisable, canAdjustStock] = await Promise.all([getBranchContext(), businessHasPermission(business, "products.create"), businessHasPermission(business, "products.disable"), businessHasPermission(business, "products.stock_adjust")]);
   const supabase = await createClient();
   const currentMode = await getCurrentBusinessMode({
     businessId: business.id,
@@ -56,6 +61,7 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
           sku,
           barcode,
           image_url,
+        image_urls,
           variant_image_url,
           description,
           size,
@@ -67,7 +73,8 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
           stock_quantity,
           low_stock_quantity,
           is_active,
-          is_online
+          is_online,
+          updated_at
         `)
         .eq("id", id)
         .eq("business_id", business.id)
@@ -100,6 +107,7 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
         sku,
         barcode,
         image_url,
+        image_urls,
         variant_image_url,
         description,
         size,
@@ -111,12 +119,13 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
         stock_quantity,
         low_stock_quantity,
         is_active,
-        is_online
+        is_online,
+        updated_at
       `)
       .eq("business_id", business.id)
       .eq("variant_group_id", representative.variant_group_id)
-      .order("size", { ascending: true })
-      .order("color", { ascending: true });
+      .order("color", { ascending: true })
+      .order("size", { ascending: true });
 
     if (groupError) {
       throw new Error(`Unable to load product variants: ${groupError.message}`);
@@ -129,33 +138,37 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
     size: row.size ?? "",
     color: row.color ?? "",
     sku: row.sku ?? "",
+    barcode: row.barcode ?? "",
     costPrice: String(row.cost_price ?? 0),
     sellingPrice: String(row.selling_price ?? 0),
     stockQuantity: String(row.stock_quantity ?? 0),
     lowStockQuantity: String(row.low_stock_quantity ?? 5),
     isActive: Boolean(row.is_active),
+    isOnline: Boolean(row.is_online),
     imageUrl: row.variant_image_url ?? row.image_url,
     variantImageUrl: row.variant_image_url,
     imageSlot: null,
+    expectedUpdatedAt: row.updated_at,
   }));
 
   return (
     <EditProductClient
+      branchId={context.branchId}
+      canCreateVariants={canCreateVariants}
+      canDisable={canDisable}
+      canAdjustStock={canAdjustStock}
       product={{
         id: representative.id,
         name: representative.name,
         categoryId: representative.category_id,
         description: representative.description ?? "",
         barcode: representative.barcode ?? representative.sku ?? "",
-        imageUrl:
-          representative.image_url ??
-          rows.find((row) => row.image_url)?.image_url ??
-          rows.find((row) => row.variant_image_url)?.variant_image_url ??
-          null,
+        galleryUrls: representative.image_urls ?? [],
+        imageUrl: representative.image_url ?? rows.find((row) => row.image_url)?.image_url ?? null,
         images: Array.from(
           new Set(
             rows
-              .flatMap((row) => [row.image_url, row.variant_image_url])
+              .flatMap((row) => [row.image_url, row.variant_image_url, ...(row.image_urls ?? [])])
               .filter((value): value is string => Boolean(value)),
           ),
         ),
@@ -166,7 +179,7 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
       }}
       categories={(categoryData ?? []) as Category[]}
       initialVariants={variants}
-      businessType={currentMode.value === "general" ? "general" : undefined}
+      businessType={currentMode.value}
     />
   );
 }

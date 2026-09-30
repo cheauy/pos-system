@@ -97,7 +97,7 @@ function CatalogCard({ product, categoryName, settings, onAdd, eager, href }: {
   const cheapest=displayVariants.reduce((best,row)=>row.sellingPrice<best.sellingPrice?row:best,displayVariants[0]);
   const originalPrice=cheapest?.originalPrice;
   const price = matches.length ? Math.min(...matches.map(row => row.sellingPrice)) : product.priceFrom;
-  const preorder = false;
+  const preorder = matches.some(row => product.preorderVariantIds?.includes(row.id));
   const stock = matches.reduce((sum, row) => sum + Math.max(0, row.stockQuantity), 0);
   return <article className="store-product-card">
     <a className="product-card-link" aria-label={product.name} href={href} />

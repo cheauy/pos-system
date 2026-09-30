@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Banknote, Check, ChevronDown, Coins, CreditCard, GitFork, Landmark, Truck, UserRound } from 'lucide-react';
 import type { PaymentMethod, ShippingDetails } from './pos-workspace-types';
-import { paymentHiddenForWalkIn } from './pos-customer-helpers';
+import { paymentHiddenForDelivery, paymentHiddenForWalkIn } from './pos-customer-helpers';
 import s from './pos-workspace.module.css';
 
 const METHODS = [
@@ -17,13 +17,14 @@ const METHODS = [
 ] as const;
 
 /** UI replacement only: values and validation remain the existing payment engine's. */
-export function PaymentMethodSelect({ value, onChange, total, hasCustomer, disabled = false, isWalkIn = false }: {
+export function PaymentMethodSelect({ value, onChange, total, hasCustomer, disabled = false, isWalkIn = false, isDelivery = false }: {
   value: PaymentMethod;
   onChange: (value: PaymentMethod) => void;
   total: number;
   hasCustomer: boolean;
   disabled?: boolean;
   isWalkIn?: boolean;
+  isDelivery?: boolean;
 }) {
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -32,7 +33,7 @@ export function PaymentMethodSelect({ value, onChange, total, hasCustomer, disab
   const typeahead = useRef({ text: '', at: 0 });
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<PaymentMethod>(value);
-  const visibleMethods = METHODS.filter(option => !paymentHiddenForWalkIn(option.id, isWalkIn));
+  const visibleMethods = METHODS.filter(option => !paymentHiddenForWalkIn(option.id, isWalkIn) && !paymentHiddenForDelivery(option.id, isDelivery));
   const chosen = visibleMethods.find(option => option.id === value) || visibleMethods[0] || METHODS[0];
   const SelectedIcon = chosen.Icon;
   const reason = (method: PaymentMethod) => paymentHiddenForWalkIn(method, isWalkIn)
@@ -54,7 +55,7 @@ export function PaymentMethodSelect({ value, onChange, total, hasCustomer, disab
   useEffect(() => {
     if (disabled) { setOpen(false); return; }
     if (open && reason(active)) setActive(available[0]?.id || chosen.id);
-  }, [disabled, open, active, total, hasCustomer, isWalkIn]);
+  }, [disabled, open, active, total, hasCustomer, isWalkIn, isDelivery]);
   useEffect(() => {
     if (open) menu.current?.scrollIntoView({ block: 'nearest' });
   }, [open]);

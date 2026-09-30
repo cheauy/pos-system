@@ -1,5 +1,4 @@
 'use client';
-import OrderPrintMenu from '@/components/order-print-menu';
 
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -8,20 +7,21 @@ import { useWorkspaceBranch, useBranchSwitchGuard } from "../workspace-branch-pr
 import { usePosNavigationLock } from '../pos-lock-provider';
 import { LockKeyhole, LockKeyholeOpen } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Barcode, Banknote, Check, ChevronDown, Clock, CreditCard, Gift, Grid2X2, Heart, List, Minus, Package, Plus, Printer, RefreshCw, Search, Settings2, ShoppingCart, SlidersHorizontal, Store, Trash2, UserRound, X } from 'lucide-react';
-import { allocatePosStock, checkPosSale, completePosSale, deletePosHold, loadPosWorkspace, savePosHold, savePosSettings } from './pos-workspace-actions';
+import { AlertTriangle, Barcode, Banknote, Check, ChevronDown, Clock, CreditCard, Gift, Grid2X2, Heart, List, Minus, Package, Plus, Printer, RefreshCw, Search, ShoppingCart, SlidersHorizontal, Store, Trash2, UserRound, X } from 'lucide-react';
+import { allocatePosStock, checkPosSale, completePosSale, deletePosHold, loadPosWorkspace, savePosHold } from './pos-workspace-actions';
 import { couponPreview } from '@/lib/promotions/pricing';
 import { cartIssue, cents, configuredLine, discountIssue, EMPTY_FILTERS, inventoryFor, isVariantGroup, restoreHeldDraft, money, productGroups, stockFor, thresholdFor, totals, validateCheckout } from './pos-workspace-helpers';
 import { currencyQuote, currencySymbol, quoteMoney } from './pos-currency';
 import { CurrencyAmountInput } from './pos-currency-components';
 import { CheckoutPanel, VariantPicker } from './pos-workspace-flow';
-import { BarcodeScanner, Modal, ProductImage, ReceiptContent } from './pos-workspace-components';
+import { BarcodeScanner, Modal, ProductImage } from './pos-workspace-components';
+import { SaleCompleted, lineImageKey, type SaleMeta } from './pos-sale-completed';
 import { PosCustomerPicker } from './pos-customer-picker';
 import type { PickerCustomer } from './pos-customer-helpers';
 import type { CartDraft, CartLine, CatalogFilters, CheckoutInput, DiscountType, ShippingDetails, HeldOrder, PaymentMethod, Product, ProductGroup, SaleReceipt, Tender, Workspace } from './pos-workspace-types';
 import s from './pos-workspace.module.css';
 
-type Dialog = 'scan' | 'variant' | 'options' | 'customer' | 'adjustments' | 'settings' | 'hold' | 'holds' | 'clear' | 'checkout' | 'stock' | 'receipt' | null;
+type Dialog = 'scan' | 'variant' | 'options' | 'customer' | 'adjustments' | 'hold' | 'holds' | 'clear' | 'checkout' | 'stock' | 'receipt' | null;
 function newRequestId(): string {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -72,10 +72,8 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   const [hold, setHold] = useState<HeldOrder | null>(null);
   const [holdLabel, setHoldLabel] = useState('');
   const [holdDelete, setHoldDelete] = useState<string | null>(null);
-  const [taxSetting, setTaxSetting] = useState(String(initialData.settings.taxRate));
-  const [requireRegister, setRequireRegister] = useState(initialData.settings.requireOpenRegister !== false);
-  const [pointSetting, setPointSetting] = useState(String(initialData.settings.pointValue));
   const [receipt, setReceipt] = useState<SaleReceipt | null>(null);
+  const [saleMeta, setSaleMeta] = useState<SaleMeta | null>(null);
   const [notice, setNotice] = useState<{ text: string; kind: 'error' | 'success' | 'info' } | null>(null);
   const [modalError, setModalError] = useState('');
   const [busy, setBusy] = useState('');
@@ -109,14 +107,13 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   const groups = useMemo(() => productGroups(data, branch, filters, favorites), [data, branch, filters, favorites]);
   const allGroupCount = useMemo(() => productGroups(data, branch, EMPTY_FILTERS, []).length, [data, branch]);
   const lowStockCount = useMemo(() => data.products.filter(p => stockFor(p, branch, data) > 0 && stockFor(p, branch, data) <= thresholdFor(p, branch, data)).length, [data, branch]);
-  const brands = useMemo(() => Array.from(new Set(data.products.map(p => p.brand || 'unbranded'))).sort(), [data.products]);
   const colors = useMemo(() => Array.from(new Set(data.products.map(p => p.color).filter((v): v is string => Boolean(v)))).sort(), [data.products]);
   const sizes = useMemo(() => Array.from(new Set(data.products.map(p => p.size).filter((v): v is string => Boolean(v)))).sort((a,b) => a.localeCompare(b, undefined, { numeric: true })), [data.products]);
-  const activeFilters = Object.entries(filters).filter(([k,v]) => k !== 'sort' && k !== 'search' && (k === 'favoritesOnly' ? v : v !== 'all'));
   const branchName = data.branches.find(b => b.id === branch)?.name || 'All branches';
   const timezone = data.branches.find(b => b.id === branch)?.timezone || 'Asia/Phnom_Penh';
   let dateLabel = '', timeLabel = '';
-  try { dateLabel = new Date(clock).toLocaleDateString('en-GB', { timeZone: timezone, day: '2-digit', month: 'short', year: 'numeric' }); timeLabel = new Date(clock).toLocaleTimeString('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit' }); } catch { dateLabel = new Date(clock).toISOString().slice(0,10); timeLabel = 'UTC'; }
+  // Numeric parts + fixed month names: browser and server ICU disagree on "Sep" vs "Sept".
+  try { const part = (type: string) => new Intl.DateTimeFormat('en-GB', { timeZone: timezone, day: '2-digit', month: 'numeric', year: 'numeric' }).formatToParts(new Date(clock)).find(p => p.type === type)?.value || ''; dateLabel = `${part('day')} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(part('month')) - 1]} ${part('year')}`; timeLabel = new Date(clock).toLocaleTimeString('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit' }); } catch { dateLabel = new Date(clock).toISOString().slice(0,10); timeLabel = 'UTC'; }
 
   useEffect(() => {
     try { const stored = JSON.parse(localStorage.getItem(favoriteKey) || '[]'); if (Array.isArray(stored)) setFavorites(stored.filter(v => typeof v === 'string')); } catch { /* Favorites are optional, never block checkout. */ }
@@ -164,8 +161,8 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   function selectCustomer(id:string) {
     const next=data.customers.find(c=>c.id===id);
     setCustomerId(next?.id || '');setPoints('0');setCreateCustomer(false);recipientEdited.current=false;
-    setShipping(old=>next?{...old,recipientName:next.name,phone:next.phone || '',address:next.address || ''}:{method:'in_store',recipientName:'',phone:'',address:'',carrier:'',carrierOther:''});
-    if(!next){setDelivery('0');setMethod('cash');setTenders([]);}
+    setShipping(old=>next?{...old,method:'delivery',recipientName:next.name,phone:next.phone || '',address:next.address || ''}:{method:'in_store',recipientName:'',phone:'',address:'',carrier:'',carrierOther:''});
+    if(!next){setDelivery('0');setMethod('cash');setTenders([]);} else {setMethod('cod');setTenders([]);}
     setPaid('');setEntryErrors({});setDialog(null);setConfirmed(false);
   }
   function upsertWorkspaceCustomer(row: PickerCustomer) {
@@ -174,7 +171,8 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   function selectPickerCustomer(row: PickerCustomer) {
     upsertWorkspaceCustomer(row);
     setCustomerId(row.id);setPoints('0');setCreateCustomer(false);recipientEdited.current=false;
-    setShipping(old => ({ ...old, recipientName: row.name, phone: row.phone || '', address: row.address || '' }));
+    setShipping(old => ({ ...old, method: 'delivery', recipientName: row.name, phone: row.phone || '', address: row.address || '' }));
+    setMethod('cod');setTenders([]);
     setPaid('');setEntryErrors({});setDialog(null);setConfirmed(false);
   }
   function handleCustomerCreated(row: PickerCustomer) {
@@ -360,6 +358,14 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     else { try { sessionStorage.removeItem(recoveryKey); } catch { /* Server receipt has already confirmed the outcome. */ } }
   }
   async function finishReceipt(r: SaleReceipt) {
+    // Capture display details before the cart and pending request are cleared.
+    const images: SaleMeta['images'] = {};
+    for (const line of lines) images[lineImageKey(line.name, line.variant ?? null)] = line.image ?? null;
+    for (const line of r.lines) {
+      const key = lineImageKey(line.name, line.variant);
+      if (!images[key]) images[key] = data.products.find(p => p.name === line.name)?.image_url ?? null;
+    }
+    setSaleMeta({ method: recoveryRef.current?.paymentMethod ?? method, images });
     setPending(null); setReceipt(r); clearCart(); setDialog('receipt'); setNotice({ kind: 'success', text: `Sale ${r.orderNumber} saved. ${r.remaining > 0 ? 'A balance remains due.' : 'Payment recorded.'}` }); await refresh(true);
   }
   async function submit(retry = false) {
@@ -394,13 +400,6 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     } catch (e) { setNotice({ kind: 'error', text: messageOf(e) }); }
     finally { inFlight.current = false; setBusy(''); }
   }
-  async function saveSettings() {
-    if (inFlight.current) return;
-    inFlight.current = true; setBusy('settings');
-    try { const result = await savePosSettings(data.businessId, Number(taxSetting), Number(pointSetting), requireRegister); if (!result.success) setModalError(result.message); else { await refresh(true); setDialog(null); setConfirmed(false); setNotice({ kind: 'success', text: 'POS settings saved. Review the recalculated total.' }); } }
-    catch (e) { setModalError(messageOf(e)); }
-    finally { inFlight.current = false; setBusy(''); }
-  }
 
   return <main className={s.workspace} ref={rootRef}>
     <div className={s.catalogColumn}>
@@ -413,25 +412,20 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
 
           </div>
           <button className={`${s.miniStat} ${s.warningStat}`} onClick={() => changeFilter('stock', filters.stock === 'low' ? 'all' : 'low')} aria-pressed={filters.stock === 'low'}><span><AlertTriangle size={19} /></span><div><strong>{lowStockCount}</strong><small>Low stock SKUs</small></div></button>
-          <label className={s.branchStat}><Store size={19} /><span><small>Branch</small><select aria-label="Sale branch" value={branch} onChange={e => changeBranch(e.target.value)} disabled={frozen||navigationLock.locked||data.branches.length<2}>{data.branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></span></label>
+          <label className={s.branchStat}><Store size={19} /><span><select aria-label="Sale branch" value={branch} onChange={e => changeBranch(e.target.value)} disabled={frozen||navigationLock.locked||data.branches.length<2}>{data.branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></span></label>
         </div>
       </header>
       {notice && <div role={notice.kind === 'error' ? 'alert' : 'status'} className={`${s.notice} ${notice.kind === 'error' ? s.error : notice.kind === 'success' ? s.success : ''}`}><span>{notice.text}</span><button className={s.iconButton} aria-label="Dismiss message" onClick={() => setNotice(null)}><X size={16} /></button></div>}
       {recovery && <section className={`${s.notice} ${s.recovery}`}><div><strong>Confirm interrupted sale · {cash(recovery.expectedTotal)}</strong><p>Request {recovery.requestId.slice(0,8)}. The cart is locked until the saved request is resolved.</p></div><div className={s.row}><button className={s.button} disabled={Boolean(busy)} onClick={checkPending}>Check sale</button><button className={s.primary} disabled={Boolean(busy)} onClick={() => submit(true)}>Retry same sale</button></div></section>}
       <section className={s.filterPanel} aria-label="Product search and filters">
-        <div className={s.searchRow}><div className={s.searchInput}><Search size={19} /><input ref={searchRef} value={filters.search} onChange={e => changeFilter('search', e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && filters.search.trim()) { e.preventDefault(); scan(filters.search); } }} placeholder="Search by product name, SKU, or barcode…" aria-label="Search products" /><kbd>F2</kbd></div><button className={s.softButton} onClick={() => open('scan')} disabled={frozen}><Barcode size={20} /> Scan Barcode</button></div>
-        <div className={s.filterRow}>
-          <label className={s.filterSelect}><span>Category</span><select aria-label="Category" value={filters.category} onChange={e => changeFilter('category', e.target.value)}><option value="all">All categories</option>{data.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-          <label className={s.filterSelect}><span>Brand</span><select aria-label="Brand" value={filters.brand} onChange={e => changeFilter('brand', e.target.value)}><option value="all">All brands</option>{brands.map(b => <option key={b} value={b}>{b === 'unbranded' ? 'Unbranded' : b}</option>)}</select></label>
-          <label className={s.filterSelect}><span>Stock status</span><select aria-label="Stock status" value={filters.stock} onChange={e => changeFilter('stock', e.target.value)}><option value="all">All stock</option><option value="in">In stock</option><option value="low">Low stock</option><option value="out">Out of stock</option></select></label>
-          <label className={s.filterSelect}><span>Price range</span><select aria-label="Price range" value={filters.price} onChange={e => changeFilter('price', e.target.value)}><option value="all">Any price</option><option value="under25">Under {cash(25)}</option><option value="25to100">{cash(25)} – {cash(100)}</option><option value="over100">Over {cash(100)}</option></select></label>
+        <div className={s.searchRow}><div className={s.searchInput}><Search size={19} /><input ref={searchRef} value={filters.search} onChange={e => changeFilter('search', e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && filters.search.trim()) { e.preventDefault(); scan(filters.search); } }} placeholder="Search by product name, SKU, or barcode…" aria-label="Search products" /><kbd>F2</kbd><button type="button" className={s.searchScan} onClick={() => open('scan')} disabled={frozen} aria-label="Scan barcode"><Barcode size={18} /> Scan</button></div>
           <div className={s.viewToggle} aria-label="Product view"><button className={view === 'grid' ? s.activeView : ''} onClick={() => setView('grid')} aria-label="Grid view" aria-pressed={view === 'grid'}><Grid2X2 size={18}/></button><button className={view === 'list' ? s.activeView : ''} onClick={() => setView('list')} aria-label="List view" aria-pressed={view === 'list'}><List size={19}/></button></div>
           <button className={s.button} onClick={() => setExtraFilters(!extraFilters)} aria-expanded={extraFilters}><SlidersHorizontal size={17} /> Filters</button>
         </div>
+        <nav className={s.categoryMenu} aria-label="Categories">{[{ id: 'all', name: 'All' }, ...data.categories].map(c => <button key={c.id} type="button" aria-pressed={filters.category === c.id} className={filters.category === c.id ? s.categoryActive : ''} onClick={() => changeFilter('category', c.id)}>{c.name}</button>)}</nav>
         {extraFilters && <div className={s.extraFilters}><label>Color<select aria-label="Color" value={filters.color} onChange={e => changeFilter('color', e.target.value)}><option value="all">All colors</option>{colors.map(c => <option key={c}>{c}</option>)}</select></label><label>Size<select aria-label="Size" value={filters.size} onChange={e => changeFilter('size', e.target.value)}><option value="all">All sizes</option>{sizes.map(v => <option key={v}>{v}</option>)}</select></label><label className={s.checkLabel}><input type="checkbox" checked={filters.favoritesOnly} onChange={e => changeFilter('favoritesOnly', e.target.checked)} /> Favorites only</label></div>}
-        <div className={s.chipsRow}><div className={s.chips}><button className={!activeFilters.length ? s.chipActive : s.chip} onClick={() => setFilters({ ...EMPTY_FILTERS, search: filters.search, sort: filters.sort })}>All products</button>{activeFilters.map(([key,value]) => <button key={key} className={s.chip} onClick={() => setFilters(old => ({ ...old, [key]: key === 'favoritesOnly' ? false : 'all' }))}>{key === 'category' ? data.categories.find(c => c.id === value)?.name : key === 'favoritesOnly' ? 'Favorites' : `${key}: ${value}`}<X size={12}/></button>)}{(activeFilters.length > 0 || filters.search) && <button className={s.textButton} onClick={() => setFilters({ ...EMPTY_FILTERS })}>Clear all</button>}</div><label className={s.sortLabel}>Sort:<select aria-label="Sort products" value={filters.sort} onChange={e => changeFilter('sort', e.target.value)}><option value="popular">Popular (30 days)</option><option value="name">Name A–Z</option><option value="newest">Newest</option><option value="priceAsc">Price: low to high</option><option value="priceDesc">Price: high to low</option></select></label></div>
       </section>
-      <div className={s.catalogMeta}><span>{groups.length} products · {branchName}{data.shift ? ' · Open register' : ' · No open register'}</span><div className={s.row}><button className={s.textButton} disabled={Boolean(busy)} onClick={() => refresh()}><RefreshCw size={14} className={busy === 'refresh' ? s.spin : ''}/> Refresh stock</button>{data.canConfigure && <button className={s.textButton} disabled={frozen} onClick={() => { setTaxSetting(String(data.settings.taxRate)); setPointSetting(String(data.settings.pointValue)); setRequireRegister(data.settings.requireOpenRegister !== false); open('settings'); }}><Settings2 size={15}/> POS settings</button>}</div></div>
+      <div className={s.catalogMeta}><span>{groups.length} products · {branchName}{data.shift ? ' · Open register' : ' · No open register'}</span></div>
       {!groups.length ? <div className={s.empty}><Package size={38}/><h2>{data.products.length ? 'No matching products' : 'Your catalog is empty'}</h2><p>{data.products.length ? 'Try a different search or clear your filters.' : 'Create active products and add branch stock before selling.'}</p><button className={s.button} onClick={() => setFilters({ ...EMPTY_FILTERS })}>Reset filters</button></div> : <div className={view === 'grid' ? s.productGrid : s.productList}>
         {groups.slice(0, shown).map((group, index) => {
           const inCart = lines.filter(l => group.variants.some(v => v.id === l.productId)).reduce((sum,l) => sum+l.quantity,0);
@@ -446,7 +440,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
         })}
       </div>}
       {groups.length > shown && <button className={`${s.button} ${s.loadMore}`} onClick={() => setShown(n => n + 32)}>Show more products ({groups.length - shown} remaining)</button>}
-      <p className={s.footnote}>Stock checked again on sale. Favorites are saved on this browser. “Popular” uses completed sales from the last 30 days.</p>
+      <p className={s.footnote}>Stock checked again on sale. Favorites are saved on this browser. Newest products are shown first.</p>
     </div>
 
     <aside className={s.orderPanel} aria-label="Current order">
@@ -463,7 +457,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
         <div className={s.checkoutArea}><dl className={s.totals}><div><dt>Subtotal ({count} items)</dt><dd>{cash(values.subtotal)}</dd></div><div><dt><button onClick={() => open('adjustments')}>{couponCode?`Coupon ${couponCode}`:'Discount'}{!couponCode && discountType === 'percent' ? ` (${discount}%)` : ''}{Number(points) > 0 ? ` · ${points} points` : ''}</button></dt><dd className={s.blueText}>−{cash(values.discount)}</dd></div><div><dt>Tax ({data.settings.taxRate}%)</dt><dd>{cash(values.tax)}</dd></div><div><dt>Shipping Fee</dt><dd>{cash(values.delivery)}</dd></div><div className={s.totalRow}><dt>Total</dt><dd>{cash(values.total)}</dd></div></dl>
           <p className={s.checkoutHint}>Continue to review payment and order type. No sale is saved until you confirm.</p>
           <label className={s.field}>Order note (optional)<textarea value={note} aria-label="Order note" onChange={e => setNote(e.target.value)} placeholder="Add a note to this order…" rows={2} maxLength={1000}/></label>
-          <div className={s.checkoutButtons}><button className={s.softButton} disabled={!lines.length} onClick={() => { setHoldLabel(hold?.label || (customer ? `${customer.name}'s order` : `Order ${timeLabel}`)); open('hold'); }}><Clock size={16}/> Hold Order</button><button className={s.softButton} disabled={!lines.length || values.total < 0.02} onClick={() => beginCheckout(true)}><CreditCard size={16}/> Split Payment</button></div>
+          <div className={s.checkoutButtons}><button className={s.softButton} disabled={!lines.length} onClick={() => { setHoldLabel(hold?.label || (customer ? `${customer.name}'s order` : `Order ${timeLabel}`)); open('hold'); }}><Clock size={16}/> Hold Order</button><button className={s.softButton} disabled={!lines.length || values.total < 0.02 || shipping.method === 'delivery'} onClick={() => beginCheckout(true)}><CreditCard size={16}/> Split Payment</button></div>
           <button className={s.completeButton} disabled={frozen || !lines.length || Boolean(issue) || !recoveryLoaded} onClick={() => beginCheckout()}><Check size={20}/>Continue · {cash(values.total)}</button>
         </div>
       </fieldset>
@@ -471,7 +465,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
       {busy && <div className={s.busyOverlay} role="status"><RefreshCw className={s.spin} size={18}/>{busy === 'checkout' ? 'Saving sale. Please wait…' : 'Working…'}</div>}
     </aside>
 
-    {dialog && <Modal title={{ scan:'Scan Barcode', variant:'Choose Product Variant', options:'Customize Product', customer:'Select Customer', adjustments:'Discount & Loyalty', settings:'POS settings', hold:'Hold Current Order', holds:'Held Orders', clear:'Clear Current Order?', checkout:'Payment & Order Type', stock:'Assign Existing Stock', receipt:'Sale Saved' }[dialog]} onClose={() => { setDialog(null); setModalError(''); }} wide={['holds','variant','checkout','stock'].includes(dialog)} locked={Boolean(busy)}>
+    {dialog && <Modal title={{ scan:'Scan Barcode', variant:'Choose Product Variant', options:'Customize Product', customer:'Select Customer', adjustments:'Discount & Loyalty', hold:'Hold Current Order', holds:'Held Orders', clear:'Clear Current Order?', checkout:'Payment & Order Type', stock:'Assign Existing Stock', receipt:'Sale Saved' }[dialog]} onClose={() => { setDialog(null); setModalError(''); }} wide={['holds','variant','checkout','stock'].includes(dialog)} bare={dialog === 'receipt'} locked={Boolean(busy)}>
       <fieldset disabled={Boolean(busy)} className={s.flowFieldset}>
       {modalError && <p className={`${s.notice} ${s.error}`} role="alert">{modalError}</p>}
       {dialog === 'scan' && <BarcodeScanner onScan={scan}/>}
@@ -482,7 +476,8 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
         shipping={shipping} setShipping={updateShipping} delivery={delivery} setDelivery={setDelivery}
         method={method} setMethod={changePayment} paid={paid} setPaid={setPaid} received={receivedAmount()}
         tenders={tenders} setTenders={setTenders} confirmed={confirmed} setConfirmed={setConfirmed}
-        error={reviewIssue} busy={Boolean(busy)} onBack={() => setDialog(null)} onConfirm={() => submit()}/>}
+        error={reviewIssue} busy={Boolean(busy)} onBack={() => setDialog(null)} onConfirm={() => submit()}
+        lines={lines} note={note}/>}
       {dialog === 'options' && optionProduct && <div className={s.stack}><div className={s.productDialogHeading}><ProductImage src={optionProduct.image_url} alt={optionProduct.name}/><div><h3>{optionProduct.name}</h3><p>Base price {cash(Number(optionProduct.selling_price))}</p></div></div>{data.groups.filter(g => g.product_id === optionProduct.id).map(g => <fieldset className={s.optionFieldset} key={g.id}><legend>{g.name} <small>{g.is_required ? 'Required' : 'Optional'} · {g.selection_type === 'single' ? 'Choose one' : `Choose up to ${g.max_selections}`}</small></legend>{data.options.filter(o => o.group_id === g.id && o.is_active).map(o => <label className={s.optionChoice} key={o.id}><input type={g.selection_type === 'single' ? 'radio' : 'checkbox'} name={g.id} checked={optionIds.includes(o.id)} onChange={e => setOptionIds(old => g.selection_type === 'single' ? [...old.filter(id => !data.options.some(p => p.id === id && p.group_id === g.id)), o.id] : e.target.checked ? [...old,o.id] : old.filter(id => id !== o.id))}/><span>{o.name}</span><strong>{Number(o.price_adjustment) >= 0 ? '+' : ''}{cash(Number(o.price_adjustment))}</strong></label>)}{!g.is_required && <button className={s.textButton} onClick={() => setOptionIds(old => old.filter(id => !data.options.some(o => o.id === id && o.group_id === g.id)))}>Clear {g.name}</button>}</fieldset>)}<button className={s.primary} onClick={() => addProduct(optionProduct, optionIds)}><ShoppingCart size={17}/>Add configured item</button></div>}
       {dialog === 'customer' && <PosCustomerPicker
         businessId={data.businessId}
@@ -509,10 +504,9 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
         <label className={s.field}>Redeem loyalty points<input aria-label="Redeem loyalty points" type="number" min="0" step="1" max={customer?.loyalty_points || 0} value={adjustmentDraft.points} disabled={!customer || !data.settings.loyaltyEnabled || data.settings.pointValue <= 0} onChange={e => setAdjustmentDraft(d => ({...d,points:e.target.value}))}/><small>{customer ? `${customer.loyalty_points || 0} points available · ${cash(data.settings.pointValue)} per point` : 'Choose a customer first.'} Redeem only on fully paid sales.</small></label>
         <p className={s.paymentInfo}>Shipping and delivery fees are selected after Continue. Changing quantity recalculates a percentage discount automatically.</p>{invalid && <p role="alert" className={s.orangeText}>{invalid}</p>}<div className={s.between}><strong>Updated total</strong><strong>{cash(quoteValues.total)}</strong></div><button className={s.primary} disabled={Boolean(invalid)} onClick={() => {setCouponCode('');setCouponEntry('');setDiscount(adjustmentDraft.discount);setDiscountType(adjustmentDraft.discountType);setPoints(adjustmentDraft.points);setDialog(null);}}>Apply to order</button></div>;
       })()}
-      {dialog === 'settings' && <div className={s.stack}><p className={s.paymentInfo}>Owner settings for POS only. Both rates start at zero; set the rates appropriate for your business. Loyalty must also be enabled in Promotions & Loyalty.</p><label className={s.field}>Tax rate (%)<input type="number" min="0" max="100" step="0.001" value={taxSetting} onChange={e => setTaxSetting(e.target.value)}/></label><label className={s.field}>Redemption value of 1 point ({data.settings.currency})<input type="number" min="0" max="1000000" step="0.0001" value={pointSetting} onChange={e => setPointSetting(e.target.value)}/><small>Set zero to disable point redemption. Point earning rules remain in Promotions & Loyalty.</small></label><label className={s.field}><span><input type="checkbox" role="switch" checked={requireRegister} onChange={e => setRequireRegister(e.target.checked)}/> Require an open register before payment</span><small>Applies to this branch. When disabled, sales without an open register will not be included in a register shift.</small></label><button className={s.primary} disabled={Boolean(busy)} onClick={saveSettings}>Save POS settings</button></div>}
       {dialog === 'hold' && <div className={s.stack}><p>{count} items · {branchName} · {cash(values.total)}</p><label className={s.field}>Held order label<input autoFocus value={holdLabel} onChange={e => setHoldLabel(e.target.value)} maxLength={80} placeholder="Customer name or order label"/></label><p className={s.paymentInfo}>Holds are saved to your account for this business. They do not reserve stock or record any payment. Prices, stock, points and payment are checked again when resumed.</p><button className={s.primary} disabled={Boolean(busy)} onClick={saveHold}><Clock size={17}/>Save held order</button></div>}
       {dialog === 'holds' && <div className={s.stack}><p className={s.muted}>Your saved holds for {data.businessName}. Other cashiers’ holds are not exposed.</p>{!data.holds.length && <div className={s.empty}><Clock size={30}/><h3>No held orders</h3><p>Add products, then choose Hold Order.</p></div>}{data.holds.map(h => <div className={s.heldCard} key={h.id}><div><strong>{h.label}</strong><p>{data.branches.find(b => b.id === h.draft.branchId)?.name || 'Unavailable branch'} · {h.draft.lines.reduce((sum,l) => sum+l.quantity,0)} items</p><small>Saved {new Date(h.updated_at).toLocaleString()}</small></div><div className={s.row}>{holdDelete === h.id ? <><span>Delete this hold?</span><button className={s.dangerButton} disabled={Boolean(busy)} onClick={() => removeHold(h)}>Delete</button><button className={s.button} onClick={() => setHoldDelete(null)}>Keep</button></> : <><button className={s.primary} disabled={Boolean(busy)} onClick={() => resume(h)}>Resume</button><button className={s.iconButton} aria-label={`Delete held order ${h.label}`} disabled={Boolean(busy)} onClick={() => setHoldDelete(h.id)}><Trash2 size={17}/></button></>}</div></div>)}</div>}
-      {dialog === 'receipt' && receipt && <div className={s.stack}><p className={`${s.notice} ${s.success}`}><Check size={18}/>{receipt.remaining > 0 ? `Sale saved · ${cash(receipt.remaining)} balance due` : 'Sale saved and payment recorded.'}</p><ReceiptContent receipt={receipt} context={data.receiptContext}/><OrderPrintMenu orderId={receipt.orderId}/><div className={s.modalActions}><Link className={s.button} href={`/dashboard/orders/${receipt.orderId}`}>View Order</Link><Link className={s.button} href={`/dashboard/pos/receipt/${receipt.orderId}`} target="_blank" rel="noopener noreferrer"><Printer size={17}/>Print Receipt</Link><button className={s.primary} onClick={() => { setDialog(null); searchRef.current?.focus(); }}><Plus size={17}/>Next Sale</button></div></div>}
+      {dialog === 'receipt' && receipt && <SaleCompleted key={receipt.orderId} receipt={receipt} meta={saleMeta} storeAddress={data.receiptContext?.store.address} formatMoney={cash} onNextSale={() => { setDialog(null); searchRef.current?.focus(); }}/>}
       </fieldset>
     </Modal>}
   </main>;

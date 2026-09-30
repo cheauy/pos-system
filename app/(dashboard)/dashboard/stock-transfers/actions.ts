@@ -450,49 +450,36 @@ export async function updateTransferDraft(formData: FormData) {
   revalidatePath("/dashboard/stock-transfers");
 }
 
-export async function deleteDraftTransfer(formData: FormData) {
+export async function cancelDraftTransfer(formData: FormData) {
   const business = await requirePermission("transfers.manage");
   const transferId = getText(formData, "transferId");
-
-  if (!transferId) {
-    throw new Error("Transfer ID is required.");
-  }
+  const reason = getText(formData, "reason");
+  if (!transferId) throw new Error("Transfer ID is required.");
+  if (!reason || reason.length > 500) throw new Error("Enter a cancellation reason of 1–500 characters.");
 
   const supabase = await createClient();
+  const { data: transfer, error } = await supabase.from("stock_transfers")
+    .select("id,transfer_number,note,source_location_id,destination_location_id,updated_at")
+    .eq("id", transferId).eq("business_id", business.id).eq("status", "draft").maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!transfer) throw new Error("Only draft transfers can be cancelled. Refresh to see the latest status.");
+  await assertBranchOperation(business.id, transfer.source_location_id);
+  await assertBranchOperation(business.id, transfer.destination_location_id);
 
-  const { data: transfer, error: transferError } = await supabase
-    .from("stock_transfers")
-    .select("id, transfer_number, status")
-    .eq("id", transferId)
-    .eq("business_id", business.id)
-    .eq("status", "draft")
-    .maybeSingle();
-
-  if (transferError) {
-    throw new Error(transferError.message);
-  }
-
-  if (!transfer) {
-    throw new Error("Only draft transfers can be deleted.");
-  }
-
-  const { error: deleteError } = await supabase
-    .from("stock_transfers")
-    .delete()
-    .eq("id", transferId)
-    .eq("business_id", business.id)
-    .eq("status", "draft");
-
-  if (deleteError) {
-    throw new Error(deleteError.message);
-  }
-
+  // Conditional update serializes with Send; cancellation never alters stock or removes items.
+  let query = supabase.from("stock_transfers").update({
+    status: "cancelled",
+    note: [transfer.note, `Cancellation reason: ${reason}`].filter(Boolean).join("\n\n"),
+    updated_at: new Date().toISOString(),
+  }).eq("id", transferId).eq("business_id", business.id).eq("status", "draft");
+  query = transfer.updated_at ? query.eq("updated_at", transfer.updated_at) : query.is("updated_at", null);
+  const { data: cancelled, error: cancelError } = await query.select("id").maybeSingle();
+  if (cancelError) throw new Error(cancelError.message);
+  if (!cancelled) throw new Error("This transfer changed. Refresh before trying again.");
   await createAuditLog({
-    action: "delete",
-    entityType: "inventory",
-    entityId: transferId,
-    description: `Deleted stock transfer draft ${transfer.transfer_number}`,
+    action: "update", entityType: "inventory", entityId: transferId,
+    description: `Cancelled stock transfer draft ${transfer.transfer_number}`,
+    metadata: { reason },
   });
-
   revalidatePath("/dashboard/stock-transfers");
 }

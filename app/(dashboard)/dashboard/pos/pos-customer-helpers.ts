@@ -10,6 +10,10 @@ export function paymentHiddenForWalkIn(method: PaymentMethod, isWalkIn: boolean)
   return isWalkIn && (method === 'cod' || method === 'deposit' || method === 'other');
 }
 
+export function paymentHiddenForDelivery(method: PaymentMethod, isDelivery: boolean): boolean {
+  return isDelivery && !['cod', 'deposit', 'bank_transfer', 'other'].includes(method);
+}
+
 export function customerInputIssue(value: CustomerInput, fields:CustomerFieldFlags={emailEnabled:true,birthdayEnabled:true}, allowLegacyRetry = false): string | null {
   if (!value || typeof value !== 'object' || typeof value.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.id)) return 'Invalid customer request. Reopen Add customer.';
   if (value.branchId !== undefined && (typeof value.branchId !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.branchId))) return 'Invalid customer branch.';

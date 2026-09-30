@@ -21,7 +21,7 @@ const RETURN_IMPORT_HEADERS = [
 const MAX_IMPORT_ROWS = 1000;
 const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["refund", "exchange"]);
-const ALLOWED_STATUSES = new Set(["pending", "approved", "refunded", "exchanged", "rejected"]);
+const ALLOWED_STATUSES = new Set(["pending", "approved", "refunded", "exchanged", "rejected", "cancelled"]);
 
 export async function exportReturnsCsv() {
   const business = await requirePermission("orders.view");
@@ -170,6 +170,40 @@ export async function importReturnsCsv(formData: FormData) {
   revalidatePath("/dashboard/reports");
 
   return { imported: inserts.length };
+}
+
+export async function cancelReturn(returnId: string, reason: string): Promise<{ success: boolean; message: string }> {
+  const business = await requirePermission("orders.return");
+  if (business.role !== "owner") return { success: false, message: "Only the business Owner can cancel a return." };
+  if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(returnId)) return { success: false, message: "Invalid return." };
+  const trimmed = reason.trim();
+  if (trimmed.length < 3 || trimmed.length > 500) return { success: false, message: "Enter a cancellation reason (3–500 characters)." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("tenh_cancel_return", { p_business_id: business.id, p_return_id: returnId, p_reason: trimmed });
+  if (error) {
+    return { success: false, message: error.code === "PGRST202" ? "Run the 20260930001000_cancel_return.sql migration first." : error.message };
+  }
+
+  const cashReturned = Number((data as { cashReturned?: number } | null)?.cashReturned ?? 0);
+  await createAuditLog({
+    action: "update",
+    entityType: "order",
+    entityId: returnId,
+    description: "Cancelled a return",
+    metadata: { return_id: returnId, reason: trimmed, cash_returned: cashReturned },
+  }).catch(() => console.error("Return cancelled; audit log failed."));
+
+  try {
+    for (const path of ["/dashboard", "/dashboard/returns", "/dashboard/orders", "/dashboard/products", "/dashboard/inventory", "/dashboard/register", "/dashboard/reports", "/dashboard/low-stock", "/dashboard/customers"]) revalidatePath(path);
+  } catch { console.error("Return cancelled; cache refresh failed."); }
+
+  return {
+    success: true,
+    message: cashReturned > 0
+      ? "Return cancelled. Stock and order total restored, and the refunded cash was added back to the register."
+      : "Return cancelled. Stock and order total restored.",
+  };
 }
 
 function csvEscape(value: unknown) {

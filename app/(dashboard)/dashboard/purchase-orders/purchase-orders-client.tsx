@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import OrderWorkflow from "./order-workflow";
+import NewOrderDialog from "./new-order-dialog";
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
@@ -9,6 +11,7 @@ import {
   ChevronRight,
   ClipboardList,
   Clock3,
+  Lightbulb,
   FileText,
   Filter,
   Mail,
@@ -117,11 +120,13 @@ export default function PurchaseOrdersClient({
   suppliers,
   canCreate,
   canUpdate,
+  openNew = false,
 }: {
   orders: PurchaseOrderListItem[];
   suppliers: PurchaseOrderSupplier[];
   canCreate: boolean;
   canUpdate: boolean;
+  openNew?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("all");
@@ -131,6 +136,7 @@ export default function PurchaseOrdersClient({
   const [toDate, setToDate] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [page, setPage] = useState(1);
+  const [creating, setCreating] = useState(openNew);
   const [selectedId, setSelectedId] = useState<string | null>(
     orders[0]?.id ?? null,
   );
@@ -244,6 +250,7 @@ export default function PurchaseOrdersClient({
 
   return (
     <main className="space-y-5">
+      {creating && <NewOrderDialog close={() => setCreating(false)} created={id => { setCreating(false); setSearch(""); setSupplierFilter("all"); setStatusFilter("all"); setFromDate(""); setToDate(""); setSortMode("newest"); setPage(1); setSelectedId(id); setDetailTab("overview"); }} />}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">
@@ -264,18 +271,18 @@ export default function PurchaseOrdersClient({
             Filters
           </button>
           {canCreate ? (
-            <Link
-              href="/dashboard/purchase-orders/new"
-              className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            <button
+              type="button" onClick={() => setCreating(true)}
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-teal-700 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800"
             >
               <Plus size={18} />
               New Purchase Order
-            </Link>
+            </button>
           ) : null}
         </div>
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <section aria-label="Purchase order summary" className="grid grid-cols-2 gap-y-3 rounded-xl border border-slate-200 bg-white py-4 shadow-sm sm:grid-cols-3 xl:grid-cols-6">
         <StatCard icon={<ClipboardList size={20} />} label="Total Orders" value={stats.total.toString()} tone="blue" />
         <StatCard icon={<FileText size={20} />} label="Draft" value={stats.draft.toString()} tone="slate" />
         <StatCard icon={<Send size={20} />} label="Sent" value={stats.sent.toString()} tone="blue" />
@@ -284,11 +291,11 @@ export default function PurchaseOrdersClient({
         <StatCard icon={<WalletCards size={20} />} label="Outstanding Value" value={money(stats.outstanding)} tone="amber" compact />
       </section>
 
-      <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_370px]">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
         <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           {filtersOpen && (
             <div className="border-b border-slate-200 bg-white p-3">
-              <div className="grid gap-2 lg:grid-cols-[minmax(220px,1.35fr)_minmax(150px,.7fr)_minmax(150px,.7fr)_minmax(250px,1fr)_minmax(140px,.6fr)]">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 2xl:grid-cols-[minmax(160px,1.5fr)_minmax(110px,.8fr)_minmax(110px,.8fr)_minmax(220px,1.3fr)_minmax(110px,.8fr)]">
                 <label className="relative block">
                   <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input
@@ -372,7 +379,7 @@ export default function PurchaseOrdersClient({
           )}
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-sm">
+            <table className="w-full min-w-[760px] text-xs">
               <thead className="border-b border-slate-200 bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">PO Number</th>
@@ -381,8 +388,6 @@ export default function PurchaseOrdersClient({
                   <th className="px-3 py-3">Order Date</th>
                   <th className="px-3 py-3">Expected Date</th>
                   <th className="px-3 py-3 text-center">Items</th>
-                  <th className="px-3 py-3 text-center">Ordered</th>
-                  <th className="px-3 py-3 text-center">Received</th>
                   <th className="px-3 py-3">Status</th>
                   <th className="px-3 py-3 text-right">Total</th>
                   <th className="px-4 py-3">Created By</th>
@@ -422,12 +427,6 @@ export default function PurchaseOrdersClient({
                       <td className="px-3 py-3 text-center font-medium text-slate-700">
                         {order.item_count}
                       </td>
-                      <td className="px-3 py-3 text-center text-slate-600">
-                        {order.ordered_quantity}
-                      </td>
-                      <td className="px-3 py-3 text-center text-slate-600">
-                        {order.received_quantity}
-                      </td>
                       <td className="px-3 py-3">
                         <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(order.status)}`}>
                           {statusLabel(order.status)}
@@ -447,10 +446,11 @@ export default function PurchaseOrdersClient({
           </div>
 
           {visibleOrders.length === 0 && (
-            <div className="px-6 py-16 text-center">
-              <ShoppingCart className="mx-auto text-slate-300" size={38} />
+            <div className="flex min-h-80 flex-col items-center justify-center px-6 py-12 text-center">
+              <div className="relative mb-2"><FileText className="text-slate-200" size={64} /><span className="absolute -bottom-1 -right-1 rounded-full border-4 border-white bg-teal-600 p-1 text-white"><Plus size={18} /></span></div>
               <p className="mt-3 font-semibold text-slate-700">No purchase orders found</p>
-              <p className="mt-1 text-sm text-slate-500">Try changing your filters or create a new purchase order.</p>
+              <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">{orders.length ? "No orders match these filters. Try changing your search or filters." : "You don’t have any purchase orders yet. Create a new purchase order to get started."}</p>
+              {canCreate && <button type="button" onClick={() => setCreating(true)} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800"><Plus size={17} />New Purchase Order</button>}
             </div>
           )}
 
@@ -470,7 +470,7 @@ export default function PurchaseOrdersClient({
               >
                 <ChevronLeft size={16} />
               </button>
-              <span className="grid h-9 min-w-9 place-items-center rounded-lg bg-blue-600 px-2 text-sm font-semibold text-white">
+              <span className="grid h-9 min-w-9 place-items-center rounded-lg bg-teal-700 px-2 text-sm font-semibold text-white">
                 {safePage}
               </span>
               <span className="text-xs text-slate-400">/ {totalPages}</span>
@@ -520,7 +520,12 @@ function PurchaseOrderDetails({
       <aside className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <ClipboardList className="text-slate-300" size={36} />
         <p className="mt-3 font-semibold text-slate-800">Select a purchase order</p>
-        <p className="mt-1 text-sm text-slate-500">Choose an order from the list to see its details.</p>
+        <p className="mt-2 text-sm leading-6 text-slate-500">Choose an order from the list to see its details, including items, receiving status, and notes.</p>
+        <div className="mt-5 border-t border-slate-200 pt-5">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-700"><Lightbulb size={18} className="text-teal-700" />New to purchase orders?</h3>
+          <p className="mt-2 text-xs leading-5 text-slate-500">Create a purchase order to order stock from your suppliers. Once items arrive, receive them into inventory.</p>
+          <ul className="mt-4 space-y-3 rounded-xl bg-teal-50 p-3 text-xs text-slate-600">{["Create and send POs to suppliers", "Track order status and deliveries", "Receive items into inventory", "Keep stock levels up to date"].map(text => <li key={text} className="flex items-center gap-2"><CheckCircle2 size={15} className="shrink-0 text-teal-700" />{text}</li>)}</ul>
+        </div>
       </aside>
     );
   }
@@ -530,7 +535,7 @@ function PurchaseOrderDetails({
     : 0;
 
   return (
-    <aside className="h-fit overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm 2xl:sticky 2xl:top-4">
+    <aside className="h-fit overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:sticky xl:top-4">
       <div className="p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -589,7 +594,7 @@ function PurchaseOrderDetails({
                 {order.received_quantity} of {order.ordered_quantity} units received
               </p>
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${progress}%` }} />
+                <div className="h-full rounded-full bg-teal-700 transition-all" style={{ width: `${progress}%` }} />
               </div>
             </div>
 
@@ -639,29 +644,8 @@ function PurchaseOrderDetails({
           </div>
         )}
 
-        <div className="mt-5 grid grid-cols-2 gap-2">
-          <Link
-            href={`/dashboard/purchase-orders/${order.id}`}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            <PackageCheck size={16} />
-            View PO
-          </Link>
-          {canUpdate && !['received', 'cancelled'].includes(order.status) ? (
-            <Link
-              href={`/dashboard/purchase-orders/${order.id}`}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              <ShoppingCart size={16} />
-              Receive Items
-            </Link>
-          ) : ['received', 'cancelled'].includes(order.status) ? (
-            <div className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-400">
-              <CheckCircle2 size={16} />
-              Closed
-            </div>
-          ) : <div />}
-        </div>
+        <OrderWorkflow key={order.id} order={order} canUpdate={canUpdate} />
+        <Link href={`/dashboard/purchase-orders/${order.id}`} className="mt-3 block text-center text-xs font-semibold text-slate-500 hover:text-teal-700">{order.status === "draft" ? "View Draft Order" : "View full order"}</Link>
       </div>
     </aside>
   );
@@ -688,14 +672,12 @@ function StatCard({
   }[tone];
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="min-w-0 border-r border-slate-100 px-4 last:border-r-0">
       <div className="flex items-center gap-3">
-        <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${toneClass}`}>
-          {icon}
-        </div>
+        {label === "Total Orders" || compact ? <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${toneClass}`}>{icon}</div> : <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${tone === "slate" ? "bg-slate-400" : tone === "amber" ? "bg-amber-400" : tone === "emerald" ? "bg-emerald-500" : "bg-blue-400"}`} />}
         <div className="min-w-0">
           <p className="truncate text-xs font-medium text-slate-500">{label}</p>
-          <p className={`${compact ? "text-lg" : "text-2xl"} mt-0.5 truncate font-bold text-slate-950`}>
+          <p className={`${compact ? "text-lg" : "text-lg"} mt-0.5 truncate font-bold text-slate-950`}>
             {value}
           </p>
         </div>

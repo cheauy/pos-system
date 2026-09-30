@@ -116,6 +116,7 @@ export async function createSupplier(
 
 export async function updateSupplier(
   formData: FormData,
+  redirectAfterSave = true,
 ) {
   const business = await requirePermission(
     "suppliers.manage",
@@ -172,7 +173,9 @@ export async function updateSupplier(
     })
     .eq("id", supplierId)
     .eq("business_id", business.id)
-    .eq("owner_id", user.id);
+    .eq("owner_id", user.id)
+    .select("id")
+    .single();
 
   if (error) {
     throw new Error(error.message);
@@ -183,7 +186,7 @@ export async function updateSupplier(
     `/dashboard/suppliers/${supplierId}/edit`,
   );
 
-  redirect("/dashboard/suppliers");
+  if (redirectAfterSave) redirect("/dashboard/suppliers");
 }
 
 export async function toggleSupplierStatus(
@@ -232,15 +235,13 @@ export async function deleteSupplier(
     "supplierId",
   );
 
-  const { supabase, user } =
+  const { supabase } =
     await getAuthenticatedUser();
 
-  const { error } = await supabase
-    .from("suppliers")
-    .delete()
-    .eq("id", supplierId)
-    .eq("business_id", business.id)
-    .eq("owner_id", user.id);
+  const { error } = await supabase.rpc("tenh_delete_unused_supplier", {
+    p_business_id: business.id,
+    p_supplier_id: supplierId,
+  });
 
   if (error) {
     throw new Error(error.message);

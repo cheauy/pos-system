@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Gift, Globe, Monitor, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import ProductGalleryInput from "@/components/product-gallery-input";
 import ProductVariantPicker from '@/components/product-variant-picker';
 
 import {
@@ -31,11 +32,11 @@ export type ComponentProduct = {
   options: { id: string; group_id: string; name: string; is_default: boolean; price_adjustment: number }[];
 };
 
-type SelectedItem = { productId: string; quantity: number; optionIds: string[] };
-export type BundleEditValues = { id: string; name: string; sku: string | null; price: number; categoryId: string | null; description: string | null; imageUrl: string | null; updatedAt: string | null; items: SelectedItem[] };
+type SelectedItem = { productId: string; quantity: number; optionIds: string[]; name?: string; sku?: string | null; optionsLabel?: string };
+export type BundleEditValues = { id: string; name: string; sku: string | null; price: number; categoryId: string | null; description: string | null; imageUrls?: string[]; imageUrl: string | null; updatedAt: string | null; items: SelectedItem[] };
 
 const inputClass =
-  "w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100";
+  "w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100";
 
 export default function BundleProductForm({
   categories,
@@ -57,13 +58,11 @@ export default function BundleProductForm({
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, setPending] = useState(false);
   const submitting = useRef(false);
-  const [imagePreview, setImagePreview] = useState('');
-  const imageInput = useRef<HTMLInputElement>(null);
+
   const [items, setItems] = useState<SelectedItem[]>(initial?.items ?? []);
-  const [removeImage, setRemoveImage] = useState(false);
+
   const [selectedProductId, setSelectedProductId] = useState("");
 
-  useEffect(() => () => { if (imagePreview) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
 
   const productMap = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
@@ -100,27 +99,17 @@ export default function BundleProductForm({
         else toast.error(result.message);
       } catch { toast.error('Could not confirm the result. Retry without changing the details.'); }
       finally { submitting.current = false; setPending(false); onPendingChange?.(false); }
-    }} className="mt-6">
-      <fieldset disabled={pending} className="space-y-5">
-      <input type="hidden" name="items" value={JSON.stringify(items)} />
+    }} className="mt-3">
+      <fieldset disabled={pending} className="space-y-3">
+      <input type="hidden" name="items" value={JSON.stringify(items.map(({ productId, quantity, optionIds }) => ({ productId, quantity, optionIds })))} />
       <input type="hidden" name="branchId" value={branchId} />
       <input type="hidden" name="requestId" value={requestId} />
       <input type="hidden" name="bundleId" value={initial?.id ?? ''} />
       <input type="hidden" name="expected" value={initial?.updatedAt ?? ''} />
-      <input type="hidden" name="removeImage" value={String(removeImage)} />
 
-      <Field label="Bundle image" htmlFor="bundle-image">
-        <div className="flex items-center gap-4 rounded-xl border border-dashed border-slate-300 p-4">
-          {(imagePreview || initial?.imageUrl && !removeImage) && <img src={imagePreview || initial?.imageUrl || ''} alt="Bundle preview" className="h-20 w-20 rounded-lg object-cover" /> /* eslint-disable-line @next/next/no-img-element */}
-          <div className="min-w-0 flex-1"><input ref={imageInput} id="bundle-image" name="image" type="file" accept="image/jpeg,image/png,image/webp" className="w-full text-sm" onChange={event => {
-            const file = event.target.files?.[0];
-            if (file && (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024)) { toast.error('Choose a JPG, PNG or WebP image up to 5 MB.'); event.target.value = ''; setImagePreview(''); return; }
-            setImagePreview(file ? URL.createObjectURL(file) : ''); if (file) setRemoveImage(false);
-          }} /><p className="mt-2 text-xs text-slate-500">JPG, PNG or WebP · Up to 5 MB · Used on POS and online.</p>{(imagePreview || initial?.imageUrl && !removeImage) && <button type="button" className="mt-2 text-xs font-semibold text-red-600" onClick={() => { if (imageInput.current) imageInput.current.value = ''; setImagePreview(''); setRemoveImage(true); }}>Remove image</button>}</div>
-        </div>
-      </Field>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Bundle name" htmlFor="bundle-name">
           <input id="bundle-name" name="name" defaultValue={initial?.name} required minLength={2} maxLength={160} placeholder="Summer Outfit" className={inputClass} />
         </Field>
@@ -129,7 +118,7 @@ export default function BundleProductForm({
         </Field>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Category" htmlFor="bundle-category">
           <select id="bundle-category" name="categoryId" defaultValue={initial?.categoryId ?? ''} className={inputClass}>
             <option value="">No category</option>
@@ -160,7 +149,10 @@ export default function BundleProductForm({
             <p className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">Add at least two products.</p>
           ) : items.map((item) => {
             const product = productMap.get(item.productId);
-            if (!product) return null;
+            if (!product) return <div key={item.productId} className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <div className="min-w-0 flex-1"><p className="font-medium text-slate-900">{item.name || 'Unavailable product'}</p><p className="text-xs text-slate-600">{item.sku || item.productId}{item.optionsLabel ? ` · ${item.optionsLabel}` : ''}</p><p className="mt-1 text-xs text-amber-800">This saved item is not available in the current branch catalog. It remains in this bundle.</p></div>
+              <span className="shrink-0 text-sm font-semibold">× {item.quantity}</span><button type="button" aria-label={`Remove ${item.name || 'unavailable product'}`} onClick={() => setItems(current => current.filter(row => row.productId !== item.productId))} className="rounded-lg p-2 text-red-600 hover:bg-red-50"><Trash2 size={17} /></button>
+            </div>;
             return (
               <div key={item.productId} className="rounded-xl border border-slate-200 bg-white p-3">
               <div className="flex items-center gap-3">
@@ -195,6 +187,8 @@ export default function BundleProductForm({
           })}
         </div>
       </div>
+
+      <ProductGalleryInput title="Bundle images" description="First photo is the cover. Choose up to 8 photos." initialUrls={initial?.imageUrls?.length ? initial.imageUrls : initial?.imageUrl ? [initial.imageUrl] : []} />
 
       <div className="grid gap-3 rounded-xl bg-blue-50 p-4 text-sm sm:grid-cols-2">
         <p>Normal item total: <strong>${normalTotal.toFixed(2)}</strong></p>

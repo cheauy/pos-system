@@ -38,7 +38,8 @@ type ProfileRow = {
   full_name: string | null;
 };
 
-export default async function PurchaseOrdersPage() {
+export default async function PurchaseOrdersPage({searchParams}:{searchParams:Promise<{new?:string}>}) {
+  const openNew = (await searchParams).new === "1";
   const business = await requirePermission("purchases.view");
   const [canCreate, canUpdate] = await Promise.all([
     businessHasPermission(business, "purchases.create"),
@@ -147,6 +148,7 @@ export default async function PurchaseOrdersPage() {
       suppliers={suppliers}
       canCreate={canCreate}
       canUpdate={canUpdate}
+      openNew={openNew && canCreate}
     />
   );
 }

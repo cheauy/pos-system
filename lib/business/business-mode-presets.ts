@@ -125,3 +125,27 @@ export function getBusinessModeDefaults(
     allowDineIn: foodBusiness,
   };
 }
+
+// Shared by registration and business switching. Keep legacy presets above so
+// existing businesses still resolve correctly; hide retired choices here only.
+export type BusinessModeAvailability = "available" | "coming-soon" | "hidden";
+const businessModeAvailability: Record<BusinessType, BusinessModeAvailability> = {
+  general: "available", shoes: "available", fashion: "available",
+  grocery: "available", accessories: "available",
+  milk_tea: "coming-soon", restaurant: "coming-soon", cafe: "coming-soon",
+  beauty: "coming-soon", electronics: "coming-soon", other: "coming-soon",
+};
+const businessModeDisplayOrder = [
+  "general", "milk_tea", "shoes", "restaurant", "cafe", "fashion",
+  "grocery", "accessories", "beauty", "electronics", "other",
+];
+export function getBusinessModeAvailability(value: string): BusinessModeAvailability {
+  return businessModeAvailability[value as BusinessType] ?? "hidden";
+}
+export function isBusinessModeSelectable(value: string): boolean {
+  return getBusinessModeAvailability(value) === "available";
+}
+export const visibleBusinessModePresets = businessModePresets
+  .filter((preset) => getBusinessModeAvailability(preset.value) !== "hidden")
+  .slice()
+  .sort((a, b) => businessModeDisplayOrder.indexOf(a.value) - businessModeDisplayOrder.indexOf(b.value));

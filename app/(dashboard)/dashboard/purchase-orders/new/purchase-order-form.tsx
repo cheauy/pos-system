@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useFormStatus } from "react-dom";
+import { toast } from "sonner";
 import {
   Barcode,
   Building2,
@@ -8,6 +11,7 @@ import {
   CircleDollarSign,
   FileText,
   Info,
+  Loader2,
   Mail,
   MapPin,
   PackagePlus,
@@ -30,6 +34,7 @@ import {
 } from "react";
 
 import { createPurchaseOrder } from "../actions";
+import ProductPicker from "@/components/product-picker";
 
 type Supplier = {
   id: string;
@@ -50,6 +55,8 @@ type Product = {
   cost_price: number | string | null;
   size: string | null;
   color: string | null;
+  image_url?: string | null;
+  variant_image_url?: string | null;
 };
 
 type OrderItem = {
@@ -69,11 +76,18 @@ type ImportResult = {
 export default function PurchaseOrderForm({
   suppliers,
   products,
+  onCreated,
+  onBusyChange,
 }: {
   suppliers: Supplier[];
   products: Product[];
+  onCreated?: (id: string) => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
-  const [productSearch, setProductSearch] = useState<Record<number, string>>({});
+  const router = useRouter();
+  const [saveError, setSaveError] = useState("");
+  const saveLock = useRef(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [supplierId, setSupplierId] = useState("");
   const [items, setItems] = useState<OrderItem[]>([blankItem(1)]);
   const [nextRowId, setNextRowId] = useState(2);
@@ -81,6 +95,7 @@ export default function PurchaseOrderForm({
   const [barcodeValue, setBarcodeValue] = useState("");
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const pickerProducts = useMemo(() => products.map(product => ({ id: product.id, name: product.name, sku: product.sku, variant: [product.size, product.color].filter(Boolean).join(" / "), image: product.variant_image_url || product.image_url || null })), [products]);
 
   const selectedSupplier = useMemo(
     () => suppliers.find((supplier) => supplier.id === supplierId) ?? null,
@@ -103,36 +118,13 @@ export default function PurchaseOrderForm({
 
   const today = new Date().toISOString().slice(0, 10);
 
-  function updateProduct(rowId: number, productId: string) {
-    if (!productId) {
-      setItems((current) =>
-        current.map((item) =>
-          item.rowId === rowId ? blankItem(rowId) : item,
-        ),
-      );
-      return;
-    }
-
-    const product = products.find((candidate) => candidate.id === productId);
-
-    if (!product) {
-      return;
-    }
-
-    const duplicate = items.some(
-      (item) => item.rowId !== rowId && item.productId === productId,
-    );
-
-    if (duplicate) {
-      window.alert("That product is already on this purchase order.");
-      return;
-    }
-
-    setItems((current) =>
-      current.map((item) =>
-        item.rowId === rowId ? itemFromProduct(rowId, product) : item,
-      ),
-    );
+  function chooseProducts(ids: string[]) {
+    const selected = new Set(ids);
+    const existing = new Map(items.filter(item => item.productId).map(item => [item.productId, item]));
+    let rowId = nextRowId;
+    const next = products.filter(product => selected.has(product.id)).map(product => existing.get(product.id) ?? itemFromProduct(rowId++, product));
+    setItems(next.length ? next : [blankItem(rowId++)]);
+    setNextRowId(rowId);
   }
 
   function updateQuantity(rowId: number, quantity: number) {
@@ -159,15 +151,6 @@ export default function PurchaseOrderForm({
           : item,
       ),
     );
-  }
-
-  function addBlankRow() {
-    if (items.some((item) => !item.productId)) {
-      return;
-    }
-
-    setItems((current) => [...current, blankItem(nextRowId)]);
-    setNextRowId((value) => value + 1);
   }
 
   function removeRow(rowId: number) {
@@ -322,7 +305,17 @@ export default function PurchaseOrderForm({
   }
 
   return (
-    <form action={createPurchaseOrder} className="space-y-5">
+    <form action={async data => {
+      if (saveLock.current) return;
+      saveLock.current = true; onBusyChange?.(true); setSaveError("");
+      try {
+        const id = await createPurchaseOrder(data, false);
+        toast.success(data.get("submissionStatus") === "sent" ? "Purchase order created and marked as sent." : "Purchase order saved as Draft.");
+        if (onCreated) onCreated(id); else router.push("/dashboard/purchase-orders");
+      } catch (error) { setSaveError(error instanceof Error ? error.message : "Unable to save purchase order. Please try again."); }
+      finally { saveLock.current = false; onBusyChange?.(false); }
+    }} className="space-y-4">
+      {saveError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{saveError}</p>}
       <input
         type="hidden"
         name="items"
@@ -337,7 +330,7 @@ export default function PurchaseOrderForm({
 
       <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
+          <h1 className="text-xl font-bold tracking-tight text-slate-950">
             New Purchase Order
           </h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -346,37 +339,16 @@ export default function PurchaseOrderForm({
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="submit"
-            name="submissionStatus"
-            value="draft"
-            disabled={!supplierId || !validItems.length}
-            className={secondaryButton}
-          >
-            <Save size={17} />
-            Save as Draft
-          </button>
-          <button
-            type="submit"
-            name="submissionStatus"
-            value="sent"
-            disabled={!supplierId || !validItems.length}
-            className={primaryButton}
-          >
-            <Send size={17} />
-            Create Purchase Order
-          </button>
-        </div>
+        <CreateButtons disabled={!supplierId || !validItems.length} />
       </header>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div>
         <SectionCard
           icon={<ShoppingCart size={19} />}
           title="Order Information"
           subtitle="Basic information about this purchase order."
         >
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Supplier" required>
               <div className="flex gap-2">
                 <div className="relative min-w-0 flex-1">
@@ -449,39 +421,10 @@ export default function PurchaseOrderForm({
               />
             </Field>
           </div>
+          {selectedSupplier && <details className="mt-3 rounded-lg bg-slate-50 p-3"><summary className="cursor-pointer text-xs font-semibold text-slate-600">{selectedSupplier.name} · Contact details</summary><div className="mt-3"><SupplierDetails supplier={selectedSupplier} /></div></details>}
         </SectionCard>
 
-        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-start gap-3 border-b border-slate-200 px-4 py-4">
-            <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
-              <Building2 size={19} />
-            </div>
-            <div>
-              <h2 className="font-semibold text-slate-950">Supplier Details</h2>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Supplier information updates automatically after selection.
-              </p>
-            </div>
-          </div>
 
-          <div className="p-4">
-            {selectedSupplier ? (
-              <SupplierDetails supplier={selectedSupplier} />
-            ) : (
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-900">
-                <div className="flex gap-3">
-                  <Info size={19} className="mt-0.5 shrink-0 text-blue-600" />
-                  <div>
-                    <p className="font-semibold">No supplier selected</p>
-                    <p className="mt-1 text-sm text-blue-700">
-                      Choose a supplier from the list or add a new supplier.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
       </div>
 
       <SectionCard
@@ -506,9 +449,9 @@ export default function PurchaseOrderForm({
               <Upload size={16} />
               Import Items
             </button>
-            <button type="button" onClick={addBlankRow} className={primaryButton}>
+            <button type="button" aria-expanded={pickerOpen} onClick={() => setPickerOpen(value => !value)} className={primaryButton}>
               <Plus size={16} />
-              Add Item
+              Choose Products
             </button>
             <input
               ref={importInputRef}
@@ -558,16 +501,21 @@ export default function PurchaseOrderForm({
           </div>
         ) : null}
 
+        {pickerOpen && <div className="mb-4">
+          <p className="mb-2 text-xs text-slate-500">Select a product for all variants, or expand it to choose sizes and colours.</p>
+          <ProductPicker products={pickerProducts}
+            value={validItems.map(item => item.productId)} onChange={chooseProducts} />
+        </div>}
         <div className="overflow-x-auto">
-          <table className="min-w-[980px] w-full border-collapse text-sm">
+          <table className="min-w-[660px] w-full border-collapse text-sm">
             <thead>
               <tr className="border-y border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <th className="w-12 px-3 py-3 text-center">#</th>
                 <th className="px-3 py-3">Product</th>
-                <th className="w-36 px-3 py-3">SKU</th>
-                <th className="w-40 px-3 py-3">Cost Price</th>
-                <th className="w-32 px-3 py-3">Quantity</th>
-                <th className="w-36 px-3 py-3 text-right">Subtotal</th>
+                <th className="w-28 px-3 py-3">SKU</th>
+                <th className="w-28 px-3 py-3">Cost Price</th>
+                <th className="w-24 px-3 py-3">Quantity</th>
+                <th className="w-28 px-3 py-3 text-right">Subtotal</th>
                 <th className="w-20 px-3 py-3 text-center">Actions</th>
               </tr>
             </thead>
@@ -578,22 +526,7 @@ export default function PurchaseOrderForm({
                     {index + 1}
                   </td>
                   <td className="px-3 py-3">
-                    <input type="search" aria-label={`Search product for item ${index + 1}`} placeholder="Search SKU or product name" value={productSearch[item.rowId] ?? ""} onChange={event => setProductSearch(current => ({...current, [item.rowId]: event.target.value}))} className={`${inputClass} mb-2`} />
-                    <select
-                      aria-label={`Product for item ${index + 1}`}
-                      value={item.productId}
-                      onChange={(event) =>
-                        updateProduct(item.rowId, event.target.value)
-                      }
-                      className={inputClass}
-                    >
-                      <option value="">Select product / variant</option>
-                      {products.filter(product => product.id === item.productId || productLabel(product).toLowerCase().includes((productSearch[item.rowId] ?? "").trim().toLowerCase())).map((product) => (
-                        <option key={product.id} value={product.id}>
-                          {productLabel(product)}
-                        </option>
-                      ))}
-                    </select>
+                    <p className="font-semibold text-slate-900">{item.name || "Select products above"}</p>
                   </td>
                   <td className="px-3 py-3">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-600">
@@ -653,17 +586,10 @@ export default function PurchaseOrderForm({
           </table>
         </div>
 
-        <button
-          type="button"
-          onClick={addBlankRow}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-        >
-          <PackagePlus size={18} />
-          Add another item
-        </button>
+
       </SectionCard>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
         <SectionCard
           icon={<FileText size={19} />}
           title="Additional Information"
@@ -672,7 +598,7 @@ export default function PurchaseOrderForm({
           <Field label="Notes">
             <textarea
               name="notes"
-              rows={4}
+              rows={2}
               maxLength={1000}
               placeholder="Add internal notes, delivery instructions, or supplier details..."
               className={`${inputClass} resize-none`}
@@ -708,6 +634,14 @@ export default function PurchaseOrderForm({
       </div>
     </form>
   );
+}
+
+function CreateButtons({disabled}:{disabled:boolean}) {
+  const {pending,data}=useFormStatus();
+  return <div className="flex shrink-0 flex-wrap gap-2">
+    <button type="submit" name="submissionStatus" value="draft" disabled={disabled||pending} aria-busy={pending&&data?.get("submissionStatus")==="draft"} className={secondaryButton}>{pending&&data?.get("submissionStatus")==="draft"?<Loader2 size={16} className="animate-spin"/>:<Save size={16}/>} {pending&&data?.get("submissionStatus")==="draft"?"Saving…":"Save as Draft"}</button>
+    <button type="submit" name="submissionStatus" value="sent" disabled={disabled||pending} aria-busy={pending&&data?.get("submissionStatus")==="sent"} className={primaryButton}>{pending&&data?.get("submissionStatus")==="sent"?<Loader2 size={16} className="animate-spin"/>:<Send size={16}/>} {pending&&data?.get("submissionStatus")==="sent"?"Sending…":"Create & Send"}</button>
+  </div>;
 }
 
 function SupplierDetails({ supplier }: { supplier: Supplier }) {
@@ -785,7 +719,7 @@ function SectionCard({
 }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-blue-50 p-2 text-blue-600">{icon}</div>
           <div>
@@ -913,7 +847,7 @@ const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 
 const primaryButton =
-  "inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex items-center justify-center gap-2 rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-40";
 
 const secondaryButton =
   "inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40";

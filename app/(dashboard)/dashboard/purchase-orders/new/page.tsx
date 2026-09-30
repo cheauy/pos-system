@@ -24,6 +24,8 @@ type ProductRow = {
   cost_price: number | string | null;
   size: string | null;
   color: string | null;
+  image_url: string | null;
+  variant_image_url: string | null;
 };
 
 export default async function NewPurchaseOrderPage() {
@@ -41,7 +43,7 @@ export default async function NewPurchaseOrderPage() {
       .order("name"),
     readAllRows<ProductRow>((from, to) => supabase
       .from("branch_products")
-      .select("id,name,sku,barcode,cost_price,size,color")
+        .select("id,name,sku,barcode,cost_price,size,color,image_url,variant_image_url")
       .eq("business_id", business.id)
       .eq("is_active", true)
       .order("name").order("id").range(from, to)),

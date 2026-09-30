@@ -18,7 +18,7 @@ export function CurrencyAmountInput({ value, onChange, quote, label, suffix, onE
     <div className={s.amountWithSuffix}>
       <input aria-label={label} aria-invalid={Boolean(error)} inputMode="decimal" type="text" value={raw} disabled={disabled}
         placeholder={placeholder === undefined ? undefined : String(displayAmount(placeholder,quote))}
-        onChange={e => { const next=e.target.value;setRaw(next);const result=parseMoneyEntry(next,quote);setError(result.error);onError?.(result.error);if(!result.error)onChange(result.value); }}/>
+        onChange={e => { const [whole,...rest]=e.target.value.replace(/[^\d.]/g,'').split('.');const next=rest.length?`${whole}.${rest.join('').slice(0,2)}`:whole;setRaw(next);const result=parseMoneyEntry(next,quote);setError(result.error);onError?.(result.error);if(!result.error)onChange(result.value); }}/>
       {suffix || <span className={s.moneySuffix}>{currencySymbol(quote.displayCurrency)}</span>}
     </div>
     {error ? <small role="alert" className={s.orangeText}>{error}</small> : quote.displayCurrency !== quote.baseCurrency && raw !== '' ? <small>Recorded as {formatCurrency(Number(value || 0),quote.baseCurrency)}</small> : null}

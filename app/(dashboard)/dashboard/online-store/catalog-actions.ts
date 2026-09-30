@@ -11,7 +11,7 @@ export async function saveOnlineCatalogProduct(id:string,name:string,priceText:s
  const {data,error}=await supabaseAdmin.from('products').update({name:name.trim(),selling_price:Number(priceText),updated_at:new Date().toISOString()}).eq('business_id',business.id).eq('id',id).eq('name',expected.name).eq('selling_price',expected.price).select('id').maybeSingle();
  if(error || !data)return {success:false,message:'This online product changed or is unavailable. Refresh before saving again.'};
  try {await createAuditLog({action:'update',entityType:'storefront',entityId:id,description:'Updated shared online product',metadata:{name:name.trim(),selling_price:Number(priceText)}});}catch{ /* The catalog save has already committed. */ }
- revalidatePath('/dashboard/online-store');revalidatePath(`/storefront/${business.slug}`);
+ revalidatePath('/dashboard/settings/online-store');revalidatePath(`/storefront/${business.slug}`);
  return {success:true,message:'Online product saved.'};
 }
 
@@ -34,7 +34,7 @@ export async function setCatalogVisibility(kind: "product" | "category", id: str
     description: `${visible ? "Published" : "Hidden"} online ${kind}`,
     metadata: { is_online: visible },
   });
-  revalidatePath("/dashboard/online-store");
+  revalidatePath("/dashboard/settings/online-store");
   revalidatePath("/dashboard/products");
   revalidatePath("/dashboard/categories");
   revalidatePath(`/storefront/${business.slug}`);
@@ -62,7 +62,7 @@ export async function updateCatalogProducts(ids: string[], field: "visibility" |
     if (error) return { success: false, message: "Unable to update pre-order products." };
   }
   await createAuditLog({ action: "update", entityType: "storefront", entityId: business.id, description: "Updated storefront products", metadata: { product_ids: uniqueIds, field, enabled } });
-  revalidatePath("/dashboard/online-store");
+  revalidatePath("/dashboard/settings/online-store");
   revalidatePath("/dashboard/products");
   revalidatePath(`/storefront/${business.slug}`);
   return { success: true, message: "Storefront products updated." };

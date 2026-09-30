@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getBranchContext } from "@/lib/branches/context";
 import { authorizedOrderBranch } from "@/lib/branches/order-access";
 import { validateShippingLayout, type ShippingLayout } from "./shipping-layout";
+import { validateShippingSettings } from './shipping-templates';
 const bucket = "tenh-printer-designs";
 async function branchPath(businessId:string,file:string,orderId?:string) {
  const context=await getBranchContext();
@@ -38,22 +39,13 @@ export async function persistShippingDesign(businessId: string, layout: Shipping
   if(error) throw new Error("Could not save the shipping design. Please retry.");
 }
 
-const shippingFlags = ['store_name','store_address','store_phone','phone','order_number','cod','item_count','barcode'] as const;
-function validateSettings(value: unknown): Record<string,string|boolean> {
- if(!value || typeof value!=='object') throw new Error('Invalid shipping settings.');
- const settings=value as Record<string,unknown>;
- if(!['80x50','100x100','100x150'].includes(String(settings.shipping_label_size))) throw new Error('Invalid shipping label size.');
- const result:Record<string,string|boolean>={shipping_label_size:String(settings.shipping_label_size)};
- for(const flag of shippingFlags){const key=`shipping_show_${flag}`;if(typeof settings[key]!=='boolean') throw new Error('Invalid shipping visibility setting.');result[key]=settings[key] as boolean;}
- return result;
-}
 export async function loadShippingSettings(businessId:string,orderId?:string) {
  const {data,error}=await downloadSettings(businessId,'shipping-settings.json',orderId);
  if(error){if(/not found|does not exist/i.test(error.message))return null;throw new Error('Unable to load shipping settings.');}
- return validateSettings(JSON.parse(await data.text()));
+ return validateShippingSettings(JSON.parse(await data.text()));
 }
 export async function persistShippingSettings(businessId:string,settings:Record<string,unknown>) {
- const values=validateSettings(settings);
+ const values=validateShippingSettings(settings);
  const existing=await supabaseAdmin.storage.getBucket(bucket);
  if(existing.error){
   if(!/not found|does not exist/i.test(existing.error.message))throw new Error('Unable to access printer settings storage.');

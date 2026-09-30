@@ -22,6 +22,7 @@ import { getCurrentBusiness } from "@/lib/business/get-current-business";
 import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
 import DashboardPeriodFilter from "./dashboard-period-filter";
 import { createClient } from "@/lib/supabase/server";
+import { getBranchCurrency } from "@/lib/settings/branch-currency";
 
 type DashboardRange = "today" | "yesterday" | "7d" | "30d" | "365d" | "custom";
 
@@ -128,18 +129,14 @@ export default async function DashboardPage({
   const previousPeriod = previousComparablePeriod(period);
 
   const [
-    { data: storefront },
+    branchCurrency,
     businessMode,
     { data: periodOrders, error: periodError },
     { data: previousOrders, error: previousError },
     { data: recentOrders, error: recentError },
     { data: lines, error: linesError },
   ] = await Promise.all([
-    supabase
-      .from("business_storefronts")
-      .select("currency")
-      .eq("business_id", business.id)
-      .maybeSingle(),
+    getBranchCurrency(business.id, branchId || undefined),
     getCurrentBusinessMode({
       businessId: business.id,
       productMode: business.productMode,
@@ -210,7 +207,7 @@ export default async function DashboardPage({
   const recent = (recentError ? [] : recentOrders ?? []) as DashboardOrder[];
   const soldLines = (linesError ? [] : lines ?? []) as unknown as Line[];
 
-  const currency = storefront?.currency ?? "USD";
+  const currency = branchCurrency.currency;
 
   const revenue = completedOrders.reduce(
     (sum, order) => sum + Number(order.total || 0),

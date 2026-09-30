@@ -48,12 +48,6 @@ export async function updateProfile(
   const fullName = String(
     formData.get("full_name") ?? "",
   ).trim();
-  const requestedBusinessName = formData.get("business_name");
-  const businessName =
-    typeof requestedBusinessName === "string"
-      ? requestedBusinessName.trim()
-      : null;
-
   if (!fullName) {
     return {
       success: false,
@@ -75,13 +69,6 @@ export async function updateProfile(
     };
   }
 
-  if (businessName !== null && (businessName.length < 2 || businessName.length > 100)) {
-    return {
-      success: false,
-      message: "Business name must be between 2 and 100 characters.",
-    };
-  }
-
   const supabase = await createClient();
 
   const {
@@ -94,29 +81,6 @@ export async function updateProfile(
       success: false,
       message: "You must be logged in.",
     };
-  }
-
-  const business = await getCurrentBusiness();
-
-  if (businessName !== null && businessName !== business.name) {
-    if (business.role !== "owner") {
-      return {
-        success: false,
-        message: "Only the business Owner can change the business name.",
-      };
-    }
-
-    const { error: businessUpdateError } = await supabaseAdmin
-      .from("businesses")
-      .update({ name: businessName })
-      .eq("id", business.id);
-
-    if (businessUpdateError) {
-      return {
-        success: false,
-        message: businessUpdateError.message,
-      };
-    }
   }
 
   const { error: updateError } = await supabase

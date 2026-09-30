@@ -2,7 +2,7 @@
 import { useRef, useState, type RefObject } from "react";
 import { Printer } from "lucide-react";
 import { preparePrint } from '@/lib/printing/prepare-print';
-export default function PrintButton({ label = "Print Receipt", selector = ".receipt", disabled = false, frame }: { label?: string; selector?: string; disabled?: boolean; frame?:RefObject<HTMLIFrameElement|null> }) {
+export default function PrintButton({ label = "Print Receipt", selector = ".receipt", disabled = false, frame, onPrinted }: { label?: string; selector?: string; disabled?: boolean; frame?:RefObject<HTMLIFrameElement|null>; onPrinted?: () => void }) {
   const locked = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -16,6 +16,8 @@ export default function PrintButton({ label = "Print Receipt", selector = ".rece
       await preparePrint(printDocument,selector);
       if(frame&&frame.current?.contentWindow!==printWindow)throw new Error("Print preview was closed. Open it again to print.");
       printWindow.focus();
+      // afterprint fires once the print dialog closes (printed or cancelled).
+      if (onPrinted) printWindow.addEventListener("afterprint", () => onPrinted(), { once: true });
       printWindow.print();
     } catch (failure) {
       const message = failure instanceof Error ? failure.message : "";

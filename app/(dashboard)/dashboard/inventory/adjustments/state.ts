@@ -3,6 +3,7 @@ export type StockAdjustmentActionState = {
   message: string;
   submittedAt: number;
   uncertain?: boolean;
+  items?: { productId: string; stockBefore: number; stockAfter: number; delta: number }[];
 };
 
 export const initialStockAdjustmentState: StockAdjustmentActionState = {

@@ -52,7 +52,7 @@ export async function managementRead(db: SupabaseClient, feature: string, busine
   }
   if (feature==='catalog-detail') {
     const productId=url.searchParams.get('id'); if(!id(productId)) throw new Error('Choose a product.');
-    const product=data(await db.from('branch_products').select(fields).eq('business_id',businessId).eq('id',productId).single());
+    const product=data(await db.from('branch_products').select(`${fields},image_urls` as const).eq('business_id',businessId).eq('id',productId).single());
     const items=product.product_type==='bundle' ? data(await db.from('branch_bundle_items').select('component_product_id,quantity,selected_options').eq('business_id',businessId).eq('bundle_product_id',productId).limit(101)) : [];
     if(items.length>100) throw new Error('Open this large bundle on the website.');
     const groups=product.product_type==='configurable'?data(await db.from('product_option_groups').select('id,name,selection_type,is_required,min_selections,max_selections').eq('business_id',businessId).eq('product_id',productId).order('sort_order').limit(31)):[];
@@ -110,7 +110,7 @@ export async function managementWrite(db: SupabaseClient, feature: string, busin
   if(!result.data) return {success:false,message:'Save not confirmed. Retry the same request.',uncertain:true};
   if(result.data.success) {
     // A committed save stays successful even if refreshing the website cache fails.
-    try { for(const path of ['/dashboard/products','/dashboard/bundles','/dashboard/stock-transfers','/dashboard/purchase-orders','/dashboard/online-store','/dashboard/pos']) revalidatePath(path); }
+    try { for(const path of ['/dashboard/products','/dashboard/bundles','/dashboard/stock-transfers','/dashboard/purchase-orders','/dashboard/settings/online-store','/dashboard/pos']) revalidatePath(path); }
     catch (error) { console.error('Mobile post-save refresh failed', error); }
   }
   return {...result.data,uncertain:!result.data.rolledBack&&!result.data.success};

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import ShippingTemplateSelect from '@/components/receipts/shipping-template-select';
+import { shippingTemplate, type ShippingTemplateId } from '@/lib/receipts/shipping-templates';
 import { Save } from "lucide-react";
 import { LabelCard, getTemplate } from "../../barcodes/barcode-labels-client";
 import { ShippingLabel } from "../../shipping-labels/shipping-labels-client";
@@ -17,6 +19,8 @@ const shippingFields = [
   ["storePhone", "Store phone number"], ["phone", "Customer phone"],
   ["orderNumber", "Order number"], ["cod", "Payment and amount"],
   ["itemCount", "Item count"], ["barcode", "Order QR code"],
+  ["date", "Order date"], ["linearBarcode", "Order barcode"],
+  ["logo", "Store logo (from Receipt Settings)"], ["footer", "Thank-you footer"],
 ] as const;
 const snake = (key: string) => key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 const upper = (key: string) => key[0].toUpperCase() + key.slice(1);
@@ -27,20 +31,21 @@ const sampleProduct = {
   stock_quantity: 10, size: "M", color: "Black", category_id: null, is_active: true,
 };
 const sampleOrder = {
-  id: "00000000-0000-0000-0000-000000000000", order_number: "WEB-123456", total: 37, payment_method: "COD",
-  payment_status: "unpaid", guest_name: "Sample Customer", guest_phone: "012 345 678",
+  id: "00000000-0000-0000-0000-000000000000", order_number: "POS-DE60443D61", total: 18, payment_method: "COD",
+  payment_status: "unpaid", guest_name: "Dara", guest_phone: "010123456",
   guest_address: "123 Sample Street, Phnom Penh", fulfillment_type: "delivery",
-  created_at: "2026-01-01T00:00:00Z", customers: null, order_items: [{ quantity: 2 }],
+  created_at: "2026-09-28T08:56:00Z", customers: null, order_items: [{ quantity: 1 }],
 };
 
 export default function LabelSettings({ kind, settings, store, branchId }: {
   branchId?:string; kind: "barcode" | "shipping"; settings: Record<string, unknown>;
-  store: { name: string; phone: string; address: string };
+  store: { name: string; phone: string; address: string; logoUrl?: string | null; websiteUrl?: string | null };
 }) {
   const fields = kind === "barcode" ? barcodeFields : shippingFields;
   const sizes = kind === "barcode" ? ["40x20", "40x30", "50x30", "60x40", "80x50"] : ["80x50", "100x100", "100x150"];
   const initialSize = String(settings[`${kind}_label_size`] ?? "");
   const [size, setSize] = useState(sizes.includes(initialSize) ? initialSize : kind === "barcode" ? "50x30" : "100x150");
+  const [shippingTemplateId, setShippingTemplateId] = useState<ShippingTemplateId>(() => shippingTemplate(settings.shipping_template).id);
   const [template, setTemplate] = useState<"product" | "price">(() => {
     const value = settings.barcode_template;
     return value === "price" ? "price" : "product";
@@ -56,6 +61,7 @@ export default function LabelSettings({ kind, settings, store, branchId }: {
     if(branchId)data.set("branchId",branchId);
     data.set(`${kind}LabelSize`, size);
     fields.forEach(([key]) => { if (visible[key]) data.set(`${kind}Show${upper(key)}`, "on"); });
+    if (kind === "shipping") data.set("shippingTemplate", shippingTemplateId);
     if (kind === "barcode") {
       data.set("barcodeTemplate", template);
       data.set("barcodeCustomText", "");
@@ -70,15 +76,17 @@ export default function LabelSettings({ kind, settings, store, branchId }: {
       setMessage(error instanceof Error ? error.message : "Could not save settings. Please retry.");
     } finally { setBusy(false); }
   }
-  const previewSettings = {font_size:settings.font_size,density:settings.density,...Object.fromEntries(fields.map(([key]) => [`${kind}_show_${snake(key)}`, visible[key]]))};
+  const previewSettings = {shipping_template:shippingTemplateId,font_size:settings.font_size,density:settings.density,...Object.fromEntries(fields.map(([key]) => [`${kind}_show_${snake(key)}`, visible[key]]))};
   return (
     <div className="grid items-start gap-5 xl:grid-cols-2">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
         <h2 className="text-lg font-bold">{kind === "barcode" ? "Barcode Label Settings" : "Shipping Labels"}</h2>
-        <p className="mt-1 text-sm text-slate-500">Choose a size and the details to print.</p>
+        <p className="mt-1 text-sm text-slate-500">{kind === "shipping" ? "Choose an English or Khmer template, then select the paper size and details to print." : "Choose a size and the details to print."}</p>
         {message && <p role="status" className="my-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950 dark:text-blue-200">{message}</p>}
         <fieldset disabled={busy} className="mt-5 space-y-5 disabled:pointer-events-none disabled:opacity-60">
-          <label className="block text-sm font-semibold">Label size<select value={size} onChange={event => setSize(event.target.value)} className={inputClass}>{sizes.map(value => <option key={value} value={value}>{value.replace("x", " × ")} mm{kind === "barcode" && value === "50x30" ? " — Default" : ""}</option>)}</select></label>
+          {kind === "shipping" && <div><ShippingTemplateSelect value={shippingTemplateId} onChange={value => { setShippingTemplateId(value); setMessage(""); }} className={inputClass} /><p className="mt-2 text-xs text-slate-500">{shippingTemplate(shippingTemplateId).description}</p></div>}
+          <label className="block text-sm font-semibold">Label size<select aria-label={kind === "shipping" ? "Shipping label size" : "Barcode label size"} value={size} onChange={event => setSize(event.target.value)} className={inputClass}>{sizes.map(value => <option key={value} value={value}>{value.replace("x", " × ")} mm{kind === "barcode" && value === "50x30" ? " — Default" : ""}</option>)}</select></label>
+          {kind === "shipping" && <p className="text-xs text-slate-500">Width {size.split("x")[0]} mm × height {size.split("x")[1]} mm. Changing paper size automatically selects its layout: compact, square or portrait. The QR code stays square.</p>}
           {kind === "barcode" && <div><h3 className="text-sm font-semibold">Label layout</h3><div className="mt-3 grid gap-3 sm:grid-cols-2">{(["product", "price"] as const).map(value => <button type="button" key={value} aria-pressed={template === value} onClick={() => { setTemplate(value); setVisible({...getTemplate(value).elements}); }} className={`min-w-0 rounded-xl border p-3 ${template === value ? "border-blue-600 bg-blue-50 ring-1 ring-blue-600 dark:bg-blue-950" : "border-slate-200 dark:border-slate-700"}`}><div className="overflow-auto pb-2"><div className="mx-auto w-fit"><LabelCard fontSize={settings.font_size} density={settings.density} product={sampleProduct} businessName={store.name} size={value === "product" ? "40x30" : "50x30"} templateId={value} customText="" elements={getTemplate(value).elements}/></div></div><span className="text-sm font-semibold">{getTemplate(value).name}</span></button>)}</div></div>}
 
           <div className="grid gap-3 sm:grid-cols-2">{fields.map(([key, label]) => <label key={key} className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700"><input type="checkbox" checked={visible[key]} onChange={event => setVisible(previous => ({ ...previous, [key]: event.target.checked }))} className="accent-blue-600" />{label}</label>)}</div>
@@ -90,10 +98,11 @@ export default function LabelSettings({ kind, settings, store, branchId }: {
       </section>
       <aside className="min-w-0 rounded-2xl border border-slate-200 bg-white p-6 xl:sticky xl:top-6 dark:border-slate-700 dark:bg-slate-900">
         <h2 className="text-lg font-bold">Live preview</h2>
-        <p className="mt-1 text-sm text-slate-500">Sample data · {size.replace("x", " × ")} mm. Changes appear immediately.</p>
+        <p className="mt-1 text-sm text-slate-500">{kind === "shipping" ? shippingTemplate(shippingTemplateId).name + " · Sample data" : "Sample data"} · {size.replace("x", " × ")} mm. Changes appear immediately.</p>
+        {kind === "shipping" && <p className="mt-2 text-xs text-slate-500">Print at 100% / Actual size with matching paper and no browser headers or footers. Long content is checked before website printing.</p>}
         <div className="mt-5 overflow-auto rounded-xl bg-slate-100 p-4 dark:bg-slate-800">
           <div className="mx-auto w-fit">
-            {kind === "barcode" ? <LabelCard fontSize={settings.font_size} density={settings.density} product={sampleProduct} businessName={store.name} size={size} templateId={template} customText="" elements={{ name: visible.name, price: visible.price, sku: visible.sku, variant: visible.variant, barcode: visible.barcode, image: visible.image, storeName: visible.storeName, customText: false }} /> : <ShippingLabel order={sampleOrder} businessName={store.name} businessPhone={store.phone} businessAddress={store.address} size={size} settings={previewSettings} />}
+            {kind === "barcode" ? <LabelCard fontSize={settings.font_size} density={settings.density} product={sampleProduct} businessName={store.name} size={size} templateId={template} customText="" elements={{ name: visible.name, price: visible.price, sku: visible.sku, variant: visible.variant, barcode: visible.barcode, image: visible.image, storeName: visible.storeName, customText: false }} /> : <ShippingLabel order={sampleOrder} businessName={store.name} businessPhone={store.phone} businessAddress={store.address} businessLogo={store.logoUrl} businessWebsite={store.websiteUrl} size={size} settings={previewSettings} />}
           </div>
         </div>
       </aside>

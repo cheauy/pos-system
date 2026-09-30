@@ -7,7 +7,7 @@ import { money } from './pos-workspace-helpers';
 import s from './pos-workspace.module.css';
 import ProductPhoto from '@/components/product-photo';
 
-export function Modal({ title, children, onClose, wide = false, locked = false, paper = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean; locked?: boolean; paper?: boolean }) {
+export function Modal({ title, children, onClose, wide = false, locked = false, paper = false, bare = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean; locked?: boolean; paper?: boolean; bare?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = ref.current;
@@ -15,9 +15,11 @@ export function Modal({ title, children, onClose, wide = false, locked = false, 
     if (dialog && !dialog.open) dialog.showModal();
     return () => { dialog?.close(); previous?.focus(); };
   }, []);
-  return <dialog ref={ref} aria-label={title} className={`${s.dialog} ${wide ? s.dialogWide : ''} ${paper ? s.paperDialog : ''}`} onCancel={event => { event.preventDefault(); if (!locked) onClose(); }}>
+  return <dialog ref={ref} aria-label={title} className={`${s.dialog} ${wide ? s.dialogWide : ''} ${paper ? s.paperDialog : ''} ${bare ? s.bareDialog : ''}`} onCancel={event => { event.preventDefault(); if (!locked) onClose(); }}>
     <div className={s.modalInner}>
-      <header className={s.modalHeader}><h2>{title}</h2><button type="button" className={s.iconButton} onClick={onClose} disabled={locked} aria-label="Close dialog"><X size={19} /></button></header>
+      {bare
+        ? <button type="button" className={s.bareClose} onClick={onClose} disabled={locked} aria-label="Close dialog"><X size={20} /></button>
+        : <header className={s.modalHeader}><h2>{title}</h2><button type="button" className={s.iconButton} onClick={onClose} disabled={locked} aria-label="Close dialog"><X size={19} /></button></header>}
       <div className={s.modalBody}>{children}</div>
     </div>
   </dialog>;

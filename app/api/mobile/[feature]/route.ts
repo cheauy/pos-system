@@ -31,6 +31,7 @@ import { loadDetailedOrder } from '@/app/(dashboard)/dashboard/orders/[id]/order
 import { recordReceipt, one } from '@/app/(dashboard)/dashboard/orders/[id]/order-detail-model';
 import { loadReceiptContext } from '@/lib/receipts/load-receipt-context';
 import { orderQrSvg, parseOrderQr } from '@/lib/orders/order-qr';
+import { orderIdFromScan } from '@/lib/orders/scanned-order';
 import { mobileReceiptHtml } from '@/lib/mobile/receipt-html';
 import { submitStockAdjustment } from '@/app/(dashboard)/dashboard/inventory/adjustments/actions';
 import { getIncomingOrders } from '@/lib/branches/incoming-orders';
@@ -268,13 +269,16 @@ async function handle(request: Request, feature: string) {
         }
         if (feature === 'order-qr') {
           const value = url.searchParams.get('value');
-          const id = value === null ? mobileSelection(url.searchParams.get('id')) : parseOrderQr(value);
-          if (!id) throw new RequestError('Scan a TENH POS order QR code.');
+          const scanned = value === null ? null : parseOrderQr(value);
+          if (value !== null && !scanned) throw new RequestError('Scan a TENH POS order QR code or barcode.');
+          const id = scanned ? await orderIdFromScan(business.id, scanned) : mobileSelection(url.searchParams.get('id'));
+          if (!id) throw new RequestError(scanned ? 'Order not found or unavailable in this branch.' : 'Scan a TENH POS order QR code.', scanned ? 404 : 400);
           const order = await loadDetailedOrder(business.id, id);
           if (!order) throw new RequestError('Order not found or unavailable in this branch.', 404);
           const store = await db.from('business_storefronts').select('currency').eq('business_id', business.id).maybeSingle();
           if (store.error) throw new RequestError('Unable to load store currency.', 503);
-          return response({ currency: store.data?.currency || 'USD', id: order.id, incoming: ['online', 'qr'].includes(order.order_source), svg: orderQrSvg(order.id) });
+          const code = (order as { order_code?: string | null }).order_code;
+          return response({ currency: store.data?.currency || 'USD', id: order.id, code: code ?? null, incoming: ['online', 'qr'].includes(order.order_source), svg: code ? orderQrSvg(code) : null });
         }
         if (feature === 'receipt' || feature === 'shipping-label') {
           const id = mobileSelection(url.searchParams.get('id'));

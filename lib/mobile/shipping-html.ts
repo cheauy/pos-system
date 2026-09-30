@@ -1,10 +1,11 @@
-import { orderQrSvg } from '@/lib/orders/order-qr';
+import { isOrderCode, orderQrSvg } from '@/lib/orders/order-qr';
 import { printTextScale, type ReceiptContext } from '@/lib/receipts/receipt-model';
 import { one, type DetailedOrder } from '@/app/(dashboard)/dashboard/orders/[id]/order-detail-model';
 import { escapeHtml as e } from './receipt-html';
 
 export function mobileShippingHtml(order: DetailedOrder, context: ReceiptContext, settings: Record<string, unknown>, currency: string) {
   const customer = one(order.customers);
+  const code = (order as { order_code?: string | null }).order_code;
   const address = order.guest_address || customer?.address || '';
   if (!address.trim()) throw new Error('Add the delivery address before printing a shipping label.');
   const size = ['80x50', '100x100', '100x150'].includes(String(settings.shipping_label_size)) ? String(settings.shipping_label_size) : '100x150';
@@ -26,8 +27,8 @@ export function mobileShippingHtml(order: DetailedOrder, context: ReceiptContext
     ${showSender('address') && context.store.address ? p('Address: ', context.store.address) : ''}
     ${showSender('phone') && context.store.phone ? p('Tel: ', context.store.phone) : ''}<hr>
     <p class="recipient">Customer Name: ${e(name)}</p>${settings.shipping_show_phone !== false && phone ? p('Tel: ', phone) : ''}${p('Address: ', address)}<hr>
-    </section>${settings.shipping_show_barcode !== false ? `<div style="width:26mm;height:26mm">${orderQrSvg(order.id)}</div>` : ""}
-    <div class="details" style="grid-column:1/-1">${settings.shipping_show_order_number !== false ? p('Order: ', order.order_number) : ''}
+    </section>${settings.shipping_show_barcode !== false && isOrderCode(code) ? `<div style="width:26mm;height:26mm">${orderQrSvg(code)}</div>` : ""}
+    <div class="details" style="grid-column:1/-1">${settings.shipping_show_order_number !== false ? p('Order: ', isOrderCode(code) ? code : order.order_number) : ''}
     ${settings.shipping_show_item_count !== false ? p('Items: ', String(order.order_items.reduce((sum, item) => sum + Number(item.quantity), 0))) : ''}
     ${settings.shipping_show_cod !== false ? `${p('Payment: ', order.payment_method)}<p>Total: ${amount(order.total)}</p><p>Balance due: ${amount(order.remaining_balance)}</p>` : ''}</div>
   </article></body></html>`;

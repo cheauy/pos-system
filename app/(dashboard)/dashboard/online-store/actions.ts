@@ -1,25 +1,17 @@
 "use server";
 
-import { compressPhoto } from "@/lib/images/compress-photo";
-import { PUBLIC_PHOTO_CACHE_SECONDS } from "@/lib/public-photo-cache";
+import { getImageFile, uploadStorefrontImage } from "@/lib/storefront/images";
 
 import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { mergeOnlineStoreProfile } from "@/lib/business/business-info";
 import { parseStoreProfile, supportsDineIn } from "@/lib/storefront/profile";
 import {
   isBusinessType,
 } from "@/lib/storefront/types";
-
-const STOREFRONT_MEDIA_BUCKET = "storefront-media";
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
 
 export type UpdateStorefrontState = {
   success: boolean;
@@ -79,79 +71,6 @@ function getOptionalUrl(
   return parsed.toString();
 }
 
-function getImageFile(
-  formData: FormData,
-  key: string,
-) {
-  const value = formData.get(key);
-
-  if (!(value instanceof File) || value.size === 0) {
-    return null;
-  }
-
-  if (!ALLOWED_IMAGE_TYPES.has(value.type)) {
-    throw new Error(
-      "Store images must be JPG, PNG or WebP.",
-    );
-  }
-
-  if (value.size > MAX_IMAGE_BYTES) {
-    throw new Error(
-      "Store images must not exceed 5 MB.",
-    );
-  }
-
-  return value;
-}
-
-function getExtension(file: File) {
-  switch (file.type) {
-    case "image/jpeg":
-      return "jpg";
-    case "image/png":
-      return "png";
-    case "image/webp":
-      return "webp";
-    default:
-      return "bin";
-  }
-}
-
-async function uploadStorefrontImage({
-  businessId,
-  kind,
-  file,
-}: {
-  businessId: string;
-  kind: "logo" | "banner" | "khqr";
-  file: File;
-}) {
-  if (kind === 'banner') file = await compressPhoto(file);
-  const path = `${businessId}/${kind}/${crypto.randomUUID()}.${getExtension(
-    file,
-  )}`;
-
-  const { error } = await supabaseAdmin.storage
-    .from(STOREFRONT_MEDIA_BUCKET)
-    .upload(path, file, {
-      contentType: file.type,
-      cacheControl: PUBLIC_PHOTO_CACHE_SECONDS,
-      upsert: false,
-    });
-
-  if (error) {
-    throw new Error(
-      `Unable to upload ${kind}: ${error.message}`,
-    );
-  }
-
-  const { data } = supabaseAdmin.storage
-    .from(STOREFRONT_MEDIA_BUCKET)
-    .getPublicUrl(path);
-
-  return data.publicUrl;
-}
-
 export async function updateStorefrontSettings(
   _previousState: UpdateStorefrontState,
   formData: FormData,
@@ -161,12 +80,14 @@ export async function updateStorefrontSettings(
       "storefront.update",
     );
 
+    if (formData.has("businessId") && formData.get("businessId") !== business.id) throw new Error("The selected business changed. Reload Online Store Settings before saving.");
+
     const {
       data: existing,
       error: existingError,
     } = await supabaseAdmin
       .from("business_storefronts")
-      .select("logo_url, banner_url, khqr_image_url, business_type, social_links")
+      .select("display_name, description, logo_url, banner_url, primary_color, currency, khqr_image_url, khqr_account_name, khqr_instructions, accept_cod, accept_khqr, business_type, social_links, minimum_order, delivery_fee, checkout_message, estimated_minutes, updated_at")
       .eq("business_id", business.id)
       .maybeSingle();
 
@@ -178,10 +99,9 @@ export async function updateStorefrontSettings(
     const businessType = existing?.business_type ?? "general";
     if (!isBusinessType(businessType)) throw new Error("Unable to load the business mode from Business Settings.");
 
-    const displayName = getOptionalText(
-      formData,
-      "displayName",
-    );
+    const displayName = formData.has("displayName")
+      ? getOptionalText(formData, "displayName")
+      : existing?.display_name ?? null;
 
     if (
       displayName &&
@@ -193,20 +113,12 @@ export async function updateStorefrontSettings(
       );
     }
 
-    const description = getOptionalText(
-      formData,
-      "description",
-    );
+    // Business Information owns the description and store images.
+    const description = existing?.description ?? null;
 
-    if (description && description.length > 500) {
-      throw new Error(
-        "Store description must be 500 characters or fewer.",
-      );
-    }
-
-    const primaryColor =
-      getText(formData, "primaryColor") ||
-      "#2563EB";
+    const primaryColor = formData.has("primaryColor")
+      ? getText(formData, "primaryColor") || "#2563EB"
+      : existing?.primary_color ?? "#2563EB";
 
     if (!/^#[0-9A-Fa-f]{6}$/.test(primaryColor)) {
       throw new Error(
@@ -214,9 +126,9 @@ export async function updateStorefrontSettings(
       );
     }
 
-    const currency = (
-      getText(formData, "currency") || "USD"
-    ).toUpperCase();
+    const currency = (formData.has("currency")
+      ? getText(formData, "currency") || "USD"
+      : existing?.currency ?? "USD").toUpperCase();
 
     if (!/^[A-Z]{3}$/.test(currency)) {
       throw new Error(
@@ -224,8 +136,10 @@ export async function updateStorefrontSettings(
       );
     }
 
+    // Order rules are no longer shown in Branding. Missing fields must keep
+    // the current database values, not reset charges or checkout instructions.
     const minimumOrderRaw = Number(
-      getText(formData, "minimumOrder") || "0",
+      formData.has("minimumOrder") ? getText(formData, "minimumOrder") || "0" : existing?.minimum_order ?? 0,
     );
 
     if (
@@ -238,7 +152,7 @@ export async function updateStorefrontSettings(
     }
 
     const deliveryFee = Number(
-      getText(formData, "deliveryFee") || "0",
+      formData.has("deliveryFee") ? getText(formData, "deliveryFee") || "0" : existing?.delivery_fee ?? 0,
     );
 
     if (!Number.isFinite(deliveryFee) || deliveryFee < 0) {
@@ -247,10 +161,9 @@ export async function updateStorefrontSettings(
       );
     }
 
-    const checkoutMessage = getOptionalText(
-      formData,
-      "checkoutMessage",
-    );
+    const checkoutMessage = formData.has("checkoutMessage")
+      ? getOptionalText(formData, "checkoutMessage")
+      : existing?.checkout_message ?? null;
 
     if (checkoutMessage && checkoutMessage.length > 300) {
       throw new Error(
@@ -258,10 +171,20 @@ export async function updateStorefrontSettings(
       );
     }
 
-    const acceptCod = getBoolean(formData, "acceptCod");
-    const acceptKhqr = getBoolean(formData, "acceptKhqr");
-    const khqrAccountName = getOptionalText(formData, "khqrAccountName");
-    const khqrInstructions = getOptionalText(formData, "khqrInstructions");
+    // Online Payment now lives in Business Settings. Missing fields from the
+    // Online Store form must preserve the current payment configuration.
+    const acceptCod = formData.has("acceptCod")
+      ? getBoolean(formData, "acceptCod")
+      : existing?.accept_cod ?? false;
+    const acceptKhqr = formData.has("acceptKhqr")
+      ? getBoolean(formData, "acceptKhqr")
+      : existing?.accept_khqr ?? false;
+    const khqrAccountName = formData.has("khqrAccountName")
+      ? getOptionalText(formData, "khqrAccountName")
+      : existing?.khqr_account_name ?? null;
+    const khqrInstructions = formData.has("khqrInstructions")
+      ? getOptionalText(formData, "khqrInstructions")
+      : existing?.khqr_instructions ?? null;
 
     if (khqrAccountName && khqrAccountName.length > 120) {
       throw new Error("KHQR account name must be 120 characters or fewer.");
@@ -297,7 +220,7 @@ export async function updateStorefrontSettings(
 
 
     const socialLinks = {
-      profile: parseStoreProfile(formData),
+      profile: mergeOnlineStoreProfile(existing?.social_links?.profile, parseStoreProfile(formData)),
       facebook: getOptionalUrl(formData, "facebookUrl", "Facebook"),
       instagram: getOptionalUrl(formData, "instagramUrl", "Instagram"),
       tiktok: getOptionalUrl(formData, "tiktokUrl", "TikTok"),
@@ -308,10 +231,9 @@ export async function updateStorefrontSettings(
       x: getOptionalUrl(formData, "xUrl", "X"),
     };
 
-    const estimatedMinutesText = getText(
-      formData,
-      "estimatedMinutes",
-    );
+    const estimatedMinutesText = formData.has("estimatedMinutes")
+      ? getText(formData, "estimatedMinutes")
+      : String(existing?.estimated_minutes ?? "");
 
     const estimatedMinutes = estimatedMinutesText
       ? Number(estimatedMinutesText)
@@ -368,38 +290,14 @@ export async function updateStorefrontSettings(
       );
     }
 
-    const logoFile = getImageFile(
-      formData,
-      "logo",
-    );
-    const bannerFile = getImageFile(
-      formData,
-      "banner",
-    );
     const khqrFile = getImageFile(
       formData,
       "khqr",
     );
 
-    let logoUrl = getBoolean(formData, "remove-logo") ? null : existing?.logo_url ?? null;
-    let bannerUrl = getBoolean(formData, "remove-banner") ? null : existing?.banner_url ?? null;
+    const logoUrl = existing?.logo_url ?? null;
+    const bannerUrl = existing?.banner_url ?? null;
     let khqrImageUrl = getBoolean(formData, "remove-khqr") ? null : existing?.khqr_image_url ?? null;
-
-    if (logoFile) {
-      logoUrl = await uploadStorefrontImage({
-        businessId: business.id,
-        kind: "logo",
-        file: logoFile,
-      });
-    }
-
-    if (bannerFile) {
-      bannerUrl = await uploadStorefrontImage({
-        businessId: business.id,
-        kind: "banner",
-        file: bannerFile,
-      });
-    }
 
     if (khqrFile) {
       khqrImageUrl = await uploadStorefrontImage({
@@ -417,10 +315,7 @@ export async function updateStorefrontSettings(
 
     const now = new Date().toISOString();
 
-    const { error } = await supabaseAdmin
-      .from("business_storefronts")
-      .upsert(
-        {
+    const values = {
           business_id: business.id,
           is_published: isPublished,
           accept_online_orders:
@@ -431,14 +326,6 @@ export async function updateStorefrontSettings(
           logo_url: logoUrl,
           banner_url: bannerUrl,
           primary_color: primaryColor,
-          phone: getOptionalText(
-            formData,
-            "phone",
-          ),
-          address: getOptionalText(
-            formData,
-            "address",
-          ),
           currency,
           social_links: { ...(existing?.social_links ?? {}), ...socialLinks, profile: { ...(existing?.social_links?.profile ?? {}), ...socialLinks.profile } },
           allow_pickup: allowPickup,
@@ -457,11 +344,19 @@ export async function updateStorefrontSettings(
           max_schedule_days: maxScheduleDays,
           estimated_minutes: estimatedMinutes,
           updated_at: now,
-        },
-        {
-          onConflict: "business_id",
-        },
-      );
+    };
+    // Keep concurrent Business Settings contact/hour changes and do not upsert
+    // an old copy of the shared JSON over a row that changed during this save.
+    let result;
+    if (existing) {
+      let update = supabaseAdmin.from("business_storefronts").update(values).eq("business_id", business.id);
+      update = existing.updated_at == null ? update.is("updated_at", null) : update.eq("updated_at", existing.updated_at);
+      result = await update.select("business_id").maybeSingle();
+    } else {
+      result = await supabaseAdmin.from("business_storefronts").insert(values).select("business_id").single();
+    }
+    const { data: saved, error } = result;
+    if (!error && saved?.business_id !== business.id) throw new Error("Settings changed while saving. Reload and review before retrying.");
 
     if (error) {
       throw new Error(
@@ -492,8 +387,8 @@ export async function updateStorefrontSettings(
       },
     });
 
-    revalidatePath("/dashboard/online-store");
-    revalidatePath("/dashboard/online-store/ordering");
+    revalidatePath("/dashboard/settings/online-store");
+    revalidatePath("/dashboard/settings/online-store/ordering");
     revalidatePath("/dashboard/products");
     revalidatePath("/dashboard/settings/business");
     revalidatePath("/dashboard/settings/printers");
@@ -512,6 +407,76 @@ export async function updateStorefrontSettings(
         error instanceof Error
           ? error.message
           : "Unable to save online store settings.",
+      submittedAt: Date.now(),
+    };
+  }
+}
+
+
+export async function updateOnlinePaymentSettings(
+  _previousState: UpdateStorefrontState,
+  formData: FormData,
+): Promise<UpdateStorefrontState> {
+  try {
+    const business = await requirePermission("storefront.update");
+    if (formData.get("businessId") !== business.id) {
+      throw new Error("The selected business changed. Reload Business Settings before saving payment settings.");
+    }
+
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from("business_storefronts")
+      .select("accept_cod, accept_khqr, khqr_image_url, khqr_account_name, khqr_instructions, accept_online_orders, updated_at")
+      .eq("business_id", business.id)
+      .maybeSingle();
+    if (existingError || !existing) throw new Error("Unable to load online payment settings. Reload Business Settings and try again.");
+
+    const acceptCod = getBoolean(formData, "acceptCod");
+    const acceptKhqr = getBoolean(formData, "acceptKhqr");
+    const khqrAccountName = getOptionalText(formData, "khqrAccountName");
+    const khqrInstructions = getOptionalText(formData, "khqrInstructions");
+    if (khqrAccountName && khqrAccountName.length > 120) throw new Error("KHQR account name must be 120 characters or fewer.");
+    if (khqrInstructions && khqrInstructions.length > 300) throw new Error("KHQR instructions must be 300 characters or fewer.");
+    if (existing.accept_online_orders && !acceptCod && !acceptKhqr) {
+      throw new Error("Enable Pay Later or KHQR before accepting online orders.");
+    }
+
+    const khqrFile = getImageFile(formData, "khqr");
+    let khqrImageUrl = getBoolean(formData, "remove-khqr") ? null : existing.khqr_image_url ?? null;
+    if (khqrFile) {
+      khqrImageUrl = await uploadStorefrontImage({ businessId: business.id, kind: "khqr", file: khqrFile });
+    }
+    if (acceptKhqr && !khqrImageUrl) throw new Error("Upload the shop KHQR image before enabling KHQR checkout.");
+
+    let update = supabaseAdmin.from("business_storefronts").update({
+      accept_cod: acceptCod,
+      accept_khqr: acceptKhqr,
+      khqr_image_url: khqrImageUrl,
+      khqr_account_name: khqrAccountName,
+      khqr_instructions: khqrInstructions,
+      updated_at: new Date().toISOString(),
+    }).eq("business_id", business.id);
+    update = existing.updated_at == null ? update.is("updated_at", null) : update.eq("updated_at", existing.updated_at);
+    const { data: saved, error } = await update.select("business_id").maybeSingle();
+    if (error) throw new Error(`Unable to save online payment settings: ${error.message}`);
+    if (saved?.business_id !== business.id) throw new Error("Payment settings changed in another tab. Reload and review before retrying.");
+
+    await createAuditLog({
+      action: "update",
+      entityType: "business",
+      entityId: business.id,
+      description: "Updated online payment settings",
+      metadata: { accept_cod: acceptCod, accept_khqr: acceptKhqr },
+    });
+    revalidatePath("/dashboard/settings/business");
+    revalidatePath("/dashboard/settings/online-store");
+    revalidatePath(`/_sites/${business.slug}`);
+    revalidatePath(`/storefront/${business.slug}`);
+
+    return { success: true, message: "Online payment settings saved.", submittedAt: Date.now() };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to save online payment settings.",
       submittedAt: Date.now(),
     };
   }
@@ -641,8 +606,8 @@ export async function updateFulfillmentSettings(
       },
     });
 
-    revalidatePath("/dashboard/online-store");
-    revalidatePath("/dashboard/online-store/ordering");
+    revalidatePath("/dashboard/settings/online-store");
+    revalidatePath("/dashboard/settings/online-store/ordering");
     revalidatePath(`/_sites/${business.slug}`);
     revalidatePath(`/storefront/${business.slug}`);
 
@@ -670,7 +635,7 @@ export async function saveFulfillmentBranch(branchId: string) {
     await assertBranchOperation(business.id,branchId);
     const {error}=await supabaseAdmin.from("business_storefronts").update({fulfillment_location_id:branchId}).eq("business_id",business.id).select("business_id").single();
     if(error)throw new Error(error.message);
-    revalidatePath("/dashboard/online-store");revalidatePath(`/_sites/${business.slug}`);
+    revalidatePath("/dashboard/settings/online-store");revalidatePath(`/_sites/${business.slug}`);
     return {success:true,message:"Online fulfilment branch saved."};
   }catch(error){return {success:false,message:error instanceof Error?error.message:"Unable to save fulfilment branch."};}
 }

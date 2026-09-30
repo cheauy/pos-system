@@ -30,7 +30,7 @@ export default function WorkspaceBranchProvider(p:Props) {
   const {setScope}=useTheme();
   useEffect(()=>{setScope(`${APPEARANCE_STORAGE_KEY}:${p.businessId}:${p.branchId}`);return()=>setScope(APPEARANCE_STORAGE_KEY);},[p.businessId,p.branchId,setScope]);
   const pathname=usePathname();
-  const sharedOnlineStore=pathname === "/dashboard/online-store" || pathname.startsWith("/dashboard/online-store/");
+  const sharedOnlineStore=["/dashboard/settings/online-store", "/dashboard/online-store"].some(path => pathname === path || pathname.startsWith(`${path}/`));
   const [open,setOpen]=useState(false),[selected,setSelected]=useState(p.branchId);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[stale,setStale]=useState('');
   useActivity(busy);

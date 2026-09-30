@@ -257,7 +257,7 @@ export async function updateCustomer(formData: FormData) {
   revalidatePath(`/dashboard/customers/${customerId}`);
   revalidatePath("/dashboard/pos");
 
-  redirect(`/dashboard/customers/${customerId}`);
+  redirect(`/dashboard/customers?customer=${encodeURIComponent(customerId)}`);
 }
 
 export async function exportCustomersCsv() {

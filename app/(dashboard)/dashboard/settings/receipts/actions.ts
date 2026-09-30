@@ -118,28 +118,36 @@ async function upsertLabelSettings(values: Record<string, unknown>,expectedBranc
 }
 
 export async function saveShippingLabelSettings(formData: FormData): Promise<void> {
-  const requestedSize = String(formData.get('shippingLabelSize'));
-  const size = ['80x50', '100x100', '100x150'].includes(requestedSize)
-    ? requestedSize
-    : '100x150';
-
-  const business=await requirePermission('business.update');
-  await printerBranch(business.id,String(formData.get('branchId')||'')||undefined);
-  const {persistShippingSettings}=await import('@/lib/receipts/shipping-design-store');
-  await persistShippingSettings(business.id,{
-    shipping_label_size:size,
-    shipping_show_store_name:labelChecked(formData,'shippingShowStoreName'),
-    shipping_show_store_address:labelChecked(formData,'shippingShowStoreAddress'),
-    shipping_show_store_phone:labelChecked(formData,'shippingShowStorePhone'),
-    shipping_show_phone:labelChecked(formData,'shippingShowPhone'),
-    shipping_show_order_number:labelChecked(formData,'shippingShowOrderNumber'),
-    shipping_show_cod:labelChecked(formData,'shippingShowCod'),
-    shipping_show_item_count:labelChecked(formData,'shippingShowItemCount'),
-    shipping_show_barcode:labelChecked(formData,'shippingShowBarcode'),
+  const { SHIPPING_LABEL_SIZES, isShippingTemplate, shippingTemplate } = await import('@/lib/receipts/shipping-templates');
+  const size = String(formData.get('shippingLabelSize') || '100x150');
+  if (!SHIPPING_LABEL_SIZES.some(value => value.id === size)) throw new Error('Choose a valid shipping label size.');
+  const business = await requirePermission('business.update');
+  await printerBranch(business.id, String(formData.get('branchId') || '') || undefined);
+  const { persistShippingSettings, loadShippingSettings } = await import('@/lib/receipts/shipping-design-store');
+  // Older forms do not submit templates/extra flags. Keep the saved selection.
+  const current = !formData.has('shippingTemplate') ? await loadShippingSettings(business.id) : null;
+  const requestedTemplate = formData.has('shippingTemplate') ? formData.get('shippingTemplate') : shippingTemplate(current?.shipping_template).id;
+  if (!isShippingTemplate(requestedTemplate)) throw new Error('Choose a valid shipping template.');
+  const extraFlag = (field: string, stored: string) => formData.has('shippingTemplate') ? labelChecked(formData, field) : current?.[stored] !== false;
+  await persistShippingSettings(business.id, {
+    shipping_label_size: size,
+    shipping_template: requestedTemplate,
+    shipping_show_store_name: labelChecked(formData, 'shippingShowStoreName'),
+    shipping_show_store_address: labelChecked(formData, 'shippingShowStoreAddress'),
+    shipping_show_store_phone: labelChecked(formData, 'shippingShowStorePhone'),
+    shipping_show_phone: labelChecked(formData, 'shippingShowPhone'),
+    shipping_show_order_number: labelChecked(formData, 'shippingShowOrderNumber'),
+    shipping_show_cod: labelChecked(formData, 'shippingShowCod'),
+    shipping_show_item_count: labelChecked(formData, 'shippingShowItemCount'),
+    shipping_show_barcode: labelChecked(formData, 'shippingShowBarcode'),
+    shipping_show_date: extraFlag('shippingShowDate', 'shipping_show_date'),
+    shipping_show_linear_barcode: extraFlag('shippingShowLinearBarcode', 'shipping_show_linear_barcode'),
+    shipping_show_logo: extraFlag('shippingShowLogo', 'shipping_show_logo'),
+    shipping_show_footer: extraFlag('shippingShowFooter', 'shipping_show_footer'),
   });
   revalidatePath('/dashboard/settings/printers');
   revalidatePath('/dashboard/shipping-labels');
-  revalidatePath('/dashboard/orders','layout');
+  revalidatePath('/dashboard/orders', 'layout');
 }
 
 export async function saveBarcodeLabelSettings(formData: FormData): Promise<void> {

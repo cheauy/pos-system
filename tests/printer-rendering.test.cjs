@@ -5,7 +5,7 @@ const model=loadTs('lib/receipts/receipt-model.ts');
 const barcode=loadTs('lib/barcode/code39.ts');
 const shared={'react/jsx-runtime':require('react/jsx-runtime'),react:React,'lucide-react':require('lucide-react'),'@/lib/receipts/receipt-model':model,'@/lib/barcode/code39':barcode,'@/lib/printing/prepare-print':loadTs('lib/printing/prepare-print.ts')};
 const receipt=loadTs('components/receipts/pos-receipt.tsx',{...shared,'@/app/(dashboard)/dashboard/pos/pos-workspace-helpers':{money:v=>Number(v).toFixed(2)},'./pos-receipt.module.css':{default:new Proxy({},{get:(_,key)=>String(key)})}}).PosReceipt;
-const label=loadTs('app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx',shared).LabelCard;
+const label=loadTs('app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx',{...shared,'@/components/product-picker':{default:()=>null}}).LabelCard;
 const shipping=loadTs('app/(dashboard)/dashboard/shipping-labels/shipping-labels-client.tsx',{...shared,'next/link':{default:()=>null},'@/components/print-button':{default:()=>null}}).ShippingLabel;
 test('receipt print uses saved typography, images, paper, header and visibility',()=>{
  const context={appearance:model.receiptAppearance({paper_size:'58mm',font_size:'large',density:'compact',receipt_alignment:'left',header_text:'Saved header',receipt_logo_url:'https://example.com/brand.png',show_phone:false,show_address:false}),store:{name:'Shop',phone:'012345678',address:'Hidden street'}};

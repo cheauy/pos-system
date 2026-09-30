@@ -105,7 +105,14 @@ export async function completePosSale(businessId: string, input: CheckoutInput):
   }
   if (!data?.orderId) throw new Error('Checkout result not confirmed. Check the sale before retrying.');
   refreshRoutes();
-  return { success: true, data: data as SaleReceipt };
+  return { success: true, data: await withOrderCode(db, data as SaleReceipt) };
+}
+// The sale is committed: a failed lookup only means the receipt barcode uses the order number.
+async function withOrderCode(db: Awaited<ReturnType<typeof createClient>>, receipt: SaleReceipt): Promise<SaleReceipt> {
+  try {
+    const { data } = await db.from('orders').select('order_code').eq('id', receipt.orderId).maybeSingle();
+    return data?.order_code ? { ...receipt, orderCode: data.order_code } : receipt;
+  } catch { return receipt; }
 }
 export async function checkPosSale(businessId: string, requestId: string): Promise<ActionResult<SaleReceipt | null>> {
   const business = await requirePermission('pos.access');
@@ -114,7 +121,7 @@ export async function checkPosSale(businessId: string, requestId: string): Promi
   try {
     const db = await createClient();
     const { data, error } = await db.rpc('tenh_pos_checkout_status', { p_business_id: business.id, p_request_id: requestId });
-    return error ? { success: false, message: errorMessage(error) } : { success: true, data: data as SaleReceipt | null };
+    return error ? { success: false, message: errorMessage(error) } : { success: true, data: data ? await withOrderCode(db, data as SaleReceipt) : null };
   } catch (error) { return { success: false, message: errorMessage(error) }; }
 }
 export async function savePosHold(businessId: string, id: string, version: number | null, label: string, draft: CartDraft): Promise<ActionResult<{ id: string }>> {

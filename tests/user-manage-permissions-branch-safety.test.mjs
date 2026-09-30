@@ -126,12 +126,14 @@ test('user management UI is named User & Manage User', () => {
 });
 
 test('order update buttons are hidden when the effective update permission is disabled', () => {
-  const onlinePage = read('app/(dashboard)/dashboard/online-orders/page.tsx');
-  const onlineClient = read('app/(dashboard)/dashboard/online-orders/online-orders-client.tsx');
+  // Online orders are managed in the merged Orders workspace.
+  const ordersPage = read('app/(dashboard)/dashboard/orders/page.tsx');
+  const workspace = read('app/(dashboard)/dashboard/orders/orders-workspace.tsx');
   const onlineActions = read('app/(dashboard)/dashboard/online-orders/actions.ts');
-  assert.match(onlinePage, /businessHasPermission\(business, "orders\.update"\)/);
-  assert.match(onlineClient, /canUpdate && primary/);
-  assert.match(onlineClient, /canUpdate && order\.payment_method === "khqr"/);
+  assert.match(ordersPage, /businessHasPermission\(business, ?"orders\.update"\)/);
+  assert.match(workspace, /permissions\.edit \? nextStatuses\(/);
+  assert.match(workspace, /permissions\.edit && <div className=\{styles\.onlineButtons\}>/);
+  assert.match(workspace, /const canCancelOrder = permissions\.cancel &&/);
   assert.match(onlineActions, /nextStatus === "rejected" \? "orders\.cancel" : "orders\.update"/);
 });
 

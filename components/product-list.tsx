@@ -1,6 +1,10 @@
 "use client";
 
+import { toast } from "sonner";
+import { stockAdjustmentLink } from "@/lib/inventory/stock-adjustment";
+import AnchoredActionMenu from "@/components/anchored-action-menu";
 import ProductPhoto from '@/components/product-photo';
+import ProductPhotoViewer from '@/components/product-photo-viewer';
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -38,6 +42,7 @@ export type Product = {
   sku: string | null;
   barcode?: string | null;
   image_url: string | null;
+  image_urls?: string[];
   variant_image_url?: string | null;
   cost_price: number;
   selling_price: number;
@@ -81,6 +86,7 @@ type ActionMenuState = {
 };
 
 type ConfirmState = {
+  groups?: ProductGroup[];
   kind: "hide" | "delete";
   group: ProductGroup;
   error?: string;
@@ -163,12 +169,27 @@ function groupProducts(products: Product[], variantMode: boolean): ProductGroup[
 
 export default function ProductList({
   products,
-  productMode = "standard", branches=[], branchId="", businessType,
+  productMode = "standard", branchId="", businessType, canAdjustStock = false,
 }: {
   products: Product[];
-  productMode?: string; branches?:{id:string;name:string}[];branchId?:string; businessType?: string;
+  productMode?: string; branches?:{id:string;name:string}[];branchId?:string; businessType?: string; canAdjustStock?: boolean;
 }) {
   const router = useRouter();
+  const [selectedGroups, setSelectedGroups] = useState(new Set<string>());
+  useEffect(() => { setSelectedGroups(new Set()); }, [branchId]);
+  function toggleSelected(key: string) {
+    setSelectedGroups(current => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; });
+  }
+  function adjustSelectedStock(targets: ProductGroup[]) {
+    const rows = targets.flatMap(group => group.rows);
+    if (!canAdjustStock) return;
+    if (rows.some(row => !row.is_active)) { toast.error("Activate hidden variants before adjusting their stock."); return; }
+    try {
+      const ids = rows.map(row => row.id);
+      router.push(stockAdjustmentLink(ids, branchId, ids.length > 30 ? sessionStorage : undefined));
+      setActionMenu(null);
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to open the stock selection."); }
+  }
   const [actionPending, startActionTransition] = useTransition();
   const isGeneralShop = businessType === "general";
   const isFashion = businessType === "fashion";
@@ -179,6 +200,8 @@ export default function ProductList({
     () => groupProducts(products, groupVariantProducts),
     [products, groupVariantProducts],
   );
+  const selectedTargets = groups.filter(group => selectedGroups.has(group.key));
+  const selectedCount = selectedTargets.reduce((sum, group) => sum + group.rows.length, 0);
   const tableDetailLabel = isVariantMode
     ? "Variants"
     : isGeneralShop
@@ -196,8 +219,7 @@ export default function ProductList({
       : "Product variants";
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
-  const [channel, setChannel] = useState("all");
-  const [stock, setStock] = useState("all");
+  const [catalogTab, setCatalogTab] = useState("all");
   const [sort, setSort] = useState("newest");
   const [view, setView] = useState<"list" | "grid">("list");
   const [page, setPage] = useState(1);
@@ -205,6 +227,9 @@ export default function ProductList({
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [detailGroup, setDetailGroup] = useState<ProductGroup | null>(null);
   const [collapsedColourGroups, setCollapsedColourGroups] = useState<Set<string>>(new Set());
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const detailPhotos = detailGroup ? [...new Set([detailGroup.imageUrl, ...(detailGroup.representative.image_urls ?? []), ...detailGroup.rows.map(row => row.variant_image_url || row.image_url)].filter((url): url is string => Boolean(url)))] : [];
+
 
   const detailVariantGroups = useMemo(
     () => (detailGroup ? groupVariantRowsByColour(detailGroup.rows) : []),
@@ -256,12 +281,10 @@ export default function ProductList({
             .some((value) => String(value).toLowerCase().includes(keyword)),
         );
       if (!matchesSearch) return false;
+      if (catalogTab === "hidden" && group.active) return false;
       if (category !== "all" && group.category !== category) return false;
-      if (channel === "online" && group.onlineCount === 0) return false;
-      if (channel === "hidden" && group.onlineCount > 0) return false;
-      if (stock === "in" && group.totalStock <= 0) return false;
-      if (stock === "low" && !group.lowStock) return false;
-      if (stock === "out" && !group.outOfStock) return false;
+      if (catalogTab === "low" && !group.lowStock) return false;
+      if (catalogTab === "out" && !group.outOfStock) return false;
       return true;
     });
 
@@ -274,7 +297,7 @@ export default function ProductList({
     });
 
     return result;
-  }, [groups, search, category, channel, stock, sort]);
+  }, [groups, search, category, sort, catalogTab]);
 
   const pageSize = 15;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -303,7 +326,7 @@ export default function ProductList({
 
     const rect = event.currentTarget.getBoundingClientRect();
     const menuWidth = 176;
-    const menuHeight = 176;
+    const menuHeight = canAdjustStock ? 176 : 136;
     const margin = 12;
     const left = Math.min(
       Math.max(margin, rect.right - menuWidth),
@@ -339,16 +362,22 @@ export default function ProductList({
     const request = confirmState;
 
     startActionTransition(async () => {
-      const result =
-        request.kind === "hide"
-          ? await setProductGroupActive(request.group.representative.id, false)
-          : await deleteProductGroup(request.group.representative.id);
-
-      if (!result.success) {
-        setConfirmState((current) =>
-          current ? { ...current, error: result.message } : current,
-        );
-        return;
+      const targets = request.groups ?? [request.group];
+      for (let index = 0; index < targets.length; index++) {
+        const group = targets[index];
+        try {
+          const result = request.kind === "hide"
+            ? await setProductGroupActive(group.representative.id, request.groups ? false : !group.active)
+            : await deleteProductGroup(group.representative.id, branchId);
+          if (!result.success) {
+            setConfirmState({ ...request, ...(request.groups ? { groups: targets.slice(index) } : {}), error: result.message });
+            router.refresh(); return;
+          }
+          setSelectedGroups(current => { const next = new Set(current); next.delete(group.key); return next; });
+        } catch {
+          setConfirmState(null); router.refresh();
+          toast.error("The result could not be confirmed. Review the refreshed products before trying again."); return;
+        }
       }
 
       setConfirmState(null);
@@ -358,15 +387,18 @@ export default function ProductList({
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-slate-950">Product List</h2>
-          <p className="mt-0.5 text-xs text-slate-500">View and manage your products, variants and inventory.</p>
-        </div>
-      </div>
+      <nav aria-label="Catalog filters" className="flex gap-4 overflow-x-auto border-b border-slate-200 px-4">
+        {([{ id: "all", label: "All Products", icon: Package }, { id: "low", label: "Low Stock", icon: SlidersHorizontal }, { id: "out", label: "Out of Stock", icon: Package }, { id: "hidden", label: "Hidden", icon: EyeOff }]).map(({ id, label, icon: Icon }) => (
+          <button key={id} type="button" aria-pressed={catalogTab === id} onClick={() => { setCatalogTab(id); resetPage(); }} className={`inline-flex shrink-0 items-center gap-2 border-b-2 py-3 text-xs font-semibold ${catalogTab === id ? "border-teal-600 text-teal-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}><Icon size={15} />{label}</button>
+        ))}
+      </nav>
 
-      <div className="border-b border-slate-200 bg-white px-4 py-3">
-        <div className="relative w-full max-w-md">
+      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2">
+          <select value={category} onChange={(event) => { setCategory(event.target.value); resetPage(); }} className={filterInputClass + " !w-auto max-w-36 shrink-0"}>
+            <option value="all">All Categories</option>
+            {categories.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        <div className="relative min-w-20 flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             value={search}
@@ -375,36 +407,20 @@ export default function ProductList({
               resetPage();
             }}
             placeholder="Search products..."
-            className={filterInputClass + " pl-9"}
+            className={filterInputClass + " min-w-0 pl-9"}
           />
         </div>
 
-        <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(130px,.9fr)_minmax(130px,.9fr)_minmax(130px,.9fr)_minmax(130px,.9fr)_auto_minmax(150px,1fr)]">
-          <select value={category} onChange={(event) => { setCategory(event.target.value); resetPage(); }} className={filterInputClass}>
-            <option value="all">All Categories</option>
-            {categories.map((name) => <option key={name} value={name}>{name}</option>)}
-          </select>
-          <span className={`${filterInputClass} inline-flex items-center`}>{branches.find(branch=>branch.id===branchId)?.name ?? "Current branch"}</span>
-          <select value={channel} onChange={(event) => { setChannel(event.target.value); resetPage(); }} className={filterInputClass}>
-            <option value="all">All Channels</option>
-            <option value="online">Online</option>
-            <option value="hidden">Hidden Online</option>
-          </select>
-          <select value={stock} onChange={(event) => { setStock(event.target.value); resetPage(); }} className={filterInputClass}>
-            <option value="all">All Stock Levels</option>
-            <option value="in">In Stock</option>
-            <option value="low">Low Stock</option>
-            <option value="out">Out of Stock</option>
-          </select>
-          <div className="flex w-fit rounded-lg border border-slate-200 p-1">
-            <button type="button" onClick={() => setView("list")} className={`rounded-md p-2 ${view === "list" ? "bg-blue-50 text-blue-600" : "text-slate-400 hover:bg-slate-50"}`} aria-label="List view">
+        <div className="contents">
+          <div className="flex w-fit shrink-0 rounded-lg border border-slate-200 p-1">
+            <button type="button" onClick={() => setView("list")} className={`rounded-md p-2 ${view === "list" ? "bg-teal-50 text-teal-700" : "text-slate-400 hover:bg-slate-50"}`} aria-label="List view">
               <List size={16} />
             </button>
-            <button type="button" onClick={() => setView("grid")} className={`rounded-md p-2 ${view === "grid" ? "bg-blue-50 text-blue-600" : "text-slate-400 hover:bg-slate-50"}`} aria-label="Grid view">
+            <button type="button" onClick={() => setView("grid")} className={`rounded-md p-2 ${view === "grid" ? "bg-teal-50 text-teal-700" : "text-slate-400 hover:bg-slate-50"}`} aria-label="Grid view">
               <Grid2X2 size={16} />
             </button>
           </div>
-          <div className="relative">
+          <div className="relative shrink-0">
             <SlidersHorizontal size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <select value={sort} onChange={(event) => setSort(event.target.value)} className={filterInputClass + " pl-8"}>
               <option value="newest">Sort: Newest</option>
@@ -415,6 +431,11 @@ export default function ProductList({
             </select>
           </div>
         </div>
+        {selectedTargets.length > 0 && <AnchoredActionMenu label={`Actions (${selectedCount})`}>
+          <button type="button" disabled={actionPending} onClick={() => setConfirmState({ kind: "delete", group: selectedTargets[0], groups: selectedTargets })} className="rounded-lg px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50">Delete selected</button>
+          <button type="button" disabled={actionPending} onClick={() => setConfirmState({ kind: "hide", group: selectedTargets[0], groups: selectedTargets })} className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Hide selected</button>
+          <button type="button" disabled={!canAdjustStock || actionPending} onClick={() => adjustSelectedStock(selectedTargets)} className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-45">Adjust stock — {selectedCount} items</button>
+        </AnchoredActionMenu>}
       </div>
 
       {pageRows.length === 0 ? (
@@ -426,7 +447,7 @@ export default function ProductList({
       ) : view === "grid" ? (
         <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
           {pageRows.map((group, index) => (
-            <ProductCard eager={index < 3} key={group.key} group={group} onMenu={openActionMenu} isGeneralShop={isGeneralShop} isVariantMode={isVariantMode} />
+            <ProductCard eager={index < 3} key={group.key} group={group} selected={selectedGroups.has(group.key)} onToggle={() => toggleSelected(group.key)} onMenu={openActionMenu} onView={() => openDetails(group)} isGeneralShop={isGeneralShop} isVariantMode={isVariantMode} />
           ))}
         </div>
       ) : (
@@ -434,7 +455,7 @@ export default function ProductList({
           <table className="w-full min-w-[920px] text-sm">
             <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
               <tr className="border-b border-slate-200">
-                <th className="w-10 px-3 py-3"><input type="checkbox" aria-label="Select all products" /></th>
+                <th className="w-10 px-3 py-3"><input type="checkbox" aria-label="Select products on this page" disabled={actionPending} checked={pageRows.length > 0 && pageRows.every(group => selectedGroups.has(group.key))} onChange={() => setSelectedGroups(current => { const next = new Set(current); const all = pageRows.every(group => next.has(group.key)); pageRows.forEach(group => all ? next.delete(group.key) : next.add(group.key)); return next; })} /></th>
                 <th className="px-3 py-3 text-left font-semibold">Product</th>
                 <th className="px-3 py-3 text-left font-semibold">Category</th>
                 <th className="px-3 py-3 text-left font-semibold">{tableDetailLabel}</th>
@@ -447,8 +468,8 @@ export default function ProductList({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {pageRows.map((group, index) => (
-                <tr key={group.key} className="transition hover:bg-slate-50/70">
-                  <td className="px-3 py-3"><input type="checkbox" aria-label={`Select ${group.name}`} /></td>
+                <tr key={group.key} onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input, a, label")) openDetails(group); }} className="cursor-pointer transition hover:bg-slate-50/70">
+                  <td className="px-3 py-3"><input type="checkbox" aria-label={`Select ${group.name}`} disabled={actionPending} checked={selectedGroups.has(group.key)} onChange={() => toggleSelected(group.key)} /></td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-3">
                       {group.imageUrl ? (
@@ -457,7 +478,7 @@ export default function ProductList({
                         <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 text-slate-400"><Package size={18} /></div>
                       )}
                       <div className="min-w-0">
-                        <p className="max-w-52 truncate font-semibold text-slate-900">{group.name}</p>
+                        <button type="button" onClick={() => openDetails(group)} aria-label={`View ${group.name}`} className="block max-w-52 truncate text-left font-semibold text-slate-900 hover:text-teal-700 focus-visible:outline-2 focus-visible:outline-teal-600">{group.name}</button>
                         <p className="mt-0.5 truncate text-[11px] text-slate-400">{group.sku || "No SKU"}</p>
                       </div>
                     </div>
@@ -466,7 +487,7 @@ export default function ProductList({
                   <td className="px-3 py-3">
                     {isVariantMode ? (
                       <>
-                        <p className="text-xs font-semibold text-slate-800">{group.variants}</p>
+                        <p className="text-xs font-semibold text-slate-800">{group.variants} variants</p>
                         {group.sizes.length > 0 && (
                           <p className="mt-0.5 max-w-32 truncate text-[10px] text-slate-400">
                             {group.sizes.join(" · ")}
@@ -514,6 +535,12 @@ export default function ProductList({
         </div>
       )}
 
+      {canAdjustStock && <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3 text-xs">
+        <span className="font-semibold text-slate-700">{groups.filter(group => selectedGroups.has(group.key)).length} products selected</span>
+        <button type="button" onClick={() => setSelectedGroups(new Set(filtered.map(group => group.key)))} className="text-blue-700 underline">Select filtered</button>
+        <button type="button" onClick={() => setSelectedGroups(new Set())} className="text-slate-500">Clear</button>
+
+      </div>}
       <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
         <p>
           Showing {filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filtered.length)} of {filtered.length} products
@@ -522,10 +549,10 @@ export default function ProductList({
           <button type="button" disabled={safePage <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} className={pageButtonClass} aria-label="Previous page"><ChevronLeft size={15} /></button>
           {Array.from({ length: Math.min(pageCount, 5) }, (_, index) => {
             const value = index + 1;
-            return <button key={value} type="button" onClick={() => setPage(value)} className={`${pageButtonClass} ${safePage === value ? "border-blue-600 bg-blue-600 text-white" : ""}`}>{value}</button>;
+            return <button key={value} type="button" onClick={() => setPage(value)} className={`${pageButtonClass} ${safePage === value ? "border-teal-700 bg-teal-700 text-white" : ""}`}>{value}</button>;
           })}
           {pageCount > 5 && <span className="px-1 text-slate-400">…</span>}
-          {pageCount > 5 && <button type="button" onClick={() => setPage(pageCount)} className={`${pageButtonClass} ${safePage === pageCount ? "border-blue-600 bg-blue-600 text-white" : ""}`}>{pageCount}</button>}
+          {pageCount > 5 && <button type="button" onClick={() => setPage(pageCount)} className={`${pageButtonClass} ${safePage === pageCount ? "border-teal-700 bg-teal-700 text-white" : ""}`}>{pageCount}</button>}
           <button type="button" disabled={safePage >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))} className={pageButtonClass} aria-label="Next page"><ChevronRight size={15} /></button>
           <span className="ml-1 inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-500">15 / page</span>
         </div>
@@ -546,14 +573,6 @@ export default function ProductList({
               style={{ top: actionMenu.top, left: actionMenu.left }}
               onMouseDown={(event) => event.stopPropagation()}
             >
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => openDetails(actionMenu.group)}
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                <Eye size={15} /> View
-              </button>
               <Link
                 href={`/dashboard/products/${actionMenu.group.representative.id}/edit`}
                 role="menuitem"
@@ -562,14 +581,15 @@ export default function ProductList({
               >
                 <Pencil size={15} /> Edit
               </Link>
+              {canAdjustStock && <button type="button" role="menuitem" onClick={() => adjustSelectedStock([actionMenu.group])} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"><SlidersHorizontal size={15} /> Adjust stock</button>}
               <button
                 type="button"
                 role="menuitem"
                 onClick={() => requestHide(actionMenu.group)}
                 className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
-                <EyeOff size={15} />
-                Hide
+                {actionMenu.group.active ? <EyeOff size={15} /> : <Eye size={15} />}
+                {actionMenu.group.active ? "Hide" : "Unhide"}
               </button>
               <button
                 type="button"
@@ -618,7 +638,7 @@ export default function ProductList({
               <div className="flex-1 overflow-y-auto px-5 py-5">
                 <div className="flex items-start gap-4">
                   {detailGroup.imageUrl ? (
-                    <img src={detailGroup.imageUrl} alt={detailGroup.name} className="h-20 w-20 rounded-2xl border border-slate-200 object-cover" />
+                    <button type="button" onClick={() => setPhotoPreview(detailGroup.imageUrl)} aria-label="View cover photo" className="shrink-0 rounded-2xl focus-visible:outline-2 focus-visible:outline-teal-600"><ProductPhoto src={detailGroup.imageUrl} alt={detailGroup.name} sizes="80px" className="h-20 w-20 rounded-2xl border border-slate-200 object-cover" /></button>
                   ) : (
                     <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"><Package size={25} /></div>
                   )}
@@ -659,6 +679,8 @@ export default function ProductList({
                     value={detailGroup.minPrice === detailGroup.maxPrice ? formatMoney(detailGroup.minPrice) : `${formatMoney(detailGroup.minPrice)} – ${formatMoney(detailGroup.maxPrice)}`}
                   />
                 </div>
+
+                {(detailGroup.representative.image_urls?.length ?? 0) > 0 && <div className="mt-4 flex gap-3 overflow-x-auto" aria-label="Product gallery">{detailGroup.representative.image_urls?.map((url, index) => <button type="button" key={url} onClick={() => setPhotoPreview(url)} aria-label={`View product photo ${index + 1}`} className="shrink-0 rounded-xl focus-visible:outline-2 focus-visible:outline-teal-600"><ProductPhoto src={url} alt={`${detailGroup.name} photo ${index + 1}`} sizes="120px" className="h-28 w-28 shrink-0 rounded-xl border border-slate-200 object-contain" loading="lazy" /></button>)}</div>}
 
                 {isVariantMode && (
                 <div className="mt-6">
@@ -705,14 +727,7 @@ export default function ProductList({
                               </span>
                             </button>
 
-                            <Link
-                              href={`/dashboard/products/${detailGroup.representative.id}/edit`}
-                              className="mr-2 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white hover:text-blue-600"
-                              aria-label={`Manage ${colourGroup.label} variants`}
-                              title="Manage variants"
-                            >
-                              <MoreHorizontal size={17} />
-                            </Link>
+
                           </div>
 
                           {!collapsed && (
@@ -743,13 +758,14 @@ export default function ProductList({
                                         <tr key={row.id} className="bg-white hover:bg-slate-50/60">
                                           <td className="px-3 py-2">
                                             {rowImage ? (
-                                              <img
+                                              <button type="button" onClick={() => setPhotoPreview(rowImage)} aria-label={`View ${colourGroup.label} ${row.size ?? ""} photo`} className="rounded-lg focus-visible:outline-2 focus-visible:outline-teal-600"><ProductPhoto sizes="36px"
                                                 src={rowImage}
                                                 alt={`${detailGroup.name} ${colourGroup.label} ${row.size ?? ""}`}
                                                 loading="lazy"
                                                 decoding="async"
                                                 className="h-9 w-9 rounded-lg border border-slate-200 object-cover"
                                               />
+                                              </button>
                                             ) : (
                                               <div className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-400">
                                                 <Package size={13} />
@@ -887,6 +903,8 @@ export default function ProductList({
           document.body,
         )}
 
+      {photoPreview && detailGroup && typeof document !== "undefined" && createPortal(<ProductPhotoViewer key={photoPreview} images={detailPhotos} initialIndex={Math.max(0, detailPhotos.indexOf(photoPreview))} name={detailGroup.name} onClose={() => setPhotoPreview(null)} />, document.body)}
+
       {confirmState && typeof document !== "undefined" &&
         createPortal(
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/35 p-4">
@@ -899,14 +917,16 @@ export default function ProductList({
                 {confirmState.kind === "delete" ? <Trash2 size={19} /> : <EyeOff size={19} />}
               </div>
               <h3 className="mt-3 text-base font-bold text-slate-950">
-                {confirmState.kind === "delete"
+                {confirmState.groups ? `${confirmState.kind === "delete" ? "Delete" : "Hide"} ${confirmState.groups.reduce((sum, group) => sum + group.rows.length, 0)} selected items?` : confirmState.kind === "delete"
                   ? `Delete ${confirmState.group.name}?`
-                  : `Hide ${confirmState.group.name}?`}
+                  : `${confirmState.group.active ? "Hide" : "Unhide"} ${confirmState.group.name}?`}
               </h3>
               <p className="mt-1.5 text-sm leading-5 text-slate-500">
                 {confirmState.kind === "delete"
-                  ? "This permanently removes this product/style. If it is already used in order or inventory history, TENH POS will block the delete and keep the records safe."
-                  : "This product/style will become inactive and will be hidden from POS and online. You can enable POS/online again from Edit Product."}
+                  ? "This removes the product/style from the current branch and automatically sets its remaining branch stock to zero in the same operation. Sales and inventory history are kept. Other branches are unchanged."
+                  : (confirmState.groups || confirmState.group.active)
+                    ? "This product/style will become inactive and be hidden from POS and online. You can unhide it from Actions."
+                    : "This product/style will become active again in POS. Enable online visibility separately in Edit Product."}
               </p>
 
               {confirmState.error && (
@@ -934,7 +954,7 @@ export default function ProductList({
                     ? "Working..."
                     : confirmState.kind === "delete"
                       ? "Delete"
-                      : "Hide"}
+                      : (confirmState.groups || confirmState.group.active) ? "Hide" : "Unhide"}
                 </button>
               </div>
             </div>
@@ -949,26 +969,31 @@ function ProductCard({
   eager,
   group,
   onMenu,
+  onView,
   isGeneralShop = false,
   isVariantMode = false,
+  selected = false, onToggle,
 }: {
   eager: boolean;
   group: ProductGroup;
   onMenu: (event: ReactMouseEvent<HTMLButtonElement>, group: ProductGroup) => void;
+  onView: () => void;
   isGeneralShop?: boolean;
   isVariantMode?: boolean;
+  selected?: boolean; onToggle?: () => void;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm">
+    <div onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input, a, label")) onView(); }} className="cursor-pointer rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm">
+      {onToggle && <label className="mb-2 flex items-center gap-2 text-xs text-slate-500"><input type="checkbox" aria-label={`Select ${group.name}`} checked={selected} onChange={onToggle} /> Select product</label>}
       <div className="flex items-start gap-3">
-        <Link href={`/dashboard/products/${group.representative.id}/edit`} className="flex min-w-0 flex-1 items-start gap-3">
+        <button type="button" onClick={onView} aria-label={`View ${group.name}`} className="flex min-w-0 flex-1 items-start gap-3 text-left focus-visible:outline-2 focus-visible:outline-teal-600">
           {group.imageUrl ? <ProductPhoto loading={eager ? 'eager' : 'lazy'} src={group.imageUrl} alt={group.name} sizes="56px" className="h-14 w-14 rounded-xl border border-slate-200 object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><Package size={20} /></div>}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-slate-900">{group.name}</p>
             <p className="mt-0.5 text-xs text-slate-400">{group.category}</p>
             <div className="mt-2 flex flex-wrap gap-1.5"><StatusBadge group={group} /></div>
           </div>
-        </Link>
+        </button>
         <button
           type="button"
           onClick={(event) => onMenu(event, group)}

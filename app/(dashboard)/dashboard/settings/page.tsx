@@ -1,7 +1,7 @@
 import Link from "next/link";
 import {
-  ArrowRight,
   Building2,
+  Store,
   Banknote,
   Bell,
   Headphones,
@@ -12,12 +12,13 @@ import {
   Palette,
   ShieldCheck,
   UserRound,
-  UsersRound,
 } from "lucide-react";
 
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
 import { businessHasPermission } from "@/lib/auth/effective-permissions";
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import {getBranchContext} from "@/lib/branches/context";
+import {createClient} from "@/lib/supabase/branch-server";
+import RegisterSetting from "./register-setting";
 
 type SettingItem = {
   title: string;
@@ -66,45 +67,17 @@ const baseSettings: SettingItem[] = [
 
 export default async function SettingsPage() {
   const business = await getCurrentBusiness();
+  const context = business.role === "owner" ? await getBranchContext() : null;
+  const registerResult = context?.branchId ? await (await createClient()).from("branch_pos_settings").select("require_open_register").eq("business_id",business.id).eq("location_id",context.branchId).maybeSingle() : null;
 
-  const [
-    { data: locations },
-    { data: memberships },
-  ] = await Promise.all([
-    supabaseAdmin
-      .from("business_locations")
-      .select("id,is_active")
-      .eq("business_id", business.id),
-    supabaseAdmin
-      .from("business_members")
-      .select("id,role,is_active")
-      .eq("business_id", business.id),
+  const [canViewBusiness, canViewStorefront] = await Promise.all([
+    businessHasPermission(business, "business.view"),
+    businessHasPermission(business, "storefront.view"),
   ]);
-
-  const locationRows = (locations ?? []) as unknown as Array<{
-    id: string;
-    is_active: boolean | null;
-  }>;
-  const membershipRows = (memberships ?? []) as unknown as Array<{
-    id: string;
-    role: string;
-    is_active: boolean | null;
-  }>;
-
-  const branchCount = locationRows.filter(
-    (location) => location.is_active !== false,
-  ).length;
-
-  const employeeCount = membershipRows.filter(
-    (member) =>
-      member.is_active !== false &&
-      member.role !== "owner",
-  ).length;
-
-  const [canManageUsers, canManageBranches] = await Promise.all([
-    businessHasPermission(business, "users.view"),
-    businessHasPermission(business, "locations.manage"),
-  ]);
+  const businessSettings: SettingItem[] = [
+    { title: "Business Settings", description: "Manage your business details and shared shop information.", href: "/dashboard/settings/business", icon: Building2, visible: canViewBusiness, details: ["Business details and Store URL", "Shop phone, email and address", "Store hours and time zone"] },
+    { title: "Online Store Settings", description: "Manage your public storefront and online shopping experience.", href: "/dashboard/settings/online-store", icon: Store, visible: canViewStorefront, details: ["Branding and default language", "Storefront products and visibility", "Online payments and fulfillment"] },
+  ].filter(item => item.visible !== false);
 
   const settingsItems: SettingItem[] = [
     ...baseSettings,
@@ -128,31 +101,15 @@ export default async function SettingsPage() {
           General Settings
         </h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Manage your business, account, appearance, security, printers and users.
+          Manage your business, online store, account and preferences.
         </p>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="grid divide-y divide-slate-100 sm:grid-cols-2 lg:divide-x lg:divide-y-0 dark:divide-slate-800">
+      {businessSettings.length > 0 && <section className="grid gap-4 md:grid-cols-2" aria-label="Business and online store settings">
+        {businessSettings.map(item => <SettingsCard key={item.href} item={item} />)}
+      </section>}
 
-
-          <SummaryMetric
-            icon={Building2}
-            value={branchCount}
-            label="Branches"
-            href={canManageBranches ? "/dashboard/locations" : undefined}
-            action="Manage"
-          />
-          <SummaryMetric
-            icon={UsersRound}
-            value={employeeCount}
-            label="User & Manage User"
-            href={canManageUsers ? "/dashboard/settings/users" : undefined}
-            action="Manage"
-          />
-        </div>
-      </section>
-
+      {context?.branchId && (registerResult?.error || !registerResult?.data ? <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Unable to load the POS register setting. Refresh and try again.</p> : <RegisterSetting key={context.branchId} businessId={business.id} branchId={context.branchId} branchName={context.branches.find(branch=>branch.id===context.branchId)?.name ?? "Active branch"} required={registerResult.data.require_open_register !== false} />)}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {settingsItems.map((item) => (
           <SettingsCard key={item.href} item={item} />
@@ -214,41 +171,3 @@ function DetailIcon({ index }: { index: number }) {
 
   return <Icon size={14} className="shrink-0 text-slate-400" />;
 }
-
-function SummaryMetric({
-  icon: Icon,
-  value,
-  label,
-  href,
-  action,
-}: {
-  icon: typeof Building2;
-  value: string | number;
-  label: string;
-  href?: string;
-  action: string;
-}) {
-  return (
-    <div className="flex items-center gap-3 p-5 sm:p-6">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300">
-        <Icon size={19} />
-      </div>
-      <div className="min-w-0">
-        <p className="truncate text-lg font-bold text-slate-950 dark:text-white">
-          {value}
-        </p>
-        <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
-        {href ? (
-          <Link
-            href={href}
-            className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700"
-          >
-            {action}
-            <ArrowRight size={11} />
-          </Link>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-

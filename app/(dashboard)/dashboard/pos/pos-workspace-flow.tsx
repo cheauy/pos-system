@@ -5,7 +5,7 @@ import { Check, CreditCard, MapPin, Package, Plus, ShoppingCart, Store, Trash2, 
 import type { CurrencyQuote, CartLine, PaymentMethod, Product, ProductGroup, ShippingDetails, Tender, Workspace } from './pos-workspace-types';
 import { inventoryFor, money, splitRemaining, stockFor, stockLabel, tenderIssue } from './pos-workspace-helpers';
 import { CurrencyAmountInput } from './pos-currency-components';
-import { paymentHiddenForWalkIn } from './pos-customer-helpers';
+import { paymentHiddenForDelivery, paymentHiddenForWalkIn } from './pos-customer-helpers';
 import { quoteMoney } from './pos-currency';
 import { ProductImage } from './pos-workspace-components';
 import { CarrierCards, PaymentMethodSelect } from './pos-checkout-controls';
@@ -70,6 +70,7 @@ type CheckoutPanelProps = {
   confirmed: boolean; setConfirmed: (value: boolean) => void;
   onEntryError: (key:string,error:string|null)=>void;
   received: number; error: string | null; busy: boolean; onBack: () => void; onConfirm: () => void;
+  lines: CartLine[]; note: string;
 };
 
 export function CheckoutPanel(p: CheckoutPanelProps) {
@@ -77,11 +78,40 @@ export function CheckoutPanel(p: CheckoutPanelProps) {
   const [tenderRevision,setTenderRevision]=useState(0);
   const [chooseType,setChooseType] = useState(Boolean(p.customerId) || p.shipping.method !== 'in_store');
   const cash = (v: number) => quoteMoney(v,p.quote);
+  const [reviewing,setReviewing] = useState(false);
   const isWalkIn = !p.customerId && p.shipping.method === 'in_store';
+  const isDelivery = p.shipping.method === 'delivery';
   const splitError = p.method === 'split' ? tenderIssue(p.tenders,p.total) : null;
   useEffect(() => {
     if (paymentHiddenForWalkIn(p.method, isWalkIn)) p.setMethod('cash');
-  }, [isWalkIn, p.method, p.setMethod]);
+    else if (paymentHiddenForDelivery(p.method, isDelivery)) p.setMethod('cod');
+  }, [isWalkIn, isDelivery, p.method, p.setMethod]);
+  if (reviewing) {
+    const methodLabel = PAYMENT_METHODS.find(([id]) => id === p.method)?.[1] || p.method;
+    const carrier = p.shipping.carrier === 'other' ? p.shipping.carrierOther || 'Other' : ({ grab:'Grab', jt:'J&T', vet:'VET' } as Record<string,string>)[p.shipping.carrier || ''] || '';
+    const details: Array<[string,string]> = [
+      ['Customer', p.customerName || (p.shipping.method === 'in_store' ? 'Walk-in customer' : p.shipping.recipientName || '—')],
+      ['Order type', shippingLabel(p.shipping.method)],
+      ...(p.shipping.method !== 'in_store' ? [['Recipient', p.shipping.recipientName], ['Phone', p.shipping.phone]] as Array<[string,string]> : []),
+      ...(isDelivery ? [['Address', p.shipping.address], ...(carrier ? [['Shipping type', carrier]] as Array<[string,string]> : [])] as Array<[string,string]> : []),
+      ['Payment method', methodLabel],
+      ...(['cash','cod','deposit'].includes(p.method) && p.paid !== '' ? [['Amount received', cash(p.received)]] as Array<[string,string]> : []),
+      ...(p.method !== 'cash' && p.received < p.total ? [['Balance due', cash(Math.max(0,p.total-p.received))]] as Array<[string,string]> : []),
+      ...(p.method === 'cash' && p.received > p.total ? [['Change to give', cash(p.received-p.total)]] as Array<[string,string]> : []),
+      ...(p.note.trim() ? [['Note', p.note.trim()]] as Array<[string,string]> : []),
+    ];
+    return <fieldset disabled={p.busy} className={s.flowFieldset}>
+      <div className={s.stack}>
+        <div className={s.checkoutStep}><span><Check size={14}/></span><div><h3>Confirm this sale</h3><p>Check the details below. The sale is saved only when you confirm.</p></div></div>
+        <dl className={s.reviewTotals}>{details.map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+        <h3>Items ({p.lines.reduce((sum,l) => sum+l.quantity,0)})</h3>
+        <dl className={s.reviewTotals}>{p.lines.map(line => <div key={line.key}><dt>{line.quantity} × {line.name}{line.variant ? ` · ${line.variant}` : ''}{line.selectedOptions.length ? ` · ${line.selectedOptions.map(o => o.name).join(', ')}` : ''}</dt><dd>{cash(line.unitPrice * line.quantity)}</dd></div>)}</dl>
+        <dl className={s.reviewTotals}><div><dt>Merchandise subtotal</dt><dd>{cash(p.subtotal)}</dd></div><div><dt>{p.discountLabel}</dt><dd>−{cash(p.discount)}</dd></div><div><dt>Tax ({p.taxRate}%)</dt><dd>{cash(p.tax)}</dd></div><div><dt>Shipping fee</dt><dd>{cash(Number(p.delivery))}</dd></div><div className={s.totalRow}><dt>Total</dt><dd>{cash(p.total)}</dd></div></dl>
+        {p.error && <p role="status" className={s.paymentInfo}>{p.error}</p>}
+        <div className={s.flowActions}><button type="button" className={s.button} onClick={() => setReviewing(false)}>Back to payment</button><button type="button" className={s.primary} disabled={Boolean(p.error)} onClick={p.onConfirm}><Check size={18}/>{p.busy ? 'Saving sale…' : `Confirm · ${cash(p.total)}`}</button></div>
+      </div>
+    </fieldset>;
+  }
   function updateTender(index: number, patch: Partial<Tender>) { p.setTenders(p.tenders.map((t,i) => i === index ? { ...t,...patch } : t)); }
   const shippingMethods = [
     { id:'in_store' as const, label:'In-store', text:'Customer takes the items now.', Icon:Store },
@@ -113,7 +143,7 @@ export function CheckoutPanel(p: CheckoutPanelProps) {
       </div>}
       <div className={s.checkoutStep}><span>2</span><div><h3>Payment method</h3><p>Record the payment received, or an amount still due.</p></div></div>
       <p className={s.currencyNotice}>Entry currency: <strong>{p.quote.displayCurrency}</strong>{p.quote.enabled && <> · $1 = {p.quote.usdKhrRate.toLocaleString('en-US',{maximumFractionDigits:4})}៛</>}. Accounting stays in {p.quote.baseCurrency}.</p>
-      <PaymentMethodSelect value={p.method} onChange={p.setMethod} disabled={p.busy} total={p.total} hasCustomer={Boolean(p.customerId)} isWalkIn={isWalkIn}/>
+      <PaymentMethodSelect value={p.method} onChange={p.setMethod} disabled={p.busy} total={p.total} hasCustomer={Boolean(p.customerId)} isWalkIn={isWalkIn} isDelivery={isDelivery}/>
       {['cash','cod','deposit'].includes(p.method) && <div className={s.field}><label>{p.method === 'cash' ? 'Cash received' : p.method === 'deposit' ? 'Cash deposit received' : 'Cash already received (optional)'} ({p.quote.displayCurrency})</label>
         <CurrencyAmountInput key={cashRevision} label="Amount received" value={p.paid} quote={p.quote} onChange={p.setPaid} placeholder={p.method === 'cash' || p.method === 'cod' ? p.total : 0} onError={error=>p.onEntryError('paid',error)}/>
         {(p.method === 'cash' || p.method === 'cod') && <button type="button" className={s.textButton} onClick={()=>{p.setPaid(p.total.toFixed(2));setCashRevision(n=>n+1);}}>Exact amount · {cash(p.total)}</button>}
@@ -138,7 +168,7 @@ export function CheckoutPanel(p: CheckoutPanelProps) {
       </div>}
       <dl className={s.reviewTotals}><div><dt>Merchandise subtotal</dt><dd>{cash(p.subtotal)}</dd></div><div><dt>{p.discountLabel}</dt><dd>−{cash(p.discount)}</dd></div><div><dt>Tax ({p.taxRate}%)</dt><dd>{cash(p.tax)}</dd></div><div><dt>Shipping fee</dt><dd>{cash(Number(p.delivery))}</dd></div><div className={s.totalRow}><dt>Total</dt><dd>{cash(p.total)}</dd></div></dl>
       {p.error && <p role="status" className={s.paymentInfo}>{p.error}</p>}
-      <div className={s.flowActions}><button type="button" className={s.button} onClick={p.onBack}>Back to cart</button><button type="button" className={s.primary} disabled={Boolean(p.error)} onClick={p.onConfirm}><Check size={18}/>{p.busy ? 'Saving sale…' : `Confirm Sale · ${cash(p.total)}`}</button></div>
+      <div className={s.flowActions}><button type="button" className={s.button} onClick={p.onBack}>Back to cart</button><button type="button" className={s.primary} disabled={Boolean(p.error)} onClick={() => setReviewing(true)}><Check size={18}/>{`Confirm Sale · ${cash(p.total)}`}</button></div>
     </div>
   </fieldset>;
 }

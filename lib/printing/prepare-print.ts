@@ -45,9 +45,59 @@ export async function preparePrint(document:Document,selector:string){
   finally{clearTimeout(timer);}
   const receipt=content.matches?.('.receipt')?content:content.querySelector?.('.receipt');
   if(receipt)sizeReceiptPage(document,receipt as HTMLElement);
-  for(const item of content.querySelectorAll<HTMLElement>('.shipping-label')){
-    const heightMm=Number(item.dataset.heightMm),widthMm=Number(item.dataset.widthMm);
-    if(heightMm&&widthMm&&item.getBoundingClientRect().height>item.getBoundingClientRect().width/widthMm*heightMm+2)
-      throw new Error('This shipping label is too long for the selected paper. Choose a larger label or show fewer details in Printer Settings.');
+  assertShippingLabelsFit(content);
+}
+
+/** Fit text, never scale/stretch the QR or change the physical paper dimensions. */
+export function fitShippingLabel(label: HTMLElement): boolean | null {
+  if (!label.matches?.('.ship-template') || !label.getBoundingClientRect().width) return null;
+  const view = label.ownerDocument.defaultView;
+  if (!view) return null;
+  label.style.setProperty('--ship-fit-scale', '1');
+  const style = view.getComputedStyle(label);
+  const base = parseFloat(style.getPropertyValue('--ship-base')) || 9;
+  const user = parseFloat(style.getPropertyValue('--ship-user-scale')) || 1;
+  const minimumFont = label.classList.contains('ship-small') ? 8 : label.classList.contains('ship-square') ? 9 : 10;
+  const minimumScale = Math.min(1, minimumFont / (base * user));
+  function overflows() {
+    const bounds = label.getBoundingClientRect();
+    const details = label.querySelector<HTMLElement>('.ship-details');
+    const body = label.querySelector<HTMLElement>('.ship-body');
+    if (!details || !body) return true;
+    if (details.scrollHeight > body.clientHeight + 1 || details.scrollWidth > details.clientWidth + 1) return true;
+    if (details.scrollHeight > details.clientHeight + 1) return true;
+    const codes = label.querySelector<HTMLElement>('.ship-codes');
+    if (codes && label.classList.contains('ship-tall')) {
+      const end = details.getBoundingClientRect().bottom;
+      if (end > codes.getBoundingClientRect().top + 1) return true;
+    }
+    return [...label.querySelectorAll<HTMLElement>('[data-fit-box], .ship-qr, .ship-codes, .ship-row dt, .ship-row dd')].some(element => {
+      const rect = element.getBoundingClientRect();
+      return element.scrollWidth > element.clientWidth + 1 || rect.right > bounds.right + 1 || rect.bottom > bounds.bottom + 1;
+    });
+  }
+  let scale = 1;
+  while (overflows() && scale > minimumScale) {
+    scale = Math.max(minimumScale, scale - .025);
+    label.style.setProperty('--ship-fit-scale', String(scale));
+  }
+  const fits = !overflows();
+  if (fits) delete label.dataset.printOverflow;
+  else label.dataset.printOverflow = 'true';
+  return fits;
+}
+export function assertShippingLabelsFit(content: Element) {
+  const labels = content.matches?.('.shipping-label') ? [content] : [...content.querySelectorAll('.shipping-label')];
+  for (const element of labels) {
+    const label = element as HTMLElement;
+    if (label.matches?.('.ship-template')) {
+      if (fitShippingLabel(label) === false) throw new Error('This shipping label is too long for the selected paper. Choose a larger label or show fewer details in Printer Settings.');
+    } else {
+      // Keep the previous guard for legacy/custom layouts.
+      const height = Number(label.dataset.heightMm), width = Number(label.dataset.widthMm);
+      const bounds = label.getBoundingClientRect();
+      if (height && width && bounds.height > bounds.width / width * height + 2)
+        throw new Error('This shipping label is too long for the selected paper. Choose a larger label or show fewer details in Printer Settings.');
+    }
   }
 }

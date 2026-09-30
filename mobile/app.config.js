@@ -9,11 +9,20 @@ module.exports = ({ config }) => {
       throw new Error('Production builds require an HTTPS API and the public Supabase environment variables.');
     }
   }
+  // Order QR links (https://<app host>/o/<code>) open the app via Universal/App Links.
+  // The site must serve /.well-known/apple-app-site-association and assetlinks.json.
+  let linkHost = '';
+  try { if (api.startsWith('https://')) linkHost = new URL(api).hostname; } catch { /* Links stay off without an HTTPS API. */ }
   return {
     ...config,
     plugins: [...(config.plugins || []), 'expo-image', ['expo-audio', { microphonePermission: false, recordAudioAndroid: false, enableBackgroundPlayback: false }]],
-    ios: { ...config.ios, infoPlist: { ...config.ios.infoPlist,
+    ios: { ...config.ios,
+      ...(linkHost ? { associatedDomains: [`applinks:${linkHost}`] } : {}),
+      infoPlist: { ...config.ios.infoPlist,
       ...(api.startsWith('http://') ? { NSAppTransportSecurity: { NSAllowsArbitraryLoads: true } } : {}),
     } },
+    android: { ...config.android,
+      ...(linkHost ? { intentFilters: [{ action: 'VIEW', autoVerify: true, category: ['BROWSABLE', 'DEFAULT'], data: [{ scheme: 'https', host: linkHost, pathPrefix: '/o/' }] }] } : {}),
+    },
   };
 };

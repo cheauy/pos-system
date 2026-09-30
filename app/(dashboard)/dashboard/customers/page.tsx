@@ -2,6 +2,7 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { getCustomerFieldSettings } from "@/lib/customers/get-customer-field-settings";
 import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
+import { getBranchCurrency } from "@/lib/settings/branch-currency";
 import { createClient } from "@/lib/supabase/branch-server";
 import { CustomersWorkspace } from "./customers-workspace";
 
@@ -34,11 +35,12 @@ type PurchaseHistoryItem = {
   createdAt: string;
 };
 
-export default async function CustomersPage() {
+export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ customer?: string | string[] }> }) {
   const business = await requirePermission("customers.view");
+  const requested = (await searchParams).customer;
   const supabase = await createClient();
 
-  const [customerResult, orderResult, fieldSettings, storefrontSettings] =
+  const [customerResult, orderResult, fieldSettings, storefrontSettings, branchCurrency] =
     await Promise.all([
       supabase
         .from("customers")
@@ -51,10 +53,12 @@ export default async function CustomersPage() {
         .select("id,customer_id,order_number,total,status,order_source,created_at")
         .eq("business_id", business.id)
         .not("customer_id", "is", null)
+        .is("archived_at", null)
         .order("created_at", { ascending: false })
         .limit(10000),
       getCustomerFieldSettings(business.id),
       getStorefrontSettings(business.id),
+      getBranchCurrency(business.id),
     ]);
 
   if (customerResult.error) {
@@ -89,7 +93,8 @@ export default async function CustomersPage() {
       historyByCustomer.set(order.customer_id, history);
     }
 
-    if (order.status !== "completed") continue;
+    // Delivery/pickup sales stay open until fulfilled; they still belong in the customer's totals.
+    if (order.status === "cancelled" || order.status === "refunded") continue;
 
     const current = metrics.get(order.customer_id) ?? {
       orderCount: 0,
@@ -139,9 +144,11 @@ export default async function CustomersPage() {
   ]);
   return (
     <CustomersWorkspace
+      key={typeof requested === "string" ? requested : "customers"}
+      initialSelectedId={typeof requested === "string" ? requested : undefined}
       customers={enrichedCustomers}
       stats={stats}
-      currency={storefrontSettings.currency}
+      currency={branchCurrency.format}
       accentColor={storefrontSettings.primary_color || "#2563EB"}
       fieldSettings={fieldSettings}
       canManageSettings={business.role === "owner"}
