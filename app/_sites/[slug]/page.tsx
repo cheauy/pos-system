@@ -1,6 +1,7 @@
 import { storefrontTheme } from "@/lib/storefront/theme";
 import { StorefrontLanguage } from "./storefront-language";
 import { bestsellerKeys } from "@/lib/storefront/bestsellers";
+import { storefrontBundleItems } from "@/lib/storefront/bundle-items";
 import { isNewArrival } from "@/lib/storefront/profile";
 import { notFound } from "next/navigation";
 import {
@@ -368,11 +369,18 @@ export default async function StorefrontPage({
     }
   }
 
+  const bundleItems = await storefrontBundleItems(business.id, productRows
+    .filter(product => product.product_type === "bundle" && productKey === `product:${product.id}`)
+    .map(product => product.id));
   const catalogProducts = buildCatalog(
     productRows,
     optionGroupsByProduct,
     storefront.social_links?.profile?.newArrivals,
   ).map(product => ({ ...product, preorderVariantIds: product.variants.filter(variant => storefront.social_links?.profile?.featuredProductIds?.includes(variant.id)).map(variant => variant.id), isFeatured: product.variants.some(variant => storefront.social_links?.profile?.featuredProductIds?.includes(variant.id)) }));
+
+  for (const product of catalogProducts) {
+    if (product.productType === "bundle") product.bundleItems = bundleItems.get(product.variants[0].id) ?? [];
+  }
 
   const soldQuantities = new Map<string, number>();
   const since = new Date(); since.setDate(since.getDate() - 30);

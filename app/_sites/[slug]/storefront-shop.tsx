@@ -18,6 +18,7 @@ import { useStorefrontLanguage } from "./storefront-language";
 import { validateCheckoutContact, validateCheckoutEmail } from "@/lib/storefront/checkout-validation";
 import { toast } from "sonner";
 import ProductGallery from "./product-gallery";
+import ProductPhoto from "@/components/product-photo";
 import StorefrontCatalog from "./storefront-catalog";
 import { restoreCart, type CartItem } from "@/lib/storefront/cart";
 
@@ -376,6 +377,26 @@ function ProductConfigurator({
         <div className={fullPage ? "product-detail-options space-y-6" : "space-y-6 p-5"}>
           {!fullPage && product.description && <p className="whitespace-pre-line text-sm leading-6 text-slate-600">{product.description}</p>}
           {!fullPage && gallery}
+
+          {product.productType === "bundle" && Boolean(product.bundleItems?.length) && (
+            <section aria-label={t("Included items")}>
+              <h3 className="text-sm font-semibold text-slate-800">{t("Included items")}</h3>
+              <ul className="mt-2 divide-y divide-slate-100">
+                {product.bundleItems?.map(item => (
+                  <li key={item.id} className="flex items-center gap-3 py-2">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-50">
+                      {item.imageUrl ? <ProductPhoto src={item.imageUrl} alt={item.name} width={112} height={112} sizes="56px" className="h-full w-full object-contain" /> : <ShoppingBag aria-label={t("No photo")} size={22} className="text-slate-300" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-sm font-medium text-slate-900">{item.name}</p>
+                      {(item.color || item.size) && <p className="mt-0.5 text-xs text-slate-500">{[item.color, item.size].filter(Boolean).join(" / ")}</p>}
+                    </div>
+                    <span className="shrink-0 text-sm font-semibold text-slate-700">×{item.quantity}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {product.productType === "variant" && isShoeProduct && (
             <div className="space-y-5">
