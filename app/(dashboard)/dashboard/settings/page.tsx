@@ -16,9 +16,6 @@ import {
 
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
 import { businessHasPermission } from "@/lib/auth/effective-permissions";
-import {getBranchContext} from "@/lib/branches/context";
-import {createClient} from "@/lib/supabase/branch-server";
-import RegisterSetting from "./register-setting";
 
 type SettingItem = {
   title: string;
@@ -31,8 +28,8 @@ type SettingItem = {
 
 const baseSettings: SettingItem[] = [
   {
-    title: "Appearance & Language",
-    description: "Choose English or Khmer and set your preferred theme.",
+    title: "System & Display",
+    description: "Manage POS behavior, language and display preferences.",
     href: "/dashboard/settings/system",
     icon: Palette,
     details: [
@@ -67,8 +64,6 @@ const baseSettings: SettingItem[] = [
 
 export default async function SettingsPage() {
   const business = await getCurrentBusiness();
-  const context = business.role === "owner" ? await getBranchContext() : null;
-  const registerResult = context?.branchId ? await (await createClient()).from("branch_pos_settings").select("require_open_register").eq("business_id",business.id).eq("location_id",context.branchId).maybeSingle() : null;
 
   const [canViewBusiness, canViewStorefront] = await Promise.all([
     businessHasPermission(business, "business.view"),
@@ -109,7 +104,6 @@ export default async function SettingsPage() {
         {businessSettings.map(item => <SettingsCard key={item.href} item={item} />)}
       </section>}
 
-      {context?.branchId && (registerResult?.error || !registerResult?.data ? <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">Unable to load the POS register setting. Refresh and try again.</p> : <RegisterSetting key={context.branchId} businessId={business.id} branchId={context.branchId} branchName={context.branches.find(branch=>branch.id===context.branchId)?.name ?? "Active branch"} required={registerResult.data.require_open_register !== false} />)}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {settingsItems.map((item) => (
           <SettingsCard key={item.href} item={item} />

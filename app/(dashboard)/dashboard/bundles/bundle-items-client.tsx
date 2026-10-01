@@ -7,7 +7,7 @@ import dynamic from 'next/dynamic';
 import AnchoredActionMenu from '@/components/anchored-action-menu';
 import ProductPhoto from '@/components/product-photo';
 import { List, Grid2X2, Boxes, Gift, Globe, Monitor, MoreHorizontal, PackageCheck, Pencil, Plus, Search, Store, Trash2, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import type { ComponentProduct } from '../products/bundle-product-form';
 const BundleProductForm = dynamic(() => import('../products/bundle-product-form'), { loading: () => <p role="status" className="py-8 text-center text-sm text-slate-500">Loading bundle form…</p> });
 import { manageBundle, packBundle } from '../products/bundle-actions';
@@ -25,7 +25,7 @@ const field = 'mt-1.5 w-full rounded-xl border border-slate-300 bg-transparent p
 
 function Photo({ src, large = false }: { src: string | null; large?: boolean }) {
   return <span className={`flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-blue-600 dark:bg-slate-800 ${large ? 'h-16 w-16' : 'h-11 w-11'}`}>
-    {src ? <ProductPhoto src={src} alt="" sizes={large ? '64px' : '44px'} className="h-full w-full object-cover" /> : <Gift size={large ? 28 : 20} />}
+    {src ? <ProductPhoto src={src} alt="" sizes={large ? '64px' : '44px'} className="h-full w-full object-contain" /> : <Gift size={large ? 28 : 20} />}
   </span>;
 }
 
@@ -45,6 +45,7 @@ function Dialog({ title, heading, children, close, busy, side = false, wide = fa
       <div className={side ? 'min-h-0 flex-1 overflow-y-auto px-5 py-4' : 'p-4'}>{children}</div>
       {footer && <div className="shrink-0 border-t border-slate-200 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900">{footer}</div>}
     </div>
+    <Toaster position="top-right" richColors closeButton />
   </dialog>;
 }
 
@@ -105,10 +106,10 @@ export default function BundleItemsClient({ branchId, branchName, bundles, produ
       for (let index = 0; index < deleteIds.length; index++) {
         const bundle = bundles.find(item => item.id === deleteIds[index]); if (!bundle) continue;
         const result = await manageBundle({ branchId, bundleId: bundle.id, action: 'delete', expected: bundle.updatedAt, values: {} });
-        if (!result.success) { setDeleteIds(deleteIds.slice(index)); setError(result.message); refresh(); return; }
+        if (!result.success) { setDeleteIds(deleteIds.slice(index)); setError(result.message); toast.error(result.message); refresh(); return; }
         setSelected(current => { const next = new Set(current); next.delete(bundle.id); return next; });
       }
-      setDeleteIds([]); refresh();
+      toast.success('Selected bundles deleted.'); setDeleteIds([]); refresh();
     } catch { setDeleteIds([]); toast.error('Could not confirm deletion. Review the refreshed bundles before retrying.'); refresh(); }
     finally { locked.current = false; setBusy(false); }
   }
@@ -136,7 +137,7 @@ export default function BundleItemsClient({ branchId, branchName, bundles, produ
     } catch { setError('Could not save. Refresh and check the bundle before trying again.'); toast.error('Could not save the bundle.'); }
     finally { locked.current = false; setBusy(false); }
   }
-  function start(bundle: Bundle, unpack: boolean) { setModal(null); setOperation({ bundleId: bundle.id, unpack, requestId: crypto.randomUUID() }); setQuantity(1); setError(''); }
+  function start(bundle: Bundle, unpack: boolean, keepEditor = false) { if (!keepEditor) setModal(null); setOperation({ bundleId: bundle.id, unpack, requestId: crypto.randomUUID() }); setQuantity(keepEditor ? Math.min(999, bundle.stock) : 1); setError(''); }
   function open(bundle: Bundle, kind: 'detail' | 'edit' | 'delete') { setModal({ id: bundle.id, kind }); setError(''); }
 
   return <div className="space-y-5 pb-8 text-slate-900 dark:text-slate-100">
@@ -177,7 +178,7 @@ export default function BundleItemsClient({ branchId, branchName, bundles, produ
         <h4 className="mb-2 text-sm font-bold">Included in each set</h4><div className="divide-y divide-slate-100 dark:divide-slate-800">{shown.components.map(item => <div key={item.id} className="flex items-center gap-3 py-3"><Photo src={item.imageUrl} /><div className="min-w-0 flex-1"><p className="text-sm font-semibold">{item.name}</p><p className="mt-1 text-xs text-slate-500">{item.sku}{item.options && ` · ${item.options}`}</p></div><span className="text-sm font-semibold">× {item.quantity}</span></div>)}</div>
         <p className="my-4 text-xs text-slate-500">Packing uses component stock. Unpacking restores unused components. Unpack all sets before changing contents. Sales history keeps its original recipe.</p>
         <div className="flex flex-wrap justify-end gap-2">{canEdit && <button className={secondary} onClick={() => open(shown, 'edit')}><Pencil size={15} />Edit</button>}{canPack && shown.packed && <><button className={secondary} disabled={pending || shown.stock < 1} onClick={() => start(shown, true)}>Unpack</button><button className={button} disabled={pending || !shown.active || shown.capacity < 1} onClick={() => start(shown, false)}>Pack sets</button></>}</div>
-      </> : modal.kind === 'edit' ? <BundleProductForm categories={categories} products={products} branchId={branchId} requestId={shown.id} initial={{ ...shown, items: shown.components.map(item => ({ productId: item.id, quantity: item.quantity, optionIds: item.optionIds ?? [], name: item.name, sku: item.sku, optionsLabel: item.options })) }} onCreated={() => { setModal(null); refresh(); }} onPendingChange={setCreating} /> : <><p className="text-sm">Delete <strong>{shown.name}</strong>?</p><p className="mt-2 text-sm text-slate-500">Unused bundles are deleted. If transaction history exists, POS and Online are turned off automatically and the bundle is removed from the active list. History and component products are kept. Unpack remaining stock first.</p>{error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}<div className="mt-5 flex justify-end gap-2"><button className={secondary} disabled={pending} onClick={() => setModal(null)}>Cancel</button><button className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" disabled={pending} onClick={() => void manage(shown, 'delete', {})}>{busy ? 'Deleting…' : 'Delete bundle'}</button></div></>}
+      </> : modal.kind === 'edit' ? <BundleProductForm categories={categories} products={products} branchId={branchId} requestId={shown.id} initial={{ ...shown, items: shown.components.map(item => ({ productId: item.id, quantity: item.quantity, optionIds: item.optionIds ?? [], name: item.name, sku: item.sku, optionsLabel: item.options, imageUrl: item.imageUrl })) }} onCreated={() => { setModal(null); refresh(); }} onPendingChange={setCreating} onUnpackItems={canPack ? () => start(shown, true, true) : undefined} /> : <><p className="text-sm">Delete <strong>{shown.name}</strong>?</p><p className="mt-2 text-sm text-slate-500">Unused bundles are deleted. If transaction history exists, POS and Online are turned off automatically and the bundle is removed from the active list. History and component products are kept. Unpack remaining stock first.</p>{error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}<div className="mt-5 flex justify-end gap-2"><button className={secondary} disabled={pending} onClick={() => setModal(null)}>Cancel</button><button className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40" disabled={pending} onClick={() => void manage(shown, 'delete', {})}>{busy ? 'Deleting…' : 'Delete bundle'}</button></div></>}
     </Dialog>}
     {deleteIds.length > 0 && <Dialog title={`Delete ${deleteIds.length} bundles?`} busy={pending} close={() => setDeleteIds([])}><p className="text-sm text-slate-600">Unused bundles are deleted. Bundles with history are removed from the active list with POS and Online off. History and component products are kept. Unpack remaining stock first.</p>{error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}<div className="mt-4 flex justify-end gap-2"><button type="button" disabled={pending} className={secondary} onClick={() => setDeleteIds([])}>Cancel</button><button type="button" disabled={pending} className={`${button} !bg-red-600`} onClick={() => void deleteSelected()}>{pending ? 'Deleting…' : 'Delete selected'}</button></div></Dialog>}
     {operation && chosen && <Dialog title={`${operation.unpack ? 'Unpack' : 'Pack'} ${chosen.name}`} busy={pending} close={() => setOperation(null)}><form onSubmit={event => { event.preventDefault(); void confirmPack(); }}>

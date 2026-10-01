@@ -151,7 +151,6 @@ export default async function BusinessSettingsPage({ searchParams }: { searchPar
                 {formatUpdatedAt(sharedSettings.updated_at, timezone)}
               </time>
             </p>
-            <span id="business-info-save-slot" className="contents" />
           </div>
         </header>
 
@@ -256,6 +255,7 @@ export default async function BusinessSettingsPage({ searchParams }: { searchPar
 
         {pendingCheckout ? <PendingCheckoutNotice key={pendingCheckout.id} order={pendingCheckout} /> : null}
 
+
         <BusinessInfoForm
           key={business.id}
           businessId={business.id}
@@ -275,6 +275,7 @@ export default async function BusinessSettingsPage({ searchParams }: { searchPar
           settings={sharedSettings}
           canEdit={canEditPayment}
         />
+        <div id="business-info-save-slot" className="settings-save-bar" />
       </main>
     );
   }

@@ -367,7 +367,7 @@ export default function SecurityForm({
                   </StatusBox>
                 )}
 
-                <button
+<div className="settings-save-bar">                <button
                   type="submit"
                   disabled={passwordPending}
                   className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -378,7 +378,7 @@ export default function SecurityForm({
                     : hasPasswordIdentity
                       ? "Update Password"
                       : "Create Password"}
-                </button>
+                </button></div>
               </fieldset>
 
             </div>

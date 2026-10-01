@@ -48,7 +48,7 @@
 .paymentIcon svg{fill:currentColor;fill-opacity:.09}
 .paymentMenu{background:var(--screen-panel,#fff);border:1px solid #dce4ef;border-radius:13px;padding:7px;margin-top:-3px;box-shadow:0 9px 23px #1d355a12;max-height:390px;overflow:auto;overscroll-behavior:contain;scroll-padding:7px}
 .paymentOption{display:flex;align-items:center;gap:14px;position:relative;min-height:49px;padding:9px 13px;border-radius:8px;color:#182d54;cursor:pointer;font-size:0.875rem}
-.paymentOption+ .paymentOption:before{position:absolute;left:58px;right:12px;top:0;height:1px;background:#e9edf4;content:""}
+.paymentOption+ .paymentOption:before{position:absolute;left:13px;right:12px;top:0;height:1px;background:#e9edf4;content:""}
 .paymentOptionText{flex:1;min-width:0;line-height:1.5}
 .paymentOptionText small{display:block;color:#74849a;font-size:0.625rem;margin-top:1px}
 .selectedPaymentOption{background:#eaf2ff}

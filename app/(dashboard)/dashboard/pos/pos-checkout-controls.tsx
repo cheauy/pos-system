@@ -1,23 +1,22 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import { Banknote, Check, ChevronDown, Coins, CreditCard, GitFork, Landmark, Truck, UserRound } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import type { PaymentMethod, ShippingDetails } from './pos-workspace-types';
 import { paymentHiddenForDelivery, paymentHiddenForWalkIn } from './pos-customer-helpers';
 import s from './pos-workspace.module.css';
 
 const METHODS = [
-  { id: 'cash', label: 'Cash', Icon: Banknote, tone: 'cash' },
-  { id: 'cod', label: 'Cash on delivery (COD)', Icon: Truck, tone: 'cod' },
-  { id: 'deposit', label: 'Cash deposit', Icon: Coins, tone: 'deposit' },
-  { id: 'bank_transfer', label: 'Bank transfer — received', Icon: Landmark, tone: 'bank' },
-  { id: 'other', label: 'Other payment — received', Icon: CreditCard, tone: 'other' },
-  { id: 'credit', label: 'Customer credit', Icon: UserRound, tone: 'credit' },
-  { id: 'split', label: 'Split payment', Icon: GitFork, tone: 'split' },
+  { id: 'cash', label: 'Cash' },
+  { id: 'cod', label: 'Cash on delivery (COD)' },
+  { id: 'deposit', label: 'Cash deposit' },
+  { id: 'bank_transfer', label: 'Bank transfer — received' },
+  { id: 'credit', label: 'Customer credit' },
+  { id: 'split', label: 'Split payment' },
 ] as const;
 
 /** UI replacement only: values and validation remain the existing payment engine's. */
-export function PaymentMethodSelect({ value, onChange, total, hasCustomer, disabled = false, isWalkIn = false, isDelivery = false }: {
+export function PaymentMethodSelect({ value, onChange, total, hasCustomer, disabled = false, isWalkIn = false, isDelivery = false, splitPaymentEnabled = true, customerCreditEnabled = true }: {
   value: PaymentMethod;
   onChange: (value: PaymentMethod) => void;
   total: number;
@@ -25,6 +24,8 @@ export function PaymentMethodSelect({ value, onChange, total, hasCustomer, disab
   disabled?: boolean;
   isWalkIn?: boolean;
   isDelivery?: boolean;
+  splitPaymentEnabled?: boolean;
+  customerCreditEnabled?: boolean;
 }) {
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -33,9 +34,8 @@ export function PaymentMethodSelect({ value, onChange, total, hasCustomer, disab
   const typeahead = useRef({ text: '', at: 0 });
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<PaymentMethod>(value);
-  const visibleMethods = METHODS.filter(option => !paymentHiddenForWalkIn(option.id, isWalkIn) && !paymentHiddenForDelivery(option.id, isDelivery));
+  const visibleMethods = METHODS.filter(option => (option.id !== 'split' || splitPaymentEnabled) && (option.id !== 'credit' || customerCreditEnabled) && !paymentHiddenForWalkIn(option.id, isWalkIn) && !paymentHiddenForDelivery(option.id, isDelivery));
   const chosen = visibleMethods.find(option => option.id === value) || visibleMethods[0] || METHODS[0];
-  const SelectedIcon = chosen.Icon;
   const reason = (method: PaymentMethod) => paymentHiddenForWalkIn(method, isWalkIn)
     ? 'Not available for in-store walk-in sales'
     : method === 'credit' && !hasCustomer
@@ -112,20 +112,18 @@ export function PaymentMethodSelect({ value, onChange, total, hasCustomer, disab
       aria-expanded={open} aria-activedescendant={open ? optionId(active) : undefined}
       className={`${s.paymentTrigger} ${open ? s.paymentTriggerOpen : ''}`} disabled={disabled}
       onKeyDown={keyboard} onClick={() => { if (open) setOpen(false); else reveal(); }}>
-      <span className={s.paymentIcon} data-tone={chosen.tone}><SelectedIcon size={24} strokeWidth={1.9}/></span>
       <span className={s.paymentTriggerText}>{chosen.label}</span>
       <ChevronDown size={20} className={open ? s.paymentChevronOpen : undefined}/>
     </button>
     {open && !disabled && <div ref={menu} id={`${id}-listbox`} role="listbox"
       aria-labelledby={`${id}-label`} className={s.paymentMenu}>
-      {visibleMethods.map(({ id: method, label, Icon, tone }) => {
+      {visibleMethods.map(({ id: method, label }) => {
         const unavailable = reason(method);
         return <div key={method} id={optionId(method)} role="option" data-method={method}
           aria-selected={method === value} aria-disabled={Boolean(unavailable)}
           className={`${s.paymentOption} ${method === value ? s.selectedPaymentOption : ''} ${method === active ? s.activePaymentOption : ''}`}
           onPointerMove={() => { if (!unavailable) setActive(method); }}
           onMouseDown={event => event.preventDefault()} onClick={() => choose(method)}>
-          <span className={s.paymentIcon} data-tone={tone}><Icon size={24} strokeWidth={1.9}/></span>
           <span className={s.paymentOptionText}><span>{label}</span>{unavailable && <small>{unavailable}</small>}</span>
           {method === value && <Check size={21} className={s.paymentCheck}/>}
         </div>;

@@ -27,7 +27,6 @@ export type StorefrontCatalogVariant = {
 };
 
 export type StorefrontCatalogProduct = {
-  bundleItems?: { id: string; name: string; imageUrl: string | null; size: string | null; color: string | null; quantity: number }[];
   key: string;
   isNewArrival?: boolean;
   isFeatured?: boolean;

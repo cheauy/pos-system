@@ -12,5 +12,5 @@ export async function saveRegisterRequirement(businessId:string,branchId:string,
   const db=await createClient();
   const {error}=await db.from("branch_pos_settings").update({require_open_register:required}).eq("business_id",business.id).eq("location_id",branchId).select("location_id").single();
   if(error)throw new Error("Unable to save the register setting. Refresh and try again.");
-  revalidatePath("/dashboard/settings");revalidatePath("/dashboard/pos");
+  revalidatePath("/dashboard/settings/system");revalidatePath("/dashboard/pos");
 }

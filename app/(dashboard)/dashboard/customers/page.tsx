@@ -12,6 +12,7 @@ type CustomerRow = {
   phone: string | null;
   email: string | null;
   birthday: string | null;
+  gender: string | null;
   address: string | null;
   created_at: string;
 };
@@ -44,7 +45,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
     await Promise.all([
       supabase
         .from("customers")
-        .select("id,name,phone,email,birthday,address,created_at")
+        .select("id,name,phone,email,birthday,gender,address,created_at")
         .eq("business_id", business.id)
         .order("created_at", { ascending: false })
         .limit(2000),
@@ -151,7 +152,6 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
       currency={branchCurrency.format}
       accentColor={storefrontSettings.primary_color || "#2563EB"}
       fieldSettings={fieldSettings}
-      canManageSettings={business.role === "owner"}
       canCreate={canCreate}
       canUpdate={canUpdate}
     />

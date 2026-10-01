@@ -1,4 +1,3 @@
-import ProfilePhotoForm from './profile-photo-form';
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -118,7 +117,6 @@ export default async function ProfilePage() {
         </div>
       </section>
 
-      <ProfilePhotoForm />
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.75fr)_minmax(300px,0.95fr)]">
         <ProfileForm
           defaultFullName={profile.full_name ?? ""}

@@ -83,17 +83,7 @@ export default function OnlinePaymentForm({
             <p className="mt-1 text-xs leading-4 text-slate-500">Choose how customers can pay for online orders.</p>
           </div>
         </div>
-        {canEdit && (dirty || pending) ? (
-          <button
-            type="submit"
-            disabled={pending}
-            aria-busy={pending}
-            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {pending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {pending ? "Saving…" : "Save payment"}
-          </button>
-        ) : null}
+
       </div>
 
       {!canEdit ? (
@@ -145,6 +135,17 @@ export default function OnlinePaymentForm({
           </div>
         </div>
       </fieldset>
+      <div className="settings-save-bar">        {canEdit && (dirty || pending) ? (
+          <button
+            type="submit"
+            disabled={pending}
+            aria-busy={pending}
+            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {pending ? "Saving…" : "Save payment"}
+          </button>
+        ) : null}</div>
     </form>
   );
 }

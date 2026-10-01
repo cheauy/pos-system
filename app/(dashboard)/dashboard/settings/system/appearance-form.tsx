@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Check, Contrast, Layers, Languages, List, Monitor, Moon, Palette, Plus, RotateCcw, Save, Sun, Type, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTheme } from '@/components/providers/theme-provider';
@@ -8,13 +8,22 @@ import { useLanguage } from '@/components/providers/language-provider';
 import { accentColors, appearancePalette, defaultAppearance, normalizeAppearance, type Appearance } from '@/lib/appearance';
 import type { AppLanguage } from '@/lib/i18n/translations';
 
+import CustomerFields from './customer-fields';
+import type { CustomerFieldSettings } from '@/lib/customers/get-customer-field-settings';
+import { updateCustomerFieldSettings } from '../customers/actions';
+
 type Draft = Appearance & { language: AppLanguage };
 const card = 'rounded-2xl border border-slate-200/70 bg-white/80 p-4 sm:p-5 dark:border-slate-700 dark:bg-slate-900/80';
 const choice = 'relative rounded-xl border text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500';
 const chosen = 'border-sky-500 bg-sky-50/60 ring-1 ring-sky-100 dark:bg-sky-950/40 dark:ring-sky-900';
 const idle = 'border-slate-200 bg-white/60 hover:border-sky-300 dark:border-slate-700 dark:bg-slate-900/50';
 
-export default function AppearanceForm() {
+export default function AppearanceForm({customerFields = null, branchId}: {customerFields?: CustomerFieldSettings | null; branchId?: string | null} = {}) {
+  const [fieldsBaseline, setFieldsBaseline] = useState(customerFields);
+  const [fieldsDraft, setFieldsDraft] = useState(customerFields);
+  const [busy, setBusy] = useState(false);
+  const saving = useRef(false);
+  const fieldsDirty = JSON.stringify(fieldsDraft) !== JSON.stringify(fieldsBaseline);
   const saved = useTheme();
   const { language, setLanguage } = useLanguage();
   // Draft exists only on this page. No provider, cookie or storage changes until Save.
@@ -22,20 +31,39 @@ export default function AppearanceForm() {
   const current: Draft = { ...normalizeAppearance(saved), language };
   const selected = draft ?? current;
   const dark = selected.theme === 'dark' || (selected.theme === 'system' && saved.systemTheme === 'dark');
-  const dirty = JSON.stringify(selected) !== JSON.stringify(current);
+  const appearanceDirty = JSON.stringify(selected) !== JSON.stringify(current);
+  const dirty = appearanceDirty || fieldsDirty;
   const palette = appearancePalette(selected);
   function change(patch: Partial<Draft>) { setDraft({ ...selected, ...patch }); }
-  function save() {
+  async function save() {
+    if (saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    let fieldsSaved = false;
     try {
-      saved.saveAppearance(selected);
-      setLanguage(selected.language);
-      setDraft(null);
-      toast.success(selected.language === 'km' ? 'បានរក្សាទុកការកំណត់រូបរាង និងភាសា។' : 'Appearance and language saved.');
-    } catch { toast.error('Unable to save on this device. Allow browser storage and try again.'); }
+      if (fieldsDirty && fieldsDraft && branchId) {
+        const data = new FormData();
+        data.set('branchId', branchId);
+        data.set('genderSettingPresent', '1');
+        for (const [key, enabled] of Object.entries(fieldsDraft)) if (enabled) data.set(key, 'on');
+        await updateCustomerFieldSettings(data);
+        setFieldsBaseline(fieldsDraft);
+        fieldsSaved = true;
+      }
+      if (appearanceDirty) {
+        saved.saveAppearance(selected);
+        setLanguage(selected.language);
+        setDraft(null);
+      }
+      toast.success('Settings saved.');
+    } catch (error) {
+      toast.error(fieldsSaved ? 'Customer fields saved. Display preferences could not be saved on this device. Please try again.' : error instanceof Error ? error.message : 'Unable to save settings. Please try again.');
+    } finally { saving.current = false; setBusy(false); }
   }
 
   return <div className="space-y-4">
-    <fieldset disabled={!saved.ready} className="space-y-4 disabled:opacity-60">
+    {fieldsDraft && branchId && <CustomerFields settings={fieldsDraft} onChange={setFieldsDraft} disabled={busy} />}
+    <fieldset disabled={!saved.ready || busy} className="space-y-4 disabled:opacity-60">
       {!dark && <section className={card}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><Heading icon={Palette} title="Color theme" description="Choose a color for the sidebar and interface accents." />
           <div className="flex items-center gap-2 rounded-full border border-slate-100 bg-slate-50/80 px-2.5 py-1.5 dark:border-slate-700 dark:bg-slate-800"><span className="mr-1 text-[10px] font-semibold text-slate-500 dark:text-slate-300">Preview</span><span className="h-4 w-4 rounded border border-black/10" style={{ background: palette.background }} /><span className="h-4 w-4 rounded" style={{ background: palette.action }} /><span className="h-4 w-4 rounded border border-black/10" style={{ background: palette.foreground }} /></div>
@@ -70,7 +98,12 @@ export default function AppearanceForm() {
       </div>
     </fieldset>
 
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/70"><p className="text-xs text-slate-500 dark:text-slate-400" role="status">{dirty ? 'Unsaved changes. Click Save to apply.' : 'Your preferences are saved on this device.'}</p><div className="flex gap-2"><button type="button" disabled={!saved.ready} onClick={() => setDraft({ ...defaultAppearance, language: 'en' })} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"><RotateCcw size={14} />Reset</button><button type="button" disabled={!saved.ready || !dirty} onClick={save} className="inline-flex items-center gap-2 rounded-lg bg-cyan-700 px-4 py-2 text-xs font-semibold text-white hover:bg-cyan-800 disabled:opacity-50"><Save size={14} />Save changes</button></div></div>
+    <div className="settings-save-bar">
+      <button type="button" disabled={!saved.ready || busy} onClick={() => setDraft({ ...defaultAppearance, language: 'en' })} className="mr-auto inline-flex items-center gap-2 border border-slate-200 dark:border-slate-700"><RotateCcw size={14} />Reset to defaults</button>
+      <span className="text-xs text-slate-500" role="status">{dirty ? 'Unsaved changes' : 'No unsaved changes'}</span>
+      <button type="button" disabled={!saved.ready || busy || !dirty} onClick={() => { setDraft(null); setFieldsDraft(fieldsBaseline); }} className="border border-slate-200 disabled:opacity-50 dark:border-slate-700">Cancel</button>
+      <button type="button" disabled={!saved.ready || busy || !dirty} onClick={save} className="settings-save-primary disabled:opacity-50"><Save size={14} />{busy ? "Saving…" : "Save changes"}</button>
+    </div>
   </div>;
 }
 

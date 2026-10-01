@@ -7,7 +7,41 @@ import { createRequire } from 'node:module';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { loadTs, queryDouble } from './helpers/load-ts.cjs';
-function load(file,deps={}){const loaded={exports:{}};new Function('module','exports','require',ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText)(loaded,loaded.exports,id=>{if(!(id in deps))throw new Error('Unmocked dependency '+id);return deps[id];});return loaded.exports;}
+const bundleItemRules=loadTs('lib/products/bundle-items.ts');
+test('bundle limits accept 2–8 distinct products and reject invalid quantities',()=>{
+ const items=Array.from({length:8},(_,i)=>({productId:String(i),quantity:1,optionIds:[]}));
+ assert.equal(bundleItemRules.validateBundleItems(items),null);
+ assert.equal(bundleItemRules.validateBundleItems(items.slice(0,2)),null);
+ assert.match(bundleItemRules.validateBundleItems([...items,{productId:'9',quantity:1}]),/2–8/);
+ assert.match(bundleItemRules.validateBundleItems(items.slice(0,1)),/2–8/);
+ assert.match(bundleItemRules.validateBundleItems([items[0],items[0]]),/each product once/);
+ for(const quantity of [0,-1,1.5,1000])assert.match(bundleItemRules.validateBundleItems([{...items[0],quantity},items[1]]),/whole numbers/);
+});
+
+test('editing removes and replaces old items, adds a third, and stops at eight',()=>{
+ const require=createRequire(import.meta.url);let cursor=0;const state=[];
+ const Picker=()=>null;
+ const Form=loadTs('app/(dashboard)/dashboard/products/bundle-product-form.tsx',{
+  react:{useState:initial=>{const i=cursor++;if(!(i in state))state[i]=initial;return[state[i],v=>{state[i]=typeof v==='function'?v(state[i]):v;}];},useMemo:fn=>fn(),useRef:v=>({current:v})},
+  'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),sonner:{toast:{}},
+  '@/components/product-gallery-input':{default:()=>null},'@/components/product-variant-picker':{default:Picker},
+  '@/components/product-photo':{default:()=>null},'@/lib/products/bundle-items':bundleItemRules,'./bundle-actions':{},
+ }).default;
+ const products=Array.from({length:10},(_,i)=>({id:String(i),name:'Product '+i,sku:String(i),stock_quantity:10,cost_price:2,selling_price:5,groups:[],options:[]}));
+ const props={products,categories:[],branchId:'branch',requestId:'request',initial:{id:'bundle',name:'Set',stock:0,items:[{productId:'0',quantity:1,optionIds:[]},{productId:'1',quantity:1,optionIds:[]}]}};
+ const walk=node=>!node||typeof node!=='object'?[]:Array.isArray(node)?node.flatMap(walk):[node,...walk(node.props?.children)];
+ const render=()=>{cursor=0;return walk(Form(props));};
+ const items=()=>JSON.parse(render().find(n=>n.props?.name==='items').props.value);
+ const add=id=>{render().find(n=>n.type===Picker).props.onChange(id);render().find(n=>n.type==='button'&&Array.isArray(n.props.children)&&n.props.children.includes(' Add')).props.onClick();};
+ add('2');assert.equal(items().length,3);
+ render().find(n=>n.props?.['aria-label']==='Remove Product 0').props.onClick();
+ add('3');assert.deepEqual(items().map(x=>x.productId),['1','2','3']);
+ for(const id of ['4','5','6','7','8'])add(id);
+ assert.equal(items().length,8);add('9');assert.equal(items().length,8);
+ render().find(n=>n.props?.['aria-label']==='Remove Product 1').props.onClick();add('9');
+ assert.equal(items().length,8);assert.ok(items().some(x=>x.productId==='9'));assert.ok(!items().some(x=>x.productId==='1'));
+});
+function load(file,deps={}){deps={'@/lib/products/bundle-items':bundleItemRules,...deps};const loaded={exports:{}};new Function('module','exports','require',ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText)(loaded,loaded.exports,id=>{if(!(id in deps))throw new Error('Unmocked dependency '+id);return deps[id];});return loaded.exports;}
 test('bundle actions support every business mode and reject stale branch submissions',async()=>{
  for(const mode of ['standard','variant','configurable']){
   const calls=[];let branch='branch-1';
@@ -67,7 +101,7 @@ test('bundle image validates contents, stops on upload failure and reuses identi
    rpc:async(name,input)=>{calls.push({name,input});return {error:null};},
   })},
  });
- const form=new FormData();for(const [k,v] of Object.entries({name:'Set',sku:'SET',sellingPrice:'12',branchId:'branch',requestId:crypto.randomUUID(),items:'[]'}))form.set(k,v);
+ const form=new FormData();for(const [k,v] of Object.entries({name:'Set',sku:'SET',sellingPrice:'12',branchId:'branch',requestId:crypto.randomUUID(),items:'[{"productId":"one","quantity":1},{"productId":"two","quantity":1}]'}))form.set(k,v);
  const run=()=>actions.createBundleProduct({success:false,message:''},form);
  form.set('image',new File(['not an image'],'fake.png',{type:'image/png'}));
  assert.equal((await run()).success,false);assert.equal(uploads.length,0);assert.equal(calls.length,0);
@@ -100,9 +134,9 @@ test('edit form restores its image and component quantities for editing', () => 
  const Form=loadTs('app/(dashboard)/dashboard/products/bundle-product-form.tsx',{
   react:React,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),sonner:{toast:{}},
   '@/components/product-gallery-input':{default:({initialUrls})=>React.createElement('div', {'data-gallery':true},initialUrls.map(url=>React.createElement('img',{key:url,src:url})))},
-  '@/components/product-variant-picker':{default:()=>null},'./bundle-actions':{},
+  '@/components/product-variant-picker':{default:()=>null},'./bundle-actions':{},'@/lib/products/bundle-items':bundleItemRules,'@/components/product-photo':{default:({sizes,...props})=>React.createElement('img',props)},
  }).default;
- const products=['one','two'].map(id=>({id,name:id,sku:id,stock_quantity:10,cost_price:2,selling_price:5,groups:[],options:[]}));
+ const products=['one','two'].map(id=>({id,name:id,sku:id,imageUrl:'https://example.test/'+id+'.png',stock_quantity:10,cost_price:2,selling_price:5,groups:[],options:[]}));
  const initial={id:'bundle',name:'Saved Set',sku:'SAVED',price:12,categoryId:null,description:'Description',imageUrl:'https://example.test/photo.png',updatedAt:'2026-09-24T12:00:00Z',items:[{productId:'one',quantity:2,optionIds:[]},{productId:'two',quantity:1,optionIds:[]}]};
  const createHtml=renderToStaticMarkup(React.createElement(Form,{products,categories:[],branchId:'branch',requestId:'request'}));
  for(const name of ['showPos','showOnline'])assert.match(createHtml,new RegExp(`(?=[^<]*name="${name}")(?=[^<]*checked="")[^<]*`));
@@ -111,6 +145,9 @@ test('edit form restores its image and component quantities for editing', () => 
  assert.match(html,/Save changes/);assert.match(html,/value="Saved Set"/);assert.match(html,/src="https:\/\/example.test\/photo.png"/);assert.match(html,/Quantity for one/);assert.match(html,/Remove one/);assert.match(html,/data-gallery="true"/);
  const missingHtml=renderToStaticMarkup(React.createElement(Form,{products:[],categories:[],branchId:'branch',requestId:'request',initial:{...initial,items:initial.items.map(item=>({...item,name:'Saved '+item.productId,sku:'SAVED-SKU'}))}}));
  assert.match(missingHtml,/Saved one/);assert.match(missingHtml,/Saved two/);assert.match(missingHtml,/remains in this bundle/);
+ assert.match(html,/src="https:\/\/example.test\/one.png"/);
+ const packed=renderToStaticMarkup(React.createElement(Form,{products,categories:[],branchId:'branch',requestId:'request',initial:{...initial,stock:6},onUnpackItems:()=>{}}));
+ assert.match(packed,/Unpack to edit items/);assert.match(packed,/<fieldset disabled="">/);
  assert.ok(html.indexOf('Included products') < html.indexOf('data-gallery'));
 
 });
@@ -129,7 +166,7 @@ test('bundle gallery saves every photo, preserves ordering and rejects foreign U
    storage:{from:()=>({upload:async()=>{activeUploads++;maxUploads=Math.max(maxUploads,activeUploads);await new Promise(resolve=>setTimeout(resolve,1));activeUploads--;return {error:null};},getPublicUrl:path=>({data:{publicUrl:`https://example.test/storage/v1/object/public/product-images/${path}`}})})},
   })},
  });
- const form=new FormData();for(const [key,value] of Object.entries({bundleId:'bundle',branchId:'branch',requestId:crypto.randomUUID(),expected:'version',name:'Set',sku:'SET',sellingPrice:'10',items:'[]'}))form.set(key,value);
+ const form=new FormData();for(const [key,value] of Object.entries({bundleId:'bundle',branchId:'branch',requestId:crypto.randomUUID(),expected:'version',name:'Set',sku:'SET',sellingPrice:'10',items:'[{"productId":"one","quantity":1},{"productId":"two","quantity":1}]'}))form.set(key,value);
  form.set('productGallery',JSON.stringify([{url:urls[1]},{url:urls[0]}]));
  assert.equal((await actions.editBundleProduct(form)).success,true);
  const updates=queries.flatMap(query=>query.steps.filter(([name])=>name==='update').map(([,args])=>args));
@@ -148,7 +185,7 @@ test('bundle selection, grid view and deletion confirmation remain separate from
  const Client=loadTs('app/(dashboard)/dashboard/bundles/bundle-items-client.tsx',{
   react:{useState:initial=>{const id=cursor++;if(!(id in state))state[id]=initial;return [state[id],value=>{state[id]=typeof value==='function'?value(state[id]):value;}];},useRef:value=>({current:value}),useId:()=> 'id',useEffect(){},useMemo:fn=>fn(),useCallback:fn=>fn,useDeferredValue:value=>value,useTransition:()=>[false,fn=>fn()]},
   'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'next/navigation':{useRouter:()=>({refresh(){}})},'next/link':{default:'a'},'next/dynamic':{default:()=>()=>null},
-  '@/components/product-photo':{default:'img'},'@/components/anchored-action-menu':{default:'actions'},sonner:{toast:{}},'../products/bundle-actions':{},
+  '@/components/product-photo':{default:'img'},'@/components/anchored-action-menu':{default:'actions'},sonner:{toast:{},Toaster:'toast-status'},'../products/bundle-actions':{},
  }).default;
  const props={branchId:'branch',branchName:'Main',categories:[],products:[{id:'one',canInclude:true},{id:'two',canInclude:true}],canCreate:true,canPack:true,canEdit:true,canDelete:true,bundles:[{id:'b',name:'Set',sku:'SET',price:5,cost:2,stock:0,capacity:3,packed:true,active:true,online:true,pos:true,components:[]}]};
  const render=()=>{cursor=0;return Client(props);};
@@ -166,6 +203,8 @@ test('bundle selection, grid view and deletion confirmation remain separate from
  const detail=find(node=>node.props?.title==='Bundle details');assert.equal(detail.props.side,true);
  assert.ok(nodes(detail.props.footer).find(node=>node.type==='button'&&node.props.children?.includes?.('Delete bundle')));
  const drawer=detail.type(detail.props);
+ assert.equal(drawer.type,'dialog');
+ assert.ok(nodes(drawer).some(node=>node.type==='toast-status'&&node.props.position==='top-right'));
  assert.equal(drawer.props.style.width,'min(520px, 100vw)');
  assert.equal(drawer.props.style.inset,'0 0 0 auto');
  assert.equal(drawer.props.style.maxHeight,'100dvh');
@@ -224,7 +263,7 @@ test('bundle create overlaps independent checks and reuses the verified branch u
    rpc:async()=>({data:'bundle',error:null}),
   })},
  });
- const form=new FormData();form.set('branchId','branch');form.set('requestId',crypto.randomUUID());form.set('items','[]');
+ const form=new FormData();form.set('branchId','branch');form.set('requestId',crypto.randomUUID());form.set('items','[{"productId":"one","quantity":1},{"productId":"two","quantity":1}]');
  form.set('image',new File([new Uint8Array([137,80,78,71,13,10,26,10])],'photo.png',{type:'image/png'}));
  const result=await actions.createBundleProduct({},form);assert.equal(result.success,true);assert.equal(uploads,1);
 });

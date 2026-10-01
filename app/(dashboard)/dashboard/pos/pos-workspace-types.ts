@@ -26,7 +26,7 @@ export type ShippingDetails = { method: ShippingMethod; recipientName: string; p
 export type CurrencyQuote = { baseCurrency: string; displayCurrency: string; usdKhrRate: number; enabled: boolean; currencyFormat?: CurrencyFormat };
 export type CartDraft = { couponCode?: string; branchId: string; customerId: string; lines: CartLine[]; discount: string; deliveryFee: string; points: string; note: string; paymentMethod: PaymentMethod; discountType?: DiscountType; shipping?: ShippingDetails; tenders?: Tender[]; displayCurrency?: string; baseCurrency?: string; createCustomer?: boolean };
 export type HeldOrder = { id: string; label: string; version: number; created_at: string; updated_at: string; draft: CartDraft };
-export type PosSettings = { requireOpenRegister?: boolean; couponsEnabled?: boolean; currency: string; taxRate: number; pointValue: number; loyaltyEnabled: boolean; spendPerPoint: number; loyaltyMinimumOrder: number; dualCurrencyEnabled?: boolean; usdKhrRate?: number; currencyFormat?: CurrencyFormat };
+export type PosSettings = { splitPaymentEnabled?: boolean; customerCreditEnabled?: boolean; requireOpenRegister?: boolean; couponsEnabled?: boolean; currency: string; taxRate: number; pointValue: number; loyaltyEnabled: boolean; spendPerPoint: number; loyaltyMinimumOrder: number; dualCurrencyEnabled?: boolean; usdKhrRate?: number; currencyFormat?: CurrencyFormat };
 export type Workspace = {
   coupons?: Campaign[];
   receiptContext?: ReceiptContext;

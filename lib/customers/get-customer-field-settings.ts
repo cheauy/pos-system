@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/branch-server";
 export type CustomerFieldSettings = {
   emailEnabled: boolean;
   birthdayEnabled: boolean;
+  genderEnabled: boolean;
 };
 
 export async function getCustomerFieldSettings(
@@ -14,7 +15,7 @@ export async function getCustomerFieldSettings(
 
   const { data, error } = await supabase
     .from("branch_customer_settings")
-    .select("email_enabled,birthday_enabled")
+    .select("email_enabled,birthday_enabled,gender_enabled")
     .eq("business_id", businessId)
     .maybeSingle();
 
@@ -22,11 +23,13 @@ export async function getCustomerFieldSettings(
     return {
       emailEnabled: true,
       birthdayEnabled: true,
+      genderEnabled: false,
     };
   }
 
   return {
     emailEnabled: data?.email_enabled ?? true,
     birthdayEnabled: data?.birthday_enabled ?? true,
+    genderEnabled: data?.gender_enabled ?? false,
   };
 }

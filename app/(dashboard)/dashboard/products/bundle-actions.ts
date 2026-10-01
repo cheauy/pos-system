@@ -8,6 +8,7 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { assertOperatingBranch } from "@/lib/branches/context";
 import { createClient } from "@/lib/supabase/branch-server";
 import { createHash } from 'node:crypto';
+import { validateBundleItems } from '@/lib/products/bundle-items';
 
 export type CreateBundleState = { success: boolean; message: string };
 const read = (form: FormData, key: string) => String(form.get(key) ?? '').trim();
@@ -48,6 +49,8 @@ export async function createBundleProduct(_state: CreateBundleState, form: FormD
   if (!branchResult.valid) return { success: false, message: 'Your branch changed. Reload before creating the bundle.' };
   let items: unknown;
   try { items = JSON.parse(read(form, 'items')); } catch { return { success: false, message: 'Choose the included products again.' }; }
+  const itemsError = validateBundleItems(items);
+  if (itemsError) return { success: false, message: itemsError };
   const db = await createClient();
   mark('databaseClient');
   const upload = await uploadBundleImage(db, business.id, form, [], branchResult.context?.userId);
@@ -149,6 +152,8 @@ export async function editBundleProduct(form: FormData): Promise<CreateBundleSta
   try { await assertOperatingBranch(branchId); } catch { return { success: false, message: 'Your branch changed. Reload before editing the bundle.' }; }
   let items: unknown;
   try { items = JSON.parse(read(form, 'items')); } catch { return { success: false, message: 'Choose the included products again.' }; }
+  const itemsError = validateBundleItems(items);
+  if (itemsError) return { success: false, message: itemsError };
   const db = await createClient();
   const { data: bundle, error: lookupError } = await db.from('branch_products').select('id,updated_at,image_url,image_urls').eq('business_id', business.id).eq('id', read(form, 'bundleId')).eq('product_type', 'bundle').maybeSingle();
   if (lookupError || !bundle) return { success: false, message: 'Bundle not found. Refresh and try again.' };

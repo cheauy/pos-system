@@ -1,7 +1,6 @@
 "use client";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 const khmer: Record<string, string> = {
-  "Included items": "ទំនិញដែលរួមបញ្ចូល", "No photo": "គ្មានរូបភាព",
   "monday": "ថ្ងៃចន្ទ", "tuesday": "ថ្ងៃអង្គារ", "wednesday": "ថ្ងៃពុធ",
   "thursday": "ថ្ងៃព្រហស្បតិ៍", "friday": "ថ្ងៃសុក្រ", "saturday": "ថ្ងៃសៅរ៍", "sunday": "ថ្ងៃអាទិត្យ",
   "Mon - Sun": "ចន្ទ - អាទិត្យ", "(+1 day)": "(ថ្ងៃបន្ទាប់)",

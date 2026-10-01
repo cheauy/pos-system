@@ -1,5 +1,8 @@
+import "../settings/settings-layout.css";
+import Link from "next/link";
 import QRCode from "qrcode";
 import {
+  ArrowLeft,
   ExternalLink,
   Globe2,
   ShoppingBag,
@@ -54,6 +57,7 @@ export default async function OnlineStorePage() {
 
   return (
     <main className="space-y-4 pb-24">
+      <Link href="/dashboard/settings" className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-blue-600"><ArrowLeft size={16}/>General Settings</Link>
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <div className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-500">
@@ -68,7 +72,6 @@ export default async function OnlineStorePage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span id="storefront-save-slot" className="contents" />
           <CatalogDialog>
             <CatalogManager
               products={productResult.data ?? []}
@@ -156,6 +159,7 @@ export default async function OnlineStorePage() {
           />
         </div>
       </StorefrontSettingsForm>
+      <div id="storefront-save-slot" className="settings-save-bar" />
     </main>
   );
 }

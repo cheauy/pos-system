@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, Mail, MapPin, Phone, ReceiptText } from "lucide-react";
+import { ArrowLeft, CalendarDays, Mail, MapPin, Phone, ReceiptText, UserRound } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import { requirePermission } from "@/lib/auth/require-permission";
@@ -23,6 +23,7 @@ type Customer = {
   phone: string | null;
   email: string | null;
   birthday: string | null;
+  gender: string | null;
   address: string | null;
   orders: CustomerOrder[];
 };
@@ -47,6 +48,7 @@ export default async function CustomerDetailsPage({ params }: CustomerPageProps)
         phone,
         email,
         birthday,
+        gender,
         address,
         orders (
           id,
@@ -102,6 +104,7 @@ export default async function CustomerDetailsPage({ params }: CustomerPageProps)
           <div className="mt-6 space-y-4 text-sm">
             <InformationRow icon={<Phone size={16} />} label="Phone" value={customer.phone} />
             {fieldSettings.emailEnabled ? <InformationRow icon={<Mail size={16} />} label="Email" value={customer.email} /> : null}
+            {fieldSettings.genderEnabled && <InformationRow icon={<UserRound size={16}/>} label="Gender" value={customer.gender === "male" ? "Male" : customer.gender === "female" ? "Female" : "Not specified"}/>}
             {fieldSettings.birthdayEnabled ? <InformationRow icon={<CalendarDays size={16} />} label="Birthday" value={formatBirthday(customer.birthday)} /> : null}
             <InformationRow icon={<MapPin size={16} />} label="Address" value={customer.address} />
           </div>

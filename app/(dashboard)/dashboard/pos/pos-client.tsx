@@ -16,7 +16,7 @@ import { CurrencyAmountInput } from './pos-currency-components';
 import { CheckoutPanel, VariantPicker } from './pos-workspace-flow';
 import { BarcodeScanner, Modal, ProductImage } from './pos-workspace-components';
 import { SaleCompleted, lineImageKey, type SaleMeta } from './pos-sale-completed';
-import { PosCustomerPicker } from './pos-customer-picker';
+import { PosCustomerPicker, PosOrderTypePicker } from './pos-customer-picker';
 import type { PickerCustomer } from './pos-customer-helpers';
 import type { CartDraft, CartLine, CatalogFilters, CheckoutInput, DiscountType, ShippingDetails, HeldOrder, PaymentMethod, Product, ProductGroup, SaleReceipt, Tender, Workspace } from './pos-workspace-types';
 import s from './pos-workspace.module.css';
@@ -76,6 +76,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   const [saleMeta, setSaleMeta] = useState<SaleMeta | null>(null);
   const [notice, setNotice] = useState<{ text: string; kind: 'error' | 'success' | 'info' } | null>(null);
   const [modalError, setModalError] = useState('');
+  const [choosingCustomer,setChoosingCustomer] = useState(false);
   const [busy, setBusy] = useState('');
   const [recovery, setRecovery] = useState<CheckoutInput | null>(null);
   const [recoveryLoaded, setRecoveryLoaded] = useState(false);
@@ -169,11 +170,15 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     setData(old => ({ ...old, customers: [{ id: row.id, name: row.name, phone: row.phone, address: row.address || '', loyalty_points: Number(row.loyalty_points || 0) }, ...old.customers.filter(c => c.id !== row.id)] }));
   }
   function selectPickerCustomer(row: PickerCustomer) {
+    if (shipping.method !== 'in_store' && (!row.name?.trim() || !row.phone?.trim() || (shipping.method === 'delivery' && !row.address?.trim()))) {
+      setModalError('Update this customer’s name, phone and delivery address in Customers, or select another customer.');
+      return;
+    }
     upsertWorkspaceCustomer(row);
     setCustomerId(row.id);setPoints('0');setCreateCustomer(false);recipientEdited.current=false;
-    setShipping(old => ({ ...old, method: 'delivery', recipientName: row.name, phone: row.phone || '', address: row.address || '' }));
-    setMethod('cod');setTenders([]);
-    setPaid('');setEntryErrors({});setDialog(null);setConfirmed(false);
+    setShipping(old => ({ ...old, recipientName: old.method === 'in_store' ? '' : row.name, phone: old.method === 'in_store' ? '' : row.phone || '', address: old.method === 'in_store' ? '' : row.address || '' }));
+    setMethod(shipping.method === 'delivery' ? 'cod' : 'cash');setTenders([]);
+    setPaid('');setEntryErrors({});setChoosingCustomer(false);setModalError('');setConfirmed(false);
   }
   function handleCustomerCreated(row: PickerCustomer) {
     upsertWorkspaceCustomer(row);
@@ -183,20 +188,14 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     if (value) setBusy('customer-picker');
     else setBusy(current => current === 'customer-picker' ? '' : current);
   }
-  function selectPickup() {
+  function selectPickup(type: ShippingDetails['method'] = 'pickup') {
     if (frozen) return;
-    // Guest pickup is an order type, not a saved customer or a loyalty account.
+    // Changing type requires choosing the customer again.
     // Clear contact details from the previous customer instead of reusing them.
     setCustomerId('');setPoints('0');setCreateCustomer(false);recipientEdited.current=false;
-    setShipping({method:'pickup',recipientName:'',phone:'',address:'',carrier:'',carrierOther:''});
-    setDelivery('0');setMethod('cash');setPaid('');setTenders([]);setConfirmed(false);setEntryErrors({});
-    setDialog(null);setModalError('');
-  }
-  function useCustomerDetails() {
-    if(!customer)return;
-    recipientEdited.current=false;
-    setShipping(old=>({...old,recipientName:customer.name,phone:customer.phone || '',address:customer.address || ''}));
-    setNotice({kind:'info',text:'Saved customer details copied to this order. Editing them here does not update the customer account.'});
+    setShipping({method:type,recipientName:'',phone:'',address:'',carrier:'',carrierOther:''});
+    setDelivery('0');setMethod(type === 'delivery' ? 'cod' : 'cash');setPaid('');setTenders([]);setConfirmed(false);setEntryErrors({});
+    setDialog(null);setChoosingCustomer(false);setModalError('');
   }
   function updateShipping(next:ShippingDetails) {
     const changingMethod=next.method!==shipping.method;
@@ -320,12 +319,13 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
       const error = cartIssue(lines,branch,data);
       if (error) throw new Error(error);
       const quote = totals(lines,Number(discount),Number(delivery),Number(points),Number(data.settings.taxRate),Number(data.settings.pointValue),discountType);
+      if (split && data.settings.splitPaymentEnabled === false) throw new Error('Split payment is disabled in Currency Settings.');
       if (split && quote.total < 0.02) throw new Error('Split payment needs a total of at least 0.02.');
       if (split) changePayment('split',quote.total);
       const latestCustomer=data.customers.find(c=>c.id===customerId);
       if(latestCustomer && !recipientEdited.current)setShipping(old=>({...old,recipientName:latestCustomer.name,phone:latestCustomer.phone || '',address:latestCustomer.address || ''}));
       setEntryErrors({});
-      setConfirmed(false); open('checkout');
+      setChoosingCustomer(false);setConfirmed(false); open('checkout');
     } catch (e) { setNotice({kind:'error',text:messageOf(e)}); }
   }
   function reviewAllocation(group: ProductGroup) {
@@ -351,7 +351,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
       couponCode:couponCode||undefined,discount:values.manualDiscount,discountType:couponCode?'amount':discountType,discountValue:couponCode?couponValue.discount:Number(discount),shipping:shipping.method === 'in_store' ? {method:'in_store',recipientName:'',phone:'',address:'',carrier:'',carrierOther:''} : {...shipping,carrier:shipping.method==='delivery'?shipping.carrier || '':'',carrierOther:shipping.method==='delivery' && shipping.carrier==='other'?shipping.carrierOther || '':''},
       deliveryFee:Number(delivery),redeemPoints:Number(points),note,expectedTotal:values.total,expectedTaxRate:Number(data.settings.taxRate),holdId:hold?.id ?? null,holdVersion:hold?.version ?? null };
   }
-  const reviewIssue = Object.values(entryErrors).find(Boolean) || (method === 'cash' && paid === '' && values.total > 0 ? 'Enter cash received or choose Exact amount.' : null) || issue || validateCheckout(saleInput('00000000-0000-4000-8000-000000000000'));
+  const reviewIssue = (shipping.method !== 'in_store' && !customerId ? 'Select a customer for this order.' : null) || Object.values(entryErrors).find(Boolean) || (method === 'cash' && paid === '' && values.total > 0 ? 'Enter cash received or choose Exact amount.' : null) || issue || validateCheckout(saleInput('00000000-0000-4000-8000-000000000000'));
   function setPending(input: CheckoutInput | null) {
     recoveryRef.current = input; setRecovery(input);
     if (input) sessionStorage.setItem(recoveryKey, JSON.stringify(input));
@@ -446,7 +446,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     <aside className={s.orderPanel} aria-label="Current order">
       <header className={s.orderHeader}><ShoppingCart size={29}/><div><h2>Current Order</h2><p>{count} {count === 1 ? 'item' : 'items'}{hold ? ` · ${hold.label}` : ''}</p></div><div className={s.orderDate}><span>{dateLabel}</span><strong>{timeLabel}</strong></div></header>
       <fieldset disabled={frozen} className={s.orderFieldset}>
-        <div className={s.customerBlock}><div className={s.between}><label>Customer</label><button className={s.dangerText} onClick={() => open('clear')} disabled={!lines.length}><Trash2 size={14}/> Clear All</button></div><button className={s.customerButton} onClick={() => open('customer')}><UserRound size={20}/><span>{customer?.name || (shipping.method === 'pickup' ? 'Pickup customer' : shipping.method === 'delivery' ? 'Delivery customer' : 'Walk-in customer')}{customer?.phone && <small>{customer.phone}</small>}</span><ChevronDown size={15}/></button>
+        <div className={s.customerBlock}><div className={s.between}><label>Type</label><button className={s.dangerText} onClick={() => open('clear')} disabled={!lines.length}><Trash2 size={14}/> Clear All</button></div><button className={s.customerButton} onClick={() => open('customer')}><UserRound size={20}/><span>{shipping.method === 'pickup' ? 'Pickup' : shipping.method === 'delivery' ? 'Delivery' : 'Walk-in customer'}</span><ChevronDown size={15}/></button>
           <button className={s.loyaltyBanner} onClick={() => open('adjustments')}><Gift size={23}/><span><strong>{!data.settings.loyaltyEnabled ? 'Loyalty program is off' : customer ? `${customer.loyalty_points || 0} loyalty points` : 'No loyalty account selected'}</strong><small>{!data.settings.loyaltyEnabled ? 'Enable loyalty in Promotions & Loyalty.' : !customer ? 'Add a customer to earn and redeem points.' : data.settings.pointValue > 0 ? `${cash(data.settings.pointValue)} per point · Manage redemption` : 'Earn points on eligible sales. Redemption is not configured.'}</small></span></button>
         </div>
         <div className={s.cartItems}>
@@ -457,7 +457,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
         <div className={s.checkoutArea}><dl className={s.totals}><div><dt>Subtotal ({count} items)</dt><dd>{cash(values.subtotal)}</dd></div><div><dt><button onClick={() => open('adjustments')}>{couponCode?`Coupon ${couponCode}`:'Discount'}{!couponCode && discountType === 'percent' ? ` (${discount}%)` : ''}{Number(points) > 0 ? ` · ${points} points` : ''}</button></dt><dd className={s.blueText}>−{cash(values.discount)}</dd></div><div><dt>Tax ({data.settings.taxRate}%)</dt><dd>{cash(values.tax)}</dd></div><div><dt>Shipping Fee</dt><dd>{cash(values.delivery)}</dd></div><div className={s.totalRow}><dt>Total</dt><dd>{cash(values.total)}</dd></div></dl>
           <p className={s.checkoutHint}>Continue to review payment and order type. No sale is saved until you confirm.</p>
           <label className={s.field}>Order note (optional)<textarea value={note} aria-label="Order note" onChange={e => setNote(e.target.value)} placeholder="Add a note to this order…" rows={2} maxLength={1000}/></label>
-          <div className={s.checkoutButtons}><button className={s.softButton} disabled={!lines.length} onClick={() => { setHoldLabel(hold?.label || (customer ? `${customer.name}'s order` : `Order ${timeLabel}`)); open('hold'); }}><Clock size={16}/> Hold Order</button><button className={s.softButton} disabled={!lines.length || values.total < 0.02 || shipping.method === 'delivery'} onClick={() => beginCheckout(true)}><CreditCard size={16}/> Split Payment</button></div>
+          <div className={s.checkoutButtons}><button className={s.softButton} disabled={!lines.length} onClick={() => { setHoldLabel(hold?.label || (customer ? `${customer.name}'s order` : `Order ${timeLabel}`)); open('hold'); }}><Clock size={16}/> Hold Order</button>{data.settings.splitPaymentEnabled !== false && <button className={s.softButton} disabled={!lines.length || values.total < 0.02 || shipping.method === 'delivery'} onClick={() => beginCheckout(true)}><CreditCard size={16}/> Split Payment</button>}</div>
           <button className={s.completeButton} disabled={frozen || !lines.length || Boolean(issue) || !recoveryLoaded} onClick={() => beginCheckout()}><Check size={20}/>Continue · {cash(values.total)}</button>
         </div>
       </fieldset>
@@ -465,33 +465,21 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
       {busy && <div className={s.busyOverlay} role="status"><RefreshCw className={s.spin} size={18}/>{busy === 'checkout' ? 'Saving sale. Please wait…' : 'Working…'}</div>}
     </aside>
 
-    {dialog && <Modal title={{ scan:'Scan Barcode', variant:'Choose Product Variant', options:'Customize Product', customer:'Select Customer', adjustments:'Discount & Loyalty', hold:'Hold Current Order', holds:'Held Orders', clear:'Clear Current Order?', checkout:'Payment & Order Type', stock:'Assign Existing Stock', receipt:'Sale Saved' }[dialog]} onClose={() => { setDialog(null); setModalError(''); }} wide={['holds','variant','checkout','stock'].includes(dialog)} bare={dialog === 'receipt'} locked={Boolean(busy)}>
+    {dialog && <Modal title={{ scan:'Scan Barcode', variant:'Choose Product Variant', options:'Customize Product', customer:'Select Type', adjustments:'Discount & Loyalty', hold:'Hold Current Order', holds:'Held Orders', clear:'Clear Current Order?', checkout:'Payment & Order Type', stock:'Assign Existing Stock', receipt:'Sale Saved' }[dialog]} onClose={() => { setDialog(null); setModalError(''); }} wide={['holds','variant','checkout','stock'].includes(dialog)} bare={dialog === 'receipt'} locked={Boolean(busy)}>
       <fieldset disabled={Boolean(busy)} className={s.flowFieldset}>
       {modalError && <p className={`${s.notice} ${s.error}`} role="alert">{modalError}</p>}
       {dialog === 'scan' && <BarcodeScanner onScan={scan}/>}
       {dialog === 'clear' && <div className={s.stack}><p>This clears the current cart, customer, discounts and payment entries. No completed sale is deleted.{hold ? ' The saved held order remains in Held Orders.' : ''}</p><div className={s.modalActions}><button className={s.button} onClick={() => setDialog(null)}>Keep order</button><button className={s.dangerButton} onClick={() => { clearCart(); setDialog(null); }}>Clear order</button></div></div>}
       {dialog === 'variant' && variantGroup && <VariantPicker quote={quote} group={variantGroup} data={data} branchId={branch} lines={lines} onAdd={chooseProduct} onAllocate={reviewAllocation} initialColor={filters.color} initialSize={filters.size}/>}
       {dialog === 'stock' && allocationGroup && <div className={s.stack}><p>Assign <strong>{allocationPreview.reduce((sum,row) => sum+row.quantity,0)} existing, unallocated units</strong> of {allocationGroup.name} to <strong>{branchName}</strong>?</p><p className={s.paymentInfo}>This does not increase total stock and does not take units from another branch. Confirm only when these units physically belong at this branch. The server rechecks every quantity.</p><div className={s.stack}>{allocationPreview.map(row => { const p = data.products.find(p => p.id === row.productId); return <div key={row.productId} className={s.between}><span>{[p?.color,p?.size,p?.sku].filter(Boolean).join(' · ')}</span><strong>{row.quantity} units</strong></div>; })}</div><div className={s.modalActions}><button className={s.button} onClick={() => open('variant')}>Back</button><button className={s.primary} disabled={!allocationPreview.length || !data.canConfigure} onClick={allocateStock}>Confirm branch allocation</button></div></div>}
-      {dialog === 'checkout' && <CheckoutPanel quote={quote} customerId={customerId} customerName={customer?.name} onUseCustomer={useCustomerDetails} createCustomer={createCustomer} canCreateCustomer={data.canCreateCustomer === true} setCreateCustomer={setCreateCustomer} onEntryError={setEntryError} total={values.total} subtotal={values.subtotal} discount={values.discount} discountLabel={couponCode?`Coupon ${couponCode}`:discountType === 'percent' ? `Discount (${discount}%)${Number(points) ? ' + loyalty' : ''}` : 'Discount / loyalty'} tax={values.tax} taxRate={data.settings.taxRate}
+      {dialog === 'checkout' && <CheckoutPanel onChooseCustomer={()=>setChoosingCustomer(true)} customerPicker={((shipping.method!=='in_store'&&!customerId)||choosingCustomer)?<PosCustomerPicker businessId={data.businessId} branchId={branch} userId={data.userId} customerId={customerId} canCreate={Boolean(data.canCreateCustomer)} onSelect={selectPickerCustomer} onCreated={handleCustomerCreated} onBusyChange={setPickerBusy}/>:null} splitPaymentEnabled={data.settings.splitPaymentEnabled} customerCreditEnabled={data.settings.customerCreditEnabled} quote={quote} customerId={customerId} customerName={customer?.name} onEntryError={setEntryError} total={values.total} subtotal={values.subtotal} discount={values.discount} discountLabel={couponCode?`Coupon ${couponCode}`:discountType === 'percent' ? `Discount (${discount}%)${Number(points) ? ' + loyalty' : ''}` : 'Discount / loyalty'} tax={values.tax} taxRate={data.settings.taxRate}
         shipping={shipping} setShipping={updateShipping} delivery={delivery} setDelivery={setDelivery}
         method={method} setMethod={changePayment} paid={paid} setPaid={setPaid} received={receivedAmount()}
         tenders={tenders} setTenders={setTenders} confirmed={confirmed} setConfirmed={setConfirmed}
         error={reviewIssue} busy={Boolean(busy)} onBack={() => setDialog(null)} onConfirm={() => submit()}
         lines={lines} note={note}/>}
       {dialog === 'options' && optionProduct && <div className={s.stack}><div className={s.productDialogHeading}><ProductImage src={optionProduct.image_url} alt={optionProduct.name}/><div><h3>{optionProduct.name}</h3><p>Base price {cash(Number(optionProduct.selling_price))}</p></div></div>{data.groups.filter(g => g.product_id === optionProduct.id).map(g => <fieldset className={s.optionFieldset} key={g.id}><legend>{g.name} <small>{g.is_required ? 'Required' : 'Optional'} · {g.selection_type === 'single' ? 'Choose one' : `Choose up to ${g.max_selections}`}</small></legend>{data.options.filter(o => o.group_id === g.id && o.is_active).map(o => <label className={s.optionChoice} key={o.id}><input type={g.selection_type === 'single' ? 'radio' : 'checkbox'} name={g.id} checked={optionIds.includes(o.id)} onChange={e => setOptionIds(old => g.selection_type === 'single' ? [...old.filter(id => !data.options.some(p => p.id === id && p.group_id === g.id)), o.id] : e.target.checked ? [...old,o.id] : old.filter(id => id !== o.id))}/><span>{o.name}</span><strong>{Number(o.price_adjustment) >= 0 ? '+' : ''}{cash(Number(o.price_adjustment))}</strong></label>)}{!g.is_required && <button className={s.textButton} onClick={() => setOptionIds(old => old.filter(id => !data.options.some(o => o.id === id && o.group_id === g.id)))}>Clear {g.name}</button>}</fieldset>)}<button className={s.primary} onClick={() => addProduct(optionProduct, optionIds)}><ShoppingCart size={17}/>Add configured item</button></div>}
-      {dialog === 'customer' && <PosCustomerPicker
-        businessId={data.businessId}
-        branchId={branch}
-        userId={data.userId}
-        customerId={customerId}
-        shippingMethod={shipping.method}
-        canCreate={Boolean(data.canCreateCustomer)}
-        onWalkIn={() => selectCustomer('')}
-        onPickup={selectPickup}
-        onSelect={selectPickerCustomer}
-        onCreated={handleCustomerCreated}
-        onBusyChange={setPickerBusy}
-      />}
+      {dialog === 'customer' && <PosOrderTypePicker value={shipping.method} onSelect={type=>type==='in_store'?selectCustomer(''):selectPickup(type)}/>}
       {dialog === 'adjustments' && (() => {
         const quoteValues = totals(lines,Number(adjustmentDraft.discount),Number(delivery),Number(adjustmentDraft.points),Number(data.settings.taxRate),Number(data.settings.pointValue),adjustmentDraft.discountType);
         const invalid = discountEntryError || discountIssue(Number(adjustmentDraft.discount),adjustmentDraft.discountType,quoteValues.subtotal) || (!Number.isInteger(Number(adjustmentDraft.points)) || Number(adjustmentDraft.points) < 0 ? 'Enter a non-negative whole number of points.' : Number(adjustmentDraft.points) > Number(customer?.loyalty_points || 0) ? 'Not enough loyalty points.' : quoteValues.discount > quoteValues.subtotal ? 'Discount and points cannot exceed the merchandise subtotal.' : null);

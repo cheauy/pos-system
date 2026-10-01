@@ -1,5 +1,6 @@
 "use client";
 
+import CustomerFieldsHelp from "@/components/customer-fields-help";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -16,7 +17,6 @@ import {
   Phone,
   ReceiptText,
   Search,
-  Settings2,
   ShoppingBag,
   Trash2,
   Upload,
@@ -50,6 +50,7 @@ type Customer = {
   phone: string | null;
   email: string | null;
   birthday: string | null;
+  gender?: string | null;
   address: string | null;
   created_at: string;
   orderCount: number;
@@ -62,6 +63,7 @@ type Customer = {
 type CustomerFieldSettings = {
   emailEnabled: boolean;
   birthdayEnabled: boolean;
+  genderEnabled?: boolean;
 };
 
 const PAGE_SIZE = 15;
@@ -77,7 +79,6 @@ export function CustomersWorkspace({
   currency,
   accentColor,
   fieldSettings,
-  canManageSettings,
   canCreate,
   canUpdate,
 }: {
@@ -87,7 +88,6 @@ export function CustomersWorkspace({
   currency: CurrencyFormat;
   accentColor: string;
   fieldSettings: CustomerFieldSettings;
-  canManageSettings: boolean;
   canCreate: boolean;
   canUpdate: boolean;
 }) {
@@ -203,15 +203,7 @@ export function CustomersWorkspace({
           </p>
         </div>
 
-        {canManageSettings ? (
-          <Link
-            href="/dashboard/settings/customers"
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600"
-          >
-            <Settings2 size={17} />
-            Customer fields
-          </Link>
-        ) : null}
+        <CustomerFieldsHelp />
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -255,6 +247,7 @@ export function CustomersWorkspace({
                   <input name="email" type="email" className={inputClass} placeholder="customer@example.com" />
                 </Field>
               ) : null}
+              {fieldSettings.genderEnabled && <Field label="Gender"><select name="gender" className={inputClass}><option value="">Not specified</option><option value="male">Male</option><option value="female">Female</option></select></Field>}
               {fieldSettings.birthdayEnabled ? (
                 <Field label="Birthday">
                   <input name="birthday" type="date" className={inputClass} />
@@ -451,6 +444,7 @@ export function CustomersWorkspace({
                 <div className="mt-5 space-y-3 text-sm">
                   <DetailRow icon={<Phone size={16} />} value={selectedCustomer.phone || "No phone"} />
                   {fieldSettings.emailEnabled ? <DetailRow icon={<Mail size={16} />} value={selectedCustomer.email || "No email"} /> : null}
+                  {fieldSettings.genderEnabled && <DetailRow icon={<UserRound size={16}/>} value={selectedCustomer.gender === "male" ? "Male" : selectedCustomer.gender === "female" ? "Female" : "Gender not specified"}/>}
                   {fieldSettings.birthdayEnabled ? <DetailRow icon={<CalendarDays size={16} />} value={formatBirthday(selectedCustomer.birthday)} /> : null}
                   <DetailRow icon={<UserRound size={16} />} value={selectedCustomer.address || "No address"} />
                   <DetailRow icon={<CalendarDays size={16} />} value={`Customer since ${formatDate(selectedCustomer.created_at)}`} />

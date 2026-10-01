@@ -6,8 +6,8 @@ test('checkout review is immediate, never submits a sale, and retains local safe
  const events=[];
  const context={inFlight:{current:false},frozen:false,recoveryLoaded:true,lines:[{}],issue:null,
   data:{checkoutVersion:3,settings:{requireOpenRegister:true,taxRate:0,pointValue:0},shift:{location_id:'branch'},customers:[]},branch:'branch',
-  cartIssue:()=>null,totals:()=>({total:30}),discount:'0',delivery:'0',points:'0',discountType:'amount',customerId:'',recipientEdited:{current:false},
-  changePayment:()=>events.push('split'),setShipping:()=>{},setEntryErrors:()=>{},setConfirmed:()=>{},open:name=>events.push(name),
+  cartIssue:()=>null,totals:()=>({total:30}),discount:'0',delivery:'0',points:'0',discountType:'amount',customerId:'',shipping:{method:'in_store'},recipientEdited:{current:false},
+  setChoosingCustomer(){},changePayment:()=>events.push('split'),setShipping:()=>{},setEntryErrors:()=>{},setConfirmed:()=>{},open:name=>events.push(name),
   setNotice:notice=>events.push(notice.text),messageOf:error=>error.message,
   loadPosWorkspace:()=>{throw Error('Review must not reload the full workspace')},completePosSale:()=>{throw Error('Review must not submit')},
  };
@@ -15,5 +15,29 @@ test('checkout review is immediate, never submits a sale, and retains local safe
  assert.equal(run(),undefined);assert.deepEqual(events,['checkout']);events.length=0;
  context.data.shift=null;run();assert.match(events[0],/Open the register/);events.length=0;
  context.data.settings.requireOpenRegister=false;run();assert.deepEqual(events,['checkout']);events.length=0;
+ context.shipping.method='pickup';run();assert.deepEqual(events,['checkout']);events.length=0;
+ context.customerId='customer';run();assert.deepEqual(events,['checkout']);events.length=0;
  context.frozen=true;run();assert.deepEqual(events,[]);
+});
+
+test('selecting a saved customer preserves Pickup and Delivery',()=>{
+ let select;function find(n){if(ts.isFunctionDeclaration(n)&&n.name?.text==='selectPickerCustomer')select=n;ts.forEachChild(n,find)}find(file);
+ const code=ts.transpileModule(select.getText(file),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+ for(const method of ['in_store','pickup','delivery']){
+   let shipping={method},payment,selected;
+   const context={shipping,upsertWorkspaceCustomer(){},setCustomerId:id=>selected=id,setPoints(){},setCreateCustomer(){},recipientEdited:{current:true},setShipping:fn=>shipping=fn(shipping),setMethod:value=>payment=value,setTenders(){},setPaid(){},setEntryErrors(){},setDialog(){throw Error("Selecting a customer must keep checkout open")},setChoosingCustomer(){},setModalError(){},setConfirmed(){}};
+   new Function(...Object.keys(context),code+';return selectPickerCustomer;')(...Object.values(context))({id:'customer',name:'Buyer',phone:'012345678',address:'Street 1'});
+   assert.equal(shipping.method,method);assert.equal(shipping.recipientName,method==='in_store'?'':'Buyer');assert.equal(selected,'customer');assert.equal(payment,method==='delivery'?'cod':'cash');
+ }
+});
+
+test('selecting Pickup or Delivery closes the type dialog without fetching customers',()=>{
+ let select;function find(n){if(ts.isFunctionDeclaration(n)&&n.name?.text==='selectPickup')select=n;ts.forEachChild(n,find)}find(file);
+ const code=ts.transpileModule(select.getText(file),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+ for(const method of ['pickup','delivery']){
+   let shipping,dialog='customer';
+   const context={frozen:false,setCustomerId(){},setPoints(){},setCreateCustomer(){},recipientEdited:{current:false},setShipping:value=>shipping=value,setDelivery(){},setMethod(){},setPaid(){},setTenders(){},setConfirmed(){},setEntryErrors(){},setDialog:value=>dialog=value,setChoosingCustomer(){},setModalError(){}};
+   new Function(...Object.keys(context),code+';return selectPickup;')(...Object.values(context))(method);
+   assert.equal(shipping.method,method);assert.equal(dialog,null);
+ }
 });

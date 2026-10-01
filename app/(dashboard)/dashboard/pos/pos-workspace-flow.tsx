@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Check, CreditCard, MapPin, Package, Plus, ShoppingCart, Store, Trash2, Truck } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Check, CreditCard, MapPin, Package, Plus, ShoppingCart, Trash2 } from 'lucide-react';
 import type { CurrencyQuote, CartLine, PaymentMethod, Product, ProductGroup, ShippingDetails, Tender, Workspace } from './pos-workspace-types';
 import { inventoryFor, money, splitRemaining, stockFor, stockLabel, tenderIssue } from './pos-workspace-helpers';
 import { CurrencyAmountInput } from './pos-currency-components';
@@ -59,11 +59,11 @@ export function VariantPicker({ group, data, branchId, lines, onAdd, onAllocate,
 }
 
 type CheckoutPanelProps = {
+  splitPaymentEnabled?: boolean; customerCreditEnabled?: boolean;
   quote: CurrencyQuote; total: number; subtotal: number; discount: number; discountLabel: string; tax: number; taxRate: number;
   delivery: string; setDelivery: (value: string) => void;
   shipping: ShippingDetails; setShipping: (value: ShippingDetails) => void;
-  customerId: string; customerName?: string; onUseCustomer: () => void;
-  createCustomer: boolean; canCreateCustomer: boolean; setCreateCustomer: (value:boolean)=>void;
+  customerId: string; customerName?: string; customerPicker: ReactNode; onChooseCustomer: () => void;
   method: PaymentMethod; setMethod: (value: PaymentMethod) => void;
   paid: string; setPaid: (value: string) => void;
   tenders: Tender[]; setTenders: (value: Tender[]) => void;
@@ -76,16 +76,16 @@ type CheckoutPanelProps = {
 export function CheckoutPanel(p: CheckoutPanelProps) {
   const [cashRevision,setCashRevision]=useState(0);
   const [tenderRevision,setTenderRevision]=useState(0);
-  const [chooseType,setChooseType] = useState(Boolean(p.customerId) || p.shipping.method !== 'in_store');
   const cash = (v: number) => quoteMoney(v,p.quote);
   const [reviewing,setReviewing] = useState(false);
   const isWalkIn = !p.customerId && p.shipping.method === 'in_store';
   const isDelivery = p.shipping.method === 'delivery';
-  const splitError = p.method === 'split' ? tenderIssue(p.tenders,p.total) : null;
+  const splitError = p.method === 'split' ? (p.tenders.some(t=>t.method === 'other') ? 'Choose Cash or Bank transfer for each payment part.' : tenderIssue(p.tenders,p.total)) : null;
   useEffect(() => {
-    if (paymentHiddenForWalkIn(p.method, isWalkIn)) p.setMethod('cash');
+    if (p.method === 'other' || (p.method === 'split' && p.splitPaymentEnabled === false) || (p.method === 'credit' && p.customerCreditEnabled === false)) p.setMethod(isDelivery ? 'cod' : 'cash');
+    else if (paymentHiddenForWalkIn(p.method, isWalkIn)) p.setMethod('cash');
     else if (paymentHiddenForDelivery(p.method, isDelivery)) p.setMethod('cod');
-  }, [isWalkIn, isDelivery, p.method, p.setMethod]);
+  }, [isWalkIn, isDelivery, p.method, p.setMethod, p.splitPaymentEnabled, p.customerCreditEnabled]);
   if (reviewing) {
     const methodLabel = PAYMENT_METHODS.find(([id]) => id === p.method)?.[1] || p.method;
     const carrier = p.shipping.carrier === 'other' ? p.shipping.carrierOther || 'Other' : ({ grab:'Grab', jt:'J&T', vet:'VET' } as Record<string,string>)[p.shipping.carrier || ''] || '';
@@ -95,9 +95,7 @@ export function CheckoutPanel(p: CheckoutPanelProps) {
       ...(p.shipping.method !== 'in_store' ? [['Recipient', p.shipping.recipientName], ['Phone', p.shipping.phone]] as Array<[string,string]> : []),
       ...(isDelivery ? [['Address', p.shipping.address], ...(carrier ? [['Shipping type', carrier]] as Array<[string,string]> : [])] as Array<[string,string]> : []),
       ['Payment method', methodLabel],
-      ...(['cash','cod','deposit'].includes(p.method) && p.paid !== '' ? [['Amount received', cash(p.received)]] as Array<[string,string]> : []),
       ...(p.method !== 'cash' && p.received < p.total ? [['Balance due', cash(Math.max(0,p.total-p.received))]] as Array<[string,string]> : []),
-      ...(p.method === 'cash' && p.received > p.total ? [['Change to give', cash(p.received-p.total)]] as Array<[string,string]> : []),
       ...(p.note.trim() ? [['Note', p.note.trim()]] as Array<[string,string]> : []),
     ];
     return <fieldset disabled={p.busy} className={s.flowFieldset}>
@@ -106,57 +104,40 @@ export function CheckoutPanel(p: CheckoutPanelProps) {
         <dl className={s.reviewTotals}>{details.map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
         <h3>Items ({p.lines.reduce((sum,l) => sum+l.quantity,0)})</h3>
         <dl className={s.reviewTotals}>{p.lines.map(line => <div key={line.key}><dt>{line.quantity} × {line.name}{line.variant ? ` · ${line.variant}` : ''}{line.selectedOptions.length ? ` · ${line.selectedOptions.map(o => o.name).join(', ')}` : ''}</dt><dd>{cash(line.unitPrice * line.quantity)}</dd></div>)}</dl>
-        <dl className={s.reviewTotals}><div><dt>Merchandise subtotal</dt><dd>{cash(p.subtotal)}</dd></div><div><dt>{p.discountLabel}</dt><dd>−{cash(p.discount)}</dd></div><div><dt>Tax ({p.taxRate}%)</dt><dd>{cash(p.tax)}</dd></div><div><dt>Shipping fee</dt><dd>{cash(Number(p.delivery))}</dd></div><div className={s.totalRow}><dt>Total</dt><dd>{cash(p.total)}</dd></div></dl>
+        <dl className={s.reviewTotals}><div><dt>Merchandise subtotal</dt><dd>{cash(p.subtotal)}</dd></div><div><dt>{p.discountLabel}</dt><dd>−{cash(p.discount)}</dd></div><div><dt>Tax ({p.taxRate}%)</dt><dd>{cash(p.tax)}</dd></div><div><dt>Shipping fee</dt><dd>{cash(Number(p.delivery))}</dd></div><div className={s.totalRow}><dt>Total</dt><dd>{cash(p.total)}</dd></div><div><dt>Customer paid amount</dt><dd>{cash(p.method === 'cash' && p.paid === '' ? 0 : p.received)}</dd></div><div><dt>Change to give</dt><dd>{cash(p.method === 'cash' ? Math.max(0,p.received-p.total) : 0)}</dd></div></dl>
         {p.error && <p role="status" className={s.paymentInfo}>{p.error}</p>}
         <div className={s.flowActions}><button type="button" className={s.button} onClick={() => setReviewing(false)}>Back to payment</button><button type="button" className={s.primary} disabled={Boolean(p.error)} onClick={p.onConfirm}><Check size={18}/>{p.busy ? 'Saving sale…' : `Confirm · ${cash(p.total)}`}</button></div>
       </div>
     </fieldset>;
   }
   function updateTender(index: number, patch: Partial<Tender>) { p.setTenders(p.tenders.map((t,i) => i === index ? { ...t,...patch } : t)); }
-  const shippingMethods = [
-    { id:'in_store' as const, label:'In-store', text:'Customer takes the items now.', Icon:Store },
-    { id:'pickup' as const, label:'Pickup', text:'Customer collects from the shop.', Icon:Package },
-    { id:'delivery' as const, label:'Delivery', text:'Deliver to the customer.', Icon:Truck }
-  ];
   return <fieldset disabled={p.busy} className={s.flowFieldset}>
     <div className={s.stack}>
-      <div className={s.checkoutStep}><span>1</span><div><h3>Order type</h3><p>Choose how the customer receives this order.</p></div></div>
-      {!p.customerId && !chooseType && p.shipping.method === 'in_store' ? <div className={s.walkInSummary}>
-        <Store size={23}/><div><strong>In-store · Walk-in customer</strong><p>No recipient, phone or delivery details needed.</p></div>
-        <button type="button" className={s.textButton} onClick={()=>setChooseType(true)}>Arrange pickup / delivery</button>
-      </div> : <div className={s.shippingChoices}>{shippingMethods.map(({id,label,text,Icon}) => <button key={id} type="button" aria-pressed={p.shipping.method === id} className={p.shipping.method === id ? s.selectedShipping : s.shippingChoice} onClick={() => {
-        p.setShipping({ ...p.shipping,method:id,carrier:id === 'delivery' ? p.shipping.carrier || '' : '',carrierOther:id === 'delivery' ? p.shipping.carrierOther || '' : '' });
-        if (id !== 'delivery') p.setDelivery('0'); if (id === 'in_store') p.setCreateCustomer(false);
-      }}><Icon size={20}/><strong>{label}</strong><small>{text}</small></button>)}</div>}
-      {p.shipping.method !== 'in_store' && <div className={s.shippingForm}>
-        {p.customerId && <div className={`${s.customerPrefill} ${s.fullWidth}`}><span>{p.customerName} · Recipient details are for this order only.</span><button type="button" className={s.textButton} onClick={p.onUseCustomer}>Use saved customer details</button></div>}
-        <label className={s.field}>Recipient name *<input aria-label="Recipient name" value={p.shipping.recipientName} maxLength={120} onChange={e => p.setShipping({ ...p.shipping,recipientName:e.target.value })}/></label>
-        <label className={s.field}>Phone *<input type="tel" aria-label="Delivery phone" value={p.shipping.phone} maxLength={40} onChange={e => p.setShipping({ ...p.shipping,phone:e.target.value })}/></label>
-        {p.shipping.method === 'delivery' && <>
-          <label className={`${s.field} ${s.fullWidth}`}>Delivery address *<textarea aria-label="Delivery address" value={p.shipping.address} rows={2} maxLength={500} placeholder="Enter this customer’s delivery address" onChange={e => p.setShipping({ ...p.shipping,address:e.target.value })}/></label>
+      <div className={s.checkoutStep}><span>1</span><div><h3>{shippingLabel(p.shipping.method)}</h3><p>Selected order type</p></div></div>
+      <section aria-label="Customer selection" className={s.stack}>
+        <div className={s.between}><strong>{p.customerName || (p.shipping.method==='in_store'?'Walk-in customer':'Select customer')}</strong>{!p.customerPicker && <button type="button" className={s.textButton} onClick={p.onChooseCustomer}>{p.customerId?'Change customer':'Select customer'}</button>}</div>
+        {p.customerPicker}
+      </section>
+      {isDelivery && <div className={s.shippingForm}>
           <CarrierCards value={p.shipping.carrier || ''} disabled={p.busy} onChange={carrier=>p.setShipping({...p.shipping,carrier,carrierOther:''})}/>
           {p.shipping.carrier === 'other' && <label className={`${s.field} ${s.fullWidth}`}>Carrier name (optional)<input aria-label="Other carrier" value={p.shipping.carrierOther || ''} maxLength={80} onChange={e=>p.setShipping({...p.shipping,carrierOther:e.target.value})}/></label>}
           <label className={s.field}>Shipping fee ({p.quote.displayCurrency})<CurrencyAmountInput label="Delivery fee" value={p.delivery} onChange={p.setDelivery} quote={p.quote} onError={error=>p.onEntryError('delivery',error)}/></label>
           <p className={s.muted}><MapPin size={14}/> Saved with this order. Carrier selection does not book a courier or fetch carrier rates.</p>
-        </>}
-        {!p.customerId && <div className={s.fullWidth}>{p.canCreateCustomer && <label className={s.confirmation}><input type="checkbox" aria-label="Save as new customer" checked={p.createCustomer} onChange={e=>p.setCreateCustomer(e.target.checked)}/><span>Save as new customer after this sale succeeds</span></label>}<p className={s.muted}>{p.createCustomer ? 'Name and phone are required. An existing matching phone will ask you to select that customer instead; accounts are never silently merged.' : 'Recipient details stay on this order. No customer account is created automatically.'}</p></div>}
       </div>}
       <div className={s.checkoutStep}><span>2</span><div><h3>Payment method</h3><p>Record the payment received, or an amount still due.</p></div></div>
-      <p className={s.currencyNotice}>Entry currency: <strong>{p.quote.displayCurrency}</strong>{p.quote.enabled && <> · $1 = {p.quote.usdKhrRate.toLocaleString('en-US',{maximumFractionDigits:4})}៛</>}. Accounting stays in {p.quote.baseCurrency}.</p>
-      <PaymentMethodSelect value={p.method} onChange={p.setMethod} disabled={p.busy} total={p.total} hasCustomer={Boolean(p.customerId)} isWalkIn={isWalkIn} isDelivery={isDelivery}/>
-      {['cash','cod','deposit'].includes(p.method) && <div className={s.field}><label>{p.method === 'cash' ? 'Cash received' : p.method === 'deposit' ? 'Cash deposit received' : 'Cash already received (optional)'} ({p.quote.displayCurrency})</label>
+      <PaymentMethodSelect value={p.method} onChange={p.setMethod} disabled={p.busy} total={p.total} hasCustomer={Boolean(p.customerId)} isWalkIn={isWalkIn} isDelivery={isDelivery} splitPaymentEnabled={p.splitPaymentEnabled} customerCreditEnabled={p.customerCreditEnabled}/>
+      {['cash','cod','deposit'].includes(p.method) && <div className={s.field}><label>{p.method === 'cash' ? 'Customer paid amount' : p.method === 'deposit' ? 'Cash deposit received' : 'Cash already received (optional)'} ({p.quote.displayCurrency})</label>
         <CurrencyAmountInput key={cashRevision} label="Amount received" value={p.paid} quote={p.quote} onChange={p.setPaid} placeholder={p.method === 'cash' || p.method === 'cod' ? p.total : 0} onError={error=>p.onEntryError('paid',error)}/>
         {(p.method === 'cash' || p.method === 'cod') && <button type="button" className={s.textButton} onClick={()=>{p.setPaid(p.total.toFixed(2));setCashRevision(n=>n+1);}}>Exact amount · {cash(p.total)}</button>}
-        {p.method === 'cash' && p.paid !== '' && p.received >= p.total && <small>Change to give: <strong>{cash(p.received-p.total)}</strong></small>}
         {p.method !== 'cash' && <small>Balance due: {cash(Math.max(0,p.total-p.received))}</small>}
       </div>}
       {p.method === 'credit' && <p className={s.paymentInfo}>A customer account is required. The total is charged to that account; the server checks its credit limit.</p>}
-      {['bank_transfer','other'].includes(p.method) && <label className={s.confirmation}><input type="checkbox" aria-label="Payment received confirmation" checked={p.confirmed} onChange={e => p.setConfirmed(e.target.checked)}/><span>I verified that {cash(p.total)} has been received. This records payment; it does not charge a card or bank account.</span></label>}
+      {p.method === 'bank_transfer' && <label className={s.confirmation}><input type="checkbox" aria-label="Payment received confirmation" checked={p.confirmed} onChange={e => p.setConfirmed(e.target.checked)}/><span>I verified that {cash(p.total)} has been received. This records payment; it does not charge a card or bank account.</span></label>}
       {p.method === 'split' && <div className={s.splitEditor}>
         <div className={s.between}><strong><CreditCard size={16}/> Split payment</strong><span>2–5 payment parts · {p.quote.displayCurrency}</span></div>
         <p className={s.muted}>Enter the net amount applied to this sale for each payment. Cash change is not part of the allocation. All parts use the selected entry currency.</p>
         {p.tenders.map((t,i) => <div key={`${i}-${tenderRevision}`} className={s.tenderRow}>
-          <label>Method<select aria-label={`Payment ${i+1} method`} value={t.method} onChange={e => updateTender(i,{ method:e.target.value as Tender['method'] })}><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="other">Other</option></select></label>
+          <label>Method<select aria-label={`Payment ${i+1} method`} value={t.method} onChange={e => updateTender(i,{ method:e.target.value as Tender['method'] })}><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option></select></label>
           <div className={s.field}><label>Amount</label><CurrencyAmountInput label={`Payment ${i+1} amount`} quote={p.quote} value={String(t.amount || '')} onChange={value=>updateTender(i,{amount:Number(value)})} onError={error=>p.onEntryError(`tender-${i}`,error)}/><button type="button" className={s.textButton} disabled={splitRemaining(p.tenders,p.total,i) <= 0} onClick={() => {updateTender(i,{ amount:splitRemaining(p.tenders,p.total,i) });setTenderRevision(n=>n+1);}}>Fill remaining</button></div>
           <label className={s.tenderReference}>Reference<input aria-label={`Payment ${i+1} reference`} value={t.reference} onChange={e => updateTender(i,{ reference:e.target.value })} maxLength={120} placeholder="Optional reference"/></label>
           <button type="button" className={s.iconButton} disabled={p.tenders.length <= 2} aria-label={`Remove payment ${i+1}`} onClick={() => {p.setTenders(p.tenders.filter((_,j) => i !== j));setTenderRevision(n=>n+1);}}><Trash2 size={16}/></button>
@@ -166,7 +147,7 @@ export function CheckoutPanel(p: CheckoutPanelProps) {
         {splitError && <p role="status" className={s.orangeText}>{splitError}</p>}
         <label className={s.confirmation}><input type="checkbox" aria-label="Split payments received confirmation" checked={p.confirmed} disabled={Boolean(splitError)} onChange={e => p.setConfirmed(e.target.checked)}/><span>I verified all split payments have been received.</span></label>
       </div>}
-      <dl className={s.reviewTotals}><div><dt>Merchandise subtotal</dt><dd>{cash(p.subtotal)}</dd></div><div><dt>{p.discountLabel}</dt><dd>−{cash(p.discount)}</dd></div><div><dt>Tax ({p.taxRate}%)</dt><dd>{cash(p.tax)}</dd></div><div><dt>Shipping fee</dt><dd>{cash(Number(p.delivery))}</dd></div><div className={s.totalRow}><dt>Total</dt><dd>{cash(p.total)}</dd></div></dl>
+      <dl className={s.reviewTotals}><div><dt>Merchandise subtotal</dt><dd>{cash(p.subtotal)}</dd></div><div><dt>{p.discountLabel}</dt><dd>−{cash(p.discount)}</dd></div><div><dt>Tax ({p.taxRate}%)</dt><dd>{cash(p.tax)}</dd></div><div><dt>Shipping fee</dt><dd>{cash(Number(p.delivery))}</dd></div><div className={s.totalRow}><dt>Total</dt><dd>{cash(p.total)}</dd></div><div><dt>Customer paid amount</dt><dd>{cash(p.method === 'cash' && p.paid === '' ? 0 : p.received)}</dd></div><div><dt>Change to give</dt><dd>{cash(p.method === 'cash' ? Math.max(0,p.received-p.total) : 0)}</dd></div></dl>
       {p.error && <p role="status" className={s.paymentInfo}>{p.error}</p>}
       <div className={s.flowActions}><button type="button" className={s.button} onClick={p.onBack}>Back to cart</button><button type="button" className={s.primary} disabled={Boolean(p.error)} onClick={() => setReviewing(true)}><Check size={18}/>{`Confirm Sale · ${cash(p.total)}`}</button></div>
     </div>
