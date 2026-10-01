@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { usePagedWorkspace } from "@/lib/use-paged-workspace";
+import { loadSuppliers, type SupplierWorkspace, type SupplierMetric } from "./list-actions";
 import {
   Building2,
   CalendarDays,
@@ -53,33 +55,9 @@ type Supplier = {
   created_at: string;
 };
 
-type PurchaseOrder = {
-  id: string;
-  supplier_id: string | null;
-  status: string;
-  order_date: string;
-  total: number | string | null;
-};
+const PAGE_SIZE = 15;
 
-type SupplierMetric = {
-  orderCount: number;
-  receivedTotal: number;
-  openValue: number;
-  lastOrderDate: string | null;
-};
-
-const PAGE_SIZE = 10;
-const OPEN_PO_STATUSES = new Set(["draft", "sent", "partial"]);
-
-export default function SuppliersClient({
-  suppliers,
-  purchaseOrders,
-  loadError,
-}: {
-  suppliers: Supplier[];
-  purchaseOrders: PurchaseOrder[];
-  loadError: string | null;
-}) {
+export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace}) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
@@ -90,43 +68,18 @@ export default function SuppliersClient({
   const [deleteError, setDeleteError] = useState("");
   const deleteLock = useRef(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState(
-    suppliers[0]?.id ?? "",
+    workspace.suppliers[0]?.id ?? "",
   );
 
-  const metrics = useMemo(() => buildSupplierMetrics(purchaseOrders), [purchaseOrders]);
+  const {data,busy,error:loadError}=usePagedWorkspace(workspace,{page,query,statusFilter},loadSuppliers);
+  const {suppliers,stats}=data;
+  const metrics=useMemo(()=>new Map(Object.entries(data.metrics)),[data.metrics]);
+  const filteredSuppliers=suppliers;
 
-  const filteredSuppliers = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
 
-    return suppliers.filter((supplier) => {
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "active" && supplier.is_active) ||
-        (statusFilter === "inactive" && !supplier.is_active);
-
-      if (!matchesStatus) return false;
-      if (!normalizedQuery) return true;
-
-      return [
-        supplier.name,
-        supplier.contact_person,
-        supplier.phone,
-        supplier.email,
-        supplier.address,
-      ].some((value) => value?.toLowerCase().includes(normalizedQuery));
-    });
-  }, [query, statusFilter, suppliers]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [query, statusFilter]);
-
-  const pageCount = Math.max(1, Math.ceil(filteredSuppliers.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount);
-  const visibleSuppliers = filteredSuppliers.slice(
-    (safePage - 1) * PAGE_SIZE,
-    safePage * PAGE_SIZE,
-  );
+  const pageCount = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+  const safePage = data.page;
+  const visibleSuppliers = suppliers;
 
   const selectedSupplier =
     suppliers.find((supplier) => supplier.id === selectedSupplierId) ??
@@ -134,23 +87,14 @@ export default function SuppliersClient({
     suppliers[0] ??
     null;
 
-  useEffect(() => {
-    if (!selectedSupplierId && suppliers[0]) {
-      setSelectedSupplierId(suppliers[0].id);
-    }
-  }, [selectedSupplierId, suppliers]);
-
-  const activeSuppliers = suppliers.filter((supplier) => supplier.is_active).length;
-  const thisMonthOrders = purchaseOrders.filter((order) => isThisMonth(order.order_date)).length;
-  const openPoValue = purchaseOrders
-    .filter((order) => OPEN_PO_STATUSES.has(order.status))
-    .reduce((sum, order) => sum + numberValue(order.total), 0);
-
-  const startRecord = filteredSuppliers.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
-  const endRecord = Math.min(safePage * PAGE_SIZE, filteredSuppliers.length);
+  const activeSuppliers=stats.active;
+  const thisMonthOrders=stats.thisMonthOrders;
+  const openPoValue=stats.openPoValue;
+  const startRecord=data.total===0?0:(safePage-1)*PAGE_SIZE+1;
+  const endRecord=Math.min(safePage*PAGE_SIZE,data.total);
 
   return (
-    <main className="space-y-5">
+    <main className="space-y-5" aria-busy={busy}>
       {editing && <SupplierDialog title="Edit Supplier" side busy={editingBusy} close={() => setEditing(null)}>
         <SupplierForm supplier={editing} onBusyChange={setEditingBusy} onSaved={() => setEditing(null)} />
       </SupplierDialog>}
@@ -179,14 +123,14 @@ export default function SuppliersClient({
         <SummaryCard
           icon={<UsersRound size={22} />}
           title="Total Suppliers"
-          value={String(suppliers.length)}
+          value={String(stats.total)}
           tone="blue"
         />
         <SummaryCard
           icon={<CheckCircle2 size={22} />}
           title="Active Suppliers"
           value={String(activeSuppliers)}
-          helper={`${suppliers.length ? Math.round((activeSuppliers / suppliers.length) * 100) : 0}% of total`}
+          helper={`${stats.total ? Math.round((activeSuppliers / stats.total) * 100) : 0}% of total`}
           tone="green"
         />
         <SummaryCard
@@ -218,7 +162,7 @@ export default function SuppliersClient({
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="text-lg font-bold text-slate-950">
-                  Supplier List ({suppliers.length})
+                  Supplier List ({data.total})
                 </h2>
                 <p className="text-sm text-slate-500">View and manage your suppliers.</p>
               </div>
@@ -231,7 +175,7 @@ export default function SuppliersClient({
                   />
                   <input
                     value={query}
-                    onChange={(event) => setQuery(event.target.value)}
+                    onChange={(event) => { setQuery(event.target.value); setPage(1); }}
                     placeholder="Search suppliers..."
                     className="h-10 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                   />
@@ -239,7 +183,7 @@ export default function SuppliersClient({
 
                 <select
                   value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value)}
+                  onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}
                   className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-500"
                 >
                   <option value="all">All Status</option>
@@ -329,13 +273,13 @@ export default function SuppliersClient({
 
           <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
             <p className="text-slate-500">
-              Showing {startRecord} to {endRecord} of {filteredSuppliers.length} suppliers
+              Showing {startRecord} to {endRecord} of {data.total} suppliers
             </p>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-                disabled={safePage <= 1}
+                onClick={() => setPage(Math.max(1, safePage - 1))}
+                disabled={busy || safePage <= 1}
                 className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-35"
                 aria-label="Previous page"
               >
@@ -346,15 +290,15 @@ export default function SuppliersClient({
               </span>
               <button
                 type="button"
-                onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
-                disabled={safePage >= pageCount}
+                onClick={() => setPage(Math.min(pageCount, safePage + 1))}
+                disabled={busy || safePage >= pageCount}
                 className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-35"
                 aria-label="Next page"
               >
                 <ChevronRight size={17} />
               </button>
               <span className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600">
-                10 / page
+                15 / page
               </span>
             </div>
           </div>
@@ -763,31 +707,6 @@ function FormField({
   );
 }
 
-function buildSupplierMetrics(purchaseOrders: PurchaseOrder[]) {
-  const map = new Map<string, SupplierMetric>();
-
-  for (const order of purchaseOrders) {
-    if (!order.supplier_id) continue;
-    const current = map.get(order.supplier_id) ?? { ...emptyMetric };
-    const total = numberValue(order.total);
-    current.orderCount += 1;
-
-    if (order.status === "received") {
-      current.receivedTotal += total;
-    }
-    if (OPEN_PO_STATUSES.has(order.status)) {
-      current.openValue += total;
-    }
-    if (!current.lastOrderDate || order.order_date > current.lastOrderDate) {
-      current.lastOrderDate = order.order_date;
-    }
-
-    map.set(order.supplier_id, current);
-  }
-
-  return map;
-}
-
 const emptyMetric: SupplierMetric = {
   orderCount: 0,
   receivedTotal: 0,
@@ -797,11 +716,6 @@ const emptyMetric: SupplierMetric = {
 
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100";
-
-function numberValue(value: number | string | null) {
-  const parsed = Number(value ?? 0);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -819,11 +733,4 @@ function formatDate(value: string) {
     year: "numeric",
     timeZone: "UTC",
   }).format(parsed);
-}
-
-function isThisMonth(value: string) {
-  const date = new Date(`${value}T00:00:00Z`);
-  if (Number.isNaN(date.getTime())) return false;
-  const now = new Date();
-  return date.getUTCFullYear() === now.getUTCFullYear() && date.getUTCMonth() === now.getUTCMonth();
 }

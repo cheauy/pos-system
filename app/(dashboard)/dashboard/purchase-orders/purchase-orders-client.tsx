@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { usePagedWorkspace } from "@/lib/use-paged-workspace";
+import { loadPurchaseOrders, type PurchaseWorkspace } from "./list-actions";
 import OrderWorkflow from "./order-workflow";
 import NewOrderDialog from "./new-order-dialog";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   CalendarDays,
   CheckCircle2,
@@ -16,12 +18,10 @@ import {
   Filter,
   Mail,
   MapPin,
-  PackageCheck,
   Phone,
   Plus,
   Search,
   Send,
-  ShoppingCart,
   UserRound,
   WalletCards,
   X,
@@ -73,7 +73,7 @@ type DetailTab = "overview" | "items" | "notes";
 type StatusFilter = "all" | PurchaseOrderListItem["status"];
 type SortMode = "newest" | "oldest" | "highest" | "lowest";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 15;
 
 function money(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -116,14 +116,12 @@ function statusClass(status: PurchaseOrderListItem["status"]) {
 }
 
 export default function PurchaseOrdersClient({
-  orders,
-  suppliers,
+  workspace,
   canCreate,
   canUpdate,
   openNew = false,
 }: {
-  orders: PurchaseOrderListItem[];
-  suppliers: PurchaseOrderSupplier[];
+  workspace: PurchaseWorkspace;
   canCreate: boolean;
   canUpdate: boolean;
   openNew?: boolean;
@@ -138,108 +136,27 @@ export default function PurchaseOrdersClient({
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(openNew);
   const [selectedId, setSelectedId] = useState<string | null>(
-    orders[0]?.id ?? null,
+    workspace.orders[0]?.id ?? null,
   );
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
 
-  const supplierMap = useMemo(
-    () => new Map(suppliers.map((supplier) => [supplier.id, supplier])),
-    [suppliers],
-  );
+  const {data,busy,error}=usePagedWorkspace(workspace,{page,search,supplierFilter,statusFilter,fromDate,toDate,sortMode},loadPurchaseOrders);
+  const {orders,suppliers,stats}=data;
+  const supplierMap=useMemo(()=>new Map(suppliers.map(supplier=>[supplier.id,supplier])),[suppliers]);
 
-  const filteredOrders = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-
-    const next = orders.filter((order) => {
-      const matchesSearch =
-        !normalizedSearch ||
-        [
-          order.po_number,
-          order.supplier_name,
-          order.reference_number,
-        ]
-          .filter(Boolean)
-          .some((value) =>
-            String(value).toLowerCase().includes(normalizedSearch),
-          );
-
-      const matchesSupplier =
-        supplierFilter === "all" || order.supplier_id === supplierFilter;
-      const matchesStatus =
-        statusFilter === "all" || order.status === statusFilter;
-      const matchesFrom = !fromDate || order.order_date >= fromDate;
-      const matchesTo = !toDate || order.order_date <= toDate;
-
-      return (
-        matchesSearch &&
-        matchesSupplier &&
-        matchesStatus &&
-        matchesFrom &&
-        matchesTo
-      );
-    });
-
-    next.sort((a, b) => {
-      if (sortMode === "highest") return b.total - a.total;
-      if (sortMode === "lowest") return a.total - b.total;
-      if (sortMode === "oldest") {
-        return a.created_at.localeCompare(b.created_at);
-      }
-      return b.created_at.localeCompare(a.created_at);
-    });
-
-    return next;
-  }, [
-    orders,
-    search,
-    supplierFilter,
-    statusFilter,
-    fromDate,
-    toDate,
-    sortMode,
-  ]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, supplierFilter, statusFilter, fromDate, toDate, sortMode]);
-
-  useEffect(() => {
-    if (
-      selectedId &&
-      filteredOrders.some((order) => order.id === selectedId)
-    ) {
-      return;
-    }
-    setSelectedId(filteredOrders[0]?.id ?? null);
-  }, [filteredOrders, selectedId]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
+  const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+  const safePage = data.page;
   const pageStart = (safePage - 1) * PAGE_SIZE;
-  const visibleOrders = filteredOrders.slice(pageStart, pageStart + PAGE_SIZE);
+  const visibleOrders = orders;
 
   const selectedOrder =
-    orders.find((order) => order.id === selectedId) ?? null;
+    orders.find((order) => order.id === selectedId) ?? orders[0] ?? null;
   const selectedSupplier = selectedOrder?.supplier_id
     ? supplierMap.get(selectedOrder.supplier_id) ?? null
     : null;
 
-  const stats = useMemo(() => {
-    const total = orders.length;
-    const draft = orders.filter((order) => order.status === "draft").length;
-    const sent = orders.filter((order) => order.status === "sent").length;
-    const partial = orders.filter((order) => order.status === "partial").length;
-    const completed = orders.filter((order) => order.status === "received").length;
-    const outstanding = orders
-      .filter((order) =>
-        ["draft", "sent", "partial"].includes(order.status),
-      )
-      .reduce((sum, order) => sum + order.total, 0);
-
-    return { total, draft, sent, partial, completed, outstanding };
-  }, [orders]);
-
   function clearFilters() {
+    setPage(1);
     setSearch("");
     setSupplierFilter("all");
     setStatusFilter("all");
@@ -249,7 +166,8 @@ export default function PurchaseOrdersClient({
   }
 
   return (
-    <main className="space-y-5">
+    <main className="space-y-5" aria-busy={busy}>
+      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {creating && <NewOrderDialog close={() => setCreating(false)} created={id => { setCreating(false); setSearch(""); setSupplierFilter("all"); setStatusFilter("all"); setFromDate(""); setToDate(""); setSortMode("newest"); setPage(1); setSelectedId(id); setDetailTab("overview"); }} />}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
@@ -300,7 +218,7 @@ export default function PurchaseOrdersClient({
                   <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => { setSearch(event.target.value); setPage(1); }}
                     placeholder="Search PO, supplier or reference..."
                     className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   />
@@ -308,7 +226,7 @@ export default function PurchaseOrdersClient({
 
                 <select
                   value={supplierFilter}
-                  onChange={(event) => setSupplierFilter(event.target.value)}
+                  onChange={(event) => { setSupplierFilter(event.target.value); setPage(1); }}
                   className={selectClass}
                 >
                   <option value="all">All Suppliers</option>
@@ -321,7 +239,7 @@ export default function PurchaseOrdersClient({
 
                 <select
                   value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+                  onChange={(event) => { setStatusFilter(event.target.value as StatusFilter); setPage(1); }}
                   className={selectClass}
                 >
                   <option value="all">All Statuses</option>
@@ -338,7 +256,7 @@ export default function PurchaseOrdersClient({
                     <input
                       type="date"
                       value={fromDate}
-                      onChange={(event) => setFromDate(event.target.value)}
+                      onChange={(event) => { setFromDate(event.target.value); setPage(1); }}
                       className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-2 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                       aria-label="Order date from"
                     />
@@ -346,7 +264,7 @@ export default function PurchaseOrdersClient({
                   <input
                     type="date"
                     value={toDate}
-                    onChange={(event) => setToDate(event.target.value)}
+                    onChange={(event) => { setToDate(event.target.value); setPage(1); }}
                     className="h-10 w-full rounded-xl border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                     aria-label="Order date to"
                   />
@@ -354,7 +272,7 @@ export default function PurchaseOrdersClient({
 
                 <select
                   value={sortMode}
-                  onChange={(event) => setSortMode(event.target.value as SortMode)}
+                  onChange={(event) => { setSortMode(event.target.value as SortMode); setPage(1); }}
                   className={selectClass}
                 >
                   <option value="newest">Newest first</option>
@@ -395,7 +313,7 @@ export default function PurchaseOrdersClient({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {visibleOrders.map((order) => {
-                  const active = order.id === selectedId;
+                  const active = order.id === selectedOrder?.id;
                   return (
                     <tr
                       key={order.id}
@@ -456,15 +374,15 @@ export default function PurchaseOrdersClient({
 
           <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-slate-500">
-              {filteredOrders.length === 0
+              {data.total === 0
                 ? "Showing 0 purchase orders"
-                : `Showing ${pageStart + 1}–${Math.min(pageStart + PAGE_SIZE, filteredOrders.length)} of ${filteredOrders.length} purchase orders`}
+                : `Showing ${pageStart + 1}–${Math.min(pageStart + PAGE_SIZE, data.total)} of ${data.total} purchase orders`}
             </p>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setPage((value) => Math.max(1, value - 1))}
-                disabled={safePage <= 1}
+                onClick={() => setPage(Math.max(1, safePage - 1))}
+                disabled={busy || safePage <= 1}
                 className={pagerButtonClass}
                 aria-label="Previous page"
               >
@@ -476,15 +394,15 @@ export default function PurchaseOrdersClient({
               <span className="text-xs text-slate-400">/ {totalPages}</span>
               <button
                 type="button"
-                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
-                disabled={safePage >= totalPages}
+                onClick={() => setPage(Math.min(totalPages, safePage + 1))}
+                disabled={busy || safePage >= totalPages}
                 className={pagerButtonClass}
                 aria-label="Next page"
               >
                 <ChevronRight size={16} />
               </button>
               <span className="ml-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">
-                10 per page
+                15 per page
               </span>
             </div>
           </div>
