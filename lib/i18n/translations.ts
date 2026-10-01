@@ -442,6 +442,7 @@ const km: Record<string, string> = {
   "Customize 58mm / 80mm receipts, sections and store QR": "កំណត់បង្កាន់ដៃ 58mm / 80mm ផ្នែក និង QR ហាង",
   "Users": "អ្នកប្រើប្រាស់",
   "Create and manage employee accounts": "បង្កើត និងគ្រប់គ្រងគណនីបុគ្គលិក",
+  "System & Display": "ប្រព័ន្ធ និងការបង្ហាញ",
   "Appearance & Language": "រូបរាង និងភាសា",
   "Choose English or Khmer and set your preferred theme": "ជ្រើសភាសាអង់គ្លេស ឬខ្មែរ និងរូបរាងដែលអ្នកចូលចិត្ត",
   "Appearance": "រូបរាង",

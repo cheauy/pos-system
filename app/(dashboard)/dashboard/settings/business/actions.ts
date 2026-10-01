@@ -7,7 +7,7 @@ import { isRedirectError } from "next/dist/client/components/redirect-error";
 
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createAuditLog } from "@/lib/audit/create-audit-log";
-import { getBusinessModePreset } from "@/lib/business/business-mode-presets";
+import { getBusinessModePreset, isBusinessModeSelectable } from "@/lib/business/business-mode-presets";
 import type { ProductMode } from "@/lib/business/types";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -183,6 +183,13 @@ async function createChangeOrderForRequestedState({
 
   const changeUrl = subdomain !== business.slug;
   const changeBusinessMode = requestedBusinessMode !== currentBusinessType;
+
+  // URL-only changes remain valid for a legacy business type, but changing to
+  // an unavailable/retired type must never consume a credit or create an order.
+  if (changeBusinessMode && !isBusinessModeSelectable(requestedBusinessMode)) {
+    throw new Error("This business type is coming soon or unavailable. Choose an available business type.");
+  }
+
 
   if (!changeUrl && !changeBusinessMode) {
     throw new Error("There are no changes to continue with.");

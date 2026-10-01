@@ -35,7 +35,7 @@ function workspace(overrides = {}) {
     from(table) {
       const results = {
         business_coupons:{data:[],error:null},
-        branch_pos_settings:{data:{currency_format:null},error:null},
+        branch_pos_settings:{data:{currency_format:null,...overrides.paymentSettings},error:null},
         customers:{data:[],error:null},
         categories:{data:[{id:'shared',branch_ids:null},{id:'other',branch_ids:[C]}],error:null},
         cash_register_shifts:{data:overrides.shifts ?? [{id:'main-drawer',location_id:A}],error:overrides.shiftError ?? null},
@@ -45,6 +45,8 @@ function workspace(overrides = {}) {
     },
     async rpc(name,args) {
       rpcCalls.push({name,args});
+      if (name==='tenh_pos_checkout_status') return {data:overrides.savedSale??null,error:null};
+      if (name==='tenh_save_currency_format') return {data:{},error:null};
       if (name==='tenh_pos_catalog_scoped') return {data:structuredClone(catalog),error:null};
       if (name==='tenh_pos_receipt_update_ready') return {data:true,error:null};
       if (name==='tenh_pos_checkout_registered') {
@@ -183,3 +185,25 @@ test('customer schema/auth errors retain pending UUID, unique violation is defin
 test('customer permission revoked while a pending request exists does not discard it',async()=>{
   const h=customers({permission:false});const r=await h.api.createPosCustomer(B,input);assert.equal(r.uncertain,true);assert.equal(h.calls.length,0);
 });
+
+
+test('currency settings reject an outdated branch before opening the database',async()=>{
+ const {api,dbCreated,rpcCalls}=workspace();const format=loadTs('lib/currency-format.ts').currencyFormat();
+ const result=await api.saveStoreCurrencySettings(B,'USD',4000,format,C);
+ assert.equal(result.success,false);assert.match(result.message,/Branch changed/);assert.equal(dbCreated(),0);assert.equal(rpcCalls.length,0);
+ const saved=await api.saveStoreCurrencySettings(B,'USD',4100,format,A);assert.equal(saved.success,true);
+ assert.equal(rpcCalls[0].name,'tenh_save_currency_format');
+});
+
+for (const [method,setting] of [['split','split_payment_enabled'],['credit','customer_credit_enabled']]) {
+ test(`disabled ${method} cannot create a new sale and preserves retry safety`,async()=>{
+   const app=workspace({paymentSettings:{[setting]:false}});
+   const result=await app.api.completePosSale(B,{branchId:A,requestId:REQUEST,paymentMethod:method});
+   assert.equal(result.success,false);assert.equal(result.uncertain,true);
+   assert.ok(!app.rpcCalls.some(c=>c.name==='tenh_pos_checkout_registered'));
+   const saved=workspace({paymentSettings:{[setting]:false},savedSale:{orderId:'saved',remaining:0}});
+   const retry=await saved.api.completePosSale(B,{branchId:A,requestId:REQUEST,paymentMethod:method});
+   assert.equal(retry.success,true);assert.equal(retry.data.orderId,'saved');
+   assert.ok(!saved.rpcCalls.some(c=>c.name==='tenh_pos_checkout_registered'));
+ });
+}

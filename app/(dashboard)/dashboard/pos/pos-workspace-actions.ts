@@ -46,7 +46,7 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
     // These reads share the validated scope but do not depend on one another.
     const [catalog, formatting, campaigns, ready, customers, categories, openShifts] = await Promise.all([
       db.rpc('tenh_pos_catalog_scoped', { p_business_id: business.id }),
-      db.from('branch_pos_settings').select('currency_format,enable_coupons,require_open_register').eq('business_id',business.id).eq('location_id',branchId).maybeSingle(),
+      db.from('branch_pos_settings').select('currency_format,enable_coupons,require_open_register,split_payment_enabled,customer_credit_enabled').eq('business_id',business.id).eq('location_id',branchId).maybeSingle(),
       db.from('business_coupons').select('*').eq('business_id',business.id).eq('location_id',branchId).eq('apply_pos',true).eq('is_active',true),
       db.rpc('tenh_pos_receipt_update_ready', { p_business_id: business.id }),
       db.from('customers').select('id,name,phone,address,loyalty_points').eq('business_id',business.id).eq('location_id',branchId).order('created_at',{ascending:false,nullsFirst:false}).order('id',{ascending:false}),
@@ -58,6 +58,8 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
     if (!data || data.businessId !== business.id || !Array.isArray(data.products)) return { success: false, message: 'The POS catalog returned incomplete data. Please refresh.' };
     if (formatting.error) return {success:false,message:'Unable to load currency settings. Please refresh.'};
     data.settings.currencyFormat = currencyFormat(formatting.data?.currency_format, data.settings.currency);
+    data.settings.splitPaymentEnabled = formatting.data?.split_payment_enabled !== false;
+    data.settings.customerCreditEnabled = formatting.data?.customer_credit_enabled !== false;
     data.settings.requireOpenRegister = formatting.data?.require_open_register !== false;
     data.settings.couponsEnabled = formatting.data?.enable_coupons===true;
     if(campaigns.error)throw new Error('Unable to load promotion prices. Refresh POS.');
@@ -95,6 +97,17 @@ export async function completePosSale(businessId: string, input: CheckoutInput):
   if (invalid) return { success: false, uncertain: true, message: invalid };
   try { await assertOperatingBranch(input.branchId); await assertBranchOperation(business.id, input.branchId); } catch (error) { return { success: false, uncertain: true, message: `${errorMessage(error)} Keep this sale request and use Check sale before starting another.` }; }
   const db = await createClient();
+  if (input.paymentMethod === 'split' || input.paymentMethod === 'credit') {
+    const {data: settings, error: settingsError} = await db.from('branch_pos_settings').select('split_payment_enabled,customer_credit_enabled').eq('business_id',business.id).eq('location_id',input.branchId).maybeSingle();
+    if (settingsError) return {success:false,uncertain:true,message:'Unable to verify payment settings. Keep this sale request and check the sale before retrying.'};
+    const disabled = input.paymentMethod === 'split' ? settings?.split_payment_enabled === false : settings?.customer_credit_enabled === false;
+    if (disabled) {
+      // A settings change must never hide an already-committed retry result.
+      const previous = await db.rpc('tenh_pos_checkout_status',{p_business_id:business.id,p_request_id:input.requestId});
+      if (!previous.error && previous.data?.orderId) return {success:true,data:await withOrderCode(db,previous.data as SaleReceipt)};
+      return {success:false,uncertain:true,message:'This payment method is disabled in Currency Settings. Check the sale before changing payment.'};
+    }
+  }
   // Deliberately do not catch transport failures here. The client keeps the exact
   // idempotent request in recovery mode until the server confirms its outcome.
   const { data, error } = await db.rpc('tenh_pos_checkout_registered', { p_business_id: business.id, p_input: input });
@@ -105,7 +118,14 @@ export async function completePosSale(businessId: string, input: CheckoutInput):
   }
   if (!data?.orderId) throw new Error('Checkout result not confirmed. Check the sale before retrying.');
   refreshRoutes();
-  return { success: true, data: data as SaleReceipt };
+  return { success: true, data: await withOrderCode(db, data as SaleReceipt) };
+}
+// The sale is committed: a failed lookup only means the receipt barcode uses the order number.
+async function withOrderCode(db: Awaited<ReturnType<typeof createClient>>, receipt: SaleReceipt): Promise<SaleReceipt> {
+  try {
+    const { data } = await db.from('orders').select('order_code').eq('id', receipt.orderId).maybeSingle();
+    return data?.order_code ? { ...receipt, orderCode: data.order_code } : receipt;
+  } catch { return receipt; }
 }
 export async function checkPosSale(businessId: string, requestId: string): Promise<ActionResult<SaleReceipt | null>> {
   const business = await requirePermission('pos.access');
@@ -114,7 +134,7 @@ export async function checkPosSale(businessId: string, requestId: string): Promi
   try {
     const db = await createClient();
     const { data, error } = await db.rpc('tenh_pos_checkout_status', { p_business_id: business.id, p_request_id: requestId });
-    return error ? { success: false, message: errorMessage(error) } : { success: true, data: data as SaleReceipt | null };
+    return error ? { success: false, message: errorMessage(error) } : { success: true, data: data ? await withOrderCode(db, data as SaleReceipt) : null };
   } catch (error) { return { success: false, message: errorMessage(error) }; }
 }
 export async function savePosHold(businessId: string, id: string, version: number | null, label: string, draft: CartDraft): Promise<ActionResult<{ id: string }>> {
@@ -187,12 +207,13 @@ export async function savePosCurrencySettings(businessId: string, enabled: boole
   } catch(error){return {success:false,message:errorMessage(error)};}
 }
 
-export async function saveStoreCurrencySettings(businessId: string, currency: string, rate: number, format: CurrencyFormat): Promise<ActionResult<null>> {
+export async function saveStoreCurrencySettings(businessId: string, currency: string, rate: number, format: CurrencyFormat, branchId: string): Promise<ActionResult<null>> {
   const business = await requirePermission('pos.access');
   if (business.id !== businessId) return activeBusinessError();
   if (business.role !== 'owner') return {success:false,message:'Only the owner can change currency settings.'};
   if (!['USD','KHR'].includes(currency) || !validCurrencyFormat(format) || !Number.isFinite(rate) || rate < 1 || rate > 1000000 || Math.abs(rate*10000-Math.round(rate*10000))>0.00001) return {success:false,message:'Review the currency format and exchange rate.'};
   try {
+    await assertOperatingBranch(branchId);
     const db=await createClient();
     const {error}=await db.rpc('tenh_save_currency_format',{p_business_id:business.id,p_currency:currency,p_rate:rate,p_format:format});
     if(error) return {success:false,message:errorMessage(error)};
@@ -200,4 +221,19 @@ export async function saveStoreCurrencySettings(businessId: string, currency: st
     revalidatePath('/dashboard/settings/pos-currency');
     return {success:true,data:null};
   } catch(error) {return {success:false,message:errorMessage(error)};}
+}
+
+export async function savePaymentOptions(businessId:string,branchId:string,splitPaymentEnabled:boolean,customerCreditEnabled:boolean):Promise<ActionResult<null>> {
+  const business=await requirePermission('pos.access');
+  if(business.id!==businessId)return activeBusinessError();
+  if(business.role!=='owner')return {success:false,message:'Only the owner can change payment settings.'};
+  if(typeof splitPaymentEnabled!=='boolean'||typeof customerCreditEnabled!=='boolean')return {success:false,message:'Invalid payment settings.'};
+  try {
+    await assertOperatingBranch(branchId);
+    const db=await createClient();
+    const {error}=await db.from('branch_pos_settings').upsert({business_id:business.id,location_id:branchId,split_payment_enabled:splitPaymentEnabled,customer_credit_enabled:customerCreditEnabled,updated_at:new Date().toISOString()},{onConflict:'business_id,location_id'});
+    if(error)return {success:false,message:errorMessage(error)};
+    revalidatePath('/dashboard/pos');revalidatePath('/dashboard/settings/pos-currency');
+    return {success:true,data:null};
+  } catch(error){return {success:false,message:errorMessage(error)};}
 }

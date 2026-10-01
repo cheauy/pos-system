@@ -112,6 +112,8 @@ export async function createCustomer(formData: FormData) {
     ? optionalDate(formData, "birthday")
     : null;
 
+  const gender = fieldSettings.genderEnabled ? optionalText(formData,"gender") : null;
+  if(gender && gender!=="male" && gender!=="female")throw new Error("Choose Male or Female.");
   validateCustomerFields({ name, phone, address, email, birthday });
 
   const { data: inserted, error } = await supabase
@@ -123,6 +125,7 @@ export async function createCustomer(formData: FormData) {
       phone,
       email,
       birthday,
+      ...(fieldSettings.genderEnabled?{gender}:{}),
       address,
       note: null,
     })
@@ -214,6 +217,8 @@ export async function updateCustomer(formData: FormData) {
     ? optionalDate(formData, "birthday")
     : null;
 
+  const gender = fieldSettings.genderEnabled ? optionalText(formData,"gender") : null;
+  if(gender && gender!=="male" && gender!=="female")throw new Error("Choose Male or Female.");
   validateCustomerFields({ name, phone, address, email, birthday });
 
   const updates: Record<string, string | null> = {
@@ -226,6 +231,8 @@ export async function updateCustomer(formData: FormData) {
   if (fieldSettings.emailEnabled) {
     updates.email = email;
   }
+
+  if (fieldSettings.genderEnabled) updates.gender=gender;
 
   if (fieldSettings.birthdayEnabled) {
     updates.birthday = birthday;
@@ -257,7 +264,7 @@ export async function updateCustomer(formData: FormData) {
   revalidatePath(`/dashboard/customers/${customerId}`);
   revalidatePath("/dashboard/pos");
 
-  redirect(`/dashboard/customers/${customerId}`);
+  redirect(`/dashboard/customers?customer=${encodeURIComponent(customerId)}`);
 }
 
 export async function exportCustomersCsv() {

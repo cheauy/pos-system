@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronLeft, Package, Plus, RefreshCw, Search, UserRound } from 'lucide-react';
+import { Check, ChevronLeft, Package, Plus, RefreshCw, Search, Truck, UserRound } from 'lucide-react';
 import { createPosCustomer, fetchPosCustomers } from './pos-customer-actions';
 import { customerInputIssue, mergeCustomerPage } from './pos-customer-helpers';
 import type { CustomerFieldFlags, CustomerInput, PickerCustomer } from './pos-customer-helpers';
@@ -17,8 +17,8 @@ function newCustomerId(): string {
 }
 
 type Props = {
-  businessId:string; branchId:string; userId:string; customerId:string; shippingMethod:ShippingMethod;
-  canCreate:boolean; onWalkIn:()=>void; onPickup:()=>void;
+  businessId:string; branchId:string; userId:string; customerId:string;
+  canCreate:boolean;
   onSelect:(customer:PickerCustomer)=>void; onCreated:(customer:PickerCustomer)=>void;
   onBusyChange:(busy:boolean)=>void;
 };
@@ -33,7 +33,7 @@ export function PosCustomerPicker(p:Props) {
   const [refresh,setRefresh]=useState(0);
   const [canCreate,setCanCreate]=useState(p.canCreate);
   const [showForm,setShowForm]=useState(false);
-  const [form,setForm]=useState({name:'',phone:'',address:'',email:'',birthday:''});
+  const [form,setForm]=useState({name:'',phone:'',address:'',email:'',birthday:'',gender:''});
   const [fields,setFields]=useState<CustomerFieldFlags|null>(null);
   const [formError,setFormError]=useState('');
   const [saving,setSaving]=useState(false);
@@ -50,7 +50,7 @@ export function PosCustomerPicker(p:Props) {
   useEffect(()=>{
     try {
       const saved=JSON.parse(sessionStorage.getItem(key)||'null');
-      if(saved && !customerInputIssue(saved,undefined,true)) {setPending(saved);setForm({name:saved.name,phone:saved.phone,address:saved.address,email:saved.email || '',birthday:saved.birthday || ''});setShowForm(true);setFormError('A previous customer save needs confirmation. Retry the same request.');}
+      if(saved && !customerInputIssue(saved,undefined,true)) {setPending(saved);setForm({name:saved.name,phone:saved.phone,address:saved.address,email:saved.email || '',birthday:saved.birthday || '',gender:saved.gender || ''});setShowForm(true);setFormError('A previous customer save needs confirmation. Retry the same request.');}
     } catch { /* Unavailable storage is handled before any create call. */ }
   },[key]);
 
@@ -84,7 +84,7 @@ export function PosCustomerPicker(p:Props) {
   async function save() {
     if(savingRef.current)return;
     if(!fields){setFormError('Customer settings are still loading. Please retry.');return;}
-    const input=pending || {id:newCustomerId(),branchId:p.branchId,name:form.name.trim(),phone:form.phone.trim(),address:form.address.trim(),email:fields.emailEnabled?form.email.trim():'',birthday:fields.birthdayEnabled?form.birthday:''};
+    const input=pending || {id:newCustomerId(),branchId:p.branchId,name:form.name.trim(),phone:form.phone.trim(),address:form.address.trim(),email:fields.emailEnabled?form.email.trim():'',birthday:fields.birthdayEnabled?form.birthday:'',gender:fields.genderEnabled?form.gender:''};
     if (!input.branchId || input.branchId !== p.branchId) {
       setFormError('This unconfirmed customer request belongs to another or an older branch context. Check Customers at the original branch before creating a new request. The saved request has not been discarded.');
       return;
@@ -102,7 +102,7 @@ export function PosCustomerPicker(p:Props) {
         return;
       }
       try{sessionStorage.removeItem(key);}catch{ /* Same UUID remains safe on retry. */ }
-      setPending(null);setForm({name:'',phone:'',address:'',email:'',birthday:''});setShowForm(false);
+      setPending(null);setForm({name:'',phone:'',address:'',email:'',birthday:'',gender:''});setShowForm(false);
       setNewId(result.data.id);setSuccess(`${result.data.name} saved. Select the new customer below to use it for this order.`);
       setRows(old=>mergeCustomerPage(old,[result.data]));setSearch('');setRefresh(n=>n+1);
       p.onCreated(result.data);
@@ -121,6 +121,7 @@ export function PosCustomerPicker(p:Props) {
       <label className={s.field}>Phone *<input type="tel" aria-label="New customer phone" autoComplete="off" maxLength={40} value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))}/></label>
       <label className={s.field}>Address *<textarea required aria-label="New customer address" autoComplete="off" maxLength={500} rows={3} value={form.address} onChange={e=>setForm(f=>({...f,address:e.target.value}))}/></label>
       {fields?.emailEnabled && <label className={s.field}>Email (optional)<input type="email" aria-label="New customer email" maxLength={254} autoComplete="off" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))}/></label>}
+      {fields?.genderEnabled && <label className={s.field}>Gender (optional)<select aria-label="New customer gender" value={form.gender} onChange={e=>setForm(f=>({...f,gender:e.target.value}))}><option value="">Not specified</option><option value="male">Male</option><option value="female">Female</option></select></label>}
       {fields?.birthdayEnabled && <label className={s.field}>Birthday (optional)<input type="date" aria-label="New customer birthday" max={new Date().toISOString().slice(0,10)} value={form.birthday} onChange={e=>setForm(f=>({...f,birthday:e.target.value}))}/></label>}
     </fieldset>
     {!fields && <p role="status" className={s.muted}>Loading Customer Settings…</p>}
@@ -131,14 +132,6 @@ export function PosCustomerPicker(p:Props) {
   return <div className={s.customerPicker}>
     <div className={s.searchInput}><Search size={18}/><input ref={searchRef} autoFocus value={search} maxLength={120} onChange={e=>setSearch(e.target.value)} aria-label="Search customers" placeholder="Search customer name or phone…"/></div>
     {success && <p className={`${s.notice} ${s.success}`} role="status">{success}</p>}
-    <div className={s.guestCustomerChoices} aria-label="Guest order options">
-      <button type="button" className={`${s.customerResult} ${!p.customerId && p.shippingMethod==='in_store'?s.selectedCustomer:''}`} aria-pressed={!p.customerId && p.shippingMethod==='in_store'} onClick={p.onWalkIn}>
-        <UserRound size={20}/><span><strong>Walk-in customer</strong><small>In-store sale · No customer account needed</small></span>{!p.customerId && p.shippingMethod==='in_store' && <Check size={16}/>}
-      </button>
-      <button type="button" className={`${s.customerResult} ${!p.customerId && p.shippingMethod==='pickup'?s.selectedCustomer:''}`} aria-pressed={!p.customerId && p.shippingMethod==='pickup'} onClick={p.onPickup}>
-        <Package size={20}/><span><strong>Pickup</strong><small>Guest pickup · Add recipient details after Continue</small></span>{!p.customerId && p.shippingMethod==='pickup' && <Check size={16}/>}
-      </button>
-    </div>
     <div className={s.customerListDivider} role="separator" aria-label="Saved customers"/>
     <div className={s.customerListHeading}><span>Saved customers</span><span>Newest first</span></div>
     {error && <div role="alert" className={`${s.notice} ${s.error}`}><span>{error}</span><button type="button" className={s.textButton} onClick={()=>setRefresh(n=>n+1)}>Retry</button></div>}
@@ -156,4 +149,12 @@ export function PosCustomerPicker(p:Props) {
       <button type="button" className={s.customerAddButton} disabled={!canCreate} title={!canCreate?'Customer creation permission required':undefined} onClick={()=>{setShowForm(true);setFormError('');}}><Plus size={16}/>Quick Add</button>
     </footer>
   </div>;
+}
+
+export function PosOrderTypePicker({value,onSelect}:{value:ShippingMethod;onSelect:(value:ShippingMethod)=>void}) {
+  return <div className={s.guestCustomerChoices} aria-label="Order type">{([
+    {id:'in_store',label:'Walk-in customer',Icon:UserRound},
+    {id:'pickup',label:'Pickup',Icon:Package},
+    {id:'delivery',label:'Delivery',Icon:Truck},
+  ] as const).map(({id,label,Icon})=><button key={id} type="button" className={`${s.customerResult} ${value===id?s.selectedCustomer:''}`} aria-pressed={value===id} onClick={()=>onSelect(id)}><Icon size={20}/><span><strong>{label}</strong></span>{value===id&&<Check size={16}/>}</button>)}</div>;
 }

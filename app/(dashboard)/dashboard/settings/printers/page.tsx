@@ -1,3 +1,4 @@
+import { getSubdomainUrl } from "@/lib/tenancy/domain";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { loadReceiptContext } from "@/lib/receipts/load-receipt-context";
 import { createClient } from "@/lib/supabase/branch-server";
@@ -15,5 +16,5 @@ export default async function PrinterSettingsPage() {
     loadShippingSettings(business.id),
   ]);
   if (settings.error) throw new Error("Unable to load printer settings. Please retry.");
-  return <PrinterSettings businessId={business.id} context={context} settings={{...settings.data,...shippingDesign}} />;
+  return <PrinterSettings storeUrl={getSubdomainUrl(business.slug)} businessId={business.id} context={context} settings={{...settings.data,...shippingDesign}} />;
 }

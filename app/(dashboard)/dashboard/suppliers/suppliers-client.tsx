@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { usePagedWorkspace } from "@/lib/use-paged-workspace";
+import { loadSuppliers, type SupplierWorkspace, type SupplierMetric } from "./list-actions";
 import {
   Building2,
   CalendarDays,
@@ -21,6 +23,7 @@ import {
   Trash2,
   UserRound,
   UsersRound,
+  X,
 } from "lucide-react";
 import {
   useEffect,
@@ -31,11 +34,13 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 
 import {
   createSupplier,
   deleteSupplier,
   toggleSupplierStatus,
+  updateSupplier,
 } from "./actions";
 
 type Supplier = {
@@ -50,74 +55,31 @@ type Supplier = {
   created_at: string;
 };
 
-type PurchaseOrder = {
-  id: string;
-  supplier_id: string | null;
-  status: string;
-  order_date: string;
-  total: number | string | null;
-};
+const PAGE_SIZE = 15;
 
-type SupplierMetric = {
-  orderCount: number;
-  receivedTotal: number;
-  openValue: number;
-  lastOrderDate: string | null;
-};
-
-const PAGE_SIZE = 10;
-const OPEN_PO_STATUSES = new Set(["draft", "sent", "partial"]);
-
-export default function SuppliersClient({
-  suppliers,
-  purchaseOrders,
-  loadError,
-}: {
-  suppliers: Supplier[];
-  purchaseOrders: PurchaseOrder[];
-  loadError: string | null;
-}) {
+export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace}) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const [editing, setEditing] = useState<Supplier | null>(null);
+  const [editingBusy, setEditingBusy] = useState(false);
+  const [deleting, setDeleting] = useState<Supplier | null>(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const deleteLock = useRef(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState(
-    suppliers[0]?.id ?? "",
+    workspace.suppliers[0]?.id ?? "",
   );
 
-  const metrics = useMemo(() => buildSupplierMetrics(purchaseOrders), [purchaseOrders]);
+  const {data,busy,error:loadError}=usePagedWorkspace(workspace,{page,query,statusFilter},loadSuppliers);
+  const {suppliers,stats}=data;
+  const metrics=useMemo(()=>new Map(Object.entries(data.metrics)),[data.metrics]);
+  const filteredSuppliers=suppliers;
 
-  const filteredSuppliers = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
 
-    return suppliers.filter((supplier) => {
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "active" && supplier.is_active) ||
-        (statusFilter === "inactive" && !supplier.is_active);
-
-      if (!matchesStatus) return false;
-      if (!normalizedQuery) return true;
-
-      return [
-        supplier.name,
-        supplier.contact_person,
-        supplier.phone,
-        supplier.email,
-        supplier.address,
-      ].some((value) => value?.toLowerCase().includes(normalizedQuery));
-    });
-  }, [query, statusFilter, suppliers]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [query, statusFilter]);
-
-  const pageCount = Math.max(1, Math.ceil(filteredSuppliers.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount);
-  const visibleSuppliers = filteredSuppliers.slice(
-    (safePage - 1) * PAGE_SIZE,
-    safePage * PAGE_SIZE,
-  );
+  const pageCount = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+  const safePage = data.page;
+  const visibleSuppliers = suppliers;
 
   const selectedSupplier =
     suppliers.find((supplier) => supplier.id === selectedSupplierId) ??
@@ -125,23 +87,31 @@ export default function SuppliersClient({
     suppliers[0] ??
     null;
 
-  useEffect(() => {
-    if (!selectedSupplierId && suppliers[0]) {
-      setSelectedSupplierId(suppliers[0].id);
-    }
-  }, [selectedSupplierId, suppliers]);
-
-  const activeSuppliers = suppliers.filter((supplier) => supplier.is_active).length;
-  const thisMonthOrders = purchaseOrders.filter((order) => isThisMonth(order.order_date)).length;
-  const openPoValue = purchaseOrders
-    .filter((order) => OPEN_PO_STATUSES.has(order.status))
-    .reduce((sum, order) => sum + numberValue(order.total), 0);
-
-  const startRecord = filteredSuppliers.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
-  const endRecord = Math.min(safePage * PAGE_SIZE, filteredSuppliers.length);
+  const activeSuppliers=stats.active;
+  const thisMonthOrders=stats.thisMonthOrders;
+  const openPoValue=stats.openPoValue;
+  const startRecord=data.total===0?0:(safePage-1)*PAGE_SIZE+1;
+  const endRecord=Math.min(safePage*PAGE_SIZE,data.total);
 
   return (
-    <main className="space-y-5">
+    <main className="space-y-5" aria-busy={busy}>
+      {editing && <SupplierDialog title="Edit Supplier" side busy={editingBusy} close={() => setEditing(null)}>
+        <SupplierForm supplier={editing} onBusyChange={setEditingBusy} onSaved={() => setEditing(null)} />
+      </SupplierDialog>}
+      {deleting && <SupplierDialog title="Delete supplier?" busy={deletingBusy} close={() => setDeleting(null)}>
+        <p className="text-sm text-slate-600">Delete <strong>{deleting.name}</strong>? This cannot be undone. Suppliers with purchase history cannot be deleted; disable them instead to keep their records.</p>
+        {deleteError && <p role="alert" className="mt-3 text-sm text-red-600">{deleteError}</p>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button autoFocus type="button" disabled={deletingBusy} onClick={() => setDeleting(null)} className="rounded-xl border px-4 py-2 text-sm font-semibold">Cancel</button>
+          <button type="button" disabled={deletingBusy} onClick={async () => {
+            if (deleteLock.current) return;
+            deleteLock.current = true; setDeletingBusy(true); setDeleteError("");
+            try { const data = new FormData(); data.set("supplierId", deleting.id); await deleteSupplier(data); setDeleting(null); toast.success("Supplier deleted successfully.", { position: "top-right" }); }
+            catch (error) { setDeleteError(error instanceof Error ? error.message : "Unable to delete supplier. Please try again."); }
+            finally { deleteLock.current = false; setDeletingBusy(false); }
+          }} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{deletingBusy ? "Deleting…" : "Delete supplier"}</button>
+        </div>
+      </SupplierDialog>}
       <header>
         <h1 className="text-3xl font-bold tracking-tight text-slate-950">Suppliers</h1>
         <p className="mt-1 text-sm text-slate-500">
@@ -153,14 +123,14 @@ export default function SuppliersClient({
         <SummaryCard
           icon={<UsersRound size={22} />}
           title="Total Suppliers"
-          value={String(suppliers.length)}
+          value={String(stats.total)}
           tone="blue"
         />
         <SummaryCard
           icon={<CheckCircle2 size={22} />}
           title="Active Suppliers"
           value={String(activeSuppliers)}
-          helper={`${suppliers.length ? Math.round((activeSuppliers / suppliers.length) * 100) : 0}% of total`}
+          helper={`${stats.total ? Math.round((activeSuppliers / stats.total) * 100) : 0}% of total`}
           tone="green"
         />
         <SummaryCard
@@ -192,7 +162,7 @@ export default function SuppliersClient({
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="text-lg font-bold text-slate-950">
-                  Supplier List ({suppliers.length})
+                  Supplier List ({data.total})
                 </h2>
                 <p className="text-sm text-slate-500">View and manage your suppliers.</p>
               </div>
@@ -205,7 +175,7 @@ export default function SuppliersClient({
                   />
                   <input
                     value={query}
-                    onChange={(event) => setQuery(event.target.value)}
+                    onChange={(event) => { setQuery(event.target.value); setPage(1); }}
                     placeholder="Search suppliers..."
                     className="h-10 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                   />
@@ -213,7 +183,7 @@ export default function SuppliersClient({
 
                 <select
                   value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value)}
+                  onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}
                   className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-500"
                 >
                   <option value="all">All Status</option>
@@ -291,7 +261,7 @@ export default function SuppliersClient({
                           {formatCurrency(supplierMetric.openValue)}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <SupplierActionMenu supplier={supplier} />
+                          <SupplierActionMenu supplier={supplier} onEdit={() => setEditing(supplier)} onDelete={() => { setDeleteError(""); setDeleting(supplier); }} />
                         </td>
                       </tr>
                     );
@@ -303,13 +273,13 @@ export default function SuppliersClient({
 
           <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
             <p className="text-slate-500">
-              Showing {startRecord} to {endRecord} of {filteredSuppliers.length} suppliers
+              Showing {startRecord} to {endRecord} of {data.total} suppliers
             </p>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-                disabled={safePage <= 1}
+                onClick={() => setPage(Math.max(1, safePage - 1))}
+                disabled={busy || safePage <= 1}
                 className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-35"
                 aria-label="Previous page"
               >
@@ -320,21 +290,22 @@ export default function SuppliersClient({
               </span>
               <button
                 type="button"
-                onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
-                disabled={safePage >= pageCount}
+                onClick={() => setPage(Math.min(pageCount, safePage + 1))}
+                disabled={busy || safePage >= pageCount}
                 className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-35"
                 aria-label="Next page"
               >
                 <ChevronRight size={17} />
               </button>
               <span className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600">
-                10 / page
+                15 / page
               </span>
             </div>
           </div>
         </div>
 
         <SupplierDetailsPanel
+          onEdit={() => selectedSupplier && setEditing(selectedSupplier)}
           supplier={selectedSupplier}
           metric={selectedSupplier ? metrics.get(selectedSupplier.id) ?? emptyMetric : emptyMetric}
         />
@@ -351,22 +322,47 @@ function AddSupplierPanel() {
         <p className="mt-1 text-sm text-slate-500">Create a new supplier record.</p>
       </div>
 
-      <form action={createSupplier} className="mt-5 space-y-4">
+      <SupplierForm />
+    </aside>
+  );
+}
+
+function SupplierForm({ supplier, onSaved, onBusyChange }: { supplier?: Supplier; onSaved?: () => void; onBusyChange?: (busy: boolean) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const lock = useRef(false);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (lock.current) return;
+    const form = event.currentTarget;
+    lock.current = true; setBusy(true); onBusyChange?.(true); setError("");
+    try {
+      const data = new FormData(form);
+      if (supplier) await updateSupplier(data, false); else await createSupplier(data);
+      toast.success(supplier ? "Supplier updated successfully." : "Supplier created successfully.", { position: "top-right" });
+      if (supplier) onSaved?.(); else form.reset();
+    } catch (error) { setError(error instanceof Error ? error.message : "Unable to save supplier. Please try again."); }
+    finally { lock.current = false; setBusy(false); onBusyChange?.(false); }
+  }
+  return <form onSubmit={submit} className="mt-5 space-y-4" aria-busy={busy}>
+      {supplier && <input type="hidden" name="supplierId" value={supplier.id} />}
+      <fieldset disabled={busy} className="space-y-4">
         <FormField label="Supplier name" required>
-          <input name="name" required placeholder="e.g. ABC Trading Co." className={inputClass} />
+          <input name="name" required defaultValue={supplier?.name ?? ""} placeholder="e.g. ABC Trading Co." className={inputClass} />
         </FormField>
         <FormField label="Contact person" required>
-          <input name="contactPerson" required placeholder="e.g. Dara Lim" className={inputClass} />
+          <input name="contactPerson" required defaultValue={supplier?.contact_person ?? ""} placeholder="e.g. Dara Lim" className={inputClass} />
         </FormField>
         <FormField label="Phone" required>
-          <input name="phone" required type="tel" placeholder="e.g. 012 345 678" className={inputClass} />
+          <input name="phone" required type="tel" defaultValue={supplier?.phone ?? ""} placeholder="e.g. 012 345 678" className={inputClass} />
         </FormField>
         <FormField label="Email">
-          <input name="email" type="email" placeholder="supplier@example.com" className={inputClass} />
+          <input name="email" type="email" defaultValue={supplier?.email ?? ""} placeholder="supplier@example.com" className={inputClass} />
         </FormField>
         <FormField label="Address" required>
           <textarea
             name="address" required
+            defaultValue={supplier?.address ?? ""}
             rows={2}
             placeholder="Supplier address"
             className={`${inputClass} resize-none`}
@@ -375,6 +371,7 @@ function AddSupplierPanel() {
         <FormField label="Notes">
           <textarea
             name="notes"
+            defaultValue={supplier?.notes ?? ""}
             rows={3}
             placeholder="Optional notes"
             className={`${inputClass} resize-none`}
@@ -384,20 +381,22 @@ function AddSupplierPanel() {
           type="submit"
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
         >
-          <Plus size={17} />
-          Create Supplier
+          {supplier ? <Pencil size={17} /> : <Plus size={17} />}
+          {busy ? "Saving…" : supplier ? "Save Changes" : "Create Supplier"}
         </button>
-      </form>
-    </aside>
-  );
+      </fieldset>
+      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+    </form>;
 }
 
 function SupplierDetailsPanel({
   supplier,
   metric,
+  onEdit,
 }: {
   supplier: Supplier | null;
   metric: SupplierMetric;
+  onEdit: () => void;
 }) {
   if (!supplier) {
     return (
@@ -460,13 +459,13 @@ function SupplierDetailsPanel({
           <Eye size={15} />
           View POs
         </Link>
-        <Link
-          href={`/dashboard/suppliers/${supplier.id}/edit`}
+        <button
+          type="button" onClick={onEdit}
           className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
         >
           <Pencil size={15} />
           Edit
-        </Link>
+        </button>
         <Link
           href="/dashboard/purchase-orders/new"
           className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
@@ -479,7 +478,7 @@ function SupplierDetailsPanel({
   );
 }
 
-function SupplierActionMenu({ supplier }: { supplier: Supplier }) {
+function SupplierActionMenu({ supplier, onEdit, onDelete }: { supplier: Supplier; onEdit: () => void; onDelete: () => void }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -521,12 +520,6 @@ function SupplierActionMenu({ supplier }: { supplier: Supplier }) {
     };
   }, [open]);
 
-  function confirmDelete(event: FormEvent<HTMLFormElement>) {
-    if (!window.confirm(`Delete ${supplier.name}? This action cannot be undone.`)) {
-      event.preventDefault();
-    }
-  }
-
   return (
     <>
       <button
@@ -550,13 +543,13 @@ function SupplierActionMenu({ supplier }: { supplier: Supplier }) {
               className="fixed z-[100] w-44 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 text-left shadow-xl"
               onClick={(event) => event.stopPropagation()}
             >
-              <Link
-                href={`/dashboard/suppliers/${supplier.id}/edit`}
+              <button
+                type="button" onClick={() => { setOpen(false); onEdit(); }}
                 className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 <Pencil size={15} />
                 Edit
-              </Link>
+              </button>
 
               <form action={toggleSupplierStatus}>
                 <input type="hidden" name="supplierId" value={supplier.id} />
@@ -570,22 +563,32 @@ function SupplierActionMenu({ supplier }: { supplier: Supplier }) {
                 </button>
               </form>
 
-              <form action={deleteSupplier} onSubmit={confirmDelete}>
-                <input type="hidden" name="supplierId" value={supplier.id} />
                 <button
-                  type="submit"
+                  type="button" onClick={() => { setOpen(false); onDelete(); }}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
                 >
                   <Trash2 size={15} />
                   Delete
                 </button>
-              </form>
             </div>,
             document.body,
           )
         : null}
     </>
   );
+}
+
+function SupplierDialog({ title, side = false, busy = false, close, children }: { title: string; side?: boolean; busy?: boolean; close: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const dialog = ref.current; dialog?.showModal(); return () => dialog?.close(); }, []);
+  return createPortal(<dialog ref={ref} role={side ? "dialog" : "alertdialog"} aria-label={title}
+    onCancel={event => { event.preventDefault(); if (!busy) close(); }}
+    onClick={event => { if (busy || event.target !== event.currentTarget) return; const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) close(); }}
+    style={side ? { position: "fixed", inset: "0 0 0 auto", margin: 0, width: "min(520px, 100vw)", maxWidth: "100vw", height: "100dvh", maxHeight: "100dvh", borderRadius: 0 } : { width: "min(420px, calc(100vw - 2rem))" }}
+    className="m-auto overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/30">
+    <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-bold">{title}</h2><button type="button" disabled={busy} onClick={close} aria-label="Close dialog" className="rounded-lg p-2 hover:bg-slate-100 disabled:opacity-50"><X size={20} /></button></header>
+    <div className="p-5">{children}</div>
+  </dialog>, document.body);
 }
 
 function SummaryCard({
@@ -704,31 +707,6 @@ function FormField({
   );
 }
 
-function buildSupplierMetrics(purchaseOrders: PurchaseOrder[]) {
-  const map = new Map<string, SupplierMetric>();
-
-  for (const order of purchaseOrders) {
-    if (!order.supplier_id) continue;
-    const current = map.get(order.supplier_id) ?? { ...emptyMetric };
-    const total = numberValue(order.total);
-    current.orderCount += 1;
-
-    if (order.status === "received") {
-      current.receivedTotal += total;
-    }
-    if (OPEN_PO_STATUSES.has(order.status)) {
-      current.openValue += total;
-    }
-    if (!current.lastOrderDate || order.order_date > current.lastOrderDate) {
-      current.lastOrderDate = order.order_date;
-    }
-
-    map.set(order.supplier_id, current);
-  }
-
-  return map;
-}
-
 const emptyMetric: SupplierMetric = {
   orderCount: 0,
   receivedTotal: 0,
@@ -738,11 +716,6 @@ const emptyMetric: SupplierMetric = {
 
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100";
-
-function numberValue(value: number | string | null) {
-  const parsed = Number(value ?? 0);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", {
@@ -760,11 +733,4 @@ function formatDate(value: string) {
     year: "numeric",
     timeZone: "UTC",
   }).format(parsed);
-}
-
-function isThisMonth(value: string) {
-  const date = new Date(`${value}T00:00:00Z`);
-  if (Number.isNaN(date.getTime())) return false;
-  const now = new Date();
-  return date.getUTCFullYear() === now.getUTCFullYear() && date.getUTCMonth() === now.getUTCMonth();
 }

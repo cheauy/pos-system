@@ -1,46 +1,94 @@
 'use client';
-import { useState } from 'react';
-import { Save } from 'lucide-react';
-import { saveStoreCurrencySettings } from './pos-workspace-actions';
-import { currencyFormat, formatStoreMoney, type CurrencyFormat } from '@/lib/currency-format';
+import { useRef, useState, type ReactNode } from 'react';
+import { ArrowLeftRight, BadgeDollarSign, FileText, Info, RotateCcw, Save, ShoppingCart, SlidersHorizontal, Tag, type LucideIcon } from 'lucide-react';
+import { saveStoreCurrencySettings, savePaymentOptions } from './pos-workspace-actions';
+import { saveTaxRate } from '../settings/pos-currency/tax-actions';
+import { currencyFormat, formatStoreMoney, validCurrencyFormat, type CurrencyFormat } from '@/lib/currency-format';
+import { validTaxRate } from '@/lib/pos/tax-rate';
 import type { PosSettings } from './pos-workspace-types';
+import s from '../settings/pos-currency/currency-settings.module.css';
 
-export function PosCurrencySettings({ businessId, settings }: { businessId:string;settings:PosSettings }) {
-  const [currency,setCurrency]=useState(settings.currency || 'USD');
-  const [rate,setRate]=useState(String(settings.usdKhrRate ?? 4000));
-  const [format,setFormat]=useState(currencyFormat(settings.currencyFormat,settings.currency));
-  const [busy,setBusy]=useState(false);
-  const [message,setMessage]=useState('');
-  const [saved,setSaved]=useState(false);
-  const field='mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950';
-  function update(next: Partial<CurrencyFormat>) {setFormat({...format,...next});setSaved(false);setMessage('');}
-  async function save() {
-    if(busy)return;setBusy(true);setMessage('');setSaved(false);
-    try {
-      const result=await saveStoreCurrencySettings(businessId,currency,Number(rate),format);
-      if(!result.success){setMessage(result.message);return;}
-      setSaved(true);setMessage('Currency settings saved. POS will use your updated format.');
-      try {const channel=new BroadcastChannel(`tenh-pos-currency:${businessId}`);channel.postMessage('saved');channel.close();localStorage.setItem(`tenh-pos-currency:${businessId}`,String(Date.now()));} catch { /* Open POS tabs also refresh on focus. */ }
-    } catch {setMessage('Unable to confirm the save. Please refresh settings before retrying.');}
-    finally {setBusy(false);}
+type Draft = {splitPaymentEnabled:boolean;customerCreditEnabled:boolean;currency:string;rate:string;format:CurrencyFormat;tax:string};
+export function PosCurrencySettings({ businessId, branchId, settings }: { businessId:string;branchId:string;settings:PosSettings }) {
+  const [baseline,setBaseline]=useState<Draft>({splitPaymentEnabled:settings.splitPaymentEnabled!==false,customerCreditEnabled:settings.customerCreditEnabled!==false,currency:settings.currency||'USD',rate:String(settings.usdKhrRate??4000),format:currencyFormat(settings.currencyFormat,settings.currency),tax:String(settings.taxRate??0)});
+  const [draft,setDraft]=useState(baseline);
+  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[saved,setSaved]=useState(false);
+  const locked=useRef(false);
+  const {currency,rate,format,tax}=draft;
+  const dirty=JSON.stringify(draft)!==JSON.stringify(baseline);
+  function change(patch:Partial<Draft>){setDraft(current=>({...current,...patch}));setSaved(false);setMessage('');}
+  function update(patch:Partial<CurrencyFormat>){change({format:{...format,...patch}});}
+  function notifyPos(){try{const channel=new BroadcastChannel(`tenh-pos-currency:${businessId}`);channel.postMessage('saved');channel.close();localStorage.setItem(`tenh-pos-currency:${businessId}`,String(Date.now()));}catch{/* POS also refreshes on focus. */}}
+  async function save(){
+    if(locked.current)return;
+    if(!validCurrencyFormat(format)||!rate.trim()||!Number.isFinite(Number(rate))||Number(rate)<1||Number(rate)>1000000||!tax.trim()||!validTaxRate(Number(tax))){setSaved(false);setMessage('Review the currency format, exchange rate and tax percentage.');return;}
+    locked.current=true;setBusy(true);setMessage('');setSaved(false);
+    let currencySaved=false, savingPayments=false;
+    try{
+      const currencyChanged=currency!==baseline.currency||rate!==baseline.rate||JSON.stringify(format)!==JSON.stringify(baseline.format);
+      if(currencyChanged){
+        const result=await saveStoreCurrencySettings(businessId,currency,Number(rate),format,branchId);
+        if(!result.success){setMessage(result.message);return;}
+        currencySaved=true;setBaseline(current=>({...current,currency,rate,format}));notifyPos();
+      }
+      if(tax!==baseline.tax){await saveTaxRate(businessId,branchId,Number(tax));setBaseline(current=>({...current,tax}));}
+      if(draft.splitPaymentEnabled!==baseline.splitPaymentEnabled||draft.customerCreditEnabled!==baseline.customerCreditEnabled){
+        savingPayments=true;
+        const result=await savePaymentOptions(businessId,branchId,draft.splitPaymentEnabled,draft.customerCreditEnabled);
+        if(!result.success){setMessage(`Payment settings were not saved. ${result.message}`);return;}
+      }
+      setBaseline(draft);setSaved(true);setMessage('Currency, tax and payment settings saved. New POS sales use these settings.');notifyPos();
+    }catch(error){setMessage(`${savingPayments?'Payment settings were not confirmed. ':currencySaved?'Currency settings saved, but tax was not confirmed. ':''}${error instanceof Error?error.message:'Unable to confirm the save. Refresh before retrying.'}`);}
+    finally{locked.current=false;setBusy(false);}
   }
-  return <form onSubmit={event=>{event.preventDefault();void save();}} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7 dark:border-slate-800 dark:bg-slate-900">
-    <fieldset disabled={busy} className="space-y-6">
-      <div className="flex items-center gap-3 border-b border-slate-100 pb-4 dark:border-slate-800"><h2 className="font-bold">Currency settings</h2><span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Active</span></div>
-      <div className="grid gap-4 sm:grid-cols-[2fr_1fr_1fr]">
-        <label className="text-sm font-medium">Store currency<select className={field} value={currency} onChange={e=>{setCurrency(e.target.value);update({symbol:e.target.value==='KHR'?'៛':'$'});}}><option value="USD">🇺🇸 USD — US Dollar</option><option value="KHR">🇰🇭 KHR — Cambodian Riel</option></select><span className="mt-2 block text-xs font-normal text-slate-500">USD by default. Existing prices and orders keep their accounting currency.</span></label>
-        <label className="text-sm font-medium">Currency symbol<input required maxLength={8} className={field} value={format.symbol} onChange={e=>update({symbol:e.target.value})}/></label>
-        <label className="text-sm font-medium">Position<select className={field} value={format.position} onChange={e=>update({position:e.target.value as CurrencyFormat['position']})}><option value="before">Before amount ($10.00)</option><option value="after">After amount (10.00 $)</option></select></label>
-      </div>
-      <div className="border-t border-slate-100 pt-5 dark:border-slate-800"><label className="text-sm font-semibold" htmlFor="currency-rate">Exchange rate</label><div className="mt-2 flex max-w-sm items-center gap-3"><span className="shrink-0 text-sm">1 USD =</span><input id="currency-rate" required type="number" min="1" max="1000000" step="0.0001" className={field} value={rate} onChange={e=>{setRate(e.target.value);setSaved(false);setMessage('');}}/><span className="text-sm">KHR</span></div><p className="mt-2 text-xs text-slate-500">Default: 1 USD = 4,000 KHR. This is your manual store rate, not a live bank rate.</p></div>
-      <details open className="border-t border-slate-100 pt-5 dark:border-slate-800"><summary className="cursor-pointer text-sm font-bold">Advanced options</summary><div className="mt-4 grid gap-4 sm:grid-cols-3">
-        <label className="text-sm font-medium">Decimal precision<select className={field} value={format.decimals} onChange={e=>update({decimals:Number(e.target.value) as CurrencyFormat['decimals']})}><option value={0}>0 (0)</option><option value={2}>2 (0.00)</option><option value={3}>3 (0.000)</option></select></label>
-        <label className="text-sm font-medium">Rounding method<select className={field} value={format.rounding} onChange={e=>update({rounding:e.target.value as CurrencyFormat['rounding']})}><option value="half-up">Standard (Half up)</option><option value="up">Round up</option><option value="down">Round down</option></select></label>
-        <label className="text-sm font-medium">Display format<select className={field} value={format.format} onChange={e=>update({format:e.target.value as CurrencyFormat['format']})}><option value="en-US">1,000.00</option><option value="de-DE">1.000,00</option><option value="fr-FR">1 000,00</option></select></label>
-      </div><p className="mt-3 text-xs text-slate-500">Display formatting only. Payments and saved sales retain their accounting precision.</p></details>
-      <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4 dark:border-emerald-900 dark:bg-emerald-950/20"><p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">Preview</p><output className="mt-1 block text-2xl font-bold text-emerald-950 dark:text-emerald-100">{formatStoreMoney(1234.56,format)}</output></div>
-      {message && <p role={saved?'status':'alert'} className={`text-sm ${saved?'text-emerald-700':'text-red-600'}`}>{message}</p>}
-      <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"><Save size={17}/>{busy?'Saving…':'Save currency settings'}</button>
-    </fieldset>
+  const preview=(amount:number)=>formatStoreMoney(amount,format);
+  const rateValid=Number.isFinite(Number(rate))&&Number(rate)>=1&&Number(rate)<=1000000;
+  const configuration=[['Store currency',currency==='KHR'?'KHR — Cambodian Riel':'USD — US Dollar'],['Currency symbol',format.symbol],['Amount position',format.position==='before'?'Before amount':'After amount'],['Exchange rate',rateValid?`1 USD = ${Number(rate).toLocaleString()} KHR`:'—'],['Decimal precision',String(format.decimals)],['Rounding method',format.rounding==='half-up'?'Standard (Half up)':format.rounding==='up'?'Round up':'Round down'],['Display format',format.format==='en-US'?'1,000.00':format.format==='de-DE'?'1.000,00':'1 000,00'],['Tax percentage',`${tax||0}%`]];
+  return <form onSubmit={event=>{event.preventDefault();void save();}} className={s.form}>
+    <div className={s.layout}>
+      <fieldset disabled={busy} className={s.fields}>
+        <Card icon={BadgeDollarSign} title="Store currency" description="Choose your store currency. Existing prices and orders keep their accounting currency.">
+          <div className={s.currencyRow}>
+            <label>Currency<select value={currency} onChange={e=>change({currency:e.target.value,format:{...format,symbol:e.target.value==='KHR'?'៛':'$'}})}><option value="USD">🇺🇸 USD — US Dollar</option><option value="KHR">🇰🇭 KHR — Cambodian Riel</option></select></label>
+            <label>Currency symbol<input required maxLength={8} value={format.symbol} onChange={e=>update({symbol:e.target.value})}/></label>
+            <label>Amount position<select value={format.position} onChange={e=>update({position:e.target.value as CurrencyFormat['position']})}><option value="before">Before amount ($10.00)</option><option value="after">After amount (10.00 $)</option></select></label>
+          </div>
+        </Card>
+        <Card icon={ArrowLeftRight} title="Exchange rate" description="This is your manual store rate, not a live bank rate.">
+          <label className={s.inlineField}><span>1 USD =</span><span className={s.suffix}><input aria-label="Exchange rate" required type="number" min="1" max="1000000" step="0.0001" value={rate} onChange={e=>change({rate:e.target.value})}/><span>KHR</span></span></label>
+        </Card>
+        <Card icon={SlidersHorizontal} title="Formatting" description="Control how amounts appear. Saved payments keep their accounting precision.">
+          <div className={s.threeColumns}>
+            <label>Decimal precision<select value={format.decimals} onChange={e=>update({decimals:Number(e.target.value) as CurrencyFormat['decimals']})}><option value={0}>0 (0)</option><option value={2}>2 (0.00)</option><option value={3}>3 (0.000)</option></select></label>
+            <label>Rounding method<select value={format.rounding} onChange={e=>update({rounding:e.target.value as CurrencyFormat['rounding']})}><option value="half-up">Standard (Half up)</option><option value="up">Round up</option><option value="down">Round down</option></select></label>
+            <label>Display format<select value={format.format} onChange={e=>update({format:e.target.value as CurrencyFormat['format']})}><option value="en-US">1,000.00</option><option value="de-DE">1.000,00</option><option value="fr-FR">1 000,00</option></select></label>
+          </div>
+        </Card>
+        <Card icon={FileText} title="Tax settings" description="Applies to new POS sales in this branch on web and mobile. Existing orders keep their original tax.">
+          <label className={s.inlineField}><span>Tax percentage</span><span className={s.suffix}><input aria-label="Tax percentage" required type="number" min="0" max="100" step="0.01" value={tax} onChange={e=>change({tax:e.target.value})}/><span>%</span></span></label>
+        </Card>
+        <Card icon={SlidersHorizontal} title="Payment options" description="Choose the payment methods available for new POS sales in this branch.">
+          {([{key:'splitPaymentEnabled',label:'Split payment'},{key:'customerCreditEnabled',label:'Customer credit'}] as const).map(({key,label})=><label key={key} className={s.toggleRow}><span>{label}</span><span className={s.toggleControl}><input aria-label={label} type="checkbox" role="switch" checked={draft[key]} onChange={event=>change({[key]:event.target.checked})} className={s.toggleInput}/><span className={s.toggleTrack} aria-hidden="true"/><span className={s.toggleState} aria-hidden="true">{draft[key]?'On':'Off'}</span></span></label>)}
+        </Card>
+      </fieldset>
+      <aside className={s.preview} aria-label="Currency preview">
+        <div className={s.previewTop}>
+          <span className={s.badge}>{dirty?'Unsaved preview':'Current settings'}</span>
+          <h2>Live preview</h2><p>How your prices will appear in this branch.</p>
+          <Preview icon={ShoppingCart} title="Product price (example)" description={`An amount of 1,234.56 ${currency}`} value={preview(1234.56)}/>
+          <Preview icon={Tag} title="Smaller amount" description={`An amount of 18.00 ${currency}`} value={preview(18)}/>
+          <Preview icon={ArrowLeftRight} title="In local currency" description={rateValid?`1 USD = ${Number(rate).toLocaleString()} KHR`:'Enter a valid exchange rate'} value={rateValid?`KHR ${new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(18*Number(rate))}`:'—'} note="for 18.00 USD"/>
+          <div className={s.info}><Info size={18}/><p>The manual exchange rate is used for display and store operations.</p></div>
+        </div>
+        <div className={s.configuration}><h3>{dirty?'Preview configuration':'Current configuration'}</h3><dl>{configuration.map(([name,value])=><div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}</dl></div>
+      </aside>
+    </div>
+    <footer className={s.footer}>
+      {message&&<p role={saved?'status':'alert'} className={`${s.message} ${saved?s.success:s.error}`}>{message}</p>}
+      <button type="button" className={s.secondary} disabled={busy} onClick={()=>change({splitPaymentEnabled:true,customerCreditEnabled:true,currency:'USD',rate:'4000',format:currencyFormat(null,'USD'),tax:'0'})}><RotateCcw size={16}/>Reset to defaults</button>
+      <div className={s.footerRight}><button type="button" disabled={busy||!dirty} className={s.secondary} onClick={()=>{setDraft(baseline);setMessage('');setSaved(false);}}>Cancel</button><button type="submit" disabled={busy||!dirty} className={s.primary}><Save size={16}/>{busy?'Saving…':'Save currency settings'}</button></div>
+    </footer>
   </form>;
 }
+function Card({icon:Icon,title,description,children}:{icon:LucideIcon;title:string;description:string;children:ReactNode}){return <section className={s.card}><div className={s.cardHeading}><span className={s.icon}><Icon size={23}/></span><div><h2>{title}</h2><p>{description}</p></div></div>{children}</section>;}
+function Preview({icon:Icon,title,description,value,note}:{icon:LucideIcon;title:string;description:string;value:string;note?:string}){return <div className={s.example}><span className={s.icon}><Icon size={21}/></span><div className={s.exampleText}><h3>{title}</h3><p>{description}</p></div><div className={s.amount}><output>{value}</output>{note&&<small>{note}</small>}</div></div>;}

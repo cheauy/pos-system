@@ -1,0 +1,7 @@
+"use client";
+import type {CustomerFieldSettings} from "@/lib/customers/get-customer-field-settings";
+export default function CustomerFields({settings,onChange,disabled}:{settings:CustomerFieldSettings;onChange:(value:CustomerFieldSettings)=>void;disabled:boolean}){
+ return <section id="customer-fields" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900"><h2 className="text-lg font-semibold">Customer Fields</h2><p className="mt-1 text-sm text-slate-500">Choose optional fields for this branch. Turning a field off hides it without deleting saved values.</p>
+ <fieldset disabled={disabled} className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">{([{key:"emailEnabled",label:"Email"},{key:"birthdayEnabled",label:"Birthday"},{key:"genderEnabled",label:"Gender — Male / Female"}] as const).map(({key,label})=><label key={key} className="flex cursor-pointer items-center justify-between gap-4 py-4"><span className="text-sm font-medium">{label}</span><span className="relative"><input name={key} type="checkbox" role="switch" checked={settings[key]} onChange={event=>onChange({...settings,[key]:event.target.checked})} className="peer sr-only"/><span className="block h-6 w-11 rounded-full bg-slate-300 peer-checked:bg-blue-600 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-blue-600"/><span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5"/></span></label>)}</fieldset>
+ </section>;
+}

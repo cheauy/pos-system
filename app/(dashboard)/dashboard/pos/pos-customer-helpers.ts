@@ -1,13 +1,17 @@
 import type { Customer, PaymentMethod } from './pos-workspace-types';
 
 export type PickerCustomer = Customer & { created_at: string | null };
-export type CustomerFieldFlags = { emailEnabled:boolean; birthdayEnabled:boolean };
+export type CustomerFieldFlags = { emailEnabled:boolean; birthdayEnabled:boolean; genderEnabled?:boolean };
 export type CustomerPage = { items: PickerCustomer[]; hasMore: boolean; nextOffset: number; canCreate: boolean; fieldSettings?: CustomerFieldFlags };
-export type CustomerInput = { branchId?: string; id: string; name: string; phone: string; address: string; email?:string; birthday?:string };
+export type CustomerInput = { branchId?: string; id: string; name: string; phone: string; address: string; email?:string; birthday?:string; gender?:string };
 
 /** These are hidden only for an anonymous in-store sale, not Pickup or Delivery. */
 export function paymentHiddenForWalkIn(method: PaymentMethod, isWalkIn: boolean): boolean {
   return isWalkIn && (method === 'cod' || method === 'deposit' || method === 'other');
+}
+
+export function paymentHiddenForDelivery(method: PaymentMethod, isDelivery: boolean): boolean {
+  return isDelivery && !['cod', 'deposit', 'bank_transfer', 'other'].includes(method);
 }
 
 export function customerInputIssue(value: CustomerInput, fields:CustomerFieldFlags={emailEnabled:true,birthdayEnabled:true}, allowLegacyRetry = false): string | null {
@@ -20,6 +24,7 @@ export function customerInputIssue(value: CustomerInput, fields:CustomerFieldFla
   if(fields.emailEnabled && value.email) {
     if(typeof value.email!=='string' || value.email.length>254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email.trim())) return 'Enter a valid email address.';
   }
+  if(fields.genderEnabled && value.gender && !["male","female"].includes(value.gender)) return "Choose Male or Female.";
   if(fields.birthdayEnabled && value.birthday) {
     const b=value.birthday;
     if(typeof b!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(b)) return 'Enter a valid birthday.';

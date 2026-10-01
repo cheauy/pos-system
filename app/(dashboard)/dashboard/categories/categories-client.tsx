@@ -1,6 +1,5 @@
 "use client";
 
-import CategoryBranchesDialog from "./category-branches-dialog";
 import CategoryDisplayBranches from "./category-display-branches";
 import { useRouter } from "next/navigation";
 import {
@@ -110,7 +109,6 @@ export default function CategoriesClient({
   const [page, setPage] = useState(1);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-  const [branchCategory,setBranchCategory]=useState<CategoryViewModel|null>(null);
   const [editing, setEditing] = useState<CategoryViewModel | null>(null);
   const [deleting, setDeleting] = useState<CategoryViewModel | null>(null);
   const [message, setMessage] = useState<{
@@ -547,7 +545,6 @@ export default function CategoriesClient({
                                 <Pencil size={16} />
                                 Edit
                               </button>
-                              <button type="button" onClick={()=>{setBranchCategory(category);setOpenMenuId(null);setMenuPosition(null);}} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm hover:bg-slate-50"><Folder size={16}/>Apply to branches</button>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -626,30 +623,41 @@ export default function CategoriesClient({
         </section>
       </div>
 
-      {branchCategory && <CategoryBranchesDialog category={branchCategory} branches={branches} onClose={()=>setBranchCategory(null)}/>}
       {editing ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]">
           <button type="button" className="absolute inset-0" onClick={() => setEditing(null)} aria-label="Close edit dialog" />
-          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <div>
-                <h3 className="text-lg font-bold text-slate-950">Edit Category</h3>
-                <p className="mt-0.5 text-sm text-slate-500">Update category details and visibility.</p>
+          <form role="dialog" aria-modal="true" aria-labelledby="edit-category-title" onSubmit={handleEdit}
+            className="relative z-10 flex max-h-[min(90dvh,760px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <input type="hidden" name="categoryId" value={editing.id} />
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <span className="grid size-10 place-items-center rounded-xl bg-blue-50 text-blue-600"><Folder size={20} /></span>
+                <div>
+                  <h3 id="edit-category-title" className="text-lg font-bold text-slate-950">Edit Category</h3>
+                  <p className="text-sm text-slate-500">Update category details and visibility.</p>
+                </div>
               </div>
               <button type="button" onClick={() => setEditing(null)} className="grid size-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Close">
                 <X size={18} />
               </button>
             </div>
-            <form onSubmit={handleEdit} className="space-y-5 p-5">
-              <input type="hidden" name="categoryId" value={editing.id} />
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-800">Category name <span className="text-rose-500">*</span></label>
-                <input name="name" required minLength={2} maxLength={50} defaultValue={editing.name} className="h-11 w-full rounded-xl border border-slate-300 px-3.5 text-sm outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_110px]">
+                <label className="block text-sm font-semibold text-slate-800">
+                  Category name <span className="text-rose-500">*</span>
+                  <input name="name" required minLength={2} maxLength={50} defaultValue={editing.name} className="mt-1.5 h-11 w-full rounded-xl border border-slate-300 px-3.5 text-sm font-normal outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
+                </label>
+                <label className="block text-sm font-semibold text-slate-800">
+                  Index
+                  <input name="index" type="number" min={1} max={9999} defaultValue={editing.index} className="mt-1.5 h-11 w-full rounded-xl border border-slate-300 px-3.5 text-sm font-normal outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
+                </label>
               </div>
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-800">Description</label>
-                <textarea name="description" rows={4} maxLength={200} defaultValue={editing.description ?? ""} className="w-full resize-none rounded-xl border border-slate-300 px-3.5 py-3 text-sm outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
-              </div>
+              <p className="-mt-2 text-xs text-slate-500">Lower index appears first.</p>
+              <label className="block text-sm font-semibold text-slate-800">
+                Description
+                <textarea name="description" rows={3} maxLength={200} defaultValue={editing.description ?? ""} placeholder="Optional description..." className="mt-1.5 w-full resize-none rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-normal outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
+              </label>
               <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
                 <div className="text-sm font-semibold text-slate-800">Display settings</div>
                 <CategoryDisplayBranches key={editing.id} branches={branches} branchIds={editing.branchIds} embedded />
@@ -658,17 +666,13 @@ export default function CategoriesClient({
                   <label className="flex cursor-pointer items-start gap-3"><input type="checkbox" name="isOnline" defaultChecked={editing.isOnline} className="mt-0.5 size-4 accent-blue-600" /><span><span className="block text-sm font-semibold">Show on Online Store</span><span className="block text-xs text-slate-500">Display this category on your website menu.</span></span></label>
                 </div>
               </div>
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-800">Index</label>
-                <input name="index" type="number" min={1} max={9999} defaultValue={editing.index} className="h-11 w-full rounded-xl border border-slate-300 px-3.5 text-sm outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
-                <p className="mt-1.5 text-xs text-slate-500">Lower index appears first.</p>
-              </div>
-              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
-                <button type="button" onClick={() => setEditing(null)} className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-                <button type="submit" disabled={isPending} className="h-10 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">{isPending ? "Saving..." : "Save Changes"}</button>
-              </div>
-            </form>
-          </div>
+            </div>
+
+            <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 bg-white px-5 py-3.5">
+              <button type="button" onClick={() => setEditing(null)} className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+              <button type="submit" disabled={isPending} className="h-10 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">{isPending ? "Saving..." : "Save Changes"}</button>
+            </div>
+          </form>
         </div>
       ) : null}
 

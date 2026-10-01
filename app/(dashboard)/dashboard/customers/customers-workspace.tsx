@@ -1,5 +1,6 @@
 "use client";
 
+import CustomerFieldsHelp from "@/components/customer-fields-help";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -16,7 +17,6 @@ import {
   Phone,
   ReceiptText,
   Search,
-  Settings2,
   ShoppingBag,
   Trash2,
   Upload,
@@ -33,6 +33,7 @@ import {
   exportCustomersCsv,
   importCustomersCsv,
 } from "./actions";
+import { formatStoreMoney, type CurrencyFormat } from "@/lib/currency-format";
 
 type PurchaseHistoryItem = {
   id: string;
@@ -49,6 +50,7 @@ type Customer = {
   phone: string | null;
   email: string | null;
   birthday: string | null;
+  gender?: string | null;
   address: string | null;
   created_at: string;
   orderCount: number;
@@ -61,6 +63,7 @@ type Customer = {
 type CustomerFieldSettings = {
   emailEnabled: boolean;
   birthdayEnabled: boolean;
+  genderEnabled?: boolean;
 };
 
 const PAGE_SIZE = 15;
@@ -70,30 +73,37 @@ const CUSTOMER_TEMPLATE = [
 ].join("\r\n");
 
 export function CustomersWorkspace({
+  initialSelectedId,
   customers,
   stats,
   currency,
   accentColor,
   fieldSettings,
-  canManageSettings,
   canCreate,
   canUpdate,
 }: {
+  initialSelectedId?: string;
   customers: Customer[];
   stats: { total: number; newThisMonth: number; repeat: number; active: number };
-  currency: string;
+  currency: CurrencyFormat;
   accentColor: string;
   fieldSettings: CustomerFieldSettings;
-  canManageSettings: boolean;
   canCreate: boolean;
   canUpdate: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState(customers[0]?.id ?? "");
-  const [page, setPage] = useState(1);
+  const [selectedId, setSelectedId] = useState(
+    customers.some((customer) => customer.id === initialSelectedId) ? initialSelectedId! : customers[0]?.id ?? "",
+  );
+  const [page, setPage] = useState(() => {
+    const index = customers.findIndex((customer) => customer.id === initialSelectedId);
+    return index >= 0 ? Math.floor(index / PAGE_SIZE) + 1 : 1;
+  });
   const [panelMode, setPanelMode] = useState<"details" | "history">("details");
   const [deleteCandidate, setDeleteCandidate] = useState<Customer | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState("");
@@ -150,6 +160,20 @@ export function CustomersWorkspace({
     }
   }
 
+  async function handleDelete(formData: FormData) {
+    setDeleteBusy(true);
+    setDeleteError("");
+    try {
+      await deleteCustomer(formData);
+      setDeleteCandidate(null);
+      router.refresh();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Unable to delete this customer.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   async function handleImport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setImportBusy(true);
@@ -179,15 +203,7 @@ export function CustomersWorkspace({
           </p>
         </div>
 
-        {canManageSettings ? (
-          <Link
-            href="/dashboard/settings/customers"
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600"
-          >
-            <Settings2 size={17} />
-            Customer fields
-          </Link>
-        ) : null}
+        <CustomerFieldsHelp />
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -199,7 +215,7 @@ export function CustomersWorkspace({
           label="Active Customers"
           value={stats.active}
           tone="amber"
-          helper="Completed purchase in the last 30 days"
+          helper="Purchase in the last 30 days"
         />
       </div>
 
@@ -231,6 +247,7 @@ export function CustomersWorkspace({
                   <input name="email" type="email" className={inputClass} placeholder="customer@example.com" />
                 </Field>
               ) : null}
+              {fieldSettings.genderEnabled && <Field label="Gender"><select name="gender" className={inputClass}><option value="">Not specified</option><option value="male">Male</option><option value="female">Female</option></select></Field>}
               {fieldSettings.birthdayEnabled ? (
                 <Field label="Birthday">
                   <input name="birthday" type="date" className={inputClass} />
@@ -400,19 +417,12 @@ export function CustomersWorkspace({
                     <h3 className="truncate text-lg font-bold text-slate-950">{selectedCustomer.name}</h3>
                     {selectedCustomer.isActive ? (
                       <span
-                        title="Completed purchase in the last 30 days"
+                        title="Purchase in the last 30 days"
                         className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"
                       >
                         Active
                       </span>
-                    ) : (
-                      <span
-                        title="No completed purchase in the last 30 days"
-                        className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600"
-                      >
-                        Inactive
-                      </span>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -423,7 +433,7 @@ export function CustomersWorkspace({
                     </Link>
                     <button
                       type="button"
-                      onClick={() => setDeleteCandidate(selectedCustomer)}
+                      onClick={() => { setDeleteError(""); setDeleteCandidate(selectedCustomer); }}
                       className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50"
                     >
                       <Trash2 size={16} /> Delete
@@ -434,6 +444,7 @@ export function CustomersWorkspace({
                 <div className="mt-5 space-y-3 text-sm">
                   <DetailRow icon={<Phone size={16} />} value={selectedCustomer.phone || "No phone"} />
                   {fieldSettings.emailEnabled ? <DetailRow icon={<Mail size={16} />} value={selectedCustomer.email || "No email"} /> : null}
+                  {fieldSettings.genderEnabled && <DetailRow icon={<UserRound size={16}/>} value={selectedCustomer.gender === "male" ? "Male" : selectedCustomer.gender === "female" ? "Female" : "Gender not specified"}/>}
                   {fieldSettings.birthdayEnabled ? <DetailRow icon={<CalendarDays size={16} />} value={formatBirthday(selectedCustomer.birthday)} /> : null}
                   <DetailRow icon={<UserRound size={16} />} value={selectedCustomer.address || "No address"} />
                   <DetailRow icon={<CalendarDays size={16} />} value={`Customer since ${formatDate(selectedCustomer.created_at)}`} />
@@ -531,13 +542,14 @@ export function CustomersWorkspace({
               <button type="button" onClick={() => setDeleteCandidate(null)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700">
                 Cancel
               </button>
-              <form action={deleteCustomer}>
+              <form action={handleDelete}>
                 <input type="hidden" name="customerId" value={deleteCandidate.id} />
-                <button className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700">
-                  Delete customer
+                <button disabled={deleteBusy} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                  {deleteBusy ? "Deleting..." : "Delete customer"}
                 </button>
               </form>
             </div>
+            {deleteError ? <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{deleteError}</p> : null}
           </div>
         </div>
       ) : null}
@@ -622,7 +634,7 @@ function MetricBox({ icon, label, value }: { icon: React.ReactNode; label: strin
   );
 }
 
-function PurchaseHistoryPanel({ customer, currency }: { customer: Customer; currency: string }) {
+function PurchaseHistoryPanel({ customer, currency }: { customer: Customer; currency: CurrencyFormat }) {
   return (
     <div className="p-4">
       <div className="mb-4 flex items-center gap-3">
@@ -672,12 +684,8 @@ function downloadText(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
-function formatMoney(value: number, currency: string) {
-  try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value);
-  } catch {
-    return `${currency} ${value.toFixed(2)}`;
-  }
+function formatMoney(value: number, currency: CurrencyFormat) {
+  return formatStoreMoney(Number(value) || 0, currency);
 }
 
 function formatDate(value: string | null) {

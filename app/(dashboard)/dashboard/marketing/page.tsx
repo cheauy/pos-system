@@ -23,6 +23,7 @@ import {
 
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
+import { getBranchCurrency } from "@/lib/settings/branch-currency";
 import { createClient } from "@/lib/supabase/branch-server";
 
 type CustomerRow = {
@@ -66,7 +67,7 @@ export default async function MarketingPage() {
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
 
-  const [settings, customersResult, ordersResult, couponsResult] = await Promise.all([
+  const [settings, customersResult, ordersResult, couponsResult, branchCurrency] = await Promise.all([
     getStorefrontSettings(business.id),
     supabase
       .from("customers")
@@ -88,6 +89,7 @@ export default async function MarketingPage() {
       .eq("business_id", business.id)
       .order("created_at", { ascending: false })
       .limit(100),
+    getBranchCurrency(business.id),
   ]);
 
   if (customersResult.error) {
@@ -158,7 +160,7 @@ export default async function MarketingPage() {
         : "Publish your storefront so customers can discover your products.",
       ready: settings.is_published,
       status: settings.is_published ? "Published" : "Not published",
-      href: "/dashboard/online-store",
+      href: "/dashboard/settings/online-store",
       icon: Globe2,
     },
     {
@@ -231,7 +233,7 @@ export default async function MarketingPage() {
         <NavPill href="/dashboard/marketing" label="Overview" active />
         <NavPill href="/dashboard/promotions" label="Promotions & Loyalty" />
         <NavPill href="/dashboard/customers" label="Audience" />
-        <NavPill href="/dashboard/online-store" label="Online Store" />
+        <NavPill href="/dashboard/settings/online-store" label="Online Store" />
         <NavPill href="/dashboard/reports" label="Reports" />
       </nav>
 
@@ -261,7 +263,7 @@ export default async function MarketingPage() {
           icon={BadgePercent}
           iconClass="bg-emerald-50 text-emerald-600"
           label="Discount given this month"
-          value={formatMoney(discountGiven, settings.currency)}
+          value={formatMoney(discountGiven, branchCurrency.currency)}
           helper={`${onlineOrdersThisMonth.toLocaleString()} completed online orders`}
         />
       </section>
@@ -337,7 +339,7 @@ export default async function MarketingPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3.5 font-semibold text-slate-800">
-                          {formatCouponValue(coupon, settings.currency)}
+                          {formatCouponValue(coupon, branchCurrency.currency)}
                         </td>
                         <td className="px-4 py-3.5">
                           <div className="min-w-[120px]">
@@ -508,7 +510,7 @@ export default async function MarketingPage() {
               description="Review customer activity and purchase history."
             />
             <ActionCard
-              href="/dashboard/online-store"
+              href="/dashboard/settings/online-store"
               icon={ShoppingBag}
               title="Update storefront"
               description="Branding, ordering, checkout and public-store settings."

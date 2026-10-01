@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { cancelReturn } from "./actions";
 import {
   ArrowRightLeft,
-  CheckCircle2,
   Clock3,
   DollarSign,
   PackageOpen,
@@ -12,6 +12,7 @@ import {
   RotateCcw,
   Search,
   X,
+  XCircle,
 } from "lucide-react";
 import {
   Cell,
@@ -33,7 +34,9 @@ export type ReturnWorkspaceRecord = {
   reason: string;
   refundAmount: number;
   createdAt: string;
-  status: "pending" | "approved" | "refunded" | "exchanged" | "rejected";
+  status: "pending" | "approved" | "refunded" | "exchanged" | "rejected" | "cancelled";
+  cancelledAt: string | null;
+  cancelReason: string | null;
   returnType: "refund" | "exchange";
   source: "system" | "import";
   refundMethod: string | null;
@@ -52,26 +55,21 @@ type Props = {
   completedOrderCount: number;
   accentColor: string;
   canManage: boolean;
+  canCancel: boolean;
 };
 
 const PAGE_SIZE = 15;
 const pieColors = ["#2563eb", "#60a5fa", "#8b5cf6", "#f97316", "#ef4444", "#94a3b8"];
 
-export default function ReturnsWorkspace({ initialRecords, completedOrderCount, accentColor }: Props) {
+export default function ReturnsWorkspace({ initialRecords, completedOrderCount, accentColor, canCancel }: Props) {
   const records = initialRecords;
+  const activeRecords = useMemo(() => records.filter((record) => record.status !== "cancelled"), [records]);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("all");
-  const [reason, setReason] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState(initialRecords[0]?.id ?? null);
   const [message, setMessage] = useState<string | null>(null);
-
-  const reasons = useMemo(
-    () => [...new Set(records.map((record) => record.reason.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
-    [records],
-  );
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -82,43 +80,41 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
       const created = new Date(record.createdAt);
       return (
         (!normalized || [record.returnNumber, record.orderNumber, record.customerName, record.reason, ...record.items.map((item) => item.productName)].some((value) => value.toLowerCase().includes(normalized))) &&
-        (status === "all" || record.status === status) &&
-        (reason === "all" || record.reason === reason) &&
         (!from || created >= from) &&
         (!to || created <= to)
       );
     });
-  }, [records, query, status, reason, fromDate, toDate]);
+  }, [records, query, fromDate, toDate]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pageRecords = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   const selected = records.find((record) => record.id === selectedId) ?? null;
 
-  const totalRefunded = records.reduce((sum, record) => sum + record.refundAmount, 0);
-  const pendingCount = records.filter((record) => record.status === "pending").length;
-  const exchangeCount = records.filter((record) => record.returnType === "exchange").length;
-  const returnedOrderCount = new Set(records.map((record) => record.orderId)).size;
+  const totalRefunded = activeRecords.reduce((sum, record) => sum + record.refundAmount, 0);
+  const pendingCount = activeRecords.filter((record) => record.status === "pending").length;
+  const exchangeCount = activeRecords.filter((record) => record.returnType === "exchange").length;
+  const returnedOrderCount = new Set(activeRecords.map((record) => record.orderId)).size;
   const returnRate = completedOrderCount > 0 ? (returnedOrderCount / completedOrderCount) * 100 : 0;
 
   const reasonData = useMemo(() => {
     const counts = new Map<string, number>();
-    records.forEach((record) => counts.set(record.reason, (counts.get(record.reason) ?? 0) + 1));
+    activeRecords.forEach((record) => counts.set(record.reason, (counts.get(record.reason) ?? 0) + 1));
     const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
     const top = ranked.slice(0, 5).map(([name, value]) => ({ name, value }));
     const rest = ranked.slice(5).reduce((sum, [, value]) => sum + value, 0);
     if (rest) top.push({ name: "Other", value: rest });
     return top;
-  }, [records]);
+  }, [activeRecords]);
 
   const productData = useMemo(() => {
     const counts = new Map<string, number>();
-    records.forEach((record) => record.items.forEach((item) => counts.set(item.productName, (counts.get(item.productName) ?? 0) + item.quantity)));
+    activeRecords.forEach((record) => record.items.forEach((item) => counts.set(item.productName, (counts.get(item.productName) ?? 0) + item.quantity)));
     return [...counts.entries()]
       .map(([name, quantity]) => ({ name, quantity }))
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, 5);
-  }, [records]);
+  }, [activeRecords]);
 
   function resetPage() {
     setPage(1);
@@ -131,11 +127,6 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Returns</h1>
           <p className="mt-1 text-sm text-slate-500">Track customer returns, exchanges, refund activity, and return trends.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/dashboard/orders" style={{ backgroundColor: accentColor }} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90">
-            <RotateCcw size={16} /> Create Return
-          </Link>
-        </div>
       </div>
 
       {message && (
@@ -145,7 +136,7 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard icon={<PackageOpen size={20} />} label="Total Returns" value={String(records.length)} helper="All recorded returns" />
+        <MetricCard icon={<PackageOpen size={20} />} label="Total Returns" value={String(activeRecords.length)} helper="Recorded returns, excluding cancelled" />
         <MetricCard icon={<DollarSign size={20} />} label="Total Refunded" value={formatCurrency(totalRefunded)} helper="Recorded refund value" />
         <MetricCard icon={<Clock3 size={20} />} label="Pending Review" value={String(pendingCount)} helper="Awaiting review" />
         <MetricCard icon={<ArrowRightLeft size={20} />} label="Exchanges" value={String(exchangeCount)} helper="Exchange-type returns" />
@@ -154,17 +145,11 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
 
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0 space-y-4">
-          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_170px_190px_160px_160px]">
+          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[minmax(220px,1fr)_160px_160px]">
             <label className="relative">
               <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder="Search returns, customers, orders…" className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-blue-400" />
             </label>
-            <select value={status} onChange={(event) => { setStatus(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none">
-              <option value="all">All statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="refunded">Refunded</option><option value="exchanged">Exchanged</option><option value="rejected">Rejected</option>
-            </select>
-            <select value={reason} onChange={(event) => { setReason(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none">
-              <option value="all">All reasons</option>{reasons.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
             <input type="date" value={fromDate} onChange={(event) => { setFromDate(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
             <input type="date" value={toDate} onChange={(event) => { setToDate(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
           </div>
@@ -211,14 +196,38 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
         </section>
 
         <aside className="h-fit rounded-2xl border border-slate-200 bg-white shadow-sm 2xl:sticky 2xl:top-4">
-          {!selected ? <div className="p-10 text-center text-sm text-slate-400">Select a return to view details.</div> : <ReturnDetail record={selected} accentColor={accentColor} />}
+          {!selected ? <div className="p-10 text-center text-sm text-slate-400">Select a return to view details.</div> : <ReturnDetail key={selected.id} record={selected} accentColor={accentColor} canCancel={canCancel} />}
         </aside>
       </div>
     </main>
   );
 }
 
-function ReturnDetail({ record, accentColor }: { record: ReturnWorkspaceRecord; accentColor: string }) {
+function ReturnDetail({ record, accentColor, canCancel }: { record: ReturnWorkspaceRecord; accentColor: string; canCancel: boolean }) {
+  const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<{ success: boolean; message: string } | null>(null);
+
+  async function submitCancel() {
+    if (busy) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await cancelReturn(record.id, reason);
+      setNotice(result);
+      if (result.success) {
+        setConfirming(false);
+        router.refresh();
+      }
+    } catch {
+      setNotice({ success: false, message: "The cancellation result could not be confirmed. Refresh before trying again." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <div>
     <div className="border-b border-slate-200 p-5"><div className="flex items-center justify-between gap-3"><h2 className="font-bold text-slate-900">Return #{record.returnNumber}</h2><StatusBadge status={record.status} /></div><p className="mt-1 text-xs text-slate-500">{formatDateTime(record.createdAt)}{record.source === "import" ? " · Imported history" : ""}</p></div>
     <div className="space-y-5 p-5">
@@ -226,14 +235,21 @@ function ReturnDetail({ record, accentColor }: { record: ReturnWorkspaceRecord; 
       <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Customer information</p><p className="mt-2 font-bold text-slate-900">{record.customerName}</p>{record.customerEmail && <p className="text-sm text-slate-500">{record.customerEmail}</p>}{record.customerPhone && <p className="text-sm text-slate-500">{record.customerPhone}</p>}</div>
       <dl className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-2 text-sm"><dt className="text-slate-400">Order Number</dt><dd className="font-semibold text-blue-600">{record.orderNumber}</dd><dt className="text-slate-400">Return Reason</dt><dd className="text-slate-700">{record.reason}</dd><dt className="text-slate-400">Return Type</dt><dd className="capitalize text-slate-700">{record.returnType}</dd><dt className="text-slate-400">Refund Method</dt><dd className="text-slate-700">{formatLabel(record.refundMethod ?? record.paymentMethod ?? "—")}</dd><dt className="text-slate-400">Restock Status</dt><dd className="text-slate-700">{formatLabel(record.restockStatus ?? "Completed")}</dd></dl>
       <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Timeline</p><div className="mt-3 space-y-3"><TimelineDot color={accentColor} title="Return created" subtitle={formatDateTime(record.createdAt)} /><TimelineDot color={record.status === "rejected" ? "#ef4444" : accentColor} title={formatLabel(record.status)} subtitle={record.status === "pending" ? "Awaiting review" : "Current return status"} /></div></div>
-      <Link href={`/dashboard/returns/${record.id}`} style={{ backgroundColor: accentColor }} className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white hover:opacity-90"><CheckCircle2 size={16} /> Open Full Return</Link>
+      {record.status === "cancelled" && <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600"><p className="font-semibold text-slate-800">Cancelled{record.cancelledAt ? ` · ${formatDateTime(record.cancelledAt)}` : ""}</p>{record.cancelReason && <p className="mt-1">{record.cancelReason}</p>}</div>}
+      {notice && <p role={notice.success ? "status" : "alert"} className={`rounded-xl px-3 py-2 text-sm ${notice.success ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{notice.message}</p>}
+      {canCancel && record.status !== "cancelled" && (confirming ? <div className="space-y-3 rounded-xl border border-red-200 bg-red-50/60 p-3">
+        <p className="text-sm font-semibold text-red-800">Cancel return {record.returnNumber}?</p>
+        <p className="text-xs leading-5 text-red-700">{record.source === "import" ? "This imported record is marked as cancelled. Stock and cash are not affected." : "The returned items are taken back out of stock, the order total is restored, and any cash refund is added back to the open register."}</p>
+        <label className="block text-xs font-semibold text-slate-700">Reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} maxLength={500} placeholder="Why is this return being cancelled?" className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-red-400" /></label>
+        <div className="flex gap-2"><button type="button" disabled={busy} onClick={() => { setConfirming(false); setNotice(null); }} className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700">Keep return</button><button type="button" disabled={busy || reason.trim().length < 3} onClick={submitCancel} className="flex-1 rounded-xl bg-red-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">{busy ? "Cancelling…" : "Confirm cancel"}</button></div>
+      </div> : <button type="button" onClick={() => { setConfirming(true); setNotice(null); }} className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-50"><XCircle size={16} /> Cancel Return</button>)}
     </div>
   </div>;
 }
 
 function TimelineDot({ color, title, subtitle }: { color: string; title: string; subtitle: string }) { return <div className="flex gap-3"><span className="mt-1 h-3 w-3 rounded-full border-2 border-white shadow ring-1 ring-slate-200" style={{ backgroundColor: color }} /><div><p className="text-sm font-semibold text-slate-800">{title}</p><p className="text-xs text-slate-400">{subtitle}</p></div></div>; }
 function MetricCard({ icon, label, value, helper }: { icon: React.ReactNode; label: string; value: string; helper: string }) { return <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center gap-3"><div className="rounded-xl bg-blue-50 p-2 text-blue-600">{icon}</div><div><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-0.5 text-2xl font-bold text-slate-950">{value}</p></div></div><p className="mt-2 text-xs text-slate-400">{helper}</p></div>; }
-function StatusBadge({ status }: { status: ReturnWorkspaceRecord["status"] }) { const classes = status === "pending" ? "bg-amber-50 text-amber-700" : status === "rejected" ? "bg-red-50 text-red-700" : status === "exchanged" ? "bg-violet-50 text-violet-700" : status === "approved" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"; return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${classes}`}>{status}</span>; }
+function StatusBadge({ status }: { status: ReturnWorkspaceRecord["status"] }) { const classes = status === "cancelled" ? "bg-slate-100 text-slate-600" : status === "pending" ? "bg-amber-50 text-amber-700" : status === "rejected" ? "bg-red-50 text-red-700" : status === "exchanged" ? "bg-violet-50 text-violet-700" : status === "approved" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"; return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${classes}`}>{status}</span>; }
 
 function formatCurrency(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value); }
 function formatDate(value: string) { return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value)); }

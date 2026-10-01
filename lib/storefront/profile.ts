@@ -2,6 +2,7 @@ export const weekDays = ["monday", "tuesday", "wednesday", "thursday", "friday",
 export type WeekDay = (typeof weekDays)[number];
 export type OpeningDay = { closed: boolean; open: string; close: string };
 export type StoreProfile = {
+  defaultLanguage?: "en" | "km";
   contactEmail?: string;
   locationUrl?: string;
   socialNames?: Record<string, string>;
@@ -26,6 +27,10 @@ export function defaultOpeningHours(): NonNullable<StoreProfile["openingHours"]>
 
 export function parseStoreProfile(form: FormData): StoreProfile {
   const text = (name: string) => String(form.get(name) ?? "").trim();
+  const defaultLanguage = text("defaultLanguage");
+  if (form.has("defaultLanguage") && defaultLanguage !== "en" && defaultLanguage !== "km") {
+    throw new Error("Choose English or Khmer for the default storefront language.");
+  }
   const contactEmail = text("contactEmail");
   const locationUrl = text("locationUrl");
   if (locationUrl) {
@@ -59,7 +64,10 @@ export function parseStoreProfile(form: FormData): StoreProfile {
     if (value.length > 80) throw new Error("Social account names must be 80 characters or fewer.");
     socialNames[key] = value;
   }
-  return { contactEmail, locationUrl, socialNames, seoTitle, seoDescription, openingHours: hours,
+  return {
+    // Older clients omit this field; keep their existing saved preference.
+    ...(form.has("defaultLanguage") ? { defaultLanguage: defaultLanguage as "en" | "km" } : {}),
+    contactEmail, locationUrl, socialNames, seoTitle, seoDescription, openingHours: hours,
     newArrivals: { enabled: form.get("newArrivalsEnabled") === "on", days } };
 }
 

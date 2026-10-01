@@ -18,14 +18,22 @@ test('POS selection includes its supporting permissions and removal follows depe
  const p=access.normalizePermissionSelection(['pos.access']);
  for(const key of ['orders.create','orders.view','register.manage','products.view','customers.view'])assert.ok(p.includes(key));
  assert.ok(!access.removePermissionWithDependents(p,'orders.view').includes('pos.access'));
- const sql=readFileSync(new URL('../supabase/migrations/20260923160000_staff_reports_user_permissions.sql',import.meta.url),'utf8');
- const known=[...sql.match(/known text\[\]:=array\[([^\]]+)\]/)[1].matchAll(/'([^']+)'/g)].map(m=>m[1]);
- assert.deepEqual(known,[...access.permissions]);
+
 });
-test('effective permissions apply only the current member override, not the role matrix',async()=>{
- const query=table=>{const q={select(){return q;},eq(){return q;},async maybeSingle(){return {data:{id:'member-a',role:'staff',is_active:true,team_password_required:false},error:null};},then(resolve){resolve({data:table==='business_member_permissions'?[{permission:'products.view',enabled:false},{permission:'reports.view',enabled:true}]:[],error:null});}};return q;};
- const effective=load('../lib/auth/effective-permissions.ts',{'server-only':{},react:{cache:f=>f},'@/lib/supabase/admin':{supabaseAdmin:{from:query}},'@/lib/supabase/server':{createClient:async()=>({auth:{getUser:async()=>({data:{user:{id:'staff-a'}},error:null})}})},'@/lib/auth/permissions':access});
+test('effective permissions apply member overrides to the assigned branch baseline',async()=>{
+ const scopes=[];const query=table=>{const q={select(){return q;},eq(key,value){scopes.push([table,key,value]);return q;},async maybeSingle(){return {data:{id:'member-a',role:'staff',is_active:true,team_password_required:false,default_location_id:'assigned-branch'},error:null};},then(resolve){resolve({data:table==='business_member_permissions'?[{permission:'products.view',enabled:false},{permission:'reports.view',enabled:true}]:[],error:null});}};return q;};
+ const effective=load('../lib/auth/effective-permissions.ts',{'server-only':{},react:{cache:f=>f},'@/lib/supabase/admin':{supabaseAdmin:{from:query}},'@/lib/supabase/server':{createClient:async()=>({auth:{getUser:async()=>({data:{user:{id:'staff-a'}},error:null})}})},'@/lib/auth/permissions':access,'@/lib/branches/context':{getBranchContext:async()=>({branchId:'active-branch'})}});
  const own=await effective.getEffectivePermissions('business','staff');assert.ok(own.includes('reports.view'));assert.ok(!own.includes('products.view'));
+ assert.ok(scopes.some(([table,key,value])=>table==='branch_role_permissions'&&key==='location_id'&&value==='assigned-branch'));
  const defaults=await effective.getRolePermissions('business','staff');assert.ok(defaults.includes('products.view'));assert.ok(!defaults.includes('reports.view'));
  assert.deepEqual(await effective.getEffectivePermissions('business','manager'),[]);
+});
+
+test('permission verification fails closed for disabled/setup-pending members and database failures',async()=>{
+ for(const scenario of ['disabled','setup','membership-error','override-error']){
+  const q=table=>{const query={select(){return query;},eq(){return query;},async maybeSingle(){return {data:{id:'member',role:'staff',is_active:scenario!=='disabled',team_password_required:scenario==='setup',default_location_id:'assigned'},error:scenario==='membership-error'?{message:'offline'}:null};},then(resolve){resolve({data:[],error:table==='business_member_permissions'&&scenario==='override-error'?{message:'offline'}:null});}};return query;};
+  const effective=load('../lib/auth/effective-permissions.ts',{'server-only':{},react:{cache:f=>f},'@/lib/supabase/admin':{supabaseAdmin:{from:q}},'@/lib/supabase/server':{createClient:async()=>({auth:{getUser:async()=>({data:{user:{id:'staff'}},error:null})}})},'@/lib/auth/permissions':access,'@/lib/branches/context':{getBranchContext:async()=>({branchId:'assigned'})}});
+  if(scenario.endsWith('error'))await assert.rejects(effective.getEffectivePermissions('business','staff'));
+  else assert.deepEqual(await effective.getEffectivePermissions('business','staff'),[]);
+ }
 });

@@ -1,7 +1,7 @@
 import { currencyQuoteIssue, settlementCurrencyIssue } from './pos-currency';
 import type { CartDraft, CartLine, CatalogFilters, CheckoutInput, DiscountType, HeldOrder, Product, ProductGroup, ShippingDetails, Tender, Workspace } from './pos-workspace-types';
 
-export const EMPTY_FILTERS: CatalogFilters = { search: '', category: 'all', brand: 'all', stock: 'all', price: 'all', color: 'all', size: 'all', favoritesOnly: false, sort: 'popular' };
+export const EMPTY_FILTERS: CatalogFilters = { search: '', category: 'all', brand: 'all', stock: 'all', price: 'all', color: 'all', size: 'all', favoritesOnly: false, sort: 'newest' };
 export const MAX_LINES = 100;
 export function cents(value: number): number { return Math.round((value + Number.EPSILON) * 100); }
 export function money(value: number, currency: string): string {

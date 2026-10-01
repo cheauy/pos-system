@@ -1,5 +1,6 @@
 "use server";
 
+import { assertOperatingBranch } from "@/lib/branches/context";
 import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit/create-audit-log";
@@ -10,6 +11,7 @@ export async function updateCustomerFieldSettings(
   formData: FormData,
 ) {
   const business = await requirePermission("business.update");
+  if(formData.has("branchId"))await assertOperatingBranch(String(formData.get("branchId")));
   const supabase = await createClient();
 
   const emailEnabled = formData.get("emailEnabled") === "on";
@@ -22,6 +24,7 @@ export async function updateCustomerFieldSettings(
         business_id: business.id,
         email_enabled: emailEnabled,
         birthday_enabled: birthdayEnabled,
+        ...(formData.has("genderSettingPresent")?{gender_enabled:formData.get("genderEnabled")==="on"}:{}),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "business_id,location_id" },
@@ -39,9 +42,12 @@ export async function updateCustomerFieldSettings(
     metadata: {
       emailEnabled,
       birthdayEnabled,
+      ...(formData.has("genderSettingPresent") ? { genderEnabled: formData.get("genderEnabled") === "on" } : {}),
     },
   });
 
   revalidatePath("/dashboard/customers");
   revalidatePath("/dashboard/settings/customers");
+  revalidatePath("/dashboard/settings/system");
+  revalidatePath("/dashboard/pos");
 }

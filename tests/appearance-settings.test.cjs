@@ -18,7 +18,7 @@ function hooks() {
   let cursor = 0;
   const state = [], effects = [];
   return {
-    react: { ...React, useState(initial) { const i = cursor++; if (!(i in state)) state[i] = typeof initial === 'function' ? initial() : initial; return [state[i], next => { state[i] = typeof next === 'function' ? next(state[i]) : next; }]; }, useCallback: fn => fn, useMemo: fn => fn(), useEffect: fn => effects.push(fn) },
+    react: { ...React, useState(initial) { const i = cursor++; if (!(i in state)) state[i] = typeof initial === 'function' ? initial() : initial; return [state[i], next => { state[i] = typeof next === 'function' ? next(state[i]) : next; }]; }, useRef(initial) { const i = cursor++; if (!(i in state)) state[i] = { current: initial }; return state[i]; }, useCallback: fn => fn, useMemo: fn => fn(), useEffect: fn => effects.push(fn) },
     render(component, props = {}) { cursor = 0; effects.length = 0; return component(props); },
     mountEffects() { return effects.map(fn => fn()).filter(Boolean); },
   };
@@ -43,6 +43,8 @@ test('all appearance choices and Reset are drafts; only Save changes providers; 
     const runtime = hooks();
     const Form = load('app/(dashboard)/dashboard/settings/system/appearance-form.tsx', {
       react: runtime.react, '@/lib/appearance': model,
+      './customer-fields': load('app/(dashboard)/dashboard/settings/system/customer-fields.tsx'),
+      '../customers/actions': { updateCustomerFieldSettings: async () => {} },
       '@/components/providers/theme-provider': { useTheme: () => ({ ...saved, saveAppearance(value) { saves++; saved = { ...model.normalizeAppearance(value), ready: true }; } }) },
       '@/components/providers/language-provider': { useLanguage: () => ({ language, setLanguage(value) { languageSaves++; language = value; } }) },
       sonner: { toast: { success: () => successes++, error: () => errors++ } },
@@ -117,4 +119,54 @@ test('invalid saved inputs fall back safely; light custom colors get readable ac
     const pair = [luminance(color), luminance(palette.foreground)].sort((a, b) => b - a);
     assert.ok((pair[0] + 0.05) / (pair[1] + 0.05) >= 4.5);
   }
+});
+
+
+test('customer fields stay drafts until the shared save, cancel restores them and errors preserve drafts', async () => {
+  const runtime = hooks();
+  let calls = [], fail = false;
+  const errors = [];
+  const Form = load('app/(dashboard)/dashboard/settings/system/appearance-form.tsx', {
+    react: runtime.react, '@/lib/appearance': model,
+    './customer-fields': load('app/(dashboard)/dashboard/settings/system/customer-fields.tsx'),
+    '../customers/actions': { updateCustomerFieldSettings: async data => { if(fail) throw new Error('Save failed'); calls.push(Object.fromEntries(data)); } },
+    '@/components/providers/theme-provider': { useTheme: () => ({ ...model.defaultAppearance, ready:true, saveAppearance() { throw new Error('Unchanged appearance must not save'); } }) },
+    '@/components/providers/language-provider': { useLanguage: () => ({ language:'en', setLanguage() {} }) },
+    sonner: { toast: { success() {}, error(message) { errors.push(message); } } },
+  }).default;
+  const render = () => elements(runtime.render(Form, { customerFields:{emailEnabled:true,birthdayEnabled:true,genderEnabled:false},branchId:'branch-a' }));
+  const button = name => render().find(n => n.type === 'button' && content(n) === name);
+  const gender = () => render().find(n => n.type === 'input' && n.props.name === 'genderEnabled');
+  assert.equal(render().filter(n => n.type === 'button' && content(n) === 'Save changes').length,1);
+  gender().props.onChange({target:{checked:true}});
+  assert.equal(calls.length,0);
+  button('Cancel').props.onClick();
+  assert.equal(gender().props.checked,false);
+  gender().props.onChange({target:{checked:true}});
+  fail=true; await button('Save changes').props.onClick();
+  assert.equal(gender().props.checked,true); assert.equal(calls.length,0); assert.equal(errors[0],'Save failed');
+  fail=false;
+  const save=button('Save changes').props.onClick;
+  await Promise.all([save(),save()]);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].genderEnabled,'on'); assert.equal(calls[0].branchId,'branch-a');
+  assert.equal(calls[0].genderSettingPresent,'1');
+  assert.equal(button('Save changes').props.disabled,true);
+});
+
+
+test('System & Display sections have distinct keys for the same branch', async () => {
+  const Page = load('app/(dashboard)/dashboard/settings/system/page.tsx', {
+    'next/link': {default: () => null},
+    '@/lib/business/get-current-business': {getCurrentBusiness:async()=>({id:'business-a',role:'owner'})},
+    '@/lib/branches/context': {getBranchContext:async()=>({branchId:'same-branch',branches:[]})},
+    '@/lib/supabase/branch-server': {createClient:async()=>({from(){return this},select(){return this},eq(){return this},maybeSingle:async()=>({data:{require_open_register:true}})})},
+    '../register-setting': {default:()=>null},
+    '@/lib/auth/effective-permissions': {businessHasPermission:()=>true},
+    '@/lib/customers/get-customer-field-settings': {getCustomerFieldSettings:async()=>({emailEnabled:true,birthdayEnabled:true,genderEnabled:false})},
+    './appearance-form': {default:()=>null},
+  }).default;
+  const page=await Page();
+  const keys=page.props.children.filter(Boolean).map(child=>child.key).filter(key=>key!==null);
+  assert.equal(keys.length,2); assert.equal(new Set(keys).size,keys.length);
 });

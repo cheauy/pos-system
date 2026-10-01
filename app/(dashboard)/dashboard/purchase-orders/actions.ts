@@ -5,6 +5,18 @@ import { redirect } from "next/navigation";
 
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/branch-server";
+import { readAllRows } from "@/lib/supabase/read-all-rows";
+
+export async function getPurchaseOrderChoices() {
+  const business = await requirePermission("purchases.create");
+  const supabase = await createClient();
+  const [suppliers, products] = await Promise.all([
+    supabase.from("suppliers").select("id,name,contact_person,phone,email,address,notes,is_active").eq("business_id", business.id).eq("is_active", true).order("name"),
+    readAllRows<{id:string;name:string;sku:string|null;barcode:string|null;cost_price:number|string|null;size:string|null;color:string|null;image_url:string|null;variant_image_url:string|null}>((from,to) => supabase.from("branch_products").select("id,name,sku,barcode,cost_price,size,color,image_url,variant_image_url").eq("business_id", business.id).eq("is_active", true).order("name").order("id").range(from,to)),
+  ]);
+  if (suppliers.error || products.error) throw new Error("Unable to load products or suppliers. Please try again.");
+  return {suppliers:suppliers.data ?? [],products:products.data ?? []};
+}
 
 function text(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -14,7 +26,7 @@ function text(formData: FormData, key: string) {
     : null;
 }
 
-export async function createPurchaseOrder(formData: FormData) {
+export async function createPurchaseOrder(formData: FormData, redirectAfterSave = true) {
   const business = await requirePermission("purchases.create");
   const supabase = await createClient();
 
@@ -53,24 +65,17 @@ export async function createPurchaseOrder(formData: FormData) {
     throw new Error("Each product can only appear once on a purchase order.");
   }
 
-  const { data: products, error: productError } = await supabase
-    .from("branch_products")
-    .select("id,name,sku")
-    .eq("business_id", business.id)
-    .in("id", ids);
-
-  if (productError) {
-    throw new Error(productError.message);
-  }
-
-  const productMap = new Map((products ?? []).map((product) => [product.id, product]));
-
-  const { data: supplier, error: supplierError } = await supabase
-    .from("suppliers")
-    .select("id,name,is_active")
-    .eq("business_id", business.id)
-    .eq("id", supplierId)
-    .maybeSingle();
+  const [productResult, supplierResult, authResult] = await Promise.all([
+    supabase.from("branch_products").select("id,name,sku").eq("business_id", business.id).in("id", ids),
+    supabase.from("suppliers").select("id,name,is_active").eq("business_id", business.id).eq("id", supplierId).maybeSingle(),
+    supabase.auth.getUser(),
+  ]);
+  const { data: products, error: productError } = productResult;
+  const { data: supplier, error: supplierError } = supplierResult;
+  const { data: { user } } = authResult;
+  if (productError) throw new Error(productError.message);
+  if (!user) throw new Error("Sign in again before creating a purchase order.");
+  const productMap = new Map((products ?? []).map(product => [product.id, product]));
 
   if (supplierError) {
     throw new Error(supplierError.message);
@@ -114,10 +119,6 @@ export async function createPurchaseOrder(formData: FormData) {
     .toString(36)
     .slice(2, 7)
     .toUpperCase()}`;
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   const { data: purchaseOrder, error } = await supabase
     .from("purchase_orders")
@@ -168,7 +169,8 @@ export async function createPurchaseOrder(formData: FormData) {
   }
 
   revalidatePath("/dashboard/purchase-orders");
-  redirect(`/dashboard/purchase-orders/${purchaseOrder.id}`);
+  if (redirectAfterSave) redirect("/dashboard/purchase-orders");
+  return purchaseOrder.id as string;
 }
 
 export async function setPurchaseOrderStatus(formData: FormData) {
@@ -182,7 +184,7 @@ export async function setPurchaseOrderStatus(formData: FormData) {
   const business = await requirePermission(status === "cancelled" ? "purchases.cancel" : "purchases.update");
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data: changed, error } = await supabase
     .from("purchase_orders")
     .update({
       status,
@@ -190,11 +192,15 @@ export async function setPurchaseOrderStatus(formData: FormData) {
     })
     .eq("id", id)
     .eq("business_id", business.id)
-    .in("status", ["draft", "sent"]);
+    .in("status", status === "sent" ? ["draft"] : ["draft", "sent"])
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     throw new Error(error.message);
   }
+
+  if (!changed) throw new Error("This purchase order changed. Refresh it before trying again.");
 
   revalidatePath(`/dashboard/purchase-orders/${id}`);
   revalidatePath("/dashboard/purchase-orders");

@@ -3,7 +3,7 @@ import { Store, Truck, Utensils } from "lucide-react";
 import type { StorefrontSettings } from "@/lib/storefront/types";
 import { supportsDineIn } from "@/lib/storefront/profile";
 
-export default function FulfillmentFields({ settings, canEdit }: { settings: StorefrontSettings; canEdit: boolean }) {
+export default function FulfillmentFields({ settings, canEdit, showOrderRules = true }: { settings: StorefrontSettings; canEdit: boolean; showOrderRules?: boolean }) {
   return <section id="ordering-fulfillment" className="scroll-mt-5 space-y-3">
     <div><h2 className="text-2xl font-bold text-slate-950">Ordering &amp; Fulfillment</h2><p className="mt-1 text-sm text-slate-500">Choose how customers receive orders and manage fulfillment rules.</p></div>
       <section id="fulfillment-methods" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -39,7 +39,7 @@ export default function FulfillmentFields({ settings, canEdit }: { settings: Sto
         </div>
       </section>
 
-      <div className="grid gap-3">
+      {showOrderRules && <div className="grid gap-3">
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="grid gap-4">
             <div>
@@ -104,7 +104,7 @@ export default function FulfillmentFields({ settings, canEdit }: { settings: Sto
           </div>
         </section>
 
-      </div>
+      </div>}
 
   </section>;
 }

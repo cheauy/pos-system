@@ -2,14 +2,12 @@ import Link from "next/link";
 import {
   BadgePercent,
   CalendarDays,
-  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
   Clock3,
   Filter,
-  Gift,
   Globe2,
   Lightbulb,
   MoreHorizontal,
@@ -22,18 +20,18 @@ import {
   TicketPercent,
   Trash2,
   UsersRound,
+  X,
 } from "lucide-react";
 
 import { requirePermission } from "@/lib/auth/require-permission";
 import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { createClient } from "@/lib/supabase/branch-server";
-import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
+import { getBranchCurrency } from "@/lib/settings/branch-currency";
 import { getBranchContext } from '@/lib/branches/context';
 import CampaignForm from './campaign-form';
 import {
   deleteCoupon,
   setCouponActive,
-  updateLoyaltySettings,
   updateCampaignChannels,
 } from "./actions";
 
@@ -77,7 +75,6 @@ const PAGE_SIZE = 10;
 const tabs = [
   { key: "all", label: "All Campaigns" },
   { key: "coupons", label: "Coupon Campaigns" },
-  { key: "loyalty", label: "Loyalty Program" },
   { key: "automations", label: "Automations" },
   { key: "reports", label: "Reports" },
 ] as const;
@@ -89,15 +86,11 @@ export default async function PromotionsPage({
   const business = await requirePermission("storefront.view");
   const scopedDb=await createClient();
   const context=await getBranchContext();
-  const [posSettings,productChoices]=await Promise.all([
-    scopedDb.from('branch_pos_settings').select('enable_coupons,loyalty_enabled').eq('business_id',business.id).eq('location_id',context.branchId).maybeSingle(),
-    scopedDb.from('product_location_stock').select('product_id,products(name,size,color)').eq('business_id',business.id).eq('location_id',context.branchId),
-  ]);
-  if(posSettings.error||productChoices.error)throw new Error('Unable to load branch promotion settings.');
-  const products=(productChoices.data??[]).map(row=>{const p=Array.isArray(row.products)?row.products[0]:row.products;return {id:row.product_id,name:[p?.name,p?.size,p?.color].filter(Boolean).join(' / ')};});
+  const productChoices=await scopedDb.from('product_location_stock').select('product_id,products(name,size,color,sku,image_url,variant_image_url)').eq('business_id',business.id).eq('location_id',context.branchId);
+  if(productChoices.error)throw new Error('Unable to load branch promotion settings.');
+  const products=(productChoices.data??[]).map(row=>{const p=Array.isArray(row.products)?row.products[0]:row.products;return {id:row.product_id,name:p?.name||'Unnamed product',variant:[p?.size,p?.color].filter(Boolean).join(' / '),sku:p?.sku||null,image:p?.variant_image_url||p?.image_url||null};}).sort((a,b)=>a.name.localeCompare(b.name)||a.variant.localeCompare(b.variant,undefined,{numeric:true}));
 
-  const [settings, couponResult, orderResult] = await Promise.all([
-    getStorefrontSettings(business.id),
+  const [couponResult, orderResult, branchCurrency] = await Promise.all([
     scopedDb
       .from("business_coupons")
       .select(`
@@ -126,6 +119,7 @@ export default async function PromotionsPage({
       .eq("status", "completed")
       .order("created_at", { ascending: false })
       .limit(10000),
+    getBranchCurrency(business.id, context.branchId),
   ]);
 
   if (couponResult.error) {
@@ -182,7 +176,7 @@ export default async function PromotionsPage({
       !query ||
       coupon.code.toLowerCase().includes(query) ||
       (coupon.name ?? "").toLowerCase().includes(query) ||
-      formatCouponValue(coupon, settings.currency).toLowerCase().includes(query);
+      formatCouponValue(coupon, branchCurrency.currency).toLowerCase().includes(query);
 
     const couponStatus = getCouponStatus(coupon, now);
     const matchesStatus = status === "all" || couponStatus === status;
@@ -231,28 +225,17 @@ export default async function PromotionsPage({
 
         <div className="flex flex-wrap gap-2">
           <a
-            href="#promotion-tips"
+            href="#how-it-works"
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
           >
             <PlayCircle size={17} className="text-blue-600" />
             How it works?
           </a>
           {canEdit ? (
-            <details className="group relative">
-              <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800">
-                <Plus size={17} />
-                Create New
-                <ChevronDown size={15} className="ml-1 transition group-open:rotate-180" />
-              </summary>
-              <div className="absolute right-0 z-30 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-                <a href="#create-coupon" className={menuItemClass}>
-                  <TicketPercent size={16} /> Coupon campaign
-                </a>
-                <a href="#loyalty-settings" className={menuItemClass}>
-                  <Gift size={16} /> Loyalty settings
-                </a>
-              </div>
-            </details>
+            <a href="#create-promotion" className="flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800">
+              <Plus size={17} />
+              Create Promotion
+            </a>
           ) : null}
         </div>
       </header>
@@ -283,12 +266,12 @@ export default async function PromotionsPage({
           icon={<CircleDollarSign size={23} />}
           iconClass="bg-emerald-50 text-emerald-600"
           label="Total Discount Given"
-          value={formatMoney(totalDiscountGiven, settings.currency)}
+          value={formatMoney(totalDiscountGiven, branchCurrency.currency)}
           hint="Completed orders"
         />
       </section>
 
-      <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_330px]">
+      <section className="grid gap-4">
         <div className="min-w-0 space-y-4">
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200">
@@ -428,23 +411,29 @@ export default async function PromotionsPage({
                                       {coupon.name || coupon.code}
                                     </p>
                                     <p className="mt-0.5 max-w-[240px] truncate text-xs text-slate-500">
-                                      Code · {coupon.is_automatic?'Automatic discount':coupon.code}
+                                      {coupon.is_automatic ? `No code needed · ${coupon.product_ids?.length ? `${coupon.product_ids.length} product${coupon.product_ids.length === 1 ? "" : "s"}` : "All products"}` : `Code · ${coupon.code}`}
                                     </p>
                                   </div>
                                 </div>
                               </td>
                               <td className="px-3 py-3">
-                                <span className="inline-flex rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                                  Coupon
-                                </span>
+                                {coupon.is_automatic ? (
+                                  <span className="inline-flex rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                                    Automatic
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                                    Coupon
+                                  </span>
+                                )}
                               </td>
                               <td className="px-3 py-3">
                                 <p className="font-semibold text-slate-900">
-                                  {formatCouponValue(coupon, settings.currency)}
+                                  {formatCouponValue(coupon, branchCurrency.currency)}
                                 </p>
                                 <p className="mt-0.5 text-xs text-slate-500">
                                   {Number(coupon.minimum_order) > 0
-                                    ? `Min. order ${formatMoney(Number(coupon.minimum_order), settings.currency)}`
+                                    ? `Min. order ${formatMoney(Number(coupon.minimum_order), branchCurrency.currency)}`
                                     : "No minimum order"}
                                 </p>
                               </td>
@@ -487,29 +476,45 @@ export default async function PromotionsPage({
                               </td>
                               <td className="px-4 py-3 text-center">
                                 {canEdit ? (
-                                  <details className="relative inline-block text-left">
-                                    <summary className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800">
+                                  <>
+                                    <a href={`#campaign-${coupon.id}`} aria-label={`Actions for ${coupon.name || coupon.code}`} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800">
                                       <MoreHorizontal size={17} />
-                                    </summary>
-<form action={updateCampaignChannels} className="space-y-2 border-b p-2 text-xs"><input type="hidden" name="couponId" value={coupon.id}/><label><input type="checkbox" name="applyPos" defaultChecked={coupon.apply_pos}/> POS</label><label><input type="checkbox" name="applyOnline" defaultChecked={coupon.apply_online}/> Online</label><button type="submit" className="block text-blue-600">Save channels</button></form>
-                                    <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 text-left shadow-xl">
-                                      <form action={setCouponActive}>
-                                        <input type="hidden" name="couponId" value={coupon.id} />
-                                        <input type="hidden" name="active" value={String(!coupon.is_active)} />
-                                        <button type="submit" className={menuButtonClass}>
-                                          {coupon.is_active ? <PauseCircle size={15} /> : <PlayCircle size={15} />}
-                                          {coupon.is_active ? "Pause campaign" : "Enable campaign"}
-                                        </button>
-                                      </form>
-                                      <form action={deleteCoupon}>
-                                        <input type="hidden" name="couponId" value={coupon.id} />
-                                        <button type="submit" className={`${menuButtonClass} text-red-600 hover:bg-red-50`}>
-                                          <Trash2 size={15} />
-                                          {coupon.usage_count > 0 ? "Archive campaign" : "Delete campaign"}
-                                        </button>
-                                      </form>
-                                    </div>
-                                  </details>
+                                    </a>
+                                    <CenterPopup id={`campaign-${coupon.id}`} title={coupon.name || "Campaign actions"} subtitle={coupon.is_automatic ? "Automatic discount" : `Coupon · ${coupon.code}`} icon={<TicketPercent size={18} />} size="sm">
+                                      <div className="space-y-4 pt-4 text-left">
+                                        <form action={updateCampaignChannels} className="rounded-xl border border-slate-200 p-3">
+                                          <input type="hidden" name="couponId" value={coupon.id} />
+                                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Where it applies</p>
+                                          <div className="mt-2 grid grid-cols-2 gap-2">
+                                            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 has-[:checked]:text-blue-700">
+                                              <input type="checkbox" name="applyPos" defaultChecked={coupon.apply_pos} className="h-4 w-4 accent-blue-600" /> POS
+                                            </label>
+                                            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 has-[:checked]:text-blue-700">
+                                              <input type="checkbox" name="applyOnline" defaultChecked={coupon.apply_online} className="h-4 w-4 accent-blue-600" /> Online store
+                                            </label>
+                                          </div>
+                                          <button type="submit" className="mt-3 w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Save channels</button>
+                                        </form>
+                                        <div className="grid grid-cols-2 gap-2">
+                                          <form action={setCouponActive}>
+                                            <input type="hidden" name="couponId" value={coupon.id} />
+                                            <input type="hidden" name="active" value={String(!coupon.is_active)} />
+                                            <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                                              {coupon.is_active ? <PauseCircle size={16} /> : <PlayCircle size={16} />}
+                                              {coupon.is_active ? "Pause" : "Enable"}
+                                            </button>
+                                          </form>
+                                          <form action={deleteCoupon}>
+                                            <input type="hidden" name="couponId" value={coupon.id} />
+                                            <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100">
+                                              <Trash2 size={16} />
+                                              {coupon.usage_count > 0 ? "Archive" : "Delete"}
+                                            </button>
+                                          </form>
+                                        </div>
+                                      </div>
+                                    </CenterPopup>
+                                  </>
                                 ) : (
                                   <span className="text-xs text-slate-400">View</span>
                                 )}
@@ -554,12 +559,6 @@ export default async function PromotionsPage({
                   </div>
                 </div>
               </>
-            ) : tab === "loyalty" ? (
-              <TabPlaceholder
-                icon={<Gift size={24} />}
-                title="Loyalty program controls"
-                description="Use the Loyalty Program panel on the right to configure earning rules and minimum order settings."
-              />
             ) : tab === "automations" ? (
               <TabPlaceholder
                 icon={<Clock3 size={24} />}
@@ -575,131 +574,64 @@ export default async function PromotionsPage({
             )}
           </section>
 
-          <section
-            id="promotion-tips"
-            className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 shadow-sm"
-          >
-            <div className="flex items-center gap-2 text-blue-700">
-              <Lightbulb size={19} />
-              <h2 className="text-sm font-bold">Tips for better results</h2>
-            </div>
-            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-              <TipCard icon={<Tag size={16} />} title="Use clear and simple codes" text="Easy codes are easier to remember." />
-              <TipCard icon={<Clock3 size={16} />} title="Set a reasonable time period" text="Create urgency with limited-time offers." />
-              <TipCard icon={<UsersRound size={16} />} title="Target the right customers" text="Match the offer to the campaign goal." />
-              <TipCard icon={<Sparkles size={16} />} title="Track performance" text="Watch usage and discount totals." />
-            </div>
-          </section>
         </div>
 
-        <aside className="space-y-4">
-          <section id="loyalty-settings" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
-                  <Gift size={19} />
-                </div>
-                <div>
-                  <h2 className="font-bold text-slate-900">Coupon & loyalty settings</h2>
-                  <p className="mt-0.5 text-xs leading-5 text-slate-500">
-                    Turn repeat customers into loyal fans.
-                  </p>
-                </div>
-              </div>
-              <span className={`relative mt-1 h-5 w-9 rounded-full ${settings.loyalty_enabled ? "bg-blue-600" : "bg-slate-200"}`}>
-                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${settings.loyalty_enabled ? "left-[18px]" : "left-0.5"}`} />
-              </span>
-            </div>
-
-            <form action={updateLoyaltySettings} className="mt-4 space-y-2.5">
-              <input type="hidden" name="branchId" value={context.branchId??''}/>
-              <SwitchRow name="posCoupons" label="POS coupon codes" description="Allow codes at checkout in this branch." defaultChecked={posSettings.data?.enable_coupons===true} disabled={!canEdit} icon={<TicketPercent size={16}/>} iconClass="bg-blue-50 text-blue-600"/>
-              <SwitchRow name="posLoyalty" label="POS loyalty points" description="Earn and redeem points in this branch." defaultChecked={posSettings.data?.loyalty_enabled===true} disabled={!canEdit} icon={<Gift size={16}/>} iconClass="bg-violet-50 text-violet-600"/>
-              <SwitchRow
-                name="enableCoupons"
-                label="Online coupon codes"
-                description="Show coupon entry at online checkout."
-                defaultChecked={settings.enable_coupons}
-                disabled={!canEdit}
-                icon={<TicketPercent size={16} />}
-                iconClass="bg-blue-50 text-blue-600"
-              />
-              <SwitchRow
-                name="loyaltyEnabled"
-                label="Online loyalty points"
-                description="Earn points on completed purchases."
-                defaultChecked={settings.loyalty_enabled}
-                disabled={!canEdit}
-                icon={<Gift size={16} />}
-                iconClass="bg-violet-50 text-violet-600"
-              />
-
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <label className="text-xs font-semibold text-slate-600">
-                  Spend / point
-                  <input
-                    name="spendPerPoint"
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    defaultValue={Number(settings.loyalty_spend_per_point ?? 1)}
-                    disabled={!canEdit}
-                    className={compactInputClass}
-                  />
-                </label>
-                <label className="text-xs font-semibold text-slate-600">
-                  Minimum order
-                  <input
-                    name="loyaltyMinimumOrder"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    defaultValue={Number(settings.loyalty_minimum_order ?? 0)}
-                    disabled={!canEdit}
-                    className={compactInputClass}
-                  />
-                </label>
-              </div>
-
-              {canEdit ? (
-                <button
-                  type="submit"
-                  className="mt-2 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                >
-                  <Check size={16} />
-                  Save Loyalty Settings
-                </button>
-              ) : null}
-            </form>
-          </section>
-
-          {canEdit ? (
-            <section id="create-coupon" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
-                  <TicketPercent size={18} />
-                </div>
-                <div>
-                  <h2 className="font-bold text-slate-900">Create Promotion</h2>
-                  <p className="mt-0.5 text-xs text-slate-500">Automatic discounts or coupon codes.</p>
-                </div>
-              </div>
-
-              <CampaignForm branchId={context.branchId!} products={products}/>
-            </section>
-          ) : null}
-        </aside>
       </section>
+
+      <CenterPopup id="how-it-works" title="How Promotions & Loyalty work" icon={<Lightbulb size={18} />}>
+        <div className="space-y-4 text-sm leading-6 text-slate-600">
+          <div>
+            <h3 className="font-semibold text-slate-900">1. Create a promotion</h3>
+            <p>Click <strong>Create Promotion</strong>. Choose an <strong>automatic product discount</strong> (applied to the selected products with no code) or a <strong>coupon code</strong> (the customer or cashier enters the code). Set a percentage or fixed amount, the products, dates, and whether it applies at the POS, the online store, or both.</p>
+          </div>
+          <div>
+            <h3 className="font-semibold text-slate-900">2. How discounts combine</h3>
+            <p>Each product gets its best automatic discount. A coupon code is applied after product discounts, and respects its minimum order, maximum discount and usage limits.</p>
+          </div>
+          <div>
+            <h3 className="font-semibold text-slate-900">3. Track results</h3>
+            <p>The cards at the top show active promotions, loyal customers and total discount given. Each promotion in the list shows how many times it was used.</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <TipCard icon={<Tag size={16} />} title="Use clear and simple codes" text="Easy codes are easier to remember." />
+            <TipCard icon={<Clock3 size={16} />} title="Set a reasonable time period" text="Create urgency with limited-time offers." />
+            <TipCard icon={<UsersRound size={16} />} title="Target the right customers" text="Match the offer to the campaign goal." />
+            <TipCard icon={<Sparkles size={16} />} title="Track performance" text="Watch usage and discount totals." />
+          </div>
+        </div>
+      </CenterPopup>
+
+      {canEdit ? (
+        <CenterPopup id="create-promotion" title="Create Promotion" subtitle="Automatic discounts or coupon codes." icon={<TicketPercent size={18} />}>
+          <CampaignForm branchId={context.branchId!} products={products}/>
+        </CenterPopup>
+      ) : null}
     </main>
   );
 }
 
-const compactInputClass =
-  "mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-normal text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-50 disabled:text-slate-400";
-const menuItemClass =
-  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50";
-const menuButtonClass =
-  "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50";
+// Opens via its #id link (CSS :target), so it works in this server component with no client state.
+function CenterPopup({ id, title, subtitle, icon, children, size = "lg" }: { id: string; title: string; subtitle?: string; icon: React.ReactNode; children: React.ReactNode; size?: "sm" | "lg" }) {
+  return (
+    <div id={id} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} className="fixed inset-0 z-50 hidden items-center justify-center p-4 target:flex">
+      <a href="#close" aria-label="Close" className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px]" />
+      <div className={`relative flex max-h-[90dvh] w-full ${size === "sm" ? "max-w-sm" : "max-w-2xl"} flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl`}>
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-600">{icon}</div>
+            <div>
+              <h2 id={`${id}-title`} className="font-bold text-slate-900">{title}</h2>
+              {subtitle ? <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p> : null}
+            </div>
+          </div>
+          <a href="#close" aria-label="Close" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={17} /></a>
+        </div>
+        <div className="overflow-y-auto px-5 pb-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 
 function MetricCard({
   icon,
@@ -773,47 +705,6 @@ function StatusBadge({ status }: { status: ReturnType<typeof getCouponStatus> })
       <span className={`h-1.5 w-1.5 rounded-full ${dots[status]}`} />
       {labels[status]}
     </span>
-  );
-}
-
-function SwitchRow({
-  name,
-  label,
-  description,
-  defaultChecked,
-  disabled,
-  icon,
-  iconClass,
-}: {
-  name: string;
-  label: string;
-  description: string;
-  defaultChecked: boolean;
-  disabled: boolean;
-  icon: React.ReactNode;
-  iconClass: string;
-}) {
-  return (
-    <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
-      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconClass}`}>
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-xs font-bold text-slate-800">{label}</span>
-        <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{description}</span>
-      </span>
-      <span className="relative inline-flex shrink-0">
-        <input
-          type="checkbox"
-          name={name}
-          defaultChecked={defaultChecked}
-          disabled={disabled}
-          className="peer sr-only"
-        />
-        <span className="h-5 w-9 rounded-full bg-slate-200 transition peer-checked:bg-blue-600 peer-disabled:opacity-50" />
-        <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition peer-checked:translate-x-4" />
-      </span>
-    </label>
   );
 }
 

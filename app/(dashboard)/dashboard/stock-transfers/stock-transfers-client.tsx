@@ -1,5 +1,6 @@
 "use client";
-import ProductVariantPicker from "@/components/product-variant-picker";
+import ProductPicker from "@/components/product-picker";
+import { Modal } from "../pos/pos-workspace-components";
 
 import {
   ArrowLeft,
@@ -11,7 +12,7 @@ import {
   ChevronRight,
   CircleX,
   FileText,
-  History,
+  Loader2,
   MapPin,
   MoreVertical,
   Pencil,
@@ -29,13 +30,13 @@ import {
   useMemo,
   useState,
   type FormEvent,
-  type ReactNode,
 } from "react";
+import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 
 import {
   createTransfer,
-  deleteDraftTransfer,
+  cancelDraftTransfer,
   receiveTransfer,
   sendTransfer,
   updateTransferDraft,
@@ -119,7 +120,8 @@ function transferStatusLabel(status: string) {
   if (status === "received") return "Received";
   if (status === "cancelled") return "Cancelled";
   if (status === "sent") return "Sent";
-  return "Draft";
+  if (status === "draft") return "Draft";
+  return status.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
 }
 
 function statusClasses(status: string) {
@@ -147,43 +149,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function StatCard({
-  icon,
-  title,
-  value,
-  subtitle,
-  tone,
-}: {
-  icon: ReactNode;
-  title: string;
-  value: number;
-  subtitle: string;
-  tone: "blue" | "slate" | "cyan" | "emerald" | "rose";
-}) {
-  const tones = {
-    blue: "bg-blue-50 text-blue-600",
-    slate: "bg-slate-100 text-slate-600",
-    cyan: "bg-sky-50 text-sky-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-    rose: "bg-rose-50 text-rose-600",
-  } as const;
-
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-start gap-3">
-        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}>
-          {icon}
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-slate-500">{title}</p>
-          <p className="mt-1 text-2xl font-bold text-slate-950">{value}</p>
-          <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function productLabel(product: TransferProduct) {
   return [product.name, product.color, product.size, product.sku]
     .filter(Boolean)
@@ -207,15 +172,17 @@ export default function StockTransfersClient({
   const [createError, setCreateError] = useState<string | null>(null);
   const [sourceLocationId, setSourceLocationId] = useState("");
   const [destinationLocationId, setDestinationLocationId] = useState("");
-  const [productId, setProductId] = useState("");
-  const [draftQuantity, setDraftQuantity] = useState(1);
   const [draftItems, setDraftItems] = useState<DraftBuilderItem[]>([]);
   const [note, setNote] = useState("");
   const [editingTransferId, setEditingTransferId] = useState<string | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
-  const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<TransferRow | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelPending, setCancelPending] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("all");
 
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedTransferId, setSelectedTransferId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -246,9 +213,6 @@ export default function StockTransfersClient({
     );
   }
 
-  const selectedProduct = productId ? productMap.get(productId) ?? null : null;
-  const availableStock = selectedProduct ? stockForProduct(selectedProduct) : null;
-
   const totals = useMemo(() => {
     const statusCount = (status: string) => transfers.filter((transfer) => transfer.status === status).length;
     return {
@@ -262,9 +226,20 @@ export default function StockTransfersClient({
     };
   }, [transfers]);
 
+  const volume = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const dates = Array.from({ length: 14 }, (_, index) => new Date(Date.parse(today) - (13 - index) * 86400000).toISOString().slice(0, 10));
+    const counts = dates.map(date => transfers.filter(transfer => transfer.createdAt.slice(0, 10) === date).length);
+    const max = Math.max(1, ...counts);
+    return { total: counts.reduce((sum, count) => sum + count, 0), points: counts.map((count, index) => `${index * 10},${36 - count / max * 30}`).join(" ") };
+  }, [transfers]);
+
   const filteredTransfers = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return transfers.filter((transfer) => {
+      if (activeTab !== "all" && (activeTab === "in_transit"
+        ? !["sent", "in_transit", "partially_received"].includes(transfer.status)
+        : transfer.status !== activeTab)) return false;
       if (statusFilter !== "all" && transfer.status !== statusFilter) return false;
       if (
         branchFilter !== "all" &&
@@ -294,7 +269,7 @@ export default function StockTransfersClient({
         .toLowerCase()
         .includes(needle);
     });
-  }, [branchFilter, locationMap, productMap, search, statusFilter, transfers]);
+  }, [activeTab, branchFilter, locationMap, productMap, search, statusFilter, transfers]);
 
   const PAGE_SIZE = 5;
   const totalPages = Math.max(1, Math.ceil(filteredTransfers.length / PAGE_SIZE));
@@ -311,8 +286,6 @@ export default function StockTransfersClient({
   function resetDraftBuilder() {
     setSourceLocationId("");
     setDestinationLocationId("");
-    setProductId("");
-    setDraftQuantity(1);
     setDraftItems([]);
     setNote("");
     setCreateError(null);
@@ -326,8 +299,6 @@ export default function StockTransfersClient({
     setEditingTransferId(transfer.id);
     setSourceLocationId(transfer.sourceLocationId);
     setDestinationLocationId(transfer.destinationLocationId);
-    setProductId("");
-    setDraftQuantity(1);
     setDraftItems(
       transfer.items.map((item) => ({
         productId: item.productId,
@@ -337,106 +308,37 @@ export default function StockTransfersClient({
     setNote(transfer.note ?? "");
     setCreateError(null);
     setActionMenuId(null);
-    setHistoryOpen(false);
+    setDetailsOpen(false);
     setSelectedTransferId(null);
     setCreateOpen(true);
-    requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    });
   }
 
-  async function handleDeleteDraft(transfer: TransferRow) {
-    if (transfer.status !== "draft" || deletePendingId) {
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Delete draft ${transfer.transferNumber}? This removes the draft and its items permanently.`,
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setDeletePendingId(transfer.id);
+  function openCancel(transfer: TransferRow) {
+    if (transfer.status !== "draft") return;
     setActionMenuId(null);
+    setCancelReason("");
+    setCancelError(null);
+    setCancelTarget(transfer);
+  }
 
-    const formData = new FormData();
-    formData.set("transferId", transfer.id);
-
+  async function handleCancel(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!cancelTarget || cancelPending || !cancelReason.trim()) return;
+    setCancelPending(true);
+    setCancelError(null);
+    const data = new FormData();
+    data.set("transferId", cancelTarget.id);
+    data.set("reason", cancelReason);
     try {
-      await deleteDraftTransfer(formData);
-
-      if (selectedTransferId === transfer.id) {
-        setSelectedTransferId(null);
-        setHistoryOpen(false);
-      }
-
-      if (editingTransferId === transfer.id) {
-        resetDraftBuilder();
-        setEditingTransferId(null);
-        setCreateOpen(false);
-      }
-
+      await cancelDraftTransfer(data);
+      setCancelTarget(null);
+      setDetailsOpen(false);
       router.refresh();
     } catch (error) {
-      window.alert(
-        error instanceof Error ? error.message : "Unable to delete this draft.",
-      );
+      setCancelError(error instanceof Error ? error.message : "Unable to cancel transfer.");
     } finally {
-      setDeletePendingId(null);
+      setCancelPending(false);
     }
-  }
-
-  function addDraftItem() {
-    setCreateError(null);
-
-    if (!sourceLocationId) {
-      setCreateError("Choose the From Branch before adding products.");
-      return;
-    }
-
-    if (!productId || !selectedProduct) {
-      setCreateError("Choose a product / variant first.");
-      return;
-    }
-
-    if (!Number.isInteger(draftQuantity) || draftQuantity <= 0) {
-      setCreateError("Quantity must be a positive whole number.");
-      return;
-    }
-
-    const alreadyStaged =
-      draftItems.find((item) => item.productId === productId)?.quantity ?? 0;
-    const nextQuantity = alreadyStaged + draftQuantity;
-    const stock = stockForProduct(selectedProduct);
-
-    if (stock <= 0) {
-      setCreateError("This variant has no available stock in the selected branch.");
-      return;
-    }
-
-    if (nextQuantity > stock) {
-      setCreateError(
-        `${selectedProduct.name} has ${stock} available in the selected branch.`,
-      );
-      return;
-    }
-
-    setDraftItems((current) => {
-      const existing = current.find((item) => item.productId === productId);
-      if (existing) {
-        return current.map((item) =>
-          item.productId === productId
-            ? { ...item, quantity: item.quantity + draftQuantity }
-            : item,
-        );
-      }
-
-      return [...current, { productId, quantity: draftQuantity }];
-    });
-    setProductId("");
-    setDraftQuantity(1);
   }
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
@@ -491,7 +393,7 @@ export default function StockTransfersClient({
 
   function openTransfer(transferId: string) {
     setSelectedTransferId(transferId);
-    setHistoryOpen(true);
+    setDetailsOpen(true);
   }
 
   return (
@@ -509,17 +411,6 @@ export default function StockTransfersClient({
             <button
               type="button"
               onClick={() => {
-                setSelectedTransferId(null);
-                setHistoryOpen(true);
-              }}
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700"
-            >
-              <History size={17} />
-              Transfer history
-            </button>
-            <button
-              type="button"
-              onClick={() => {
                 resetDraftBuilder();
                 setEditingTransferId(null);
                 setCreateError(null);
@@ -533,87 +424,59 @@ export default function StockTransfersClient({
           </div>
         </div>
 
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard
-            icon={<ArrowRightLeft size={22} />}
-            title="Total Transfers"
-            value={totals.total}
-            subtitle="All time transfers"
-            tone="blue"
-          />
-          <StatCard
-            icon={<FileText size={22} />}
-            title="Draft"
-            value={totals.draft}
-            subtitle="Awaiting to be sent"
-            tone="slate"
-          />
-          <StatCard
-            icon={<Truck size={22} />}
-            title="In Transit"
-            value={totals.inTransit}
-            subtitle="Transfers moving now"
-            tone="cyan"
-          />
-          <StatCard
-            icon={<CheckCircle2 size={22} />}
-            title="Received"
-            value={totals.received}
-            subtitle="Completed transfers"
-            tone="emerald"
-          />
-          <StatCard
-            icon={<CircleX size={22} />}
-            title="Cancelled"
-            value={totals.cancelled}
-            subtitle="Cancelled transfers"
-            tone="rose"
-          />
+        <section aria-label="Transfer summary" className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+          <div className="flex items-center gap-3 border-r border-slate-200 pr-6">
+            <span className="rounded-xl bg-blue-50 p-2.5 text-blue-600"><ArrowRightLeft size={22} /></span>
+            <div><p className="text-xs text-slate-500">Total</p><p className="text-xl font-bold text-slate-950">{totals.total}</p></div>
+          </div>
+          {[
+            { label: "Draft", value: totals.draft, color: "bg-slate-400" },
+            { label: "In Transit", value: totals.inTransit, color: "bg-blue-500" },
+            { label: "Received", value: totals.received, color: "bg-emerald-500" },
+            { label: "Cancelled", value: totals.cancelled, color: "bg-rose-500" },
+          ].map(stat => <div key={stat.label} className="flex items-center gap-2.5">
+            <span className={`h-2.5 w-2.5 rounded-full ${stat.color}`} />
+            <span className="text-xs text-slate-500">{stat.label}</span>
+            <strong className="text-lg text-slate-950">{stat.value}</strong>
+          </div>)}
+          <div className="ml-auto flex items-center gap-3 border-l border-slate-100 pl-5">
+            <svg viewBox="0 0 130 40" className="h-12 w-28 text-teal-400" role="img" aria-label="Transfers created over the last 14 days">
+              <polygon points={`0,40 ${volume.points} 130,40`} fill="currentColor" opacity="0.12" />
+              <polyline points={volume.points} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+            </svg>
+            <div><p className="text-xs text-slate-500">Transfer volume</p><p className="mt-1 text-[11px] text-slate-400">Last 14 days</p><p className="text-sm font-semibold text-teal-600">{volume.total} transfers</p></div>
+          </div>
         </section>
 
         {createOpen && (
-          <section className="overflow-visible rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white">
-                  <Plus size={19} />
-                </div>
-                <div>
-                  <h2 className="font-semibold text-slate-950">
-                    {editingTransferId ? "Edit Draft Transfer" : "Create Transfer"}
-                  </h2>
-                  <p className="text-sm text-slate-500">
-                    {editingTransferId
-                      ? "Update branches, items or note before the transfer is sent."
-                      : "Add one or more product variants, then create the draft."}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={resetDraftBuilder}
-                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  <RotateCcw size={15} />
-                  Clear All
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetDraftBuilder();
-                    setEditingTransferId(null);
-                    setCreateOpen(false);
-                  }}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
-                  aria-label="Close create transfer"
-                >
-                  <X size={18} />
-                </button>
-              </div>
+          <Modal
+            title={editingTransferId ? "Edit Draft Transfer" : "New Transfer"}
+            wide
+            locked={createPending}
+            onClose={() => {
+              resetDraftBuilder();
+              setEditingTransferId(null);
+              setCreateOpen(false);
+            }}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-slate-500">
+                {editingTransferId
+                  ? "Update branches, items or note before the transfer is sent."
+                  : "Add one or more product variants, then create the draft."}
+              </p>
+              <button
+                type="button"
+                onClick={resetDraftBuilder}
+                disabled={createPending}
+                className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                <RotateCcw size={15} /> Clear All
+              </button>
             </div>
 
-            <form onSubmit={handleCreate} className="p-5">
+            <form onSubmit={handleCreate} className="mt-4">
+              <fieldset disabled={createPending} className="min-w-0">
               <div className="grid gap-4 lg:grid-cols-2">
                 <label className="space-y-1.5">
                   <span className="text-xs font-semibold text-slate-700">From Branch</span>
@@ -623,7 +486,6 @@ export default function StockTransfersClient({
                     onChange={(event) => {
                       const nextSource = event.target.value;
                       setSourceLocationId(nextSource);
-                      setProductId("");
                       setDraftItems([]);
                       setCreateError(null);
                       if (destinationLocationId === nextSource) {
@@ -667,50 +529,20 @@ export default function StockTransfersClient({
                 </label>
               </div>
 
-              <div className="mt-4 grid items-end gap-3 lg:grid-cols-[minmax(0,1fr)_130px_auto]">
-                <div className="space-y-1.5">
-                  <span className="text-xs font-semibold text-slate-700">Product / Variant</span>
-                  <ProductVariantPicker
-                    products={products.filter(product => sourceLocationId && locationStockMap.has(`${sourceLocationId}:${product.id}`))}
-                    value={productId}
-                    onChange={(nextProductId) => {
-                      setProductId(nextProductId);
-                      setCreateError(null);
-                    }}
-                    stockForProduct={stockForProduct}
-                  />
-                  <span className="block min-h-4 text-[11px] text-slate-500">
-                    {selectedProduct
-                      ? `Available in selected branch: ${availableStock ?? 0}`
-                      : sourceLocationId
-                        ? "Choose a variant to see branch stock."
-                        : "Choose From Branch first to check branch stock."}
-                  </span>
-                </div>
-
-                <label className="space-y-1.5">
-                  <span className="text-xs font-semibold text-slate-700">Quantity</span>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={draftQuantity}
-                    onChange={(event) => setDraftQuantity(Number(event.target.value))}
-                    className={inputClass}
-                  />
-                  <span className="block min-h-4 text-[11px] text-transparent">Quantity</span>
-                </label>
-
-                <div className="pb-4">
-                  <button
-                    type="button"
-                    onClick={addDraftItem}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
-                  >
-                    <Plus size={16} />
-                    Add Item
-                  </button>
-                </div>
+              <div className="mt-4 space-y-2">
+                <p className="text-xs font-semibold text-slate-700">Product / Variant</p>
+                <ProductPicker
+                  products={products.filter(product => stockForProduct(product) > 0).map(product => ({
+                    id: product.id, name: product.name, image: product.imageUrl, sku: product.sku,
+                    variant: [product.size, product.color, `${stockForProduct(product)} available`].filter(Boolean).join(" / "),
+                  }))}
+                  value={draftItems.map(item => item.productId)}
+                  onChange={ids => {
+                    setDraftItems(current => ids.map(productId => current.find(item => item.productId === productId) ?? { productId, quantity: 1 }));
+                    setCreateError(null);
+                  }}
+                />
+                <p className="text-xs text-slate-500">{sourceLocationId ? "Select products or individual sizes/colors, then adjust quantities below." : "Choose From Branch to load available products."}</p>
               </div>
 
               {draftItems.length > 0 && (
@@ -845,26 +677,25 @@ export default function StockTransfersClient({
                   {createError}
                 </div>
               )}
+              </fieldset>
             </form>
-          </section>
+          </Modal>
         )}
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                <ArrowRightLeft size={18} />
-              </div>
-              <div>
-                <h2 className="font-semibold text-slate-950">Recent Transfers</h2>
-                <p className="text-sm text-slate-500">Manage and track stock transfers across your branches.</p>
-              </div>
-            </div>
-            <p className="text-xs text-slate-500">
-              Showing {filteredTransfers.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
-              {Math.min(safePage * PAGE_SIZE, filteredTransfers.length)} of {filteredTransfers.length}
-            </p>
-          </div>
+          <nav aria-label="Transfer status" className="flex overflow-x-auto border-b border-slate-200 px-3">
+            {[
+              { value: "all", label: "All", icon: ArrowRightLeft },
+              { value: "draft", label: "Drafts", icon: FileText },
+              { value: "in_transit", label: "In Transit", icon: Truck },
+              { value: "received", label: "Received", icon: CheckCircle2 },
+              { value: "cancelled", label: "Cancelled", icon: CircleX },
+            ].map(tab => <button key={tab.value} type="button" aria-current={activeTab === tab.value ? "page" : undefined}
+              onClick={() => { setActiveTab(tab.value); setStatusFilter("all"); setPage(1); setActionMenuId(null); }}
+              className={`flex shrink-0 items-center gap-2 border-b-2 px-4 py-4 text-sm font-semibold ${activeTab === tab.value ? "border-blue-600 text-blue-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
+              <tab.icon size={17} />{tab.label}
+            </button>)}
+          </nav>
 
           <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-[1.5fr_180px_180px]">
             <label className="relative">
@@ -884,6 +715,7 @@ export default function StockTransfersClient({
             </label>
 
             <select
+              aria-label="Filter by status"
               value={statusFilter}
               onChange={(event) => {
                 setStatusFilter(event.target.value);
@@ -892,14 +724,13 @@ export default function StockTransfersClient({
               className={inputClass}
             >
               <option value="all">All Statuses</option>
-              <option value="draft">Draft</option>
-              <option value="in_transit">In Transit</option>
-              <option value="partially_received">Partially Received</option>
-              <option value="received">Received</option>
-              <option value="cancelled">Cancelled</option>
+              {Array.from(new Set(transfers.map(transfer => transfer.status))).sort().map(status => (
+                <option key={status} value={status}>{transferStatusLabel(status)}</option>
+              ))}
             </select>
 
             <select
+              aria-label="Filter by branch"
               value={branchFilter}
               onChange={(event) => {
                 setBranchFilter(event.target.value);
@@ -954,7 +785,7 @@ export default function StockTransfersClient({
                       <td className="px-4 py-3">
                         <StatusBadge status={transfer.status} />
                       </td>
-                      <td className="relative px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right">
                         <button
                           type="button"
                           onClick={(event) => {
@@ -969,38 +800,6 @@ export default function StockTransfersClient({
                           <MoreVertical size={16} />
                         </button>
 
-                        {actionMenuId === transfer.id && (
-                          <div
-                            className="absolute right-4 top-11 z-30 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 text-left shadow-xl"
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            {transfer.status === "draft" ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => beginEditTransfer(transfer)}
-                                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                                >
-                                  <Pencil size={15} />
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={deletePendingId === transfer.id}
-                                  onClick={() => void handleDeleteDraft(transfer)}
-                                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-                                >
-                                  <Trash2 size={15} />
-                                  {deletePendingId === transfer.id ? "Deleting..." : "Delete"}
-                                </button>
-                              </>
-                            ) : (
-                              <p className="px-3 py-2 text-xs text-slate-500">
-                                Sent transfers are locked.
-                              </p>
-                            )}
-                          </div>
-                        )}
                       </td>
                     </tr>
                   );
@@ -1044,142 +843,39 @@ export default function StockTransfersClient({
         </section>
       </main>
 
-      {historyOpen && (
+      {actionMenuId && (() => {
+        const transfer = transfers.find(row => row.id === actionMenuId);
+        return transfer ? <Modal title={`Actions · ${transfer.transferNumber}`} onClose={() => setActionMenuId(null)}>
+          <div className="space-y-2">
+            <button type="button" onClick={() => { setActionMenuId(null); openTransfer(transfer.id); }} className="flex w-full items-center gap-2 rounded-xl border border-slate-200 p-3 text-left"><FileText size={17} />View details</button>
+            {transfer.status === "draft" && <>
+              <button type="button" onClick={() => beginEditTransfer(transfer)} className="flex w-full items-center gap-2 rounded-xl border border-slate-200 p-3 text-left"><Pencil size={17} />Edit</button>
+              <button type="button" onClick={() => openCancel(transfer)} className="flex w-full items-center gap-2 rounded-xl bg-rose-50 p-3 text-left text-rose-600"><CircleX size={17} />Cancel transfer</button>
+            </>}
+          </div>
+        </Modal> : null;
+      })()}
+      {cancelTarget && <Modal title={`Cancel ${cancelTarget.transferNumber}?`} locked={cancelPending} onClose={() => setCancelTarget(null)}>
+        <form onSubmit={handleCancel} className="space-y-4">
+          <p className="text-sm text-slate-500">The draft and its items will remain available for reference. No stock will move.</p>
+          <label className="block text-sm font-semibold text-slate-700">Cancellation reason
+            <textarea required maxLength={500} rows={3} value={cancelReason} disabled={cancelPending} onChange={event => setCancelReason(event.target.value)} className={`${inputClass} mt-2 h-auto`} />
+          </label>
+          {cancelError && <p role="alert" className="text-sm text-rose-600">{cancelError}</p>}
+          <button type="submit" disabled={cancelPending || !cancelReason.trim()} className="flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 p-3 font-semibold text-white disabled:opacity-50">
+            {cancelPending ? <Loader2 size={17} className="animate-spin" /> : <CircleX size={17} />}{cancelPending ? "Cancelling…" : "Cancel transfer"}
+          </button>
+        </form>
+      </Modal>}
+      {detailsOpen && selectedTransfer && (
         <div className="fixed inset-0 z-[90]">
-          <button
-            type="button"
-            aria-label="Close transfer history"
-            onClick={() => setHistoryOpen(false)}
-            className="absolute inset-0 bg-slate-950/25"
-          />
+          <button type="button" aria-label="Close transfer details" onClick={() => setDetailsOpen(false)} className="absolute inset-0 bg-slate-950/25" />
           <aside className="absolute right-0 top-0 flex h-full w-full max-w-[500px] flex-col border-l border-slate-200 bg-white shadow-2xl">
-            {selectedTransfer ? (
-              <TransferDetails
-                transfer={selectedTransfer}
-                locationMap={locationMap}
-                productMap={productMap}
-                onEdit={() => beginEditTransfer(selectedTransfer)}
-                onDelete={() => void handleDeleteDraft(selectedTransfer)}
-                deletePending={deletePendingId === selectedTransfer.id}
-                onBack={() => setSelectedTransferId(null)}
-                onClose={() => setHistoryOpen(false)}
-              />
-            ) : (
-              <TransferHistoryList
-                transfers={transfers}
-                locations={locations}
-                locationMap={locationMap}
-                onOpen={setSelectedTransferId}
-                onClose={() => setHistoryOpen(false)}
-              />
-            )}
+            <TransferDetails key={selectedTransfer.id} transfer={selectedTransfer} locationMap={locationMap} productMap={productMap}
+              onEdit={() => beginEditTransfer(selectedTransfer)} onCancel={() => openCancel(selectedTransfer)} onClose={() => setDetailsOpen(false)} />
           </aside>
         </div>
       )}
-    </>
-  );
-}
-
-function TransferHistoryList({
-  transfers,
-  locations,
-  locationMap,
-  onOpen,
-  onClose,
-}: {
-  transfers: TransferRow[];
-  locations: TransferLocation[];
-  locationMap: Map<string, string>;
-  onOpen: (id: string) => void;
-  onClose: () => void;
-}) {
-  const [status, setStatus] = useState("all");
-  const [branch, setBranch] = useState("all");
-
-  const rows = transfers.filter((transfer) => {
-    if (status !== "all" && transfer.status !== status) return false;
-    if (
-      branch !== "all" &&
-      transfer.sourceLocationId !== branch &&
-      transfer.destinationLocationId !== branch
-    ) {
-      return false;
-    }
-    return true;
-  });
-
-  return (
-    <>
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-950">Transfer history</h2>
-          <p className="text-sm text-slate-500">Review every stock movement between branches.</p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
-        >
-          <X size={19} />
-        </button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 border-b border-slate-200 p-4">
-        <select value={status} onChange={(event) => setStatus(event.target.value)} className={inputClass}>
-          <option value="all">All statuses</option>
-          <option value="draft">Draft</option>
-          <option value="in_transit">In Transit</option>
-          <option value="partially_received">Partially Received</option>
-          <option value="received">Received</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        <select value={branch} onChange={(event) => setBranch(event.target.value)} className={inputClass}>
-          <option value="all">All branches</option>
-          {locations.map((location) => (
-            <option key={location.id} value={location.id}>
-              {location.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="space-y-2">
-          {rows.map((transfer) => {
-            const qty = transfer.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-            return (
-              <button
-                type="button"
-                key={transfer.id}
-                onClick={() => onOpen(transfer.id)}
-                className="w-full rounded-2xl border border-slate-200 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50/40"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-slate-950">{transfer.transferNumber}</p>
-                    <p className="mt-1 text-xs text-slate-500">{formatDateTime(transfer.createdAt)}</p>
-                  </div>
-                  <StatusBadge status={transfer.status} />
-                </div>
-                <div className="mt-3 flex items-center gap-2 text-sm text-slate-600">
-                  <span>{locationMap.get(transfer.sourceLocationId) ?? "Source"}</span>
-                  <ArrowRight size={14} className="text-slate-400" />
-                  <span>{locationMap.get(transfer.destinationLocationId) ?? "Destination"}</span>
-                </div>
-                <p className="mt-2 text-xs text-slate-500">
-                  {transfer.items.length} {transfer.items.length === 1 ? "item" : "items"} · {qty} total quantity
-                </p>
-              </button>
-            );
-          })}
-
-          {rows.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-slate-200 px-5 py-10 text-center text-sm text-slate-500">
-              No transfer history matches these filters.
-            </div>
-          )}
-        </div>
-      </div>
     </>
   );
 }
@@ -1189,21 +885,18 @@ function TransferDetails({
   locationMap,
   productMap,
   onEdit,
-  onDelete,
-  deletePending,
-  onBack,
+  onCancel,
   onClose,
 }: {
   transfer: TransferRow;
   locationMap: Map<string, string>;
   productMap: Map<string, TransferProduct>;
   onEdit: () => void;
-  onDelete: () => void;
-  deletePending: boolean;
-  onBack: () => void;
+  onCancel: () => void;
   onClose: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const totalQuantity = transfer.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
   const progress =
     transfer.status === "received"
@@ -1217,11 +910,11 @@ function TransferDetails({
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
         <button
           type="button"
-          onClick={onBack}
+          onClick={onClose}
           className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600"
         >
           <ArrowLeft size={16} />
-          Transfer history
+          All transfers
         </button>
         <button
           type="button"
@@ -1252,7 +945,7 @@ function TransferDetails({
                   <MoreVertical size={16} />
                 </button>
                 {menuOpen && (
-                  <div className="absolute right-0 top-10 z-20 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
+                  <Modal title="Transfer actions" onClose={() => setMenuOpen(false)}>
                     <button
                       type="button"
                       onClick={() => {
@@ -1266,17 +959,17 @@ function TransferDetails({
                     </button>
                     <button
                       type="button"
-                      disabled={deletePending}
+
                       onClick={() => {
                         setMenuOpen(false);
-                        onDelete();
+                        onCancel();
                       }}
                       className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
                     >
-                      <Trash2 size={15} />
-                      {deletePending ? "Deleting..." : "Delete"}
+                      <CircleX size={15} />
+                      Cancel transfer
                     </button>
-                  </div>
+                  </Modal>
                 )}
               </>
             )}
@@ -1386,22 +1079,17 @@ function TransferDetails({
       </div>
 
       <div className="border-t border-slate-200 p-4">
+        {actionError && <p role="alert" className="mb-3 text-sm text-rose-600">{actionError}</p>}
         {transfer.status === "draft" && (
-          <form action={sendTransfer}>
+          <form action={async data => { setActionError(null); try { await sendTransfer(data); } catch (error) { setActionError(error instanceof Error ? error.message : "Unable to send transfer."); } }}>
             <input type="hidden" name="transferId" value={transfer.id} />
-            <button className={`${primaryButton} w-full`}>
-              <Send size={16} />
-              Send Transfer
-            </button>
+            <TransferSubmitButton kind="send" />
           </form>
         )}
         {(transfer.status === "in_transit" || transfer.status === "sent" || transfer.status === "partially_received") && (
-          <form action={receiveTransfer}>
+          <form action={async data => { setActionError(null); try { await receiveTransfer(data); } catch (error) { setActionError(error instanceof Error ? error.message : "Unable to receive transfer."); } }}>
             <input type="hidden" name="transferId" value={transfer.id} />
-            <button className={`${primaryButton} w-full`}>
-              <PackageCheck size={16} />
-              Mark as Received
-            </button>
+            <TransferSubmitButton kind="receive" />
           </form>
         )}
         {transfer.status === "received" && (
@@ -1419,4 +1107,12 @@ function TransferDetails({
       </div>
     </>
   );
+}
+
+function TransferSubmitButton({ kind }: { kind: "send" | "receive" }) {
+  const { pending } = useFormStatus();
+  return <button type="submit" disabled={pending} aria-busy={pending} className={`${primaryButton} w-full`}>
+    {pending ? <Loader2 size={16} className="animate-spin" /> : kind === "send" ? <Send size={16} /> : <PackageCheck size={16} />}
+    {pending ? (kind === "send" ? "Sending…" : "Receiving…") : kind === "send" ? "Send Transfer" : "Mark as Received"}
+  </button>;
 }

@@ -101,7 +101,7 @@ export default function AddProductModal({
           onMouseDown={() => setOpen(false)}
         >
           <div
-            className="flex max-h-[92vh] w-full max-w-[820px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            className="flex max-h-[92dvh] w-full max-w-[1040px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -161,7 +161,7 @@ export default function AddProductModal({
               </div>
             )}
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/80 p-4 sm:p-6">
               {isGeneralShop ? (
                 createKind === "simple" ? (
                   <StandardProductForm

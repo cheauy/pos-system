@@ -11,7 +11,9 @@ export function PosReceipt({receipt:r,context}:{receipt:SaleReceipt;context?:Rec
  let date='';try{date=new Date(r.createdAt).toLocaleString('en-GB',{timeZone:r.timezone || 'Asia/Phnom_Penh'});}catch{date=r.createdAt;}
  const shipping=r.shipping;
  const printWidth=`${parseInt(a.paperSize,10)-6}mm`;
- const barcode=code39Bars(r.orderNumber.toUpperCase().replace(/[^A-Z0-9 .\-\$\/%+]/g,'-').slice(0,40));
+ // Numeric order code when known (scans to the order); older receipts fall back to the order number.
+ const barcodeText=r.orderCode && /^[1-9][0-9]{11}$/.test(r.orderCode)?r.orderCode:r.orderNumber;
+ const barcode=code39Bars(barcodeText.toUpperCase().replace(/[^A-Z0-9 .\-\$\/%+]/g,'-').slice(0,40));
  return <article className={`${s.receipt} ${s.classic} receipt`} data-paper={a.paperSize} data-density={a.density} style={{"--receipt-font-scale":printTextScale(a.fontSize),"--receipt-alignment":a.alignment} as CSSProperties}>
   <style media="print">{`@page{size:auto;margin:3mm}html,body{width:${printWidth}!important;min-width:${printWidth}!important}.receipt{width:${printWidth}!important;max-width:${printWidth}!important}`}</style>
   <header>
@@ -43,7 +45,7 @@ export function PosReceipt({receipt:r,context}:{receipt:SaleReceipt;context?:Rec
   {a.showLoyalty && (r.pointsEarned>0 || r.pointsRedeemed>0) && <p>Points earned: {r.pointsEarned} · Used: {r.pointsRedeemed}</p>}
   {a.showNotes && r.note && <p className={s.pre}>Note: {r.note}</p>}
   <Separator/>
-  <footer>{a.showQr && a.qrUrl && <div className={s.qr}><ReceiptLogo key={a.qrUrl} src={a.qrUrl} qr/></div>}{a.footer && <p className={s.pre}>{a.footer}</p>}{a.showOrderNumber && <div className={s.barcode}><svg shapeRendering="crispEdges" aria-label={`Order barcode ${barcode.text}`} viewBox={`0 0 ${barcode.width} 44`} preserveAspectRatio="none">{barcode.bars.map((bar,index)=><rect key={index} x={bar.x} width={bar.width} y="0" height="44" fill="black"/>)}</svg><p>{r.orderNumber}</p></div>}{a.returnPolicy && <p className={s.pre}>{a.returnPolicy}</p>}{r.orderId!=='preview' && <small>{r.isOrderRecord?'Current order record · TENH POS':'Original sale record · TENH POS'}</small>}</footer>
+  <footer>{a.showQr && a.qrUrl && <div className={s.qr}><ReceiptLogo key={a.qrUrl} src={a.qrUrl} qr/></div>}{a.footer && <p className={s.pre}>{a.footer}</p>}{a.showOrderNumber && <div className={s.barcode}><svg shapeRendering="crispEdges" aria-label={`Order barcode ${barcode.text}`} viewBox={`0 0 ${barcode.width} 44`} preserveAspectRatio="none">{barcode.bars.map((bar,index)=><rect key={index} x={bar.x} width={bar.width} y="0" height="44" fill="black"/>)}</svg><p>{barcodeText}</p></div>}{a.returnPolicy && <p className={s.pre}>{a.returnPolicy}</p>}{r.orderId!=='preview' && <small>{r.isOrderRecord?'Current order record · TENH POS':'Original sale record · TENH POS'}</small>}</footer>
  </article>;
 }
 function ReceiptLogo({src,qr=false}:{src:string;qr?:boolean}){const[failed,setFailed]=useState(false);return failed?<small data-print-image-error="true">Image unavailable</small>:<img loading="eager" decoding="sync" className={qr?s.qrImage:s.logo} src={src} alt={qr?"Receipt QR code":"Receipt logo"} onError={()=>setFailed(true)}/>;}

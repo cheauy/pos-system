@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 
 import {
-  businessModePresets,
+  visibleBusinessModePresets,
+  getBusinessModeAvailability,
   getBusinessModePreset,
   type BusinessModePreset,
 } from "@/lib/business/business-mode-presets";
@@ -45,28 +46,6 @@ const businessIllustrationByMode = {
   other: "/business-types/other-business.svg",
 } as const;
 
-
-const businessModeOrder = new Map(
-  [
-    "general",
-    "milk_tea",
-    "shoes",
-    "restaurant",
-    "cafe",
-    "fashion",
-    "grocery",
-    "accessories",
-    "beauty",
-    "electronics",
-    "other",
-  ].map((value, index) => [value, index]),
-);
-
-const orderedBusinessModePresets = [...businessModePresets].sort(
-  (a, b) =>
-    (businessModeOrder.get(a.value) ?? 999) -
-    (businessModeOrder.get(b.value) ?? 999),
-);
 
 type Props = {
   businessName: string;
@@ -139,13 +118,13 @@ export default function BusinessSettingsClient({
         className="mb-5 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-300"
       >
         <ArrowLeft size={18} />
-        Back to Business Details
+        Back to Business Settings
       </Link>
 
       <header className="mb-6 flex flex-col justify-between gap-5 xl:flex-row xl:items-start">
         <div className="min-w-0">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">
-          Business Details
+          Business Settings
         </p>
         <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.03em] text-slate-950 sm:text-4xl dark:text-white">
           Change {businessName}
@@ -293,13 +272,14 @@ export default function BusinessSettingsClient({
               </div>
 
               <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {orderedBusinessModePresets.map((preset) => (
+                {visibleBusinessModePresets.map((preset) => (
                   <BusinessModeCard
                     key={preset.value}
                     preset={preset}
                     selected={businessMode === preset.value}
                     current={currentBusinessType === preset.value}
-                    disabled={!canEdit}
+                    disabled={!canEdit || getBusinessModeAvailability(preset.value) !== "available"}
+                    comingSoon={getBusinessModeAvailability(preset.value) === "coming-soon"}
                     onSelect={() => setBusinessMode(preset.value)}
                   />
                 ))}
@@ -398,12 +378,14 @@ function BusinessModeCard({
   preset,
   selected,
   current,
+  comingSoon,
   disabled,
   onSelect,
 }: {
   preset: BusinessModePreset;
   selected: boolean;
   current: boolean;
+  comingSoon: boolean;
   disabled: boolean;
   onSelect: () => void;
 }) {
@@ -413,6 +395,7 @@ function BusinessModeCard({
     <button
       type="button"
       disabled={disabled}
+      aria-disabled={disabled}
       onClick={onSelect}
       className={`group relative flex min-h-[190px] flex-col items-center rounded-2xl border px-3.5 py-4 text-center transition duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${
         selected
@@ -420,7 +403,8 @@ function BusinessModeCard({
           : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md hover:shadow-slate-200/60 dark:border-slate-700 dark:bg-slate-950 dark:hover:border-blue-700"
       }`}
     >
-      {selected && (
+      {comingSoon && <span className="absolute right-3 top-3 z-10 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-amber-700">Coming soon</span>}
+      {selected && !comingSoon && (
         <span className="absolute right-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
           <Check size={14} strokeWidth={3} />
         </span>

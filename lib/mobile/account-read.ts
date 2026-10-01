@@ -46,15 +46,10 @@ export async function mobileAccountRead(db:SupabaseClient,feature:string,busines
    db.from('categories').select('id',{count:'exact',head:true}).eq('business_id',business.id).eq('is_online',true).or(`branch_ids.is.null,branch_ids.cs.{${branchId}}`),
   ]);
   if(totalResult.error||visibleResult.error)throw new Error('Unable to load category totals.');
-  const products=new Map<string,Set<string>>();
-  // ponytail: O(branch catalog size) identity scan; replace with a grouped database count if large catalogs make it slow.
-  if(result.data.length)for(let offset=0;;offset+=1000){
-   const batch=await db.from('branch_products').select('id,variant_group_id,category_id').eq('business_id',business.id).eq('location_id',branchId).in('category_id',result.data.map(row=>row.id)).order('id').range(offset,offset+999);
-   if(batch.error)throw new Error('Unable to load category product counts.');
-   for(const product of batch.data){if(!product.category_id)continue;const ids=products.get(product.category_id)||new Set<string>();ids.add(product.variant_group_id?`variant:${product.variant_group_id}`:product.id);products.set(product.category_id,ids);}
-   if(batch.data.length<1000)break;
-  }
-  return {total:result.count??0,categoryStats:{total:totalResult.count??0,visible:visibleResult.count??0,hidden:(totalResult.count??0)-(visibleResult.count??0)},rows:result.data.map(row=>({...row,productCount:products.get(row.id)?.size||0,branches:row.branch_ids===null?'All branches':`${row.branch_ids.length} selected branches`}))};
+  const counts=await db.rpc('tenh_category_product_counts',{p_business:business.id,p_branch:branchId,p_categories:result.data.map(row=>row.id)});
+  if(counts.error)throw new Error('Unable to load category product counts.');
+  const products=new Map<string,number>((counts.data??[]).map((row:{category_id:string;product_count:number})=>[row.category_id,Number(row.product_count)]));
+  return {total:result.count??0,categoryStats:{total:totalResult.count??0,visible:visibleResult.count??0,hidden:(totalResult.count??0)-(visibleResult.count??0)},rows:result.data.map(row=>({...row,productCount:products.get(row.id)||0,branches:row.branch_ids===null?'All branches':`${row.branch_ids.length} selected branches`}))};
  }
  throw new Error('Unknown account menu.');
 }

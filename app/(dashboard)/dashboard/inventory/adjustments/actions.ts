@@ -1,5 +1,6 @@
 "use server";
 
+import { isUuid, parseStockAdjustmentItems } from "@/lib/inventory/stock-adjustment";
 import { assertBranchOperation } from "@/lib/subscriptions/branch-limits";
 import { revalidatePath } from "next/cache";
 
@@ -170,5 +171,44 @@ export async function adjustStock(formData: FormData) {
   const result = await submitStockAdjustment(initialStockAdjustmentState, formData);
   if (!result.success) {
     throw new Error(result.message);
+  }
+}
+
+/** Batch payload is validated again inside PostgreSQL; never loop remote writes. */
+export async function submitStockAdjustmentBatch(
+  _previousState: StockAdjustmentActionState,
+  formData: FormData,
+): Promise<StockAdjustmentActionState> {
+  let requestSent = false;
+  try {
+    const business = await requirePermission("products.stock_adjust");
+    const locationId = textField(formData, "locationId");
+    const requestId = textField(formData, "requestId");
+    if (!isUuid(locationId) || !isUuid(requestId)) throw new Error("Reload the adjustment form before saving.");
+    await assertOperatingBranch(locationId);
+    await assertBranchOperation(business.id, locationId);
+    const items = parseStockAdjustmentItems(textField(formData, "items"));
+    const reason = textField(formData, "reason");
+    const reference = textField(formData, "reference") || null;
+    const notes = textField(formData, "notes");
+    if (reason.length < 2 || reason.length > 100 || notes.length > 500 || (reference?.length ?? 0) > 200) throw new Error("Enter a valid reason, notes up to 500 characters and reference up to 200 characters.");
+    const supabase = await createClient();
+    requestSent = true;
+    const { data, error } = await supabase.rpc("tenh_adjust_branch_stock_batch", {
+      p_business_id: business.id, p_location_id: locationId, p_items: items,
+      p_reason: notes ? `${reason} — ${notes}` : reason, p_reference: reference, p_request_id: requestId,
+    });
+    if (error) return {
+      success: false,
+      message: error.code === "PGRST202" ? "Apply 20260929001000_product_delete_and_batch_stock.sql before saving stock adjustments." : error.message,
+      uncertain: !error.code || !/^(22|23|42|P0001|PGRST202)/.test(error.code), submittedAt: Date.now(),
+    };
+    try {
+      for (const path of ["/dashboard", "/dashboard/inventory", "/dashboard/inventory/adjustments", "/dashboard/low-stock", "/dashboard/products", "/dashboard/pos", "/dashboard/settings/online-store", `/_sites/${business.slug}`]) revalidatePath(path);
+      revalidatePath("/dashboard/products/[id]/edit", "page");
+    } catch { /* Committed: do not report a cache failure as a failed stock save. */ }
+    return { success: true, message: `Stock adjustments saved for ${items.length} item${items.length === 1 ? "" : "s"}.`, submittedAt: Date.now(), items: Array.isArray(data?.items) ? data.items : undefined };
+  } catch (error) {
+    return { success: false, uncertain: requestSent, message: error instanceof Error ? error.message : "Unable to save stock adjustments.", submittedAt: Date.now() };
   }
 }

@@ -20,15 +20,15 @@ export default function StorefrontContact({ name, settings }: { name: string; se
   return <footer id="contact-us" className="mt-12 scroll-mt-6">
     <div className="store-contact-footer">
       <section className="footer-shop-profile">
-        <p className="footer-description">{settings.description || "Find your favorites in our online collection."}</p>
+        <p className="footer-description">{settings.description || t("Find your favorites in our online collection.")}</p>
         {settings.logo_url ? <img className="footer-shop-logo" src={settings.logo_url} alt={`${name} logo`} /> : <Store size={44} />}
         <h2>{name}</h2>
         {settings.phone && <a className="contact-line" href={`tel:${settings.phone.replace(/[^+\d]/g, "")}`}><PhoneCall size={15} /><span>{settings.phone}</span></a>}
         {settings.address && <a className="contact-line" href={profile?.locationUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.address)}`} target="_blank" rel="noreferrer"><MapPin size={15} />{settings.address}</a>}
-      {hours?.enabled && <details className="footer-hours"><summary><Clock3 size={17} />{sameHours && firstDay ? `Mon - Sun, ${formatOpeningTime(firstDay.open)} - ${formatOpeningTime(firstDay.close)}` : t("Opening hours")}</summary>
+      {hours?.enabled && <details className="footer-hours"><summary><Clock3 size={17} />{sameHours && firstDay ? `${t("Mon - Sun")}, ${formatOpeningTime(firstDay.open)} - ${formatOpeningTime(firstDay.close)}` : t("Opening hours")}</summary>
         <dl className="opening-hours-list">{weekDays.map(day => {
           const value = hours.days[day];
-          return <div key={day} className="contents"><dt>{day}</dt><dd>{!value || value.closed ? t("Closed") : `${formatOpeningTime(value.open)} – ${formatOpeningTime(value.close)}${value.close < value.open ? " (+1 day)" : ""}`}</dd></div>;
+          return <div key={day} className="contents"><dt>{t(day)}</dt><dd>{!value || value.closed ? t("Closed") : `${formatOpeningTime(value.open)} – ${formatOpeningTime(value.close)}${value.close < value.open ? ` ${t("(+1 day)")}` : ""}`}</dd></div>;
         })}</dl><p className="mt-2 text-[10px]">{hours.timezone.replaceAll("_", " ")}</p>
       </details>}
       </section>
@@ -39,7 +39,7 @@ export default function StorefrontContact({ name, settings }: { name: string; se
         })}
 
         {profile?.contactEmail && <a className="store-social-link" href={`mailto:${profile.contactEmail}`}><Mail size={28} /><span className="footer-email">{profile.contactEmail}</span></a>}
-      </nav>{!links.some(key => settings.social_links?.[key]) && <p>Browse online or get in touch using our contact details.</p>}</section>
+      </nav>{!links.some(key => settings.social_links?.[key]) && <p>{t("Browse online or get in touch using our contact details.")}</p>}</section>
 
     </div>
     <div className="store-footer-bottom"><span>© {name}</span><span>Powered by Tenh POS</span></div>

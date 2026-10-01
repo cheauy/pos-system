@@ -1,3 +1,4 @@
+import { isUuid, MAX_STOCK_ADJUSTMENT_ITEMS } from "@/lib/inventory/stock-adjustment";
 import { getBranchContext } from "@/lib/branches/context";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/branch-server";
@@ -14,6 +15,7 @@ type ProductRow = {
   sku: string | null;
   barcode: string | null;
   image_url: string | null;
+  variant_image_url: string | null;
   size: string | null;
   color: string | null;
   stock_quantity: number;
@@ -49,8 +51,8 @@ type LocationRow = {
   is_default: boolean;
 };
 
-export default async function StockAdjustmentPage({ searchParams }: { searchParams: Promise<{ product?: string }> }) {
-  const { product: requestedProduct } = await searchParams;
+export default async function StockAdjustmentPage({ searchParams }: { searchParams: Promise<{ product?: string; products?: string; branch?: string; selection?: string }> }) {
+  const { product: requestedProduct, products: requestedProducts, branch: requestedBranch, selection } = await searchParams;
   const { branchId: selectedBranch, userId } = await getBranchContext();
   const business = await requirePermission("products.stock_adjust");
   const supabase = await createClient();
@@ -59,7 +61,7 @@ export default async function StockAdjustmentPage({ searchParams }: { searchPara
     readAllRows((from,to)=>supabase
       .from("branch_products")
       .select(
-        "id,name,sku,barcode,image_url,size,color,stock_quantity,low_stock_quantity,cost_price,selling_price,is_active,updated_at,category_id",
+        "id,name,sku,barcode,image_url,variant_image_url,size,color,stock_quantity,low_stock_quantity,cost_price,selling_price,is_active,updated_at,category_id",
       )
       .eq("business_id", business.id)
       .eq("is_active", true)
@@ -115,7 +117,7 @@ export default async function StockAdjustmentPage({ searchParams }: { searchPara
     name: product.name,
     sku: product.sku,
     barcode: product.barcode,
-    imageUrl: product.image_url,
+    imageUrl: product.variant_image_url ?? product.image_url,
     size: product.size,
     color: product.color,
     stockQuantity: Number(product.stock_quantity ?? 0),
@@ -129,14 +131,27 @@ export default async function StockAdjustmentPage({ searchParams }: { searchPara
       : "Uncategorized",
   }));
 
+  // Archived/hidden products leave the picker, but their audit rows still need
+  // the saved branch name and variant details, not an anonymous “Product” label.
+  const historyProducts = new Map<string, Pick<ProductRow, "id" | "name" | "sku" | "image_url" | "variant_image_url" | "color" | "size">>(products.map(product => [product.id, product]));
+  const missingHistoryIds = Array.from(new Set(adjustments.map(row => row.product_id).filter(id => !historyProducts.has(id))));
+  if (missingHistoryIds.length) {
+    const { data: archivedProducts, error: historyError } = await supabase
+      .from("branch_product_details")
+      .select("id,name,sku,image_url,variant_image_url,color,size")
+      .eq("business_id", business.id).eq("location_id", branch.id).in("id", missingHistoryIds);
+    if (historyError) throw new Error("Unable to load archived product names for stock history.");
+    for (const product of archivedProducts ?? []) historyProducts.set(product.id, product);
+  }
+
   const recentAdjustments: RecentAdjustment[] = adjustments.filter(adjustment => adjustment.location_id === branch.id || (!adjustment.location_id && branch.is_default)).map((adjustment) => {
-    const product = productMap.get(adjustment.product_id);
+    const product = historyProducts.get(adjustment.product_id);
     return {
       id: adjustment.id,
       productId: adjustment.product_id,
       productName: product?.name ?? "Product",
       sku: product?.sku ?? null,
-      imageUrl: product?.image_url ?? null,
+      imageUrl: product?.variant_image_url ?? product?.image_url ?? null,
       size: product?.size ?? null,
       color: product?.color ?? null,
       adjustmentType: adjustment.adjustment_type,
@@ -149,6 +164,14 @@ export default async function StockAdjustmentPage({ searchParams }: { searchPara
     };
   });
 
+  const requestedIds = Array.from(new Set((requestedProducts || requestedProduct || "").split(",").filter(Boolean)));
+  const branchMismatch = Boolean(requestedBranch && requestedBranch !== branch.id);
+  const invalidSelection = requestedIds.length > MAX_STOCK_ADJUSTMENT_ITEMS || requestedIds.some(id => !isUuid(id)) || Boolean(selection && !isUuid(selection));
+  const selectedIds = branchMismatch || invalidSelection ? [] : requestedIds.filter(id => productMap.has(id));
+  const selectionError = branchMismatch ? "Your branch changed. Select products again for this branch."
+    : invalidSelection ? "The product selection is invalid or too large. Select products again."
+    : selectedIds.length < requestedIds.length ? `${requestedIds.length - selectedIds.length} selected items are hidden, removed or unavailable in this branch.` : "";
+
   return (
     <StockAdjustmentClient
       products={productViews}
@@ -156,7 +179,9 @@ export default async function StockAdjustmentPage({ searchParams }: { searchPara
       branchName={branch.name}
       branchId={branch.id}
       key={branch.id}
-      initialProductId={products.some(product => product.id === requestedProduct) ? requestedProduct : undefined}
+      initialProductIds={selectedIds}
+      initialSelectionToken={!branchMismatch && !invalidSelection ? selection : undefined}
+      initialSelectionError={selectionError}
       recoveryKey={`stock-adjustment:${business.id}:${userId}:${branch.id}`}
     />
   );

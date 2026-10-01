@@ -1,3 +1,4 @@
+import { getSubdomainUrl } from "@/lib/tenancy/domain";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/branch-server";
 import { loadReceiptContext } from "@/lib/receipts/load-receipt-context";
@@ -8,12 +9,12 @@ export default async function Page(){
  const business=await requirePermission("orders.view"); const supabase=await createClient();
  const {branchId}=await getBranchContext();
  const [{data:orders,error},context,{data:settings,error:settingsError},design]=await Promise.all([
-  supabase.from("orders").select("id,order_number,total,payment_method,payment_status,guest_name,guest_phone,guest_address,fulfillment_type,created_at,customers(name,phone,address),order_items(quantity)").eq("business_id",business.id).or("fulfillment_type.eq.delivery,guest_address.not.is.null").order("created_at",{ascending:false}).limit(100),
+  supabase.from("orders").select("id,order_number,order_code,total,payment_method,payment_status,guest_name,guest_phone,guest_address,fulfillment_type,created_at,customers(name,phone,address),order_items(quantity)").eq("business_id",business.id).or("fulfillment_type.eq.delivery,guest_address.not.is.null").order("created_at",{ascending:false}).limit(100),
   loadReceiptContext(business.id,business.name),
   supabase.from("branch_receipt_settings").select("font_size,density,shipping_label_size,shipping_show_sender,shipping_show_phone,shipping_show_order_number,shipping_show_cod,shipping_show_item_count,shipping_show_barcode").eq("business_id",business.id).eq("location_id",branchId).maybeSingle(),
   loadShippingSettings(business.id),
  ]);
  if(error) throw new Error(error.message);
  if(settingsError)throw new Error('Unable to load saved shipping settings. Please retry.');
- return <ShippingLabelsClient businessName={context.store.name} businessPhone={context.store.phone} businessAddress={context.store.address} orders={(orders??[]) as Order[]} settings={{...settings,...design}}/>;
+ return <ShippingLabelsClient key={branchId} businessWebsite={getSubdomainUrl(business.slug)} businessLogo={context.appearance.logoUrl} businessName={context.store.name} businessPhone={context.store.phone} businessAddress={context.store.address} orders={(orders??[]) as Order[]} settings={{...settings,...design}}/>;
 }

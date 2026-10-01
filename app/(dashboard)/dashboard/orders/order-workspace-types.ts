@@ -1,3 +1,4 @@
+import type { CurrencyFormat } from "@/lib/currency-format";
 export type OrderStatus = "new" | "pending" | "in_progress" | "completed" | "cancelled" | "refunded";
 export type PaymentState = "paid" | "unpaid" | "partial" | "pending_verification" | "refunded";
 export type WorkspaceFilters = {
@@ -23,7 +24,7 @@ export type OrderDetail = OrderRow & {
   guestName: string | null; guestPhone: string | null; guestAddress: string | null;
   subtotal: number; discount: number; deliveryFee: number; changeAmount: number;
   remainingBalance: number; couponCode: string | null; couponDiscount: number;
-  paymentReference: string | null; tableName: string | null; requestedFor: string | null;
+  paymentReference: string | null; paymentStatus: string | null; tableName: string | null; requestedFor: string | null;
   items: OrderItem[]; returnsUnavailable: boolean;
   activity: { id: string; description: string; createdAt: string }[];
   activityUnavailable: boolean;
@@ -33,6 +34,9 @@ export type WorkspaceData = {
   counts: Record<string, number>;
   metrics: { today: number; yesterday: number; completed: number; pending: number; pendingValue: number; refunds: number; refundedAmount: number };
   currency: string; timezone: string;
+  currencyFormat?: CurrencyFormat;
+  dualCurrency?: { enabled: boolean; rate: number };
+  receiveAllOnline?: boolean;
   branches: { id: string; name: string }[];
 };
 export type WorkspacePermissions = { edit: boolean; cancel: boolean; delete: boolean; refund: boolean; create: boolean };
@@ -48,7 +52,7 @@ export const statusLabels: Record<string, string> = {
   accepted: "Confirmed", preparing: "In Progress", ready: "In Progress", rejected: "Rejected",
 };
 export const paymentLabels: Record<string, string> = {
-  paid: "Paid", unpaid: "Unpaid", partial: "Part-paid", pending_verification: "Verification", refunded: "Refunded",
+  paid: "Paid", unpaid: "Unpaid", partial: "Partially paid", pending_verification: "Pending verification", refunded: "Refunded",
 };
 export const sourceLabels: Record<string, string> = { pos: "In-store", online: "Online", qr: "Table QR" };
 export const fulfillmentLabels: Record<string, string> = { walk_in: "Walk-in", pickup: "Pickup", delivery: "Delivery" };

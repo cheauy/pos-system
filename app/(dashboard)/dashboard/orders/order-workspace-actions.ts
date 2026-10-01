@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/branch-server";
+import { createAuditLog } from "@/lib/audit/create-audit-log";
 import { loadOrderDetail } from "./order-workspace-data";
 import type { ActionResult, EditOrderInput, OrderDetail } from "./order-workspace-types";
 
@@ -64,6 +65,23 @@ export async function cancelOrderWorkspaceItem(orderId: string, itemId: string, 
   if (error) return { success: false, message: ["P0001", "40001", "42501"].includes(error.code) ? error.message : "The item could not be cancelled. Refresh and try again." };
   refreshOrderPaths(orderId);
   return { success: true, data: undefined, message: "Item cancelled and stock restored." };
+}
+// Same stock-restoring procedure as the order page's Cancel Order, but returns a
+// result instead of redirecting so the Orders panel can stay open.
+export async function cancelOrderWorkspaceOrder(orderId: string, reason: string, expectedBusinessId: string): Promise<ActionResult> {
+  const business = await requirePermission("orders.cancel");
+  if (business.id !== expectedBusinessId) return { success: false, message: "Your selected business changed. Reload this page." };
+  if (!validId(orderId)) return { success: false, message: "Invalid order." };
+  if (typeof reason !== "string" || !reason.trim() || reason.length > 500) return { success: false, message: "Enter a cancellation reason (maximum 500 characters)." };
+  const supabase = await createClient();
+  const { data: order } = await supabase.from("orders").select("id,order_number").eq("id", orderId).eq("business_id", business.id).maybeSingle();
+  if (!order) return { success: false, message: "Order not found in this branch." };
+  const { error } = await supabase.rpc("tenh_run_branch_stock", { p_business: business.id, p_operation: "cancel_order", p_payload: { p_order_id: orderId, p_reason: reason.trim() } });
+  if (error) return { success: false, message: ["P0001", "40001", "42501"].includes(error.code ?? "") ? error.message : "The order could not be cancelled. Refresh and try again; nothing was changed." };
+  await createAuditLog({ action: "cancel", entityType: "order", entityId: order.id, description: `Cancelled order ${order.order_number}`, metadata: { reason: reason.trim() } })
+    .catch(() => console.error("Order cancelled; audit log failed."));
+  try { refreshOrderPaths(orderId); } catch { /* Cancelled already; cache refresh is best effort. */ }
+  return { success: true, data: undefined, message: `Order ${order.order_number} cancelled. Stock was restored.` };
 }
 export async function deleteOrderWorkspaceOrder(orderId: string, updatedAt: string | null, reason: string, expectedBusinessId: string): Promise<ActionResult> {
   const business = await requirePermission("orders.cancel");

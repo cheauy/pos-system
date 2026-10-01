@@ -59,8 +59,8 @@ export async function createBusinessTable(
       metadata: { table_id: data.id },
     });
 
-    revalidatePath("/dashboard/online-store");
-    revalidatePath("/dashboard/online-store/ordering");
+    revalidatePath("/dashboard/settings/online-store");
+    revalidatePath("/dashboard/settings/online-store/ordering");
 
     return {
       success: true,
@@ -105,8 +105,8 @@ export async function regenerateBusinessTableToken(formData: FormData) {
     metadata: { table_id: data.id },
   });
 
-  revalidatePath("/dashboard/online-store");
-    revalidatePath("/dashboard/online-store/ordering");
+  revalidatePath("/dashboard/settings/online-store");
+    revalidatePath("/dashboard/settings/online-store/ordering");
 }
 
 export async function deleteBusinessTable(formData: FormData) {
@@ -142,6 +142,6 @@ export async function deleteBusinessTable(formData: FormData) {
     metadata: { table_id: table.id },
   });
 
-  revalidatePath("/dashboard/online-store");
-    revalidatePath("/dashboard/online-store/ordering");
+  revalidatePath("/dashboard/settings/online-store");
+    revalidatePath("/dashboard/settings/online-store/ordering");
 }

@@ -6,24 +6,51 @@ import { CancelOrderItem } from "./[id]/order-detail-controls";
 import OrderPrintMenu from "@/components/order-print-menu";
 import OrderPrintPreview, {type OrderPrintKind} from "@/components/order-print-preview";
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, useTransition, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
-  AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronLeft, ChevronRight,
-  Clock3, CreditCard, DollarSign, Ellipsis, Eye, FileText, Loader2, Mail, MapPin,
-  Package, Pencil, Phone, Plus, Printer, QrCode, RefreshCw, RotateCcw,
-  Search, ShieldCheck, ShoppingBag, ShoppingCart, Store, Trash2, X,
+  AlertCircle, ArrowUpDown, Check, ChevronLeft, ChevronRight,
+  Clock3, CreditCard, Ellipsis, Eye, FileText, Loader2, Mail, MapPin,
+  Package, Pencil, Phone, Plus, Printer, QrCode, RefreshCw,
+  Search, ShieldCheck, ShoppingBag, Store, Trash2, X,
+  Bell, BellRing, Volume2, VolumeX, Ban, ExternalLink, SlidersHorizontal,
+  CalendarDays, CheckCircle2, Coins, ReceiptText, RotateCcw, Truck, UserRound, Wallet,
 } from "lucide-react";
 import {
   changeOrderWorkspaceStatus, deleteOrderWorkspaceOrder, getOrderWorkspaceDetail, saveOrderWorkspaceDetails,
 } from "./order-workspace-actions";
 import {
-  dateText, deleteReason, fulfillmentLabels, methodLabel, money, nextStatuses,
+  dateText, deleteReason, fulfillmentLabels, methodLabel, money as plainMoney, nextStatuses,
   paymentLabels, sourceLabels, statusLabels,
   type ActionResult, type EditOrderInput, type OrderDetail, type OrderRow,
   type WorkspaceData, type WorkspaceFilters, type WorkspacePermissions,
 } from "./order-workspace-types";
 import styles from "./orders-workspace.module.css";
+import { formatStoreMoney, type CurrencyFormat } from "@/lib/currency-format";
+import { setIncomingOrderScope, updateOnlinePaymentStatus } from "../online-orders/actions";
+import { createClient } from "@/lib/supabase/client";
+import { realtimeTopic } from "@/lib/supabase/realtime-topic";
+import { ORDER_ALERTS_KEY, ORDER_SOUND_KEY } from "@/components/online-order-listener";
+import { toast } from "sonner";
+import CancelOrderForm from "@/components/cancel-order-form";
+
+function money(value: number, currency: string, format?: CurrencyFormat) {
+  return format ? formatStoreMoney(Number(value) || 0, format) : plainMoney(value, currency);
+}
+
+const PREFS_EVENT = "tenh-order-prefs";
+function subscribePrefs(callback: () => void) {
+  window.addEventListener("storage", callback); window.addEventListener(PREFS_EVENT, callback);
+  return () => { window.removeEventListener("storage", callback); window.removeEventListener(PREFS_EVENT, callback); };
+}
+function readPref(key: string) { try { return localStorage.getItem(key); } catch { return null; } }
+function useOrderPreference(key: string) {
+  return useSyncExternalStore(subscribePrefs, () => readPref(key), () => null);
+}
+function setOrderPreference(key: string, value: string) {
+  try { localStorage.setItem(key, value); } catch { /* Preferences are optional. */ }
+  window.dispatchEvent(new Event(PREFS_EVENT));
+}
 
 type Props = { businessId: string; businessName: string; showTableQr?: boolean; data: WorkspaceData; filters: WorkspaceFilters; permissions: WorkspacePermissions };
 type ActionDialog = { type: "edit" | "status" | "delete"; order: OrderRow };
@@ -49,7 +76,9 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
   const [menu, setMenu] = useState<{ row: OrderRow; rect: DOMRect; trigger: HTMLButtonElement } | null>(null);
   const [dialog, setDialog] = useState<ActionDialog | null>(null);
   const [notice, setNotice] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const filterForm = useRef<HTMLFormElement>(null);
+  const loadedId = useRef<string | null>(null);
   const allCheckbox = useRef<HTMLInputElement>(null);
   const visibleId = data.rows.some((row) => row.id === selectedId) ? selectedId : data.rows[0]?.id ?? null;
   const allChecked = data.rows.length > 0 && data.rows.every((row) => selected.some((item) => item.id === row.id));
@@ -63,13 +92,56 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
   }, []);
   useEffect(() => { if (allCheckbox.current) allCheckbox.current.indeterminate = someChecked && !allChecked; }, [someChecked, allChecked]);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(""), 6500); return () => clearTimeout(timer); }, [notice]);
+  const [live, setLive] = useState(false);
+  const alertsPref = useOrderPreference(ORDER_ALERTS_KEY);
+  const soundOn = useOrderPreference(ORDER_SOUND_KEY) !== "0";
+  const alertsOn = alertsPref === "1" && typeof Notification !== "undefined" && Notification.permission === "granted";
+  const [scopeBusy, setScopeBusy] = useState(false);
+  // Live list: any order insert/update in this business refreshes the page data (debounced).
+  // New-order alerts themselves come from the dashboard-wide OnlineOrderListener.
+  useEffect(() => {
+    const supabase = createClient();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const refreshSoon = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { if (document.visibilityState === "visible") startTransition(() => router.refresh()); }, 700);
+    };
+    const channel = supabase
+      .channel(realtimeTopic(`orders-workspace:${businessId}`))
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `business_id=eq.${businessId}` }, refreshSoon)
+      .subscribe((status) => setLive(status === "SUBSCRIBED"));
+    const poll = setInterval(() => { if (document.visibilityState === "visible") startTransition(() => router.refresh()); }, 30000);
+    const onVisible = () => { if (document.visibilityState === "visible") refreshSoon(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { if (timer) clearTimeout(timer); clearInterval(poll); document.removeEventListener("visibilitychange", onVisible); void supabase.removeChannel(channel); };
+  }, [businessId, router]);
+  async function toggleAlerts() {
+    if (alertsOn) { setOrderPreference(ORDER_ALERTS_KEY, "0"); toast.success("Desktop alerts turned off."); return; }
+    if (!("Notification" in window)) { toast.error("This browser does not support desktop notifications."); return; }
+    const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
+    if (permission !== "granted") { toast.error("Notifications are blocked. Allow them for this site in your browser settings."); return; }
+    setOrderPreference(ORDER_ALERTS_KEY, "1");
+    toast.success("Desktop alerts on. You'll be notified of new online orders even in another tab.");
+  }
+  function toggleSound() { setOrderPreference(ORDER_SOUND_KEY, soundOn ? "0" : "1"); }
+  async function toggleScope(receiveAll: boolean) {
+    setScopeBusy(true);
+    try {
+      const result = await setIncomingOrderScope(receiveAll);
+      if (result.success) { toast.success(result.message); refresh(); } else toast.error(result.message);
+    } catch { toast.error("Unable to save the order scope. Try again."); }
+    finally { setScopeBusy(false); }
+  }
   useEffect(() => {
     let active = true;
-    if (!visibleId || panelClosed || (narrow && !mobileOpen)) { setDetail(null); setDetailLoading(false); return; }
-    setDetailLoading(true); setDetailError(""); setDetail(null);
+    if (!visibleId || panelClosed || (narrow && !mobileOpen)) { setDetail(null); setDetailLoading(false); loadedId.current = null; return; }
+    // Live refreshes of the same order update in place instead of flashing a skeleton.
+    const sameOrder = loadedId.current === visibleId;
+    if (!sameOrder) { setDetailLoading(true); setDetail(null); }
+    setDetailError("");
     getOrderWorkspaceDetail(visibleId, businessId).then((result) => {
       if (!active) return;
-      if (result.success) setDetail(result.data); else setDetailError(result.message);
+      if (result.success) { setDetail(result.data); loadedId.current = visibleId; } else setDetailError(result.message);
     }).catch(() => { if (active) setDetailError("Could not load the order. Check your connection and try again."); })
       .finally(() => { if (active) setDetailLoading(false); });
     return () => { active = false; };
@@ -89,7 +161,8 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const values = Object.fromEntries(form.entries()) as Record<string, string>;
-    navigate({ search: values.search?.trim() ?? "", from: values.from ?? "", to: values.to ?? "", branch: values.branch || "all", source: values.source || "all", fulfillment: values.fulfillment || "all", payment: values.payment || "all", status: values.status || "all", page: 1 });
+    // Status comes from the tabs, not this form, so keep the current tab when filtering.
+    navigate({ search: values.search?.trim() ?? "", from: values.from ?? "", to: values.to ?? "", source: values.source || "all", fulfillment: values.fulfillment || "all", payment: values.payment || "all", page: 1 });
   }
   function refresh() { setMenu(null); startTransition(() => router.refresh()); }
   function selectRow(row: OrderRow) { setSelectedId(row.id); setPanelClosed(false); setMobileOpen(true); }
@@ -108,13 +181,17 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
   const firstShown = data.total === 0 ? 0 : (data.page - 1) * filters.limit + 1;
   const lastShown = Math.min(data.page * filters.limit, data.total);
   const activeFilters = !!(filters.search || filters.from || filters.to || [filters.branch, filters.source, filters.fulfillment, filters.payment, filters.status].some((value) => value !== "all"));
-  const detailContent = <DetailPanel onPrint={(id,kind)=>setPrintPreview({id,kind})} detail={detail} loading={detailLoading} error={detailError} currency={data.currency} timezone={data.timezone} permissions={permissions} businessId={businessId}
+  const filterCount = [filters.from || filters.to, filters.source !== "all", filters.fulfillment !== "all", filters.payment !== "all", filters.branch !== "all"].filter(Boolean).length;
+  const detailContent = <DetailPanel onPrint={(id,kind)=>setPrintPreview({id,kind})} detail={detail} loading={detailLoading} error={detailError} currency={data.currency} currencyFormat={data.currencyFormat} timezone={data.timezone} permissions={permissions} businessId={businessId}
     onClose={() => { setPanelClosed(true); setMobileOpen(false); }} onRetry={() => setDetailReload((value) => value + 1)} onAction={openAction} onReturned={() => { setDetailReload(value => value + 1); refresh(); }} />;
 
   return <div className={styles.workspace}>
     <header className={styles.header}>
-      <div><h1>Orders</h1><p>Review all orders, track statuses, manage payments, and print receipts.</p></div>
+      <div><h1>Orders</h1><p>POS, online store{showTableQr ? " and table QR" : ""} orders in one place. Confirm new online orders, track statuses, manage payments, and print receipts.</p></div>
       <div className={styles.headerActions}>
+        <span className={styles.liveBadge} data-live={live} title={live ? "Connected: orders update automatically" : "Connecting… orders still refresh every 30 seconds"}><span />{live ? "Live" : "Connecting"}</span>
+        <button className={styles.button} type="button" onClick={() => void toggleAlerts()} aria-pressed={alertsOn} title="Desktop notification for new online orders">{alertsOn ? <BellRing size={15} /> : <Bell size={15} />}{alertsOn ? "Alerts On" : "Enable Alerts"}</button>
+        <button className={styles.button} type="button" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "Mute new-order sound" : "Turn on new-order sound"} title={soundOn ? "New-order sound on" : "New-order sound off"}>{soundOn ? <Volume2 size={15} /> : <VolumeX size={15} />}</button>
         <button className={styles.button} type="button" onClick={refresh} disabled={pending}><RefreshCw size={15} className={pending ? styles.spin : ""} />Refresh</button>
         <button className={styles.button} type="button" onClick={() => setQueueOpen(true)} disabled={!selected.length}><Printer size={15} />Print Queue<span className={styles.counter}>{selected.length}</span></button>
         {permissions.create ? <Link className={`${styles.button} ${styles.primary}`} href="/dashboard/pos"><Plus size={17} />Create Order</Link>
@@ -124,24 +201,19 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
     {notice && <div className={styles.toast} role="status"><Check size={18} />{notice}<button type="button" aria-label="Dismiss notification" onClick={() => setNotice("")}><X size={15} /></button></div>}
     <div className={styles.workspaceGrid}>
       <div className={styles.mainColumn}>
-        <div className={styles.metrics}>
-          <Metric title="Total Orders Today" value={String(data.metrics.today)} tone="blue" icon={<ShoppingCart size={23} />}
-            footer={data.metrics.yesterday > 0 ? <span className={data.metrics.today >= data.metrics.yesterday ? styles.positive : styles.negative}>{data.metrics.today >= data.metrics.yesterday ? <ArrowUp size={12} /> : <ArrowDown size={12} />}{Math.abs((data.metrics.today - data.metrics.yesterday) / data.metrics.yesterday * 100).toFixed(0)}% <small>vs. yesterday</small></span> : <span>Today · {data.timezone}</span>} />
-          <Metric title="Completed Sales" value={money(data.metrics.completed, data.currency)} tone="green" icon={<DollarSign size={23} />} footer={<span>Completed orders · filtered period</span>} />
-          <Metric title="Active Orders" value={String(data.metrics.pending)} tone="orange" icon={<Clock3 size={23} />} footer={<span>{money(data.metrics.pendingValue, data.currency)} · New + Confirmed + In Progress</span>} />
-          <Metric title="Refunded" value={String(data.metrics.refunds)} tone="red" icon={<RotateCcw size={22} />} footer={<span>{money(data.metrics.refundedAmount, data.currency)} · Recorded refunds</span>} />
-        </div>
         <form ref={filterForm} key={JSON.stringify(filters)} onSubmit={applyFilters} className={styles.filters} aria-label="Filter orders">
           <div className={styles.filterTop}>
             <div className={styles.search}><Search size={16} /><input name="search" defaultValue={filters.search} maxLength={120} placeholder="Search by order number, customer name or phone…" aria-label="Search orders" /><button type="submit" aria-label="Apply search"><ChevronRight size={17} /></button></div>
-            <div className={styles.dateRange}><label><span>From</span><input name="from" type="date" defaultValue={filters.from} aria-label="Start date" onChange={() => filterForm.current?.requestSubmit()} /></label><span className={styles.dateDash}>—</span><label><span>To</span><input name="to" type="date" defaultValue={filters.to} aria-label="End date" onChange={() => filterForm.current?.requestSubmit()} /></label></div>
+            <button type="button" className={`${styles.filterToggle} ${filterCount ? styles.filterToggleActive : ""}`} aria-expanded={filtersOpen} aria-controls="order-filter-panel" onClick={() => setFiltersOpen((open) => !open)}>
+              <SlidersHorizontal size={15} />Filter{filterCount > 0 && <span className={styles.counter}>{filterCount}</span>}
+            </button>
           </div>
-          <div className={styles.filterBottom}>
-            <select name="branch" defaultValue={filters.branch} aria-label="Filter by branch" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Branches</option>{data.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>
-            <select name="fulfillment" defaultValue={filters.fulfillment} aria-label="Filter by fulfillment" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Fulfillment Types</option>{Object.entries(fulfillmentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+          <div id="order-filter-panel" className={styles.filterPanel} hidden={!filtersOpen}>
+            <div className={styles.dateRange}><label><span>From</span><input name="from" type="date" defaultValue={filters.from} aria-label="Start date" onChange={() => filterForm.current?.requestSubmit()} /></label><span className={styles.dateDash}>—</span><label><span>To</span><input name="to" type="date" defaultValue={filters.to} aria-label="End date" onChange={() => filterForm.current?.requestSubmit()} /></label></div>
             <select name="source" defaultValue={filters.source} aria-label="Filter by source" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Sources</option>{Object.entries(sourceLabels).filter(([value]) => value !== 'qr' || showTableQr).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+            <select name="fulfillment" defaultValue={filters.fulfillment} aria-label="Filter by fulfillment" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Fulfillment Types</option>{Object.entries(fulfillmentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             <select name="payment" defaultValue={filters.payment} aria-label="Filter by payment status" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Payment Statuses</option>{Object.entries(paymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-            <select name="status" defaultValue={filters.status} aria-label="Filter by order status" onChange={() => filterForm.current?.requestSubmit()}>{statusTabs.map((status) => <option key={status} value={status}>{status === "all" ? "All Order Statuses" : statusLabels[status]}</option>)}</select>
+            {filterCount > 0 && <button type="button" className={styles.textButton} onClick={() => navigate({ source: "all", fulfillment: "all", payment: "all", from: "", to: "", branch: "all", page: 1 })}>Clear filters</button>}
           </div>
         </form>
         <div className={styles.tabsRow}>
@@ -165,7 +237,7 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
                 <td>{row.itemCount} {row.itemCount === 1 ? "item" : "items"}</td>
                 <td><span className={styles.source}><SourceIcon source={row.source} />{sourceLabels[row.source] || row.source}</span></td>
                 <td><Badge value={row.paymentState} payment /></td>
-                <td className={styles.total}>{money(row.total, data.currency)}</td>
+                <td className={styles.total}>{money(row.total, data.currency, data.currencyFormat)}</td>
                 <td><Badge value={row.status} />{row.status === "pending" && row.onlineStatus && <small className={styles.subStatus}>{statusLabels[row.onlineStatus] || row.onlineStatus}</small>}</td>
                 <td className={styles.dateCell}>{dateText(row.createdAt, data.timezone)}<small>{dateText(row.createdAt, data.timezone, true)}</small></td>
                 <td className={styles.branchCell} title={row.branchName}>{row.branchName}</td>
@@ -184,6 +256,7 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
           </footer>
         </section>
         <p className={styles.scopeNote}><ShieldCheck size={12} />{businessName} · Sales, pending amounts, refunds, and tab counts follow your filters. Today’s count covers the business day.</p>
+        {data.branches.length > 1 && <label className={styles.scopeToggle}><input type="checkbox" role="switch" checked={data.receiveAllOnline === true} disabled={scopeBusy} onChange={(event) => void toggleScope(event.target.checked)} />Receive online-order alerts from all branches<span>{data.receiveAllOnline ? "All branches" : "Current branch only"}</span></label>}
       </div>
       {!narrow && <aside className={styles.detailColumn}>{panelClosed || !visibleId ? <div className={styles.detailPlaceholder}><FileText size={32} /><h3>Select an order</h3><p>Review customer details, items, payments, and activity.</p>{panelClosed && visibleId && <button className={styles.button} type="button" onClick={() => setPanelClosed(false)}>Show details</button>}</div> : detailContent}</aside>}
     </div>
@@ -199,9 +272,6 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
   </div>;
 }
 
-function Metric({ title, value, icon, tone, footer }: { title: string; value: string; icon: ReactNode; tone: string; footer: ReactNode }) {
-  return <section className={styles.metric}><div className={`${styles.metricIcon} ${styles[tone]}`}>{icon}</div><div><h2>{title}</h2><strong title={value}>{value}</strong><div className={styles.metricFooter}>{footer}</div></div></section>;
-}
 function Badge({ value, payment = false }: { value: string; payment?: boolean }) {
   const tone = ["completed", "paid"].includes(value) ? "green" : ["pending", "partial", "pending_verification", "preparing"].includes(value) ? "orange" : ["refunded"].includes(value) ? "red" : ["cancelled", "rejected"].includes(value) ? "neutral" : "blue";
   return <span className={`${styles.badge} ${styles[tone]}`}>{(payment ? paymentLabels : statusLabels)[value] || value}</span>;
@@ -214,10 +284,10 @@ function pageButtons(current: number, total: number): (number | "gap")[] {
   return output;
 }
 
-function DetailPanel({ detail, loading, error, currency, timezone, permissions, businessId, onClose, onRetry, onAction, onReturned, onPrint }: {
+function DetailPanel({ detail, loading, error, currency, currencyFormat, timezone, permissions, businessId, onClose, onRetry, onAction, onReturned, onPrint }: {
   onPrint: (id:string,kind:OrderPrintKind)=>void;
   onReturned: () => void;
-  detail: OrderDetail | null; loading: boolean; error: string; currency: string; timezone: string; permissions: WorkspacePermissions; businessId: string;
+  detail: OrderDetail | null; loading: boolean; error: string; currency: string; currencyFormat?: CurrencyFormat; timezone: string; permissions: WorkspacePermissions; businessId: string;
   onClose: () => void; onRetry: () => void; onAction: (type: ActionDialog["type"], row: OrderRow) => void;
 }) {
   const [statusBusy,setStatusBusy]=useState(false);
@@ -228,8 +298,7 @@ function DetailPanel({ detail, loading, error, currency, timezone, permissions, 
   const order = detail;
   const initials = order.customerName.split(/\s+/).slice(0, 2).map((name) => name[0]).join("").toUpperCase();
   const nextStatus = permissions.edit ? nextStatuses(order, permissions.cancel)[0] : undefined;
-  const blockedDelete = deleteReason(order);
-  const paid = Math.max(0, order.amountPaid - order.changeAmount);
+  const paid =Math.max(0, order.amountPaid - order.changeAmount);
   const returnedQuantity = order.items.reduce((total, item) => total + item.returnedQuantity, 0);
   const allReturned = order.items.length > 0 && order.items.every(item => item.returnedQuantity >= item.quantity);
   const canCancelItem = permissions.cancel && ["online","qr"].includes(order.source) && ["new","pending","in_progress"].includes(order.status) && !order.deleteBlocked && !order.discount && !order.couponCode && !order.returnsUnavailable;
@@ -243,30 +312,128 @@ function DetailPanel({ detail, loading, error, currency, timezone, permissions, 
     } catch { setStatusError("Refresh the order before trying again."); }
     finally { setStatusBusy(false); }
   }
-  return <section className={styles.detailCard} aria-label={`Order ${order.orderNumber} details`}>
-    <div className={styles.detailHeading}><div><h2>Order {order.orderNumber}</h2><div><Badge value={order.status} />{returnedQuantity > 0 && <span className={`${styles.badge} ${styles.orange}`}>{allReturned ? "Items returned" : "Partially returned"} · Refund recorded</span>}<small>{dateText(order.createdAt, timezone)} at {dateText(order.createdAt, timezone, true)}</small></div></div><button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close order details"><X size={16} /></button></div>
-    <div className={styles.detailActions}>
-      <Link className={styles.miniButton} href={orderHref(order.id)}><Eye size={13} />View</Link>
-      <OrderPrintMenu orderId={order.id} className={styles.miniButton} onPreview={kind=>onPrint(order.id,kind)}/>
-      {permissions.refund && !order.returnsUnavailable && ["new", "pending", "in_progress", "completed"].includes(order.status) && <ReturnItemsForm key={order.id} orderId={order.id} orderNumber={order.orderNumber} triggerClassName={styles.miniButton} onReturned={onReturned} currency={currency} items={order.items.map(item => ({ id: item.id, product_name: [item.name, item.variant, ...item.options].filter(Boolean).join(" · "), quantity: item.quantity, unit_price: item.unitPrice, returned_quantity: item.returnedQuantity }))} />}
+  const canReturn = permissions.refund && !order.returnsUnavailable && ["new", "pending", "in_progress", "completed"].includes(order.status);
+  const online = ["online", "qr"].includes(order.source);
+  const openOrder = online ? ONLINE_OPEN.includes(order.onlineStatus ?? "new") && !["completed", "cancelled", "refunded"].includes(order.status) : ["new", "pending", "in_progress"].includes(order.status);
+  // Paid or refunded POS sales are reversed with Return Items, not cancelled.
+  const canCancelOrder = permissions.cancel && openOrder && (online || !order.deleteBlocked);
+  const cancelBlockedReason = !permissions.cancel ? "Cancel permission is required." : !openOrder ? "Completed, cancelled and returned orders cannot be cancelled." : "This order has a payment or return. Use Return Items instead.";
+  return <section className={`${styles.detailCard} ${styles.od}`} aria-label={`Order ${order.orderNumber} details`}>
+    <header className={styles.odHead}>
+      <div>
+        <h2>Order {order.orderNumber}</h2>
+        <div className={styles.odMeta}><Badge value={order.status} />{returnedQuantity > 0 && <span className={`${styles.badge} ${styles.orange}`}>{allReturned ? "Items returned" : "Partially returned"}</span>}<span><CalendarDays size={14} />{dateText(order.createdAt, timezone)} at {dateText(order.createdAt, timezone, true)}</span></div>
+      </div>
+      <button type="button" className={styles.odClose} onClick={onClose} aria-label="Close order details"><X size={17} /></button>
+    </header>
+
+    <div className={styles.odToolbar}>
+      <Link className={styles.odTool} href={orderHref(order.id)}><Eye size={17} />View</Link>
+      <OrderPrintMenu orderId={order.id} className={styles.odTool} onPreview={kind=>onPrint(order.id,kind)}/>
+      {canReturn ? <ReturnItemsForm key={order.id} orderId={order.id} orderNumber={order.orderNumber} triggerClassName={styles.odTool} onReturned={onReturned} currency={currency} items={order.items.map(item => ({ id: item.id, product_name: [item.name, item.variant, ...item.options].filter(Boolean).join(" · "), quantity: item.quantity, unit_price: item.unitPrice, returned_quantity: item.returnedQuantity, image_url: item.imageUrl }))} />
+        : <button type="button" className={styles.odTool} disabled title="Returns are not available for this order."><RotateCcw size={17} />Return Items</button>}
+      <button type="button" className={styles.odTool} disabled={!permissions.edit} title={!permissions.edit ? "Order update permission is required." : "Edit order details"} onClick={() => onAction("edit", order)}><Pencil size={17} />Edit</button>
+      {canCancelOrder
+        ? <CancelOrderForm orderId={order.id} orderNumber={order.orderNumber} businessId={businessId} online={online} className={`${styles.odTool} ${styles.odToolDanger}`} onCancelled={() => onReturned()} />
+        : <button type="button" className={`${styles.odTool} ${styles.odToolDanger}`} disabled title={cancelBlockedReason}><Ban size={17} />Cancel Order</button>}
     </div>
-    <div className={styles.manageActions}>
-      <button type="button" className={styles.miniButton} disabled={!permissions.edit} title={!permissions.edit ? "Order update permission is required." : "Edit order details"} onClick={() => onAction("edit", order)}><Pencil size={13} />Edit</button>
-      <button type="button" className={`${styles.miniButton} ${styles.dangerText}`} disabled={!permissions.delete || !!blockedDelete} title={blockedDelete || (!permissions.delete ? "Delete permission is required." : "Delete unpaid order")} onClick={() => onAction("delete", order)}><Trash2 size={13} />Delete</button>
-    </div>
-    {nextStatus && <button type="button" className={`${styles.primary} ${styles.detailProgress}`} disabled={statusBusy||!order.updatedAt} onClick={()=>void advanceStatus()}><Check size={16}/>{statusBusy?"Updating…":nextStatus.label}</button>}
+
+    {nextStatus && <button type="button" className={styles.odProgress} disabled={statusBusy||!order.updatedAt} onClick={()=>void advanceStatus()}><CheckCircle2 size={22}/>{statusBusy?"Updating…":nextStatus.label}</button>}
     {statusError && <p role="alert" className={styles.error}>{statusError}</p>}
-    <section className={styles.detailSection}><h3>Customer</h3><div className={styles.customerProfile}><div className={styles.avatar}>{initials}</div><div><strong>{order.customerName}</strong>{order.customerPhone && <a href={`tel:${order.customerPhone.replace(/[^\d+]/g, "")}`}><Phone size={11} />{order.customerPhone}</a>}{order.customerEmail && <a href={`mailto:${order.customerEmail}`}><Mail size={11} />{order.customerEmail}</a>}{!order.customerPhone && !order.customerEmail && <small>No contact information</small>}</div></div>{order.customerAddress && <p className={styles.address}><MapPin size={13} />{order.customerAddress}</p>}</section>
-    <div className={styles.orderContext}><span><SourceIcon source={order.source} />{sourceLabels[order.source] || order.source}</span>{order.fulfillment && <span>{fulfillmentLabels[order.fulfillment] || order.fulfillment}</span>}<span><Store size={12} />{order.branchName}</span>{order.tableName && <span><QrCode size={12} />{order.tableName}</span>}{order.onlineStatus && <span>{statusLabels[order.onlineStatus] || order.onlineStatus}</span>}</div>
-    {order.requestedFor && <p className={styles.scheduled}><Clock3 size={13} />Scheduled: {dateText(order.requestedFor, timezone)} · {dateText(order.requestedFor, timezone, true)}</p>}
-    <section className={styles.detailSection}><h3>Items ({order.items.length})</h3><div className={styles.items}>{order.items.map((item) => <div key={item.id} className={styles.item}>
-      <div className={styles.itemImage}>{item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <Package size={19} />}</div>
-      <div className={styles.itemText}><strong>{item.name}</strong>{item.variant && <small>{item.variant}</small>}{item.options.length > 0 && <small>{item.options.join(", ")}</small>}<small>{money(item.unitPrice, currency)} × {item.quantity}</small>{item.returnedQuantity > 0 && <small>Returned: {item.returnedQuantity} · Refund recorded</small>}{canCancelItem && <CancelOrderItem orderId={order.id} itemId={item.id} name={item.name} updatedAt={order.updatedAt} businessId={businessId} onCancelled={onReturned}/>}</div><span>{money(item.subtotal, currency)}</span>
-    </div>)}</div></section>
-    <div className={styles.totals}><div><span>Subtotal</span><span>{money(order.subtotal, currency)}</span></div><div><span>Discount{order.couponCode ? ` · ${order.couponCode}` : ""}</span><span>−{money(order.discount, currency)}</span></div><div><span>Delivery fee</span><span>{money(order.deliveryFee, currency)}</span></div><div className={styles.grandTotal}><strong>Total</strong><strong>{money(order.total, currency)}</strong></div></div>
-    <section className={styles.detailSection}><div className={styles.sectionHeading}><h3>Payment</h3><Badge value={order.paymentState} payment /></div><div className={styles.paymentRow}><CreditCard size={20} /><div><strong>{methodLabel(order.paymentMethod)}</strong>{order.paymentReference && <small>Reference: {order.paymentReference}</small>}</div><strong>{money(paid, currency)}</strong></div>{order.changeAmount > 0 && <p className={styles.paymentExtra}>Change given <span>{money(order.changeAmount, currency)}</span></p>}{order.remainingBalance > 0 && <p className={styles.paymentExtra}>Balance due <strong>{money(order.remainingBalance, currency)}</strong></p>}</section>
-    <section className={styles.detailSection}><div className={styles.sectionHeading}><h3>Notes</h3>{permissions.edit && <button className={styles.textButton} type="button" onClick={() => onAction("edit", order)}><Pencil size={12} />Edit</button>}</div><p className={styles.note}>{order.note || "No special notes for this order."}</p></section>
-    <section className={styles.detailSection}><h3>Order Timeline</h3><ol className={styles.timeline}>{order.activity.map((activity) => <li key={activity.id}><strong>{activity.description}</strong><small>{dateText(activity.createdAt, timezone)} · {dateText(activity.createdAt, timezone, true)}</small></li>)}</ol>{order.activityUnavailable && <p className={styles.warningText}>Additional activity could not be loaded.</p>}</section>
+    {["online", "qr"].includes(order.source) && <OnlineOrderActions order={order} permissions={permissions} onChanged={onReturned} />}
+
+    <OdCard icon={<UserRound size={17} />} title="Customer" aside={<div className={styles.odPills}>
+      <span data-tone="blue"><SourceIcon source={order.source} />{sourceLabels[order.source] || order.source}</span>
+      {order.fulfillment && <span data-tone="green">{order.fulfillment === "delivery" ? <Truck size={13} /> : <Package size={13} />}{fulfillmentLabels[order.fulfillment] || order.fulfillment}</span>}
+      <span data-tone="violet"><Store size={13} />{order.branchName}</span>
+      {order.tableName && <span data-tone="blue"><QrCode size={13} />{order.tableName}</span>}
+    </div>}>
+      <div className={styles.odCustomer}>
+        <div className={styles.odAvatar}>{initials}</div>
+        <div>
+          <strong>{order.customerName}</strong>
+          {order.customerPhone && <a href={`tel:${order.customerPhone.replace(/[^\d+]/g, "")}`}><Phone size={13} />{order.customerPhone}</a>}
+          {order.customerEmail && <a href={`mailto:${order.customerEmail}`}><Mail size={13} />{order.customerEmail}</a>}
+          {order.customerAddress && <span><MapPin size={13} />{order.customerAddress}</span>}
+          {!order.customerPhone && !order.customerEmail && !order.customerAddress && <small>No contact information</small>}
+        </div>
+      </div>
+      {order.requestedFor && <p className={styles.scheduled}><Clock3 size={13} />Scheduled: {dateText(order.requestedFor, timezone)} · {dateText(order.requestedFor, timezone, true)}</p>}
+    </OdCard>
+
+    <OdCard icon={<ShoppingBag size={17} />} title={`Items (${order.items.length})`}>
+      <div className={styles.odItems}>{order.items.map((item) => <div key={item.id} className={styles.odItem}>
+        <div className={styles.odItemImage}>{item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <Package size={19} />}</div>
+        <div className={styles.odItemText}><strong>{item.name}</strong>{item.variant && <small>{item.variant}</small>}{item.options.length > 0 && <small>{item.options.join(", ")}</small>}<small>{money(item.unitPrice, currency, currencyFormat)} × {item.quantity}</small>{item.returnedQuantity > 0 && <small className={styles.odReturned}>Returned: {item.returnedQuantity}</small>}{canCancelItem && <CancelOrderItem orderId={order.id} itemId={item.id} name={item.name} updatedAt={order.updatedAt} businessId={businessId} onCancelled={onReturned}/>}</div>
+        <span className={styles.odItemTotal}>{money(item.subtotal, currency, currencyFormat)}</span>
+      </div>)}</div>
+    </OdCard>
+
+    <OdCard icon={<ReceiptText size={17} />} title="Summary">
+      <dl className={styles.odSummary}>
+        <div><dt>Subtotal</dt><dd>{money(order.subtotal, currency, currencyFormat)}</dd></div>
+        <div><dt>Discount{order.couponCode ? ` · ${order.couponCode}` : ""}</dt><dd>−{money(order.discount, currency, currencyFormat)}</dd></div>
+        <div><dt>Delivery fee</dt><dd>{money(order.deliveryFee, currency, currencyFormat)}</dd></div>
+        <div className={styles.odTotal}><dt>Total</dt><dd>{money(order.total, currency, currencyFormat)}</dd></div>
+      </dl>
+    </OdCard>
+
+    <OdCard icon={<CreditCard size={17} />} title="Payment" aside={<Badge value={order.paymentState} payment />}>
+      <p className={styles.odMethod}><CreditCard size={16} />{methodLabel(order.paymentMethod)}{order.paymentReference && !order.paymentReference.startsWith("proof:") && <small>Ref: {order.paymentReference}</small>}</p>
+      <div className={styles.odTiles}>
+        <div data-tone="green"><Wallet size={20} /><div><small>Amount paid</small><strong>{money(paid, currency, currencyFormat)}</strong></div></div>
+        <div data-tone="orange"><Coins size={20} /><div><small>Balance due</small><strong>{money(order.remainingBalance, currency, currencyFormat)}</strong></div></div>
+      </div>
+      {order.changeAmount > 0 && <p className={styles.paymentExtra}>Change given <span>{money(order.changeAmount, currency, currencyFormat)}</span></p>}
+    </OdCard>
+
+    <OdCard icon={<FileText size={17} />} title="Notes" aside={permissions.edit ? <button className={styles.odLink} type="button" onClick={() => onAction("edit", order)}><Pencil size={13} />Edit</button> : null}>
+      <p className={styles.odNote}>{order.note || "No special notes for this order."}</p>
+    </OdCard>
+
+    <OdCard icon={<Clock3 size={17} />} title="Order Timeline">
+      <ol className={styles.odTimeline}>{order.activity.map((activity) => <li key={activity.id}><strong>{activity.description}</strong><small>{dateText(activity.createdAt, timezone)} · {dateText(activity.createdAt, timezone, true)}</small></li>)}</ol>
+      {order.activityUnavailable && <p className={styles.warningText}>Additional activity could not be loaded.</p>}
+    </OdCard>
+  </section>;
+}
+
+function OdCard({ icon, title, aside, children }: { icon: ReactNode; title: string; aside?: ReactNode; children: ReactNode }) {
+  return <section className={styles.odCard}><div className={styles.odCardHead}><h3>{icon}{title}</h3>{aside}</div>{children}</section>;
+}
+
+const ONLINE_OPEN = ["new", "accepted", "preparing", "ready"];
+
+function OnlineOrderActions({ order, permissions, onChanged }: { order: OrderDetail; permissions: WorkspacePermissions; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [showProof, setShowProof] = useState(false);
+  const [error, setError] = useState("");
+  const khqr = order.paymentMethod === "khqr" && !["cancelled", "refunded"].includes(order.status);
+  const paymentStatus = order.paymentStatus ?? "unpaid";
+  const hasProof = order.paymentReference?.startsWith("proof:");
+  async function run(task: () => Promise<{ success: boolean; message: string }>) {
+    setBusy(true); setError("");
+    try {
+      const result = await task();
+      if (result.success) { toast.success(result.message); onChanged(); } else setError(result.message);
+    } catch { setError("The result could not be confirmed. Refresh the order before trying again."); }
+    finally { setBusy(false); }
+  }
+  // Rejecting an online order is the panel's Cancel Order button.
+  if (!khqr && !hasProof) return null;
+  return <section className={styles.odCard}>
+    <div className={styles.odCardHead}><h3><CreditCard size={17} />Online payment</h3></div>
+    {khqr && <div className={styles.onlinePayment}>
+      <span>KHQR payment: <Badge value={paymentStatus === "pending_verification" ? "pending_verification" : paymentStatus === "paid" ? "paid" : "unpaid"} payment /></span>
+      {hasProof && <button type="button" className={styles.miniButton} onClick={() => setShowProof(true)}><ExternalLink size={13} />View payment proof</button>}
+      {permissions.edit && <div className={styles.onlineButtons}>
+        {paymentStatus !== "paid" && <button type="button" className={styles.miniButton} disabled={busy} onClick={() => void run(() => updateOnlinePaymentStatus(order.id, "paid"))}><Check size={13} />Mark paid</button>}
+        {paymentStatus !== "unpaid" && <button type="button" className={styles.miniButton} disabled={busy} onClick={() => void run(() => updateOnlinePaymentStatus(order.id, "unpaid"))}><X size={13} />Mark unpaid</button>}
+      </div>}
+    </div>}
+    {!khqr && hasProof && <button type="button" className={styles.miniButton} onClick={() => setShowProof(true)}><ExternalLink size={13} />View payment proof</button>}
+    {showProof && <Modal title={`Payment proof · ${order.orderNumber}`} onClose={() => setShowProof(false)} wide><img src={`/api/online-orders/${order.id}/proof`} alt={`Payment proof for order ${order.orderNumber}`} className={styles.proofImage} /></Modal>}
+    {error && <p role="alert" className={styles.error}>{error}</p>}
   </section>;
 }
 

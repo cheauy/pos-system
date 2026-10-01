@@ -27,6 +27,8 @@ test('QR uses crisp edges, barcode vectors remain vectors, and printable text is
  const css=fs.readFileSync('components/receipts/pos-receipt.module.css','utf8');assert.match(css,/\.qrImage\{image-rendering:crisp-edges\}/);
  assert.match(css,/\.qrImage\{[^}]*width:80mm;max-width:100%;height:auto;aspect-ratio:1/);
  assert.match(fs.readFileSync('app/(dashboard)/dashboard/settings/receipts/receipt-settings-editor.tsx','utf8'),/target size: 80 × 80 mm/i);
- for(const path of ['components/receipts/pos-receipt.tsx','components/receipts/shipping-canvas.tsx','app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx','app/(dashboard)/dashboard/shipping-labels/shipping-labels-client.tsx'])assert.match(fs.readFileSync(path,'utf8'),/<svg shapeRendering="crispEdges"/);
+ for(const path of ['components/receipts/pos-receipt.tsx','components/receipts/shipping-canvas.tsx','app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx'])assert.match(fs.readFileSync(path,'utf8'),/<svg shapeRendering="crispEdges"/);
+ assert.match(fs.readFileSync('lib/receipts/shipping-label-markup.ts','utf8'),/shape-rendering="crispEdges"/);
+ assert.match(fs.readFileSync('lib/orders/order-qr.ts','utf8'),/shape-rendering="crispEdges"/);
  assert.match(fs.readFileSync('app/globals.css','utf8'),/print-color-adjust: exact/);
 });

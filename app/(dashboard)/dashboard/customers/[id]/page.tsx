@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, Mail, MapPin, Phone, ReceiptText } from "lucide-react";
+import { ArrowLeft, CalendarDays, Mail, MapPin, Phone, ReceiptText, UserRound } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCustomerFieldSettings } from "@/lib/customers/get-customer-field-settings";
 import { createClient } from "@/lib/supabase/branch-server";
-import { getStorefrontSettings } from "@/lib/storefront/get-storefront";
+import { formatBranchMoney, getBranchCurrency, type BranchCurrency } from "@/lib/settings/branch-currency";
 
 type CustomerOrder = {
   id: string;
@@ -23,6 +23,7 @@ type Customer = {
   phone: string | null;
   email: string | null;
   birthday: string | null;
+  gender: string | null;
   address: string | null;
   orders: CustomerOrder[];
 };
@@ -37,7 +38,7 @@ export default async function CustomerDetailsPage({ params }: CustomerPageProps)
   const scopedDb=await createClient();
 
   const [settings, fieldSettings, customerResult] = await Promise.all([
-    getStorefrontSettings(business.id),
+    getBranchCurrency(business.id),
     getCustomerFieldSettings(business.id),
     scopedDb
       .from("customers")
@@ -47,6 +48,7 @@ export default async function CustomerDetailsPage({ params }: CustomerPageProps)
         phone,
         email,
         birthday,
+        gender,
         address,
         orders (
           id,
@@ -72,7 +74,7 @@ export default async function CustomerDetailsPage({ params }: CustomerPageProps)
     (first, second) =>
       new Date(second.created_at).getTime() - new Date(first.created_at).getTime(),
   );
-  const completedOrders = orders.filter((order) => order.status === "completed");
+  const completedOrders = orders.filter((order) => order.status !== "cancelled" && order.status !== "refunded");
   const totalSpent = completedOrders.reduce((sum, order) => sum + Number(order.total), 0);
   const averageOrder = completedOrders.length > 0 ? totalSpent / completedOrders.length : 0;
   const lastPurchase = completedOrders[0]?.created_at ?? null;
@@ -102,6 +104,7 @@ export default async function CustomerDetailsPage({ params }: CustomerPageProps)
           <div className="mt-6 space-y-4 text-sm">
             <InformationRow icon={<Phone size={16} />} label="Phone" value={customer.phone} />
             {fieldSettings.emailEnabled ? <InformationRow icon={<Mail size={16} />} label="Email" value={customer.email} /> : null}
+            {fieldSettings.genderEnabled && <InformationRow icon={<UserRound size={16}/>} label="Gender" value={customer.gender === "male" ? "Male" : customer.gender === "female" ? "Female" : "Not specified"}/>}
             {fieldSettings.birthdayEnabled ? <InformationRow icon={<CalendarDays size={16} />} label="Birthday" value={formatBirthday(customer.birthday)} /> : null}
             <InformationRow icon={<MapPin size={16} />} label="Address" value={customer.address} />
           </div>
@@ -117,8 +120,8 @@ export default async function CustomerDetailsPage({ params }: CustomerPageProps)
         <section>
           <div className="mb-6 grid gap-4 sm:grid-cols-3">
             <SummaryCard title="Completed orders" value={String(completedOrders.length)} />
-            <SummaryCard title="Total spent" value={formatMoney(totalSpent, settings.currency)} />
-            <SummaryCard title="Average order" value={formatMoney(averageOrder, settings.currency)} subtitle={lastPurchase ? `Last purchase ${formatDate(lastPurchase)}` : "No purchases yet"} />
+            <SummaryCard title="Total spent" value={formatMoney(totalSpent, settings)} />
+            <SummaryCard title="Average order" value={formatMoney(averageOrder, settings)} subtitle={lastPurchase ? `Last purchase ${formatDate(lastPurchase)}` : "No purchases yet"} />
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -148,7 +151,7 @@ export default async function CustomerDetailsPage({ params }: CustomerPageProps)
                       <p className="mt-1 text-sm text-slate-500">{formatDate(order.created_at)}</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-slate-900">{formatMoney(Number(order.total), settings.currency)}</p>
+                      <p className="font-bold text-slate-900">{formatMoney(Number(order.total), settings)}</p>
                       <p className="mt-1 text-xs capitalize text-slate-500">{order.status}</p>
                     </div>
                   </Link>
@@ -188,12 +191,8 @@ function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "C";
 }
 
-function formatMoney(value: number, currency: string) {
-  try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value);
-  } catch {
-    return `${currency} ${value.toFixed(2)}`;
-  }
+function formatMoney(value: number, settings: BranchCurrency) {
+  return formatBranchMoney(value, settings);
 }
 
 function formatDate(value: string) {

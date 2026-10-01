@@ -20,7 +20,7 @@ export default async function EditCustomerPage({ params }: EditCustomerPageProps
   const [customerResult, fieldSettings] = await Promise.all([
     supabase
       .from("customers")
-      .select("id,name,phone,email,birthday,address")
+      .select("id,name,phone,email,birthday,gender,address")
       .eq("id", id)
       .eq("business_id", business.id)
       .maybeSingle(),
@@ -64,6 +64,7 @@ export default async function EditCustomerPage({ params }: EditCustomerPageProps
               </FormField>
             ) : null}
 
+            {fieldSettings.genderEnabled && <FormField label="Gender" htmlFor="gender"><select id="gender" name="gender" defaultValue={data.gender ?? ""} className={inputClass}><option value="">Not specified</option><option value="male">Male</option><option value="female">Female</option></select></FormField>}
             {fieldSettings.birthdayEnabled ? (
               <FormField label="Birthday" htmlFor="birthday">
                 <input id="birthday" name="birthday" type="date" defaultValue={data.birthday ?? ""} className={inputClass} />

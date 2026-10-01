@@ -43,6 +43,9 @@ type ReturnRow = {
   restock_status: string | null;
   import_product_name: string | null;
   import_quantity: number | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+  cancelled_items: { order_item_id: string; product_name: string; quantity: number; unit_price: number; subtotal: number }[] | null;
   orders: OrderRelation;
   return_items: ReturnItemRow[] | null;
 };
@@ -68,6 +71,9 @@ export default async function ReturnsPage() {
         restock_status,
         import_product_name,
         import_quantity,
+        cancelled_at,
+        cancel_reason,
+        cancelled_items,
         orders (
           order_number,
           payment_method,
@@ -129,7 +135,17 @@ export default async function ReturnsPage() {
         source: record.source === "import" ? "import" : "system",
         refundMethod: record.refund_method,
         restockStatus: record.restock_status,
+        cancelledAt: record.cancelled_at,
+        cancelReason: record.cancel_reason,
         items: [
+          // A cancelled return's items live only in its snapshot.
+          ...(record.cancelled_items ?? []).map((item, index) => ({
+            id: `cancelled-${record.id}-${index}`,
+            productName: item.product_name,
+            quantity: Number(item.quantity ?? 0),
+            unitPrice: Number(item.unit_price ?? 0),
+            subtotal: Number(item.subtotal ?? 0),
+          })),
           ...(record.return_items ?? []).map((item) => ({
             id: item.id,
             productName: item.product_name,
@@ -161,12 +177,13 @@ export default async function ReturnsPage() {
       completedOrderCount={ordersCountResult.count ?? 0}
       accentColor={storefrontResult.data?.primary_color || "#2563EB"}
       canManage={canManage}
+      canCancel={business.role === "owner"}
     />
   );
 }
 
 function normalizeStatus(value: string | null): ReturnWorkspaceRecord["status"] {
-  if (value === "pending" || value === "approved" || value === "refunded" || value === "exchanged" || value === "rejected") {
+  if (value === "pending" || value === "approved" || value === "refunded" || value === "exchanged" || value === "rejected" || value === "cancelled") {
     return value;
   }
   return "refunded";

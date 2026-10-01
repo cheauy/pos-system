@@ -25,6 +25,8 @@
 # misc
 .DS_Store
 *.pem
+/pos-system.zip
+/.next-*/
 
 # debug
 npm-debug.log*

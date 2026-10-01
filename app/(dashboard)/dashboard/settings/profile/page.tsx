@@ -1,4 +1,3 @@
-import ProfilePhotoForm from './profile-photo-form';
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -118,14 +117,11 @@ export default async function ProfilePage() {
         </div>
       </section>
 
-      <ProfilePhotoForm />
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.75fr)_minmax(300px,0.95fr)]">
         <ProfileForm
           defaultFullName={profile.full_name ?? ""}
           email={user.email ?? ""}
           role={profile.role}
-          businessName={business.name}
-          canEditBusinessName={business.role === "owner"}
         />
 
         <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900">

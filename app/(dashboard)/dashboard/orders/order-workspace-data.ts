@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/branch-server";
+import { getBranchCurrency } from "@/lib/settings/branch-currency";
 import type { OrderDetail, OrderRow, PaymentState, WorkspaceData, WorkspaceFilters } from "./order-workspace-types";
 
 type Customer = { id: string; name: string; phone: string | null; email: string | null; address: string | null };
@@ -33,7 +34,17 @@ export async function loadWorkspace(businessId: string, filters: WorkspaceFilter
     throw new Error("Orders could not be loaded. Please refresh or check your database connection.");
   }
   if (!data || !Array.isArray(data.rows)) throw new Error("The Orders workspace returned an invalid response.");
-  return data as WorkspaceData;
+  const workspace = data as WorkspaceData;
+  // Use the same per-branch currency settings as POS; "all branches" uses the operating branch.
+  const [settings, scope] = await Promise.all([
+    getBranchCurrency(businessId, filters.branch !== "all" ? filters.branch : undefined),
+    supabase.rpc("tenh_receive_all_online_orders", { p_business: businessId }),
+  ]);
+  workspace.receiveAllOnline = scope.data === true;
+  workspace.currency = settings.currency;
+  workspace.currencyFormat = settings.format;
+  workspace.dualCurrency = { enabled: settings.dualEnabled, rate: settings.usdKhrRate };
+  return workspace;
 }
 
 // Called only with the current business ID resolved on the server.
@@ -90,7 +101,7 @@ export async function loadOrderDetail(businessId: string, orderId: string): Prom
     note: order.customer_note, subtotal: number(order.subtotal), discount: number(order.discount),
     deliveryFee: number(order.delivery_fee), changeAmount: number(order.change_amount),
     remainingBalance: number(order.remaining_balance), couponCode: order.coupon_code,
-    couponDiscount: number(order.coupon_discount), paymentReference: order.payment_reference,
+    couponDiscount: number(order.coupon_discount), paymentReference: order.payment_reference, paymentStatus: order.payment_status,
     tableName: order.table_name, requestedFor: order.requested_for,
     returnsUnavailable: !!returns.error,
     items: (order.order_items ?? []).map((item) => ({

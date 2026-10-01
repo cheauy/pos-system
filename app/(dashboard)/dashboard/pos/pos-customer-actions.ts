@@ -23,9 +23,9 @@ function failure(error: unknown): { message: string; uncertain: boolean } {
 
 async function customerFields(businessId:string) {
   const db=await createClient();
-  const {data,error}=await db.from('branch_customer_settings').select('email_enabled,birthday_enabled').eq('business_id',businessId).maybeSingle();
+  const {data,error}=await db.from('branch_customer_settings').select('email_enabled,birthday_enabled,gender_enabled').eq('business_id',businessId).maybeSingle();
   if(error) throw new Error('Customer field settings could not be loaded. Please retry.');
-  return {emailEnabled:data?.email_enabled ?? true,birthdayEnabled:data?.birthday_enabled ?? true};
+  return {emailEnabled:data?.email_enabled ?? true,birthdayEnabled:data?.birthday_enabled ?? true,genderEnabled:data?.gender_enabled ?? false};
 }
 
 export async function fetchPosCustomers(businessId: string, search: string, offset=0, expectedBranchId?: string): Promise<ActionResult<CustomerPage>> {
@@ -64,7 +64,7 @@ export async function createPosCustomer(businessId: string, input: CustomerInput
     const db=await createClient();
     const {data,error}=await db.rpc('tenh_pos_customer_create',{
       p_business_id:business.id,p_id:input.id,
-      p_input:{name:input.name.trim(),phone:input.phone.trim(),address:input.address.trim(),email:fields.emailEnabled?(input.email || '').trim():'',birthday:fields.birthdayEnabled?(input.birthday || ''):''}
+      p_input:{name:input.name.trim(),phone:input.phone.trim(),address:input.address.trim(),email:fields.emailEnabled?(input.email || '').trim():'',birthday:fields.birthdayEnabled?(input.birthday || ''):'',...(fields.genderEnabled?{gender:input.gender||''}:{})}
     });
     if(error)return {success:false,...failure(error)};
     if(!data || data.id!==input.id || typeof data.name!=='string') return {success:false,uncertain:true,message:'The customer result could not be confirmed. Retry this same request.'};

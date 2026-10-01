@@ -1,13 +1,12 @@
 "use client";
 
 import {
-  Building2,
   Mail,
   Save,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import { useActionState, useEffect, useRef } from "react";
+import { useRef, useState } from "react";
 
 import {
   updateProfile,
@@ -18,8 +17,6 @@ type ProfileFormProps = {
   defaultFullName: string;
   email: string;
   role: string;
-  businessName: string;
-  canEditBusinessName: boolean;
 };
 
 const initialState: UpdateProfileState = {
@@ -31,20 +28,31 @@ export default function ProfileForm({
   defaultFullName,
   email,
   role,
-  businessName,
-  canEditBusinessName,
 }: ProfileFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [state, formAction, pending] = useActionState(updateProfile, initialState);
-
-  useEffect(() => {
-    if (!state.message) return;
-  }, [state]);
+  const [state, setState] = useState(initialState);
+  const [pending, setPending] = useState(false);
+  const [fullName, setFullName] = useState(defaultFullName);
+  const [savedName, setSavedName] = useState(defaultFullName);
+  const locked = useRef(false);
+  const photoRef = useRef<HTMLInputElement>(null);
 
   return (
     <form
       ref={formRef}
-      action={formAction}
+      onSubmit={async event => {
+        event.preventDefault();
+        if (locked.current) return;
+        const data = new FormData(event.currentTarget);
+        locked.current = true; setPending(true); setState(initialState);
+        try {
+          const result = await updateProfile(initialState, data);
+          setState(result);
+          if (result.success || result.nameSaved) setSavedName(fullName.trim());
+          if (result.success && photoRef.current) photoRef.current.value = "";
+        } catch { setState({success:false,message:"Unable to confirm the save. Your changes are kept; refresh before retrying."}); }
+        finally { locked.current = false; setPending(false); }
+      }}
       className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900"
     >
       <div className="flex items-start gap-3 border-b border-slate-100 pb-5 dark:border-slate-800">
@@ -59,7 +67,12 @@ export default function ProfileForm({
         </div>
       </div>
 
-      <div className="mt-5 space-y-5">
+      <fieldset disabled={pending} className="mt-5 min-w-0 space-y-5">
+        <div className="space-y-2">
+          <label htmlFor="profile-photo" className="text-sm font-semibold">Profile photo</label>
+          <input ref={photoRef} id="profile-photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp" className="block w-full text-sm" />
+          <p className="text-xs text-slate-500">JPG, PNG or WebP, up to 5 MB. Saved with your name when you click Save Changes. Also appears on mobile.</p>
+        </div>
         <div className="space-y-2">
           <label htmlFor="full_name" className="text-sm font-semibold text-slate-800 dark:text-slate-200">
             Full Name
@@ -73,41 +86,12 @@ export default function ProfileForm({
               required
               minLength={2}
               maxLength={100}
-              defaultValue={defaultFullName}
+              value={fullName}
+              onChange={event => setFullName(event.target.value)}
               placeholder="Enter your full name"
               className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-blue-950"
             />
           </div>
-        </div>
-
-        <div className="space-y-2">
-          <label htmlFor="business_name" className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-            Business Name
-          </label>
-          <div className="relative">
-            <Building2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              id="business_name"
-              name="business_name"
-              type="text"
-              required={canEditBusinessName}
-              minLength={2}
-              maxLength={100}
-              defaultValue={businessName}
-              disabled={!canEditBusinessName}
-              placeholder="Enter your business name"
-              className={`w-full rounded-xl border py-2.5 pl-10 pr-3 text-sm outline-none transition ${
-                canEditBusinessName
-                  ? "border-slate-200 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-blue-950"
-                  : "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400"
-              }`}
-            />
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {canEditBusinessName
-              ? "Only the Owner can change the workspace business name. Your store display name remains managed in Online Store settings."
-              : "Only the business Owner can change this name."}
-          </p>
         </div>
 
         <div className="space-y-2">
@@ -150,6 +134,7 @@ export default function ProfileForm({
 
         {state.message ? (
           <div
+            role={state.success ? "status" : "alert"}
             className={
               state.success
                 ? "rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700 dark:border-green-900/50 dark:bg-green-950/20 dark:text-green-300"
@@ -159,11 +144,12 @@ export default function ProfileForm({
             {state.message}
           </div>
         ) : null}
-      </div>
+      </fieldset>
 
-      <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-5 dark:border-slate-800">
+      <div className="settings-save-bar">
         <button
-          type="reset"
+          type="button"
+          onClick={() => {setFullName(savedName); if(photoRef.current)photoRef.current.value=""; setState(initialState);}}
           disabled={pending}
           className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
         >

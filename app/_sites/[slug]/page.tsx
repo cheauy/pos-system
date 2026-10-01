@@ -1,6 +1,7 @@
 import { storefrontTheme } from "@/lib/storefront/theme";
 import { StorefrontLanguage } from "./storefront-language";
 import { bestsellerKeys } from "@/lib/storefront/bestsellers";
+import { storefrontBundlePhotos } from "@/lib/storefront/bundle-items";
 import { isNewArrival } from "@/lib/storefront/profile";
 import { notFound } from "next/navigation";
 import {
@@ -54,6 +55,7 @@ type ProductRow = {
   size: string | null;
   color: string | null;
   image_url: string | null;
+  image_urls?: string[];
   variant_image_url: string | null;
   description: string | null;
   selling_price: number;
@@ -220,6 +222,7 @@ export default async function StorefrontPage({
         size,
         color,
         image_url,
+        image_urls,
         variant_image_url,
         description,
         selling_price,
@@ -372,6 +375,12 @@ export default async function StorefrontPage({
     storefront.social_links?.profile?.newArrivals,
   ).map(product => ({ ...product, preorderVariantIds: product.variants.filter(variant => storefront.social_links?.profile?.featuredProductIds?.includes(variant.id)).map(variant => variant.id), isFeatured: product.variants.some(variant => storefront.social_links?.profile?.featuredProductIds?.includes(variant.id)) }));
 
+  const openedBundle = catalogProducts.find(product => product.key === productKey && product.productType === "bundle");
+  if (openedBundle) {
+    const photos = await storefrontBundlePhotos(business.id, openedBundle.variants[0].id);
+    openedBundle.images = [...new Set([...(openedBundle.images ?? []), ...photos])];
+  }
+
   const soldQuantities = new Map<string, number>();
   const since = new Date(); since.setDate(since.getDate() - 30);
   for (let offset = 0; ; offset += 1000) {
@@ -396,7 +405,7 @@ export default async function StorefrontPage({
     storefront.primary_color || "#2563EB";
 
   return (
-    <StorefrontLanguage><main className="public-store" id="store-home" style={storefrontTheme(primaryColor)}>
+    <StorefrontLanguage key={`${business.id}:${storefront.social_links?.profile?.defaultLanguage ?? "en"}`} storeId={business.id} initialLanguage={storefront.social_links?.profile?.defaultLanguage}><main className="public-store" id="store-home" style={storefrontTheme(primaryColor)}>
       <div className="store-shell">
         <StorefrontShop productKey={typeof productKey === "string" ? productKey : undefined}
           brand={{
@@ -489,7 +498,7 @@ function buildCatalog(
         groupRows.find((row) => row.image_url)?.image_url ??
         groupRows.find((row) => row.variant_image_url)?.variant_image_url ??
         null,
-      images: [...new Set(groupRows.flatMap(row => [row.image_url, row.variant_image_url]).filter((url): url is string => Boolean(url)))],
+      images: [...new Set(groupRows.flatMap(row => [row.image_url, ...(row.image_urls ?? []), row.variant_image_url]).filter((url): url is string => Boolean(url)))],
       description: first.description,
       productType,
       priceFrom: Math.min(
