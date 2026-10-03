@@ -2,6 +2,7 @@ import { isOrderCode, orderQrSvg } from '@/lib/orders/order-qr';
 import { printTextScale, type ReceiptContext } from '@/lib/receipts/receipt-model';
 import { one, type DetailedOrder } from '@/app/(dashboard)/dashboard/orders/[id]/order-detail-model';
 import { escapeHtml as e } from './receipt-html';
+import { shippingLabelMarkup, SHIPPING_LABEL_CSS } from '@/lib/receipts/shipping-label-markup';
 
 export function mobileShippingHtml(order: DetailedOrder, context: ReceiptContext, settings: Record<string, unknown>, currency: string) {
   const customer = one(order.customers);
@@ -10,6 +11,12 @@ export function mobileShippingHtml(order: DetailedOrder, context: ReceiptContext
   if (!address.trim()) throw new Error('Add the delivery address before printing a shipping label.');
   const size = ['80x50', '100x100', '100x150'].includes(String(settings.shipping_label_size)) ? String(settings.shipping_label_size) : '100x150';
   const [width, height] = size.split('x').map(Number);
+  if (settings.shipping_template === 'custom' || String(settings.shipping_template).startsWith('custom:')) {
+    if (settings.shipping_custom_qr_needs_review === true) throw new Error('The saved Order QR was too small. Review the enlarged QR in Printer Settings and save the layout before printing.');
+    const output = shippingLabelMarkup({order,store:context.store,settings,size,currency});
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>@page{size:${width}mm ${height}mm;margin:0}html,body{margin:0;padding:0}${SHIPPING_LABEL_CSS}</style></head><body><article class="${output.className}" style="${output.style}">${output.inner}</article></body></html>`;
+    return {html,width:width*72/25.4,height:height*72/25.4,size};
+  }
   const compact = height <= 100 || settings.density === 'compact';
   const name = order.guest_name || customer?.name || 'Customer', phone = order.guest_phone || customer?.phone || '';
   const showSender = (field: string) => settings[`shipping_show_store_${field}`] ?? settings.shipping_show_sender ?? true;

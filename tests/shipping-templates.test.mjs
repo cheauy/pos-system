@@ -4,15 +4,18 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 const require = createRequire(import.meta.url);
 const { loadTs } = require('./helpers/load-ts.cjs');
-const templates = loadTs('lib/receipts/shipping-templates.ts');
+const layoutApi = loadTs('lib/receipts/shipping-layout.ts');
 const model = loadTs('lib/receipts/receipt-model.ts');
 // QR encoding is unchanged and belongs to order-qr tests. This fixture tests label layout/data boundaries.
 const qr = { isOrderCode: v => typeof v === 'string' && /^[1-9][0-9]{11}$/.test(v), orderQrSvg: id => `<svg data-qr="${id}" viewBox="0 0 41 41"><rect width="41" height="41" fill="white"/></svg>` };
+const custom = loadTs('lib/receipts/shipping-custom.ts', {qrcode:require('qrcode'),'@/lib/barcode/code39':loadTs('lib/barcode/code39.ts'),'@/lib/orders/order-qr':qr,'./shipping-layout':layoutApi});
+const templates = loadTs('lib/receipts/shipping-templates.ts', {'./shipping-layout':layoutApi,'./shipping-custom':custom});
 const render = loadTs('lib/receipts/shipping-label-markup.ts', {
   '@/lib/barcode/code39': loadTs('lib/barcode/code39.ts'),
   '@/lib/orders/order-qr': qr,
   '@/lib/receipts/receipt-model': model,
   './shipping-templates': templates,
+  './shipping-layout':layoutApi, './shipping-custom':custom,
 });
 const order = { id: '550e8400-e29b-41d4-a716-446655440000', order_number: 'POS-DE60443D61', order_code: '482193057716', created_at: '2026-09-28T08:56:00Z', guest_name: 'Uy Chea', guest_phone: '010 312 400', guest_address: 'Phnom Penh, Cambodia', customers: null, total: 18, payment_method: 'COD', order_items: [{ quantity: 1 }] };
 const store = { name: 'Test Store', phone: '016 898 117', address: 'Sender street' };
@@ -136,7 +139,7 @@ test('existing branch authorization is retained for settings save/load and all p
   assert.match(wrapper, /<ShippingLabelCard/); assert.match(wrapper, /<ShippingTemplateSelect/);
 });
 
-function shippingActions({ branch = 'branch-a', denied = false, failSave = false, current = null } = {}) {
+function shippingActions({ branch = 'branch-a', denied = false, failSave = false, current = null, failNamed = false } = {}) {
   const writes = [], invalidated = [], reads = [];
   const api = loadTs('app/(dashboard)/dashboard/settings/receipts/actions.ts', {
     '@/lib/public-photo-cache': { PUBLIC_PHOTO_CACHE_SECONDS: '86400' },
@@ -152,6 +155,10 @@ function shippingActions({ branch = 'branch-a', denied = false, failSave = false
       loadShippingSettings: async id => { reads.push(id); return current; },
       persistShippingSettings: async (id, value) => { if (failSave) throw Error('Storage write failed'); writes.push({ id, value: templates.validateShippingSettings(value) }); },
     },
+    '@/lib/receipts/shipping-template-store': {persistShippingNamedTemplate:async (_id,entry,mode,revision,legacy)=>{
+      if(failNamed)throw Error('Apply the reviewed shipping custom template migration before saving named templates.');
+      const next={...entry,revision:revision+1};return mode==='update'?legacy.map(template=>template.id===entry.id?next:template):[...legacy,next];
+    }},
   });
   const form = new FormData(); form.set('branchId', 'branch-a'); form.set('shippingLabelSize', '80x50'); form.set('shippingTemplate', 'km-courier');
   form.set('shippingShowStoreName', 'on'); form.set('shippingShowPhone', 'on'); form.set('shippingShowBarcode', 'on'); form.set('shippingShowDate', 'on');
@@ -162,7 +169,7 @@ test('shipping save persists template, dimensions and explicit flags in the auth
   assert.equal(h.writes.length, 1); assert.equal(h.writes[0].id, 'business-a');
   assert.equal(h.writes[0].value.shipping_template, 'km-courier'); assert.equal(h.writes[0].value.shipping_label_size, '80x50');
   assert.equal(h.writes[0].value.shipping_show_phone, true); assert.equal(h.writes[0].value.shipping_show_footer, false);
-  assert.deepEqual(h.reads, []); assert.ok(h.invalidated.some(([path]) => path === '/dashboard/orders'));
+  assert.deepEqual(h.reads, ['business-a']); assert.ok(h.invalidated.some(([path]) => path === '/dashboard/orders'));
 });
 test('old forms preserve saved Khmer template and optional flags instead of resetting them', async () => {
   const h = shippingActions({ current: { ...saved, shipping_template: 'km-classic', shipping_show_footer: false } });
@@ -183,6 +190,7 @@ test('branch JSON persistence validates the template and loads it back at the id
     'server-only': {},
     './shipping-templates': templates,
     './shipping-layout': loadTs('lib/receipts/shipping-layout.ts'),
+    './shipping-template-store': {loadShippingTemplateCatalog:async()=>null},
     '@/lib/branches/context': { getBranchContext: async () => ({ business: { id: 'business-a' }, branchId: 'branch-a' }) },
     '@/lib/branches/order-access': { authorizedOrderBranch: async () => 'branch-a' },
     '@/lib/supabase/admin': { supabaseAdmin: { storage: {
@@ -198,4 +206,160 @@ test('branch JSON persistence validates the template and loads it back at the id
   assert.equal(result.shipping_template, 'km-courier'); assert.deepEqual(paths, ['business-a/branch-a/shipping-settings.json', 'business-a/branch-a/shipping-settings.json']);
   await assert.rejects(api.persistShippingSettings('business-b', { ...saved, shipping_template: 'km-courier' }));
   assert.equal(entries.size, 1);
+});
+
+for (const size of templates.SHIPPING_LABEL_SIZES) test('custom design persists and renders identically at '+size.id, async () => {
+  const design = layoutApi.defaultShippingLayout(size.id);
+  design.elements[0] = {...design.elements[0], bold:true,fontSize:20,x:2};
+  const settings = templates.validateShippingSettings({...saved,shipping_template:'custom',shipping_label_size:size.id,shipping_custom_layout:JSON.stringify(design)});
+  assert.deepEqual(JSON.parse(settings.shipping_custom_layout),design);
+  const result = markup(settings);
+  const values = render.shippingValues(order,store);
+  assert.equal(result.className,'shipping-label ship-custom');
+  assert.equal(result.paper.id,size.id);
+  assert.equal(result.inner,layoutApi.resizeShippingLayout(design,size.id).elements.map(element=>custom.shippingElementMarkup(element,values)).join(''));
+  assert.match(result.inner,/font-size:20px;font-weight:700/);
+  assert.match(result.inner,/data-qr="482193057716"/);
+  assert.ok(!result.inner.includes(order.id));
+  const h=shippingActions();h.form.set('shippingTemplate','custom');h.form.set('shippingCustomLayout',JSON.stringify(design));h.form.set('shippingLabelSize',size.id);
+  await h.api.saveShippingLabelSettings(h.form);
+  assert.equal(h.writes[0].value.shipping_custom_layout,settings.shipping_custom_layout);
+});
+test('custom layouts stay saved when selecting a preset or using an older form',async()=>{
+ const design=JSON.stringify(layoutApi.defaultShippingLayout());
+ const h=shippingActions({current:{...saved,shipping_template:'custom',shipping_custom_layout:design}});
+ await h.api.saveShippingLabelSettings(h.form);assert.equal(h.writes[0].value.shipping_custom_layout,design);
+ h.form.delete('shippingTemplate');await h.api.saveShippingLabelSettings(h.form);assert.equal(h.writes[1].value.shipping_template,'custom');
+});
+test('invalid custom configuration fails before upload or successful cache invalidation',async()=>{
+ for(const raw of ['bad json','{}',JSON.stringify({...layoutApi.defaultShippingLayout(),elements:[{...layoutApi.defaultShippingLayout().elements[0],x:99}]})]){
+  const h=shippingActions();h.form.set('shippingTemplate','custom');h.form.set('shippingCustomLayout',raw);
+  await assert.rejects(h.api.saveShippingLabelSettings(h.form));assert.equal(h.writes.length,0);assert.equal(h.invalidated.length,0);
+ }
+ assert.throws(()=>templates.validateShippingSettings({...saved,shipping_template:'custom'}));
+});
+test('sample QR never encodes an actionable order link, and actual QR uses only the existing contract',()=>{
+ const calls=[];
+ const sampleCustom=loadTs('lib/receipts/shipping-custom.ts',{'./shipping-layout':layoutApi,'@/lib/barcode/code39':loadTs('lib/barcode/code39.ts'),'@/lib/orders/order-qr':qr,qrcode:{create:(value,options)=>{calls.push(value);return require('qrcode').create(value,options);}}});
+ assert.match(sampleCustom.shippingQr(null,true),/<svg/);assert.deepEqual(calls,['TENH SAMPLE LABEL - NOT AN ORDER']);
+ assert.equal(sampleCustom.shippingQr(null,false),'');assert.equal(sampleCustom.shippingQr('invalid',false),'');
+ assert.match(sampleCustom.shippingQr(order.order_code),/data-qr="482193057716"/);
+ const settings={...saved,shipping_template:'custom',shipping_custom_layout:JSON.stringify(layoutApi.defaultShippingLayout()),shipping_sample_preview:true};
+ const real=markup(settings);assert.match(real.inner,/data-qr="482193057716"/);
+ const sample=markup(settings,{id:'00000000-0000-0000-0000-000000000000',order_code:null,order_number:'SAMPLE-ORDER'});assert.match(sample.inner,/<svg/);assert.ok(!sample.inner.includes('data-qr="482193057716"'));
+});
+test('custom text is escaped and unsupported barcode identifiers never become another order code',()=>{
+ const element={...layoutApi.defaultShippingLayout().elements[0],field:'text',text:'<img src=x onerror=alert(1)>'};
+ assert.match(custom.shippingElementContent(element,{}),/&lt;img/);
+ assert.equal(custom.shippingElementContent({...element,field:'barcode'},{orderNumber:'INVALID_123'}),'');
+});
+test('mobile custom output uses the same dimensions and markup as the website',()=>{
+ const mobile=loadTs('lib/mobile/shipping-html.ts',{'@/lib/orders/order-qr':qr,'@/lib/receipts/receipt-model':model,'@/app/(dashboard)/dashboard/orders/[id]/order-detail-model':{one:value=>Array.isArray(value)?value[0]:value},'./receipt-html':{escapeHtml:render.escapeShippingHtml},'@/lib/receipts/shipping-label-markup':render});
+ const settings={...saved,shipping_template:'custom',shipping_custom_layout:JSON.stringify(layoutApi.defaultShippingLayout('80x50'))};
+ const result=mobile.mobileShippingHtml(order,{store},settings,'USD');
+ assert.ok(result.html.includes(markup(settings).inner));assert.ok(result.html.includes('@page{size:80mm 50mm;margin:0}'));
+ assert.equal(result.width,80*72/25.4);assert.equal(result.height,50*72/25.4);
+});
+
+ test('legacy invalid saved QR requires review; invalid save is rejected; repaired save clears review',()=>{
+ const layout=layoutApi.defaultShippingLayout('80x50');const qr=layout.elements.find(x=>x.field==='qr');qr.width=2;qr.height=3.2;
+ const invalid={...saved,shipping_template:'custom',shipping_custom_layout:JSON.stringify(layout)};
+ assert.throws(()=>templates.validateShippingSettings(invalid),/Order QR code must be at least/);
+ const repaired=templates.validateShippingSettings(invalid,true);assert.equal(repaired.shipping_custom_qr_needs_review,true);
+ const valid=templates.validateShippingSettings(repaired);assert.equal(valid.shipping_custom_qr_needs_review,undefined);
+ const h=markup(repaired);assert.equal(h.paper.id,'80x50');
+});
+ test('actual order-link QR density changes minimum size with host length and includes quiet zones',()=>{
+ const encoder=require('qrcode');const sizes=[];
+ for(const root of ['short.test','storefront-a-very-long-example-hostname.test']){
+  const domain=loadTs('lib/tenancy/domain.ts');const original=process.env.NEXT_PUBLIC_ROOT_DOMAIN;process.env.NEXT_PUBLIC_ROOT_DOMAIN=root;
+  try{
+   const realQr=loadTs('lib/orders/order-qr.ts',{qrcode:encoder,'@/lib/tenancy/domain':domain});
+   const live=loadTs('lib/receipts/shipping-custom.ts',{qrcode:encoder,'@/lib/barcode/code39':loadTs('lib/barcode/code39.ts'),'@/lib/orders/order-qr':realQr,'./shipping-layout':layoutApi});
+   const svg=realQr.orderQrSvg(order.order_code),modules=layoutApi.shippingQrModules(svg);
+   assert.equal(modules,encoder.create(realQr.orderLink(order.order_code),{errorCorrectionLevel:'M'}).modules.size+8);
+   const minimum=live.shippingOrderQrMinimumMm();assert.ok(minimum/modules*203/25.4>=4);
+   assert.ok((minimum-.1)/modules*203/25.4<4);sizes.push(minimum);
+  }finally{if(original===undefined)delete process.env.NEXT_PUBLIC_ROOT_DOMAIN;else process.env.NEXT_PUBLIC_ROOT_DOMAIN=original;}
+ }
+ assert.ok(sizes[1]>sizes[0]);
+});
+ test('print preparation blocks actual payload QR density and legacy review even inside paper bounds',()=>{
+ const preparation=loadTs('lib/printing/prepare-print.ts',{'@/lib/receipts/shipping-layout':layoutApi});
+ let side=1.6;const svg=custom.shippingQr(order.order_code);const element={scrollWidth:10,clientWidth:10,scrollHeight:10,clientHeight:10,querySelector:()=>({outerHTML:svg}),getBoundingClientRect:()=>({left:0,top:0,right:side,bottom:side,width:side,height:side})};
+ const label={dataset:{widthMm:'80',heightMm:'50'},matches:selector=>selector.includes('ship-custom')||selector==='.shipping-label',getBoundingClientRect:()=>({left:0,top:0,right:80,bottom:50,width:80,height:50}),querySelectorAll:()=>[element]};
+ assert.equal(preparation.fitShippingLabel(label),false);assert.throws(()=>preparation.assertShippingLabelsFit(label),/Order QR needs at least/);
+ side=layoutApi.shippingQrMinimumMm(layoutApi.shippingQrModules(svg));assert.equal(preparation.fitShippingLabel(label),true);
+ label.dataset.customQrReview='true';assert.equal(preparation.fitShippingLabel(label),false);assert.throws(()=>preparation.assertShippingLabelsFit(label),/save the layout before printing/);
+});
+
+ test('loading a legacy tiny QR repairs only the returned branch settings and performs no write',async()=>{
+ const layout=layoutApi.defaultShippingLayout('80x50');const qr=layout.elements.find(x=>x.field==='qr');qr.width=2;qr.height=3.2;
+ const json=JSON.stringify({...saved,shipping_template:'custom',shipping_custom_layout:JSON.stringify(layout)});let writes=0;
+ const api=loadTs('lib/receipts/shipping-design-store.ts',{'server-only':{},'./shipping-template-store':{loadShippingTemplateCatalog:async()=>null},'./shipping-templates':templates,'./shipping-layout':layoutApi,'@/lib/branches/context':{getBranchContext:async()=>({business:{id:'business-a'},branchId:'branch-a'})},'@/lib/branches/order-access':{authorizedOrderBranch:async()=> 'branch-a'},'@/lib/supabase/admin':{supabaseAdmin:{storage:{from:()=>({download:async path=>{assert.equal(path,'business-a/branch-a/shipping-settings.json');return {data:{text:async()=>json},error:null};},upload:async()=>{writes++;}})}}}});
+ const result=await api.loadShippingSettings('business-a');assert.equal(result.shipping_custom_qr_needs_review,true);assert.equal(writes,0);
+ const repaired=JSON.parse(result.shipping_custom_layout);layoutApi.validateShippingLayout(repaired,custom.shippingOrderQrMinimumMm());
+ assert.equal(JSON.parse(JSON.parse(json).shipping_custom_layout).elements.find(x=>x.field==='qr').width,2);
+ });
+
+ test('named rich templates persist selected size and render the identical escaped runs in web and mobile output',()=>{
+ const layout=layoutApi.defaultShippingLayout('80x50');layout.elements.push({...layout.elements[0],id:'rich-text',field:'text',text:'Hello សួស្តី <script>',richText:[{text:'Hello ',bold:true,fontSize:14},{text:'សួស្តី ',italic:true,underline:true},{text:'<script>'}],x:5,y:84,width:90,height:10});
+ const library=JSON.stringify([{id:'template-a',name:'Custom EN/KM',layout}]);
+ const settings=templates.validateShippingSettings({...saved,shipping_template:'custom:template-a',shipping_custom_templates:library});
+ assert.equal(settings.shipping_template,'custom:template-a');assert.equal(templates.shippingTemplate(settings.shipping_template,settings.shipping_custom_templates).name,'Custom EN/KM');
+ const rendered=markup(settings);assert.match(rendered.inner,/font-weight:700;font-size:14px/);assert.match(rendered.inner,/font-style:italic;text-decoration:underline/);assert.match(rendered.inner,/&lt;script&gt;/);assert.ok(!rendered.inner.includes('<script>'));
+ const stored=templates.shippingCustomTemplates(settings.shipping_custom_templates)[0];assert.deepEqual(stored.layout,layout);assert.equal(stored.layout.size,'80x50');
+ const mobile=loadTs('lib/mobile/shipping-html.ts',{'@/lib/orders/order-qr':qr,'@/lib/receipts/receipt-model':model,'@/app/(dashboard)/dashboard/orders/[id]/order-detail-model':{one:value=>Array.isArray(value)?value[0]:value},'./receipt-html':{escapeHtml:render.escapeShippingHtml},'@/lib/receipts/shipping-label-markup':render});
+ assert.ok(mobile.mobileShippingHtml(order,{store},settings,'USD').html.includes(rendered.inner));
+});
+ test('named template names reject blanks, duplicates and overlong names; IDs and layouts are validated',()=>{
+ const layout=layoutApi.defaultShippingLayout();
+ for(const name of ['', ' '.repeat(5), 'a'.repeat(61)])assert.throws(()=>templates.shippingCustomTemplates(JSON.stringify([{id:'a',name,layout}])));
+ assert.throws(()=>templates.shippingCustomTemplates(JSON.stringify([{id:'a',name:' Example ',layout},{id:'b',name:'example',layout}])));
+ assert.throws(()=>templates.shippingCustomTemplates(JSON.stringify([{id:'a',name:'A',layout},{id:'a',name:'B',layout}])));
+ assert.throws(()=>templates.validateShippingSettings({...saved,shipping_template:'custom:missing'}),/unavailable/);
+});
+ test('Save as new appends without deleting existing templates; explicit update changes only its identity',async()=>{
+ const old={id:'old-template',name:'Existing',layout:layoutApi.defaultShippingLayout()};
+ const h=shippingActions({current:{...saved,shipping_template:'en-classic',shipping_custom_templates:JSON.stringify([old])}});
+ const draft={id:'new-template',name:'New template',layout:layoutApi.defaultShippingLayout('80x50')};
+ h.form.set('shippingTemplate','custom:new-template');h.form.set('shippingCustomTemplateMode','create');h.form.set('shippingCustomTemplateDraft',JSON.stringify(draft));
+ const result=await h.api.saveShippingCustomTemplate(h.form);const library=templates.shippingCustomTemplates(result.customTemplates);
+ assert.deepEqual(library[0],old);assert.deepEqual(library[1],{...draft,revision:1});assert.equal(h.writes[0].value.shipping_template,'custom:new-template');
+ const update=shippingActions({current:h.writes[0].value});update.form.set('shippingTemplate','custom:new-template');update.form.set('shippingCustomTemplateMode','update');update.form.set('shippingCustomTemplateOriginal',JSON.stringify(library[1]));update.form.set('shippingCustomTemplateDraft',JSON.stringify({...draft,name:'Renamed'}));
+ const changed=templates.shippingCustomTemplates((await update.api.saveShippingCustomTemplate(update.form)).customTemplates);assert.deepEqual(changed[0],old);assert.equal(changed[1].id,draft.id);assert.equal(changed[1].name,'Renamed');
+});
+ test('named saves reject duplicate names, unintended overwrites, unknown updates, stale branches and denied permission',async()=>{
+ const existing={id:'existing',name:'Existing',layout:layoutApi.defaultShippingLayout('80x50')};
+ for(const scenario of [{id:'existing',name:'Overwrite',mode:'create'},{id:'new',name:'existing',mode:'create'},{id:'missing',name:'New',mode:'update'},{id:'new',name:'New',mode:'create',branch:'branch-b'},{id:'new',name:'New',mode:'create',denied:true}]){
+  const h=shippingActions({current:{...saved,shipping_custom_templates:JSON.stringify([existing])},branch:scenario.branch||'branch-a',denied:scenario.denied});
+  h.form.set('shippingTemplate','custom:'+scenario.id);h.form.set('shippingCustomTemplateMode',scenario.mode);h.form.set('shippingCustomTemplateDraft',JSON.stringify({id:scenario.id,name:scenario.name,layout:existing.layout}));
+  await assert.rejects(h.api.saveShippingCustomTemplate(h.form));assert.equal(h.writes.length,0);assert.equal(h.invalidated.length,0);
+ }
+});
+
+test('stale named edits reject without overwriting a newer saved template',async()=>{
+ const original={id:'existing',name:'Original',layout:layoutApi.defaultShippingLayout('80x50')};
+ const latest={...original,name:'Changed in another editor'};
+ const h=shippingActions({current:{...saved,shipping_custom_templates:JSON.stringify([latest])}});
+ h.form.set('shippingTemplate','custom:existing');h.form.set('shippingCustomTemplateMode','update');
+ h.form.set('shippingCustomTemplateOriginal',JSON.stringify(original));h.form.set('shippingCustomTemplateDraft',JSON.stringify({...original,name:'My edit'}));
+ await assert.rejects(h.api.saveShippingCustomTemplate(h.form),/changed since you opened/);assert.equal(h.writes.length,0);assert.equal(h.invalidated.length,0);
+});
+
+test('selected rich text can remove inherited underline without changing surrounding runs',()=>{
+ const element={...layoutApi.defaultShippingLayout().elements[0],field:'text',text:'AB',underline:true,richText:[{text:'A'},{text:'B',underline:false}]};
+ const html=custom.shippingElementMarkup(element,{});
+ assert.match(html,/text-decoration:none/);assert.match(html,/<span style="text-decoration:underline">A<\/span><span style="text-decoration:none">B<\/span>/);
+});
+
+test('a committed named template stays successful when optional default-selection storage fails',async()=>{
+ const h=shippingActions({failSave:true}),draft={id:'new',name:'New',layout:layoutApi.defaultShippingLayout('80x50')};
+ h.form.set('shippingTemplate','custom:new');h.form.set('shippingCustomTemplateMode','create');h.form.set('shippingCustomTemplateDraft',JSON.stringify(draft));
+ const result=await h.api.saveShippingCustomTemplate(h.form);assert.match(result.warning,/template was saved/);assert.equal(templates.shippingCustomTemplates(result.customTemplates)[0].revision,1);assert.ok(h.invalidated.length>0);
+});
+test('missing transactional migration blocks named saves without unsafe storage fallback or success invalidation',async()=>{
+ const h=shippingActions({failNamed:true}),draft={id:'new',name:'New',layout:layoutApi.defaultShippingLayout('80x50')};
+ h.form.set('shippingTemplate','custom:new');h.form.set('shippingCustomTemplateMode','create');h.form.set('shippingCustomTemplateDraft',JSON.stringify(draft));
+ await assert.rejects(h.api.saveShippingCustomTemplate(h.form),/reviewed shipping custom template migration/);assert.equal(h.writes.length,0);assert.equal(h.invalidated.length,0);
 });

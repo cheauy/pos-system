@@ -3,10 +3,15 @@ const React=require('react'),{renderToStaticMarkup}=require('react-dom/server');
 const {loadTs}=require('./helpers/load-ts.cjs');
 const model=loadTs('lib/receipts/receipt-model.ts');
 const barcode=loadTs('lib/barcode/code39.ts');
-const shared={'react/jsx-runtime':require('react/jsx-runtime'),react:React,'lucide-react':require('lucide-react'),'@/lib/receipts/receipt-model':model,'@/lib/barcode/code39':barcode,'@/lib/printing/prepare-print':loadTs('lib/printing/prepare-print.ts')};
+const shared={'react/jsx-runtime':require('react/jsx-runtime'),react:React,'lucide-react':require('lucide-react'),'@/lib/receipts/receipt-model':model,'@/lib/barcode/code39':barcode,'@/lib/printing/prepare-print':loadTs('lib/printing/prepare-print.ts', {'@/lib/receipts/shipping-layout':loadTs('lib/receipts/shipping-layout.ts')})};
 const receipt=loadTs('components/receipts/pos-receipt.tsx',{...shared,'@/app/(dashboard)/dashboard/pos/pos-workspace-helpers':{money:v=>Number(v).toFixed(2)},'./pos-receipt.module.css':{default:new Proxy({},{get:(_,key)=>String(key)})}}).PosReceipt;
 const label=loadTs('app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx',{...shared,'@/components/product-picker':{default:()=>null}}).LabelCard;
-const shipping=loadTs('app/(dashboard)/dashboard/shipping-labels/shipping-labels-client.tsx',{...shared,'next/link':{default:()=>null},'@/components/print-button':{default:()=>null}}).ShippingLabel;
+const layout=loadTs('lib/receipts/shipping-layout.ts');
+const qr={isOrderCode:v=>typeof v==='string'&&/^[1-9][0-9]{11}$/.test(v),orderQrSvg:()=>'<svg viewBox="0 0 41 41"></svg>'};
+const custom=loadTs('lib/receipts/shipping-custom.ts',{qrcode:require('qrcode'),'@/lib/barcode/code39':barcode,'@/lib/orders/order-qr':qr,'./shipping-layout':layout});
+const templates=loadTs('lib/receipts/shipping-templates.ts',{'./shipping-layout':layout,'./shipping-custom':custom});
+const markup=loadTs('lib/receipts/shipping-label-markup.ts',{'@/lib/barcode/code39':barcode,'@/lib/orders/order-qr':qr,'@/lib/receipts/receipt-model':model,'./shipping-templates':templates,'./shipping-layout':layout,'./shipping-custom':custom});
+const shipping=loadTs('components/receipts/shipping-label.tsx',{...shared,'@/lib/receipts/shipping-label-markup':markup}).default;
 test('receipt print uses saved typography, images, paper, header and visibility',()=>{
  const context={appearance:model.receiptAppearance({paper_size:'58mm',font_size:'large',density:'compact',receipt_alignment:'left',header_text:'Saved header',receipt_logo_url:'https://example.com/brand.png',show_phone:false,show_address:false}),store:{name:'Shop',phone:'012345678',address:'Hidden street'}};
  const html=renderToStaticMarkup(React.createElement(receipt,{receipt:model.receiptSample('Shop'),context}));
@@ -41,6 +46,6 @@ test('barcode typography changes without changing bar encoding or physical label
  assert.equal(medium.match(/<svg[\s\S]*?<\/svg>/)[0],large.match(/<svg[\s\S]*?<\/svg>/)[0]);
 });
 test('shipping output uses saved text size and visibility in both preview and order printing',()=>{
- const props={order:{order_number:'WEB123',guest_name:'Customer',guest_phone:'0123',guest_address:'Street',payment_method:'COD',total:15,order_items:[]},businessName:'Shop',businessAddress:'Sender street',businessPhone:'09876',size:'100x150',settings:{font_size:'large',density:'compact',shipping_show_store_phone:false}};
- const html=renderToStaticMarkup(React.createElement(shipping,props));assert.match(html,/font-size:14\.399999999999999px|font-size:14.4px/);assert.match(html,/line-height:1.2/);assert.match(html,/Sender street/);assert.ok(!html.includes('09876'));assert.match(html,/100mm/);assert.match(html,/150mm/);
+ const props={order:{order_number:'WEB123',guest_name:'Customer',guest_phone:'0123',guest_address:'Street',payment_method:'COD',total:15,order_items:[]},store:{name:'Shop',address:'Sender street',phone:'09876'},size:'100x150',settings:{font_size:'large',density:'compact',shipping_show_store_address:true,shipping_show_store_phone:false}};
+ const html=renderToStaticMarkup(React.createElement(shipping,props));assert.match(html,/--ship-user-scale:1.2/);assert.match(html,/Sender street/);assert.ok(!html.includes('09876'));assert.match(html,/--ship-width:100mm/);assert.match(html,/--ship-height:150mm/);
 });

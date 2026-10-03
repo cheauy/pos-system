@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 import ts from 'typescript';
 const require=createRequire(import.meta.url);
 const {loadTs}=require('./helpers/load-ts.cjs');
-const printPreparation=loadTs('lib/printing/prepare-print.ts');
+const printPreparation=loadTs('lib/printing/prepare-print.ts', {'@/lib/receipts/shipping-layout':loadTs('lib/receipts/shipping-layout.ts')});
 const source=readFileSync(new URL('../components/print-button.tsx',import.meta.url),'utf8');
 function button(content,fonts=Promise.resolve()) {
  const errors=[]; let prints=0;

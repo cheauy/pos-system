@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { ChevronLeft, Search, Truck } from 'lucide-react';
 import ShippingLabelCard from '@/components/receipts/shipping-label';
 import ShippingTemplateSelect from '@/components/receipts/shipping-template-select';
-import { SHIPPING_LABEL_SIZES, shippingLabelSize, shippingTemplate, type ShippingTemplateId } from '@/lib/receipts/shipping-templates';
+import { SHIPPING_LABEL_SIZES, shippingLabelSize, shippingTemplate, shippingCustomTemplates, type ShippingTemplateId } from '@/lib/receipts/shipping-templates';
 import type { ShippingOrder } from '@/lib/receipts/shipping-label-markup';
 
 type Customer = { name?: string | null; phone?: string | null; address?: string | null };
@@ -21,10 +21,11 @@ export default function ShippingLabelsClient({ businessName, businessPhone, busi
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [size, setSize] = useState(() => shippingLabelSize(settings.shipping_label_size).id);
-  const [template, setTemplate] = useState<ShippingTemplateId>(() => shippingTemplate(settings.shipping_template).id);
+  const customTemplates=useMemo(()=>shippingCustomTemplates(settings.shipping_custom_templates),[settings.shipping_custom_templates]);
+  const [template, setTemplate] = useState<ShippingTemplateId>(() => shippingTemplate(settings.shipping_template,settings.shipping_custom_templates).id);
   const filtered = useMemo(() => orders.filter(order => `${order.order_number} ${order.guest_name ?? ''} ${order.guest_phone ?? ''} ${order.guest_address ?? ''}`.toLowerCase().includes(q.toLowerCase())), [orders, q]);
   const chosen = orders.filter(order => selected.includes(order.id));
-  const previewSettings = useMemo(() => ({ ...settings, shipping_template: template }), [settings, template]);
+  const previewSettings = useMemo(() => ({ ...settings, shipping_template: template,shipping_custom_qr_needs_review:template.startsWith('custom:')?customTemplates.find(entry=>`custom:${entry.id}`===template)?.needsReview===true:settings.shipping_custom_qr_needs_review }), [settings, template,customTemplates]);
   function toggle(id: string) { setSelected(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]); }
   const selectClass = 'mt-2 w-full min-w-0 rounded-xl border border-slate-200 bg-white p-3 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100';
   return <main className="mx-auto max-w-[1600px] space-y-5 pb-10">
@@ -50,7 +51,7 @@ export default function ShippingLabelsClient({ businessName, businessPhone, busi
       <aside className="min-w-0 rounded-2xl border bg-white p-5 shadow-sm">
         <h2 className="font-bold">Print preview</h2>
         <div className="mt-4 space-y-3">
-          <ShippingTemplateSelect value={template} onChange={setTemplate} className={selectClass} />
+          <ShippingTemplateSelect value={template} customTemplates={customTemplates} onChange={value=>{setTemplate(value);const saved=customTemplates.find(entry=>`custom:${entry.id}`===value);if(saved)setSize(shippingLabelSize(saved.layout.size).id);}} className={selectClass} />
           <label className="block text-sm font-semibold">Label size<select aria-label="Shipping label size" value={size} onChange={event => setSize(shippingLabelSize(event.target.value).id)} className={selectClass}>{SHIPPING_LABEL_SIZES.map(paper => <option key={paper.id} value={paper.id}>{paper.label}</option>)}</select></label>
           <p className="text-xs text-slate-500">{chosen.length} selected · Width {shippingLabelSize(size).width} mm × height {shippingLabelSize(size).height} mm</p>
           <p className="text-xs text-slate-500">These choices apply to this print batch. Save your defaults in Printer Settings. Print at 100% / Actual size using matching paper.</p>

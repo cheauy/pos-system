@@ -3,7 +3,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getBranchContext } from "@/lib/branches/context";
 import { authorizedOrderBranch } from "@/lib/branches/order-access";
 import { validateShippingLayout, type ShippingLayout } from "./shipping-layout";
-import { validateShippingSettings } from './shipping-templates';
+import { validateShippingSettings, shippingCustomTemplates } from './shipping-templates';
+import { loadShippingTemplateCatalog } from './shipping-template-store';
 const bucket = "tenh-printer-designs";
 async function branchPath(businessId:string,file:string,orderId?:string) {
  const context=await getBranchContext();
@@ -41,8 +42,16 @@ export async function persistShippingDesign(businessId: string, layout: Shipping
 
 export async function loadShippingSettings(businessId:string,orderId?:string) {
  const {data,error}=await downloadSettings(businessId,'shipping-settings.json',orderId);
- if(error){if(/not found|does not exist/i.test(error.message))return null;throw new Error('Unable to load shipping settings.');}
- return validateShippingSettings(JSON.parse(await data.text()));
+ if(error&&!/not found|does not exist/i.test(error.message))throw new Error('Unable to load shipping settings.');
+ const catalog=await loadShippingTemplateCatalog(businessId,orderId);
+ if(!data){
+  if(!catalog?.length)return null;
+  return validateShippingSettings({shipping_label_size:'100x150',shipping_template:'en-classic',shipping_custom_templates:JSON.stringify(catalog),...Object.fromEntries(['store_name','store_address','store_phone','phone','order_number','cod','item_count','barcode'].map(flag=>[`shipping_show_${flag}`,true]))},true);
+ }
+ const raw=JSON.parse(await data.text());
+ // Canonical named entries always override stale object snapshots. Reads never import/write.
+ const templates=catalog??shippingCustomTemplates(raw.shipping_custom_templates,true).map(entry=>({...entry,revision:0}));
+ return validateShippingSettings({...raw,...(catalog!==null||raw.shipping_custom_templates!=null?{shipping_custom_templates:JSON.stringify(templates)}:{})},true);
 }
 export async function persistShippingSettings(businessId:string,settings:Record<string,unknown>) {
  const values=validateShippingSettings(settings);

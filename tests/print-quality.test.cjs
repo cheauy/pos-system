@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs');
 const {loadTs}=require('./helpers/load-ts.cjs');
-const {preparePrint,imagePrintDpi,sizeReceiptPage}=loadTs('lib/printing/prepare-print.ts');
+const {preparePrint,imagePrintDpi,sizeReceiptPage}=loadTs('lib/printing/prepare-print.ts', {'@/lib/receipts/shipping-layout':loadTs('lib/receipts/shipping-layout.ts')});
 test('receipt page length grows with full content and preserves preview styles',()=>{
  const receipt={dataset:{paper:'80mm'},scrollHeight:1200,offsetHeight:1200,getAttribute:()=> '--receipt-font-scale:1.2',setAttribute:(key,value)=>restored=value,style:{setProperty:(key,value)=>changes[key]=value}};
  let restored,added;const changes={};const doc={getElementById:()=>added,createElement:()=>({}),head:{appendChild:node=>added=node}};
@@ -27,7 +27,8 @@ test('QR uses crisp edges, barcode vectors remain vectors, and printable text is
  const css=fs.readFileSync('components/receipts/pos-receipt.module.css','utf8');assert.match(css,/\.qrImage\{image-rendering:crisp-edges\}/);
  assert.match(css,/\.qrImage\{[^}]*width:80mm;max-width:100%;height:auto;aspect-ratio:1/);
  assert.match(fs.readFileSync('app/(dashboard)/dashboard/settings/receipts/receipt-settings-editor.tsx','utf8'),/target size: 80 × 80 mm/i);
- for(const path of ['components/receipts/pos-receipt.tsx','components/receipts/shipping-canvas.tsx','app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx'])assert.match(fs.readFileSync(path,'utf8'),/<svg shapeRendering="crispEdges"/);
+ for(const path of ['components/receipts/pos-receipt.tsx','app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx'])assert.match(fs.readFileSync(path,'utf8'),/<svg shapeRendering="crispEdges"/);
+ assert.match(fs.readFileSync('lib/receipts/shipping-custom.ts','utf8'),/shape-rendering="crispEdges"/);
  assert.match(fs.readFileSync('lib/receipts/shipping-label-markup.ts','utf8'),/shape-rendering="crispEdges"/);
  assert.match(fs.readFileSync('lib/orders/order-qr.ts','utf8'),/shape-rendering="crispEdges"/);
  assert.match(fs.readFileSync('app/globals.css','utf8'),/print-color-adjust: exact/);

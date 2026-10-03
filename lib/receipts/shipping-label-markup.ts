@@ -1,7 +1,9 @@
 import { code39Bars } from '@/lib/barcode/code39';
 import { isOrderCode, orderQrSvg } from '@/lib/orders/order-qr';
 import { printTextScale, receiptLogoUrl } from '@/lib/receipts/receipt-model';
-import { shippingLabelSize, shippingTemplate } from './shipping-templates';
+import { shippingLabelSize, shippingTemplate, shippingCustomTemplates } from './shipping-templates';
+import { defaultShippingLayout, resizeShippingLayout, validateShippingLayout, assertShippingQrSize, shippingQrMinimumMm, shippingQrModules } from './shipping-layout';
+import { shippingElementMarkup, shippingQr, shippingOrderQrMinimumMm } from './shipping-custom';
 
 export type ShippingOrder = {
   id: string; order_number: string; order_code?: string | null; created_at: string; total: number;
@@ -11,6 +13,20 @@ export type ShippingOrder = {
   order_items?: Array<{ quantity: number }> | null;
 };
 export type ShippingStore = { name: string; phone: string; address: string; logoUrl?: string | null; websiteUrl?: string | null };
+export function shippingValues(order: ShippingOrder, store: ShippingStore, currency = 'USD', sample = false) {
+  const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers;
+  const code = isOrderCode(order.order_code) ? order.order_code : order.order_number;
+  let total: string;
+  try { total = new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(order.total) || 0); }
+  catch { total = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(order.total) || 0); }
+  const qr = shippingQr(order.order_code, sample);
+  const qrMinimumMm = Math.max(shippingOrderQrMinimumMm(),qr ? shippingQrMinimumMm(shippingQrModules(qr)) : 0);
+  return { storeName: store.name, storePhone: store.phone, storeAddress: store.address,
+    customerName: order.guest_name || customer?.name || 'Customer', customerPhone: order.guest_phone || customer?.phone || '',
+    customerAddress: order.guest_address || customer?.address || '', orderNumber: code, total,
+    payment: paymentName(order.payment_method, true), itemCount: String((order.order_items || []).reduce((sum,item)=>sum+(Number(item.quantity)||0),0)),
+    qr, qrMinimumMm:String(qrMinimumMm) };
+}
 export const SHIPPING_LABEL_COPY = {
   en: {
     date: 'Date', recipient: 'Recipient', phone: 'Phone', address: 'Address',
@@ -57,7 +73,16 @@ export function shippingLabelMarkup({ order, store, settings, size, currency = '
   order: ShippingOrder; store: ShippingStore; settings: Record<string, unknown>; size?: string; currency?: string;
 }) {
   const paper = shippingLabelSize(size ?? settings.shipping_label_size);
-  const template = shippingTemplate(settings.shipping_template);
+  const template = shippingTemplate(settings.shipping_template,settings.shipping_custom_templates);
+  if (template.layout === 'custom') {
+    const sample = settings.shipping_sample_preview === true && order.id === '00000000-0000-0000-0000-000000000000';
+    const values = shippingValues(order, store, currency, sample);
+    const named=shippingCustomTemplates(settings.shipping_custom_templates).find(entry=>`custom:${entry.id}`===template.id);
+    const saved = named?.layout ?? (typeof settings.shipping_custom_layout === 'string' ? validateShippingLayout(JSON.parse(settings.shipping_custom_layout),shippingOrderQrMinimumMm()) : defaultShippingLayout(paper.id));
+    const layout = resizeShippingLayout(saved, paper.id,Number(values.qrMinimumMm));
+    for (const element of layout.elements) assertShippingQrSize(element,paper.id,Number(values.qrMinimumMm));
+    return {paper,template,className:'shipping-label ship-custom',style:`--ship-width:${paper.width}mm;--ship-height:${paper.height}mm`,inner:layout.elements.map(element=>shippingElementMarkup(element,values)).join('')};
+  }
   const km = template.language === 'km', copy = SHIPPING_LABEL_COPY[template.language];
   const compact = paper.id === '80x50';
   const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers;
@@ -111,6 +136,9 @@ export function shippingLabelMarkup({ order, store, settings, size, currency = '
 
 /** Scoped CSS: admin theme, text preferences and preview viewport cannot change the paper size. */
 export const SHIPPING_LABEL_CSS = `
+.ship-custom{position:relative!important;width:var(--ship-width)!important;height:var(--ship-height)!important;min-height:var(--ship-height)!important;max-width:none!important;flex-shrink:0;margin:0!important;padding:0!important;border:0!important;box-sizing:border-box;background:white!important;color:black!important;overflow:hidden;font-family:Arial,sans-serif}
+.ship-custom [data-custom-field]{margin:0;padding:0;color:black;box-sizing:border-box}
+.ship-custom svg{display:block;max-width:none}
 .ship-template,.ship-template *{box-sizing:border-box}
 .ship-template{--ship-base:12px;--ship-padding:3mm;--ship-gap:2mm;--ship-qr:32mm;--ship-heading:1.25em;--ship-row-gap:1.25mm;--ship-label:26mm;--ship-fit-scale:1;--ship-user-scale:1;
  width:var(--ship-width)!important;height:var(--ship-height)!important;min-height:var(--ship-height)!important;max-width:none!important;flex-shrink:0;margin:0;
