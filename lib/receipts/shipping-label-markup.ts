@@ -1,16 +1,42 @@
 import { code39Bars } from '@/lib/barcode/code39';
+import { orderContact } from '@/lib/orders/order-contact';
+import { orderBalanceDue, orderPaymentMethod, orderPaymentState, orderPaymentNeedsReview, balanceIsCod, type PaymentRecord } from '@/lib/orders/order-payment';
 import { isOrderCode, orderQrSvg } from '@/lib/orders/order-qr';
 import { printTextScale, receiptLogoUrl } from '@/lib/receipts/receipt-model';
-import { shippingLabelSize, shippingTemplate } from './shipping-templates';
+import { shippingLabelSize, shippingTemplate, shippingCustomTemplates } from './shipping-templates';
+import { defaultShippingLayout, resizeShippingLayout, validateShippingLayout, assertShippingQrSize, shippingQrMinimumMm, shippingQrModules } from './shipping-layout';
+import { shippingElementMarkup, shippingQr, shippingOrderQrMinimumMm } from './shipping-custom';
+import type { ShippingDetails } from '@/app/(dashboard)/dashboard/pos/pos-workspace-types';
 
-export type ShippingOrder = {
+export type ShippingOrder = PaymentRecord & {
   id: string; order_number: string; order_code?: string | null; created_at: string; total: number;
   payment_method: string | null; payment_status?: string | null; remaining_balance?: number;
-  guest_name?: string | null; guest_phone?: string | null; guest_address?: string | null;
+  pos_checkout?: { method?: string; receipt?: { shipping?: ShippingDetails }; shipping?: ShippingDetails } | null;
+  guest_name?: string | null; guest_phone?: string | null; guest_address?: string | null; tracking_number?: string | null;
   customers?: { name?: string | null; phone?: string | null; address?: string | null } | Array<{ name?: string | null; phone?: string | null; address?: string | null }> | null;
   order_items?: Array<{ quantity: number }> | null;
 };
 export type ShippingStore = { name: string; phone: string; address: string; logoUrl?: string | null; websiteUrl?: string | null };
+export function shippingValues(order: ShippingOrder, store: ShippingStore, currency = 'USD', sample = false) {
+  const contact = orderContact(order);
+  const code = isOrderCode(order.order_code) ? order.order_code : order.order_number;
+  let total: string;
+  try { total = new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(order.total) || 0); }
+  catch { total = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(order.total) || 0); }
+  const qr = shippingQr(order.order_code, sample);
+  const qrMinimumMm = Math.max(shippingOrderQrMinimumMm(),qr ? shippingQrMinimumMm(shippingQrModules(qr)) : 0);
+  const shipping = order.pos_checkout?.receipt?.shipping ?? order.pos_checkout?.shipping;
+  const carrier = (shipping?.carrier || '').trim();
+  const shippingTypes: Record<string, string> = { jt: 'J&T', vet: 'VET', grab: 'Grab' };
+  const shippingType = carrier.toLowerCase() === 'other' ? shipping?.carrierOther?.trim() || 'Other'
+    : Object.hasOwn(shippingTypes,carrier.toLowerCase()) ? shippingTypes[carrier.toLowerCase()] : carrier;
+  return { storeName: store.name, storePhone: store.phone, storeAddress: store.address,
+    customerName: contact.name || 'Customer', customerPhone: contact.phone,
+    customerAddress: contact.address, orderNumber: code, total,
+    payment: shippingPaymentText(order,currency,true), itemCount: String((order.order_items || []).reduce((sum,item)=>sum+(Number(item.quantity)||0),0)),
+    tracking:order.tracking_number||'', shippingType, date:shippingOrderDate(order.created_at), logo:receiptLogoUrl(store.logoUrl)||'',
+    qr, qrMinimumMm:String(qrMinimumMm) };
+}
 export const SHIPPING_LABEL_COPY = {
   en: {
     date: 'Date', recipient: 'Recipient', phone: 'Phone', address: 'Address',
@@ -46,24 +72,52 @@ function orderBarcode(value: string) {
   const quiet = 20;
   return `<svg data-linear-code="${escapeShippingHtml(code.text)}" role="img" aria-label="Order barcode ${escapeShippingHtml(code.text)}" viewBox="0 0 ${code.width + quiet * 2} 32" preserveAspectRatio="none" shape-rendering="crispEdges"><rect width="100%" height="32" fill="white"/>${code.bars.map(bar => `<rect x="${bar.x + quiet}" y="0" width="${bar.width}" height="32" fill="black"/>`).join('')}</svg>`;
 }
-function paymentName(value: string | null, compact: boolean) {
+function paymentName(value: string | null) {
   const key = (value || '').trim().toLowerCase();
-  if (key === 'cod') return compact ? 'COD' : 'COD (Cash on Delivery)';
-  const labels: Record<string, string> = { cash: 'Cash', bank_transfer: 'Bank transfer', deposit: 'Deposit', khqr: 'KHQR', card: 'Card', aba: 'ABA', wing: 'Wing', split: 'Split payment', other: 'Other' };
+  if (key === 'cod') return 'COD';
+  const labels: Record<string, string> = { cash: 'Cash', bank_transfer: 'Bank transfer', deposit: 'Cash deposit', khqr: 'KHQR', card: 'Card', aba: 'ABA', wing: 'Wing', split: 'Split payment', other: 'Other', credit: 'Customer credit' };
   return labels[key] || (value || '—').replaceAll('_', ' ');
+}
+
+export function shippingPaymentText(order: PaymentRecord, currency='USD', includeBalance=false): string {
+  if(order.status==='cancelled')return 'Cancelled — do not collect';
+  const state=orderPaymentState(order),method=paymentName(orderPaymentMethod(order));
+  if(state==='refunded')return `${method} (Refunded)`;
+  if(state==='pending_verification')return `${method} (Pending verification)`;
+  const review=orderPaymentNeedsReview(order);
+  const description=review?`${method} (Needs review)`:method;
+  if(state==='paid'&&!review)return `${method} (Paid)`;
+  if(!includeBalance)return description;
+  const due=orderBalanceDue(order);
+  if(due===null)return `${description}; Balance unavailable`;
+  let amount:string;try{amount=new Intl.NumberFormat('en-US',{style:'currency',currency}).format(due);}catch{amount=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(due);}
+  const balance=`${review?'Recorded balance':balanceIsCod(order)?'COD due':'Balance due'} ${amount}`;
+  // An unpaid COD order prints just "COD" (the total shows what to collect). If part was
+  // already paid, keep the remaining amount so the courier does not collect the full total.
+  if(orderPaymentMethod(order)==='cod'&&!review)return Math.abs(due-(Number(order.total)||0))<.005?method:balance;
+  return `${description}; ${balance}`;
 }
 
 export function shippingLabelMarkup({ order, store, settings, size, currency = 'USD' }: {
   order: ShippingOrder; store: ShippingStore; settings: Record<string, unknown>; size?: string; currency?: string;
 }) {
   const paper = shippingLabelSize(size ?? settings.shipping_label_size);
-  const template = shippingTemplate(settings.shipping_template);
+  const template = shippingTemplate(settings.shipping_template,settings.shipping_custom_templates);
+  if (template.layout === 'custom') {
+    const sample = settings.shipping_sample_preview === true && order.id === '00000000-0000-0000-0000-000000000000';
+    const values = shippingValues(order, store, currency, sample);
+    const named=shippingCustomTemplates(settings.shipping_custom_templates).find(entry=>`custom:${entry.id}`===template.id);
+    const saved = named?.layout ?? (typeof settings.shipping_custom_layout === 'string' ? validateShippingLayout(JSON.parse(settings.shipping_custom_layout),shippingOrderQrMinimumMm()) : defaultShippingLayout(paper.id));
+    const layout = resizeShippingLayout(saved, paper.id,Number(values.qrMinimumMm));
+    for (const element of layout.elements) assertShippingQrSize(element,paper.id,Number(values.qrMinimumMm));
+    return {paper,template,className:'shipping-label ship-custom',style:`--ship-width:${paper.width}mm;--ship-height:${paper.height}mm`,inner:layout.elements.map(element=>shippingElementMarkup(element,values)).join('')};
+  }
   const km = template.language === 'km', copy = SHIPPING_LABEL_COPY[template.language];
   const compact = paper.id === '80x50';
-  const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers;
-  const name = order.guest_name || customer?.name || (km ? 'អតិថិជន' : 'Customer');
-  const phone = order.guest_phone || customer?.phone || '';
-  const address = order.guest_address || customer?.address || '';
+  const contact = orderContact(order);
+  const name = contact.name || (km ? 'អតិថិជន' : 'Customer');
+  const phone = contact.phone;
+  const address = contact.address;
   const visible = (key: string) => settings[`shipping_show_${key}`] !== false;
   const sender = (key: string) => (settings[`shipping_show_store_${key}`] ?? settings.shipping_show_sender) !== false;
   const amount = (value: number) => {
@@ -72,7 +126,14 @@ export function shippingLabelMarkup({ order, store, settings, size, currency = '
     catch { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n); }
   };
   const qty = (order.order_items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  const due = orderBalanceDue(order), balanceAmount = due == null ? 'Unavailable' : amount(due);
+  // A shorter Khmer total label leaves room for the explicit unknown balance at 80 x 50.
+  const compactUnknownBalance = compact && km && due == null;
   const row = (label: string, value: string, className = '') => `<div class="ship-row ${className}" data-fit-box><dt>${escapeShippingHtml(label)}</dt><span aria-hidden="true">:</span><dd>${escapeShippingHtml(value)}</dd></div>`;
+  // Keep total and balance distinct without adding a ninth row to the 80 x 50 composition.
+  const amounts = compact
+    ? `<div class="ship-row ship-amount${compactUnknownBalance ? ' ship-amount-unknown' : ''}" data-fit-box><dt>${escapeShippingHtml(compactUnknownBalance ? 'សរុប' : copy.amount)}</dt><span aria-hidden="true">:</span><dd>${escapeShippingHtml(amount(order.total))}<span class="ship-balance-note">${escapeShippingHtml(copy.balance)}: ${escapeShippingHtml(balanceAmount)}</span></dd></div>`
+    : row(copy.amount, amount(order.total), 'ship-amount') + row(copy.balance, balanceAmount, 'ship-balance');
   const rows = [
     visible('date') ? row(copy.date, shippingOrderDate(order.created_at, typeof settings.shipping_timezone === 'string' ? settings.shipping_timezone : undefined), 'ship-date') : '',
     row(copy.recipient, name, 'ship-recipient'),
@@ -80,8 +141,8 @@ export function shippingLabelMarkup({ order, store, settings, size, currency = '
     row(copy.address, address || copy.missingAddress, 'ship-address'),
     sender('phone') && store.phone ? row(copy.senderPhone, store.phone, 'ship-sender-phone') : '',
     visible('item_count') ? row(copy.items, String(qty) + (km ? ' មុខទំនិញ' : qty === 1 ? ' item' : ' items')) : '',
-    visible('cod') ? row(copy.payment, paymentName(order.payment_method, compact)) : '',
-    visible('cod') ? row(copy.amount, amount(order.total), 'ship-amount') : '',
+    visible('cod') ? row(copy.payment, shippingPaymentText(order,currency,false)) : '',
+    visible('cod') ? amounts : '',
   ].join('');
   const logo = visible('logo') && sender('name') ? receiptLogoUrl(store.logoUrl) : null;
   const brand = sender('name') ? (logo
@@ -111,6 +172,9 @@ export function shippingLabelMarkup({ order, store, settings, size, currency = '
 
 /** Scoped CSS: admin theme, text preferences and preview viewport cannot change the paper size. */
 export const SHIPPING_LABEL_CSS = `
+.ship-custom{position:relative!important;width:var(--ship-width)!important;height:var(--ship-height)!important;min-height:var(--ship-height)!important;max-width:none!important;flex-shrink:0;margin:0!important;padding:0!important;border:0!important;box-sizing:border-box;background:white!important;color:black!important;overflow:hidden;font-family:Arial,sans-serif}
+.ship-custom [data-custom-field]{margin:0;padding:0;color:black;box-sizing:border-box}
+.ship-custom svg{display:block;max-width:none}
 .ship-template,.ship-template *{box-sizing:border-box}
 .ship-template{--ship-base:12px;--ship-padding:3mm;--ship-gap:2mm;--ship-qr:32mm;--ship-heading:1.25em;--ship-row-gap:1.25mm;--ship-label:26mm;--ship-fit-scale:1;--ship-user-scale:1;
  width:var(--ship-width)!important;height:var(--ship-height)!important;min-height:var(--ship-height)!important;max-width:none!important;flex-shrink:0;margin:0;
@@ -173,6 +237,7 @@ export const SHIPPING_LABEL_CSS = `
 .ship-template.ship-small .ship-body{grid-template-columns:minmax(0,1fr) calc(var(--ship-qr) + 1.5mm);gap:1mm}
 .ship-template.ship-small.ship-no-qr .ship-body{grid-template-columns:minmax(0,1fr)}
 .ship-template.ship-small .ship-row{grid-template-columns:minmax(0,var(--ship-label)) 1mm minmax(0,1fr);gap:.4mm}
+.ship-template.ship-small.ship-khmer .ship-amount-unknown{grid-template-columns:7mm 1mm minmax(0,1fr)}
 .ship-template.ship-small .ship-codes{padding-left:1mm;gap:.8mm}
 .ship-template.ship-small.ship-classic .ship-codes{padding:.4mm}
 .ship-template.ship-small .ship-scan{font-size:.8em;line-height:1.5}
@@ -198,6 +263,7 @@ export const SHIPPING_LABEL_CSS = `
 .ship-template.ship-small.ship-courier .ship-order strong{font-size:.78em}
 .ship-template.ship-small.ship-courier .ship-footer{text-align:center;font-size:.78em}
 .ship-template.ship-small .ship-website{display:none}
+.ship-template.ship-small .ship-balance-note{display:inline-block;margin-left:1mm;font-size:.74em;line-height:1.4;font-weight:400}
 /* 100 × 100 mm: large logo left, bilingual heading and barcode right. */
 .ship-template.ship-square.ship-courier .ship-header{grid-template-columns:minmax(0,1fr) 46%;grid-template-rows:auto auto;column-gap:2mm;row-gap:1mm}
 .ship-template.ship-square.ship-courier .ship-brand-title{display:contents}

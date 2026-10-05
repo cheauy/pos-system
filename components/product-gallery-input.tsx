@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Star, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { MAX_SAVE_UPLOAD_BYTES, shrinkPhoto, uploadBytes } from "@/lib/images/shrink-photo";
 
 type Photo = { key: string; url: string; file?: File };
 export default function ProductGalleryInput({ initialUrls = [], onChange, title = "Product gallery", description = "First photo is the cover. Up to 8 photos; colour images are managed with variants." }: { initialUrls?: string[]; onChange?: () => void; title?: string; description?: string }) {
@@ -16,8 +17,7 @@ export default function ProductGalleryInput({ initialUrls = [], onChange, title 
   useEffect(() => {
     const form = root.current?.form;
     const guard = (event: Event) => {
-      const files = form ? [...new FormData(form).values()].filter((value): value is File => value instanceof File) : [];
-      const tooLarge = files.reduce((size, file) => size + file.size, 0) > 15 * 1024 * 1024;
+      const tooLarge = form ? uploadBytes(new FormData(form)) > MAX_SAVE_UPLOAD_BYTES : false;
       if (busy.current || tooLarge) {
         event.preventDefault(); event.stopImmediatePropagation();
         toast.info(busy.current ? "Wait for the photos to finish preparing." : "Keep all uploaded product and colour photos below 15 MB in one save.");
@@ -36,15 +36,7 @@ export default function ProductGalleryInput({ initialUrls = [], onChange, title 
     try {
       const additions: Photo[] = [];
       for (const original of chosen) {
-        const bitmap = await createImageBitmap(original);
-        const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-        const context = canvas.getContext("2d");
-        if (!context) { bitmap.close(); throw new Error("Unable to prepare this photo."); }
-        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close();
-        const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/webp", 0.82));
-        const file = blob && (blob.size < original.size || scale < 1) ? new File([blob], original.name.replace(/\.[^.]+$/, ".webp"), { type: blob.type }) : original;
+        const file = await shrinkPhoto(original);
         const url = URL.createObjectURL(file); urls.current.add(url); additions.push({ key: crypto.randomUUID(), url, file });
       }
       const next = replace === undefined ? [...photos, ...additions] : photos.map((photo, index) => index === replace ? additions[0] : photo);

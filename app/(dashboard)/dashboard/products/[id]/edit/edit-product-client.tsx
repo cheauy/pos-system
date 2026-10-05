@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import ActionMenu from "@/components/anchored-action-menu";
 import ProductGalleryInput from "@/components/product-gallery-input";
 import { generateInternalBarcode } from "@/lib/barcode/generate";
+import { MAX_SAVE_UPLOAD_BYTES, shrinkPhoto, uploadBytes } from "@/lib/images/shrink-photo";
 import { compareColorSize, MAX_EDIT_VARIANTS, missingVariantCombinations, normalizeVariantText, splitVariantValues, validateEditableVariants } from "@/lib/products/variant-editor";
 import { stockAdjustmentLink } from "@/lib/inventory/stock-adjustment";
 import { deleteProductGroup, deleteProductVariants, updateProductGroup } from "../../actions";
@@ -113,11 +114,14 @@ export default function EditProductClient({ product, categories, initialVariants
   function selectRows(ids: string[]) { setSelected(new Set(ids)); }
   function toggleRow(id: string) { setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }
   function togglePage() { setSelected(current => { const next = new Set(current); visible.forEach(row => allVisible ? next.delete(row.localId) : next.add(row.localId)); return next; }); }
-  function uploadImage(event: ChangeEvent<HTMLInputElement>, ids: string[] | "run") {
-    const file = event.target.files?.[0]; event.target.value = "";
-    if (!file || !ids.length) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) { toast.error("Choose a JPG, PNG or WebP image."); return; }
-    if (file.size > 5 * 1024 * 1024 || !file.size) { toast.error("Choose a non-empty image up to 5 MB."); return; }
+  async function uploadImage(event: ChangeEvent<HTMLInputElement>, ids: string[] | "run") {
+    const chosen = event.target.files?.[0]; event.target.value = "";
+    if (!chosen || !ids.length) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(chosen.type)) { toast.error("Choose a JPG, PNG or WebP image."); return; }
+    if (chosen.size > 5 * 1024 * 1024 || !chosen.size) { toast.error("Choose a non-empty image up to 5 MB."); return; }
+    // Shrink like the gallery does, so several colour photos fit one save request.
+    let file: File;
+    try { file = await shrinkPhoto(chosen); } catch { toast.error("Unable to read this photo."); return; }
     const asset = { key: `upload-${crypto.randomUUID()}`, url: URL.createObjectURL(file), file, label: file.name };
     objectUrls.current.add(asset.url); setAssets(current => [...current, asset]);
     if (ids === "run") { setRunImageKey(asset.key); return; }
@@ -220,11 +224,16 @@ export default function EditProductClient({ product, categories, initialVariants
       const unchanged = Boolean(initial && row.imageKey === initial.variantImageUrl);
       const imageAction = unchanged ? "keep" : !asset ? "remove" : asset.file ? "upload" : "existing";
       if (asset?.file && !unchanged) uploads.add(asset.key);
-      return { id: row.id, size: row.size.trim(), color: row.color.trim(), sku: row.sku.trim(), barcode: row.barcode?.trim(), costPrice: row.costPrice, sellingPrice: row.sellingPrice,
+      return { id: row.id, size: row.size.trim(), color: row.color.trim(), sku: row.sku.trim(), barcode: row.barcode, costPrice: row.costPrice, sellingPrice: row.sellingPrice,
         stockQuantity: row.stockQuantity, lowStockQuantity: row.lowStockQuantity, isActive: row.isActive, isOnline: row.isOnline, expectedUpdatedAt: row.expectedUpdatedAt ?? null,
         imageAction, variantImageUrl: imageAction === "existing" ? asset?.url : null, imageSlot: imageAction === "upload" ? asset?.key : null };
     })));
     uploads.forEach(key => { const asset = assetMap.get(key); if (asset?.file) form.set(`runImage_${key}`, asset.file); });
+    // An oversized request is rejected before the action runs; say so definitely and keep the draft.
+    if (uploadBytes(form) > MAX_SAVE_UPLOAD_BYTES) {
+      const message = "These photos are too large to save together (15 MB limit). Remove or replace some photos, or save them in smaller batches. Nothing was saved.";
+      setError(message); toast.error(message); busyRef.current = false; setBusy(false); return;
+    }
     try {
       const result = await updateProductGroup({ success: false, message: "" }, form);
       if (!result.success) { setError(result.message); setMustReload(Boolean(result.refreshRequired)); toast.error(result.message); return; }

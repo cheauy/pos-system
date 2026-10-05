@@ -1,5 +1,6 @@
 "use server";
 
+import { validateCode39 } from "@/lib/barcode/code39";
 import { validateEditableVariants, MAX_EDIT_VARIANTS } from "@/lib/products/variant-editor";
 import { compressPhoto } from "@/lib/images/compress-photo";
 import { PUBLIC_PHOTO_CACHE_SECONDS } from "@/lib/public-photo-cache";
@@ -15,6 +16,12 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   requirePermission,
 } from "@/lib/auth/require-permission";
+
+// Barcode input must reach validation unchanged; do not trim an identifier silently.
+function getBarcodeText(formData: FormData) {
+  const value = formData.get("barcode");
+  return typeof value === "string" && value !== "" ? value : null;
+}
 
 function getOptionalText(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -118,7 +125,9 @@ async function resolveProductGallery(formData: FormData, allowed: Set<string>, u
   return [...new Set(urls)];
 }
 
-function checkProductBarcodes(values: string[]): string | null {
+function checkProductBarcodes(values: string[], changedValues = values): string | null {
+  const encodingError = changedValues.map(validateCode39).find(Boolean);
+  if (encodingError) return encodingError;
   if (values.some(value => value.length > 80 || /[\x00-\x1f\x7f]/.test(value))) return "Keep barcodes within 80 printable characters.";
   const nonEmpty = values.filter(Boolean);
   return new Set(nonEmpty).size === nonEmpty.length ? null : "Each variant must use a different barcode.";
@@ -215,7 +224,7 @@ export async function createProduct(
     "description",
   );
 
-  const barcodeInput = getOptionalText(formData, "barcode");
+  const barcodeInput = getBarcodeText(formData);
   const barcode = barcodeInput ?? sku;
   const barcodeError = checkProductBarcodes([barcode]);
   if (barcodeError) return { success: false, message: barcodeError };
@@ -983,8 +992,14 @@ export async function setProductGroupOnline(
 export async function setProductGroupActive(
   productId: string,
   active: boolean,
+  expectedScope: { businessId: string; branchId: string },
 ): Promise<ProductRowActionResult> {
   const business = await requirePermission("products.disable");
+  const context = await getBranchContext();
+  if (!expectedScope?.businessId || !expectedScope?.branchId || expectedScope.businessId !== business.id ||
+      context.business.id !== business.id || expectedScope.branchId !== context.branchId) {
+    return { success: false, message: "Your business or operating branch changed. Reload before changing visibility." };
+  }
   if (!productId) return { success: false, message: "Invalid product ID." };
 
   const supabase = await createClient();
@@ -1320,7 +1335,7 @@ function parseVariantInputs(value: FormDataEntryValue | null): VariantInput[] {
         if (!row || typeof row !== "object") return null;
         const source = row as Record<string, unknown>;
         const sku = typeof source.sku === "string" ? source.sku.trim() : "";
-      const barcode = typeof source.barcode === "string" ? source.barcode.trim() : sku;
+      const barcode = typeof source.barcode === "string" ? source.barcode : sku;
         const size = typeof source.size === "string" ? source.size.trim() : "";
         const color = typeof source.color === "string" ? source.color.trim() : "";
         const costPrice = Number(source.costPrice);
@@ -1875,7 +1890,7 @@ function parseEditVariants(value: FormDataEntryValue | null): EditVariantInput[]
       if (source.isOnline !== undefined && typeof source.isOnline !== "boolean") return [];
       const row: EditVariantInput = {
         id: text(source.id) || null, size: text(source.size), color: text(source.color), sku: text(source.sku),
-      barcode: typeof source.barcode === "string" ? source.barcode.trim() : undefined,
+      barcode: typeof source.barcode === "string" ? source.barcode : undefined,
         costPrice: number(source.costPrice), sellingPrice: number(source.sellingPrice),
         stockQuantity: number(source.stockQuantity), lowStockQuantity: number(source.lowStockQuantity),
         isActive: source.isActive, isOnline: source.isOnline as boolean | undefined, imageSlot, imageAction: action as EditVariantInput["imageAction"],
@@ -1888,6 +1903,10 @@ function parseEditVariants(value: FormDataEntryValue | null): EditVariantInput[]
     return rows;
   } catch { return []; }
 }
+
+// PostgreSQL error replies that prove the whole edit transaction rolled back
+// (PGRST202: the RPC is not installed, so nothing ran).
+const ROLLED_BACK_SQL_CODES = new Set(["PGRST202", "PT409", "22023", "22007", "22P02", "23505", "23514", "40001", "40P01", "42501", "57014", "P0001"]);
 
 export async function updateProductGroup(
   previousState: UpdateProductGroupState,
@@ -1960,7 +1979,7 @@ async function saveEditedProductGroup(
   if (variants.some(row => row.id && row.expectedUpdatedAt && currentById.get(row.id)?.updated_at !== row.expectedUpdatedAt)) {
     return { ...fail("Another user changed this product. Reload and review their changes before saving."), refreshRequired: true };
   }
-  const generalBarcode = isGeneralShop && !supportsVariants ? getOptionalText(formData, "barcode") ?? variants[0].sku : null;
+  const generalBarcode = isGeneralShop && !supportsVariants ? getBarcodeText(formData) ?? variants[0].sku : null;
   if (generalBarcode) {
     const { data, error } = await supabase.from("branch_products").select("id").eq("business_id", business.id).eq("barcode", generalBarcode).neq("id", representative.id).limit(1);
     if (error) return fail(error.message);
@@ -1972,8 +1991,14 @@ async function saveEditedProductGroup(
   const externalDuplicate = (duplicates ?? []).find(row => !currentById.has(row.id));
   if (externalDuplicate) return fail(`SKU ${externalDuplicate.sku ?? ""} is already used by another product.`);
 
-  const barcodes = variants.map(row => row.barcode === undefined ? (currentById.get(row.id ?? "")?.barcode ?? row.sku) : row.barcode || row.sku);
-  const barcodeError = checkProductBarcodes(barcodes);
+  const barcodes = variants.map(row => generalBarcode ?? (row.barcode === undefined ? (currentById.get(row.id ?? "")?.barcode || row.sku) : row.barcode || row.sku));
+  // Compare effective identifiers: an absent saved barcode already falls back to SKU.
+  // Unchanged legacy values remain saved; labels explain unsupported encodings.
+  const changedBarcodes = barcodes.filter((value, index) => {
+    const existing = currentById.get(variants[index].id ?? "");
+    return !existing || value !== (existing.barcode || existing.sku || "");
+  });
+  const barcodeError = checkProductBarcodes(barcodes, changedBarcodes);
   if (barcodeError) return fail(barcodeError);
   const barcodeCheck = await supabase.from("branch_products").select("id,barcode").eq("business_id", business.id).in("barcode", barcodes);
   if (barcodeCheck.error) return fail(barcodeCheck.error.message);
@@ -2031,56 +2056,76 @@ async function saveEditedProductGroup(
   }
   if (gallery !== null) newImageUrl = gallery[0] ?? null;
   const imageChanged = gallery !== null || mainAction !== "keep" || Boolean(legacyMain);
-  const now = new Date().toISOString();
+  // Saved rows (including a shared-gallery change) are written by one database
+  // transaction: either every saved variant changes or none does.
+  const batchRows: Array<{ id: string; expectedUpdatedAt: string | null; values: Record<string, unknown> }> = [];
+  for (const [variantIndex, variant] of variants.entries()) {
+    const existing = variant.id ? currentById.get(variant.id) : null;
+    if (!variant.id || !existing) continue;
+    const values: Record<string, unknown> = {
+      category_id: categoryId, name, sku: variant.sku,
+      description, size: variant.size || null, color: variant.color || null,
+      cost_price: variant.costPrice, selling_price: variant.sellingPrice,
+      low_stock_quantity: variant.lowStockQuantity, is_active: variant.isActive,
+      is_online: (variant.isOnline ?? isOnline) && variant.isActive,
+    };
+    // Preserve NULL/empty legacy columns on unrelated edits instead of materializing SKU.
+    const unchangedAbsentBarcode = !existing.barcode && variant.sku === existing.sku && barcodes[variantIndex] === (existing.sku || "");
+    if (!unchangedAbsentBarcode) values.barcode = barcodes[variantIndex];
+    if (imageChanged) values.image_url = newImageUrl;
+    if (gallery !== null) values.image_urls = gallery;
+    if (variant.imageAction !== "keep") values.variant_image_url = variant.imageAction === "remove" ? null
+      : variant.imageAction === "existing" ? variant.variantImageUrl : uploadedUrls.get(variant.imageSlot!)!;
+    // The page always sends the loaded version; fall back to the version just read.
+    batchRows.push({ id: variant.id, expectedUpdatedAt: variant.expectedUpdatedAt ?? existing.updated_at, values });
+  }
+  const { data: receipt, error: batchError } = await supabase.rpc("tenh_edit_product_rows", {
+    p_business: business.id, p_branch: context.branchId, p_product: representative.id, p_rows: batchRows,
+  });
+  if (batchError) {
+    // A PostgreSQL error reply proves the transaction rolled back. Transport or
+    // gateway failures carry no SQL code and stay uncertain (the caller forces a reload).
+    if (!batchError.code || !ROLLED_BACK_SQL_CODES.has(batchError.code)) throw new Error(batchError.message);
+    // Nothing references this request's uploads after a rollback. Existing files are never removed.
+    if (uploadedPaths.length) await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(uploadedPaths);
+    return { success: false, refreshRequired: batchError.code === "PT409" || batchError.code === "42501",
+      message: `${batchError.message} No product changes were saved.` };
+  }
+  const savedIds: unknown[] = Array.isArray(receipt?.ids) ? receipt.ids : [];
+  if (receipt?.success !== true || savedIds.length !== batchRows.length || batchRows.some(row => !savedIds.includes(row.id))) {
+    throw new Error("The save receipt could not be verified.");
+  }
+  if (gallery !== null) {
+    // Storefront reads the shared catalog; only explicit gallery edits change its media.
+    const { error: mediaError } = await supabaseAdmin.from("products").update({ image_url: newImageUrl, image_urls: gallery })
+      .eq("business_id", business.id).in("id", batchRows.map(row => row.id));
+    if (mediaError) return { success: false, refreshRequired: true, message: `Variant changes were saved, but the online store photos were not updated (${mediaError.message}). Reload, then save the gallery again.` };
+  }
   try {
     for (const variant of variants) {
-      const existing = variant.id ? currentById.get(variant.id) : null;
+      if (variant.id) continue;
       const variantImage = variant.imageAction === "remove" ? null
         : variant.imageAction === "existing" ? variant.variantImageUrl
         : variant.imageAction === "upload" ? uploadedUrls.get(variant.imageSlot!)!
-        : existing?.variant_image_url ?? null;
-      if (variant.id) {
-        const payload: Record<string, unknown> = {
-          category_id: categoryId, name, sku: variant.sku, barcode: generalBarcode ?? (variant.barcode === undefined ? existing?.barcode ?? variant.sku : variant.barcode || variant.sku),
-          description, size: variant.size || null, color: variant.color || null,
-          cost_price: variant.costPrice, selling_price: variant.sellingPrice,
-          low_stock_quantity: variant.lowStockQuantity, is_active: variant.isActive,
-          is_online: (variant.isOnline ?? isOnline) && variant.isActive, updated_at: now,
-        };
-        if (imageChanged) payload.image_url = newImageUrl;
-        if (gallery !== null) payload.image_urls = gallery;
-        if (variant.imageAction !== "keep") payload.variant_image_url = variantImage;
-        // No stock_quantity update: the inventory workflow owns saved stock.
-        let query = supabase.from("branch_products").update(payload).eq("id", variant.id).eq("business_id", business.id);
-        if (variant.expectedUpdatedAt) query = query.eq("updated_at", variant.expectedUpdatedAt);
-        const { data: updated, error } = await query.select("id");
-        if (error) throw new Error(error.message);
-        if (!updated?.length) throw new Error("A variant changed while saving. Reload to review its latest values.");
-        if (gallery !== null) {
-          // Storefront reads the shared catalog; only explicit gallery edits change its media.
-          const { error: mediaError } = await supabaseAdmin.from("products").update({ image_url: newImageUrl, image_urls: gallery }).eq("business_id", business.id).eq("id", variant.id);
-          if (mediaError) throw new Error(mediaError.message);
-        }
-      } else {
-        if (!supportsVariants) throw new Error("This product does not support adding variants.");
-        const { data: created, error } = await supabaseAdmin.from("products").insert({
-          owner_id: userId, business_id: business.id, category_id: categoryId, name,
-          sku: variant.sku, barcode: variant.sku, size: variant.size, color: variant.color,
-          image_url: newImageUrl, image_urls: gallery ?? current[0]?.image_urls ?? [], variant_image_url: variantImage, description,
-          cost_price: variant.costPrice, selling_price: variant.sellingPrice,
-          stock_quantity: variant.stockQuantity, low_stock_quantity: variant.lowStockQuantity,
-          product_type: "variant", variant_group_id: representative.variant_group_id,
-          is_active: variant.isActive, is_online: (variant.isOnline ?? isOnline) && variant.isActive,
-        }).select("id").single();
-        if (error || !created) throw new Error(error?.message ?? "Unable to add variant.");
-        const assignment = await assignCreatedProducts(business.id, context.branchId, [created.id]);
-        if (assignment) throw new Error(assignment);
-      }
+        : null;
+      if (!supportsVariants) throw new Error("This product does not support adding variants.");
+      const { data: created, error } = await supabaseAdmin.from("products").insert({
+        owner_id: userId, business_id: business.id, category_id: categoryId, name,
+        sku: variant.sku, barcode: variant.barcode || variant.sku, size: variant.size, color: variant.color,
+        image_url: newImageUrl, image_urls: gallery ?? current[0]?.image_urls ?? [], variant_image_url: variantImage, description,
+        cost_price: variant.costPrice, selling_price: variant.sellingPrice,
+        stock_quantity: variant.stockQuantity, low_stock_quantity: variant.lowStockQuantity,
+        product_type: "variant", variant_group_id: representative.variant_group_id,
+        is_active: variant.isActive, is_online: (variant.isOnline ?? isOnline) && variant.isActive,
+      }).select("id").single();
+      if (error || !created) throw new Error(error?.message ?? "Unable to add variant.");
+      const assignment = await assignCreatedProducts(business.id, context.branchId, [created.id]);
+      if (assignment) throw new Error(assignment);
     }
   } catch (error) {
-    // The existing branch API is multi-request, not an atomic transaction.
+    // Saved-variant changes are already committed; new rows are created one by one.
     // Keep possibly committed uploads and block blind retries of new rows.
-    return { success: false, refreshRequired: true, message: `${error instanceof Error ? error.message : "Save was interrupted."} Some rows may already be saved. Reload and review before retrying.` };
+    return { success: false, refreshRequired: true, message: `${error instanceof Error ? error.message : "Save was interrupted."} Changes to saved variants were saved, but new variants may be only partly added. Reload and review before retrying.` };
   }
   await createAuditLog({ action: "update", entityType: "product", entityId: representative.id,
     description: `Updated product ${name}`, metadata: { variant_group_id: representative.variant_group_id,

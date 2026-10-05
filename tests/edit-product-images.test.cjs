@@ -2,7 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadTs } = require('./helpers/load-ts.cjs');
 
-test('edit uses direct variant uploads, preserves sibling photos and supports new sizes', () => {
+test('edit uses direct variant uploads, preserves sibling photos and supports new sizes', async () => {
+  // Variant uploads are shrunk asynchronously before they enter the draft.
+  const settle = () => new Promise(resolve => setImmediate(resolve));
   let cursor = 0;
   const states = [], errors = [];
   let effects = [];
@@ -19,6 +21,7 @@ test('edit uses direct variant uploads, preserves sibling photos and supports ne
     sonner: { toast: { error: message => errors.push(message), info() {}, success() {} } },
     '@/components/product-gallery-input': { default: 'gallery' },
     '@/lib/barcode/generate': { generateInternalBarcode: () => '123456789012345' },
+    '@/lib/images/shrink-photo': { shrinkPhoto: async file => file, uploadBytes: () => 0, MAX_SAVE_UPLOAD_BYTES: 15 * 1024 * 1024 },
     '@/lib/products/variant-editor': loadTs('lib/products/variant-editor.ts'),
     '@/lib/inventory/stock-adjustment': { stockAdjustmentLink: () => '' },
     '../../actions': {},
@@ -31,6 +34,7 @@ test('edit uses direct variant uploads, preserves sibling photos and supports ne
   const picker = label => find(node => node.type === 'input' && node.props['aria-label'] === `Upload image for ${label}`);
   const image = label => find(node => node.type === 'img' && node.props.alt === label)?.props.src;
   picker('Black S').props.onChange({ target: { files: [new File(['photo'], 'size.png', { type: 'image/png' })], value: '' } });
+  await settle();
   const selectedImage = image('Black S');
   product = structuredClone(product); initialVariants = structuredClone(initialVariants);
   render(); effects[0]();
@@ -48,6 +52,7 @@ test('edit uses direct variant uploads, preserves sibling photos and supports ne
   assert.equal(image('Black M'), 'https://images.test/shared.png');
   picker('Black S').props.onChange({ target: { files: [], value: '' } });
   picker('Black S').props.onChange({ target: { files: [new File(['bad'], 'bad.txt', { type: 'text/plain' })], value: '' } });
+  await settle();
   assert.equal(image('Black S'), selectedImage);
   assert.equal(errors.length, 1);
   assert.equal(find(node => node.props?.title?.startsWith?.('Image for')), undefined);
@@ -58,6 +63,7 @@ test('edit uses direct variant uploads, preserves sibling photos and supports ne
   const gallery = find(node => node.type === 'gallery');
   assert.deepEqual(gallery.props.initialUrls, []);
   find(node => node.type === 'input' && node.props['aria-label'] === 'Quick size run image').props.onChange({ target: { files: [new File(['run'], 'run.png', { type: 'image/png' })], value: '' } });
+  await settle();
   find(node => node.props?.label === 'Colours').props.children.props.onChange({ target: { value: 'White' } });
   find(node => node.props?.label === 'Sizes').props.children.props.onChange({ target: { value: 'S, M' } });
   // Remove the blank manually-added row before exercising the validated size run.

@@ -1,3 +1,4 @@
+import { shippingQrMinimumMm, shippingQrModules } from '@/lib/receipts/shipping-layout';
 export function imagePrintDpi(width:number,height:number,maxWidthMm:number,maxHeightMm:number){
   if(![width,height,maxWidthMm,maxHeightMm].every(value=>Number.isFinite(value)&&value>0))return 0;
   return Math.round(Math.max(width/maxWidthMm,height/maxHeightMm)*25.4);
@@ -50,6 +51,30 @@ export async function preparePrint(document:Document,selector:string){
 
 /** Fit text, never scale/stretch the QR or change the physical paper dimensions. */
 export function fitShippingLabel(label: HTMLElement): boolean | null {
+  if (label.matches?.('.ship-custom')) {
+    if (!label.getBoundingClientRect().width) return null;
+    const bounds = label.getBoundingClientRect();
+    delete label.dataset.printQrError;
+    if (label.dataset.customQrReview === 'true') label.dataset.printQrError = 'Review the enlarged Order QR in Printer Settings and save the layout before printing.';
+    for (const element of label.querySelectorAll<HTMLElement>('[data-custom-field="qr"]')) {
+      const svg = element.querySelector('svg');
+      if (!svg) continue; // Older orders without a numeric code have no QR.
+      try {
+        const minimum = shippingQrMinimumMm(shippingQrModules(svg.outerHTML));
+        const rect = element.getBoundingClientRect();
+        const side = Math.min(rect.width / bounds.width * Number(label.dataset.widthMm),rect.height / bounds.height * Number(label.dataset.heightMm));
+        if (!Number.isFinite(side) || side + .005 < minimum)
+          label.dataset.printQrError = `Order QR needs at least ${minimum.toFixed(1)} mm square at 203 dpi. Enlarge it in Printer Settings and print at Actual size.`;
+      } catch { label.dataset.printQrError = 'Order QR geometry is unavailable. Reload the label before printing.'; }
+    }
+    const fits = [...label.querySelectorAll<HTMLElement>('[data-custom-field]')].every(element => {
+      const rect = element.getBoundingClientRect();
+      return element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1
+        && rect.left >= bounds.left - 1 && rect.top >= bounds.top - 1 && rect.right <= bounds.right + 1 && rect.bottom <= bounds.bottom + 1;
+    });
+    if (fits) delete label.dataset.printOverflow; else label.dataset.printOverflow = 'true';
+    return fits && !label.dataset.printQrError;
+  }
   if (!label.matches?.('.ship-template') || !label.getBoundingClientRect().width) return null;
   const view = label.ownerDocument.defaultView;
   if (!view) return null;
@@ -90,14 +115,9 @@ export function assertShippingLabelsFit(content: Element) {
   const labels = content.matches?.('.shipping-label') ? [content] : [...content.querySelectorAll('.shipping-label')];
   for (const element of labels) {
     const label = element as HTMLElement;
-    if (label.matches?.('.ship-template')) {
-      if (fitShippingLabel(label) === false) throw new Error('This shipping label is too long for the selected paper. Choose a larger label or show fewer details in Printer Settings.');
-    } else {
-      // Keep the previous guard for legacy/custom layouts.
-      const height = Number(label.dataset.heightMm), width = Number(label.dataset.widthMm);
-      const bounds = label.getBoundingClientRect();
-      if (height && width && bounds.height > bounds.width / width * height + 2)
-        throw new Error('This shipping label is too long for the selected paper. Choose a larger label or show fewer details in Printer Settings.');
-    }
+    // Fit text first. Overflowing text is warned about on screen but may be printed
+    // (the user chooses to accept clipping); an unscannable Order QR still blocks.
+    if (label.matches?.('.ship-template, .ship-custom') && fitShippingLabel(label) === false && label.dataset.printQrError)
+      throw new Error(label.dataset.printQrError);
   }
 }
