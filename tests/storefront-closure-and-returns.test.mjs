@@ -20,9 +20,9 @@ test('COD and KHQR reject closed stores before uploads, orders or email',async()
 });
 test('order detail sums partial returns and fails closed when return history is unavailable',async()=>{
  for(const failure of [false,true])for(const sold of [3,5]){
-  const calls=[],order={id:'order',order_number:'WEB-TEST',status:'completed',order_items:[{id:'item',product_name:'Shirt',quantity:sold,unit_price:10,subtotal:50}],created_at:'2026-09-24T00:00:00Z'};
+  const calls=[],order={id:'order',order_number:'WEB-TEST',status:'completed',total:50,amount_paid:50,change_amount:0,remaining_balance:0,payment_status:'paid',order_items:[{id:'item',product_name:'Shirt',quantity:sold,unit_price:10,subtotal:50}],created_at:'2026-09-24T00:00:00Z'};
   const db={from:table=>{const query=queryDouble(table,table==='orders'?{data:order}:table==='returns'?{data:failure?null:[{status:'refunded',return_items:[{order_item_id:'item',quantity:1},{order_item_id:'item',quantity:2}]}],error:failure?{message:'Unavailable'}:null,count:2}:{data:[]},calls);query.is=()=>query;return query;}};
-  const api=loadTs('app/(dashboard)/dashboard/orders/order-workspace-data.ts',{'server-only':{},'@/lib/supabase/branch-server':{createClient:async()=>db},'@/lib/settings/branch-currency':{getBranchCurrency:async()=>{throw new Error('not used by loadOrderDetail');}}});
+  const api=loadTs('app/(dashboard)/dashboard/orders/order-workspace-data.ts',{'@/lib/orders/order-payment':loadTs('lib/orders/order-payment.ts'),'server-only':{},'@/lib/supabase/branch-server':{createClient:async()=>db},'@/lib/settings/branch-currency':{getBranchCurrency:async()=>{throw new Error('not used by loadOrderDetail');}}});
   const detail=await api.loadOrderDetail('business','order');
   assert.equal(detail.returnsUnavailable,failure);
   assert.equal(detail.items[0].returnedQuantity,failure?0:3);

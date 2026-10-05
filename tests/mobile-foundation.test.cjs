@@ -91,7 +91,7 @@ function route({ detailedOrder = null, authenticated = true, permissions = ['ord
     rpc: async (name, input) => { log.push({ rpc: name, input }); if (name === 'tenh_mobile_transfer_action') return transferResult; if (name === 'tenh_mobile_return') return refundResult; if (name === 'tenh_mobile_receive_purchase') return purchaseResult; return { data: name === 'tenh_branch_notifications' ? [{ id: B, is_active: true }, { id: L, is_active: false }] : null, error: null }; },
   };
   const api = loadTs('app/api/mobile/[feature]/route.ts', {
-    '@/lib/orders/order-qr': loadTs('lib/orders/order-qr.ts', {qrcode:require('qrcode')}),
+    '@/lib/orders/order-qr': loadTs('lib/orders/order-qr.ts', {qrcode:require('qrcode'),'@/lib/tenancy/domain':loadTs('lib/tenancy/domain.ts')}),
     '@/lib/mobile/account-read': {accountAccess:{'account-users':'users.view','account-branches':'locations.manage','account-categories':'categories.manage'}},
     '@/lib/mobile/expense-breakdown': {},
     '@/lib/mobile/register-detail': {},
@@ -120,6 +120,7 @@ function route({ detailedOrder = null, authenticated = true, permissions = ['ord
     '@/app/(dashboard)/dashboard/register/actions': {},
     '@/app/(dashboard)/dashboard/orders/[id]/order-detail-data': {loadDetailedOrder:async (business,id)=>{log.push({detail:{business,id}});return detailedOrder;}},
     '@/app/(dashboard)/dashboard/orders/[id]/order-detail-model': {},
+    '@/lib/orders/order-contact': loadTs('lib/orders/order-contact.ts'),
     '@/lib/receipts/load-receipt-context': {},
     '@/lib/mobile/receipt-html': {},
     '@/lib/mobile/reports': {},
@@ -372,13 +373,15 @@ test('receipt HTML follows visibility and sizing while escaping customer content
 test('mobile shipping labels honor saved size and visibility, escape customer text and use vector order QR codes', () => {
   const receiptModel = loadTs('lib/receipts/receipt-model.ts');
   const html = loadTs('lib/mobile/receipt-html.ts', { '@/lib/receipts/receipt-model': receiptModel });
-  const { mobileShippingHtml } = loadTs('lib/mobile/shipping-html.ts', {
-    '@/lib/orders/order-qr': loadTs('lib/orders/order-qr.ts', {qrcode:require('qrcode')}),
+  const { mobileShippingHtml } = loadTs('lib/mobile/shipping-html.ts', {'@/lib/orders/order-payment':loadTs('lib/orders/order-payment.ts'),
+    '@/lib/orders/order-qr': loadTs('lib/orders/order-qr.ts', {qrcode:require('qrcode'),'@/lib/tenancy/domain':loadTs('lib/tenancy/domain.ts')}),
     '@/lib/receipts/receipt-model': receiptModel,
-    '@/app/(dashboard)/dashboard/orders/[id]/order-detail-model': loadTs('app/(dashboard)/dashboard/orders/[id]/order-detail-model.ts'),
+    '@/lib/orders/order-contact': loadTs('lib/orders/order-contact.ts'),
     './receipt-html': html,
+    // This test exercises native page/visibility/escaping; payment semantics use the real shared renderer in order-payment-audit.
+    '@/lib/receipts/shipping-label-markup': {shippingPaymentText:order=>order.payment_method},
   });
-  const order = { id:B, order_number: 'WEB-123', guest_name: '<script>bad</script>', guest_phone: '01234', guest_address: 'Street & Lane', customers: null, order_items: [{ quantity: 2 }], payment_method: 'cod', total: 12, remaining_balance: 10 };
+  const order = { id:B, order_number: 'WEB-123', order_code:'482193057716', guest_name: '<script>bad</script>', guest_phone: '01234', guest_address: 'Street & Lane', customers: null, order_items: [{ quantity: 2 }], payment_method: 'cod', total: 12, remaining_balance: 10 };
   const context = { store: { name: 'Test Store', address: 'Store Address', phone: '999' } };
   const settings = { shipping_label_size: '80x50', shipping_show_store_phone: false };
   const result = mobileShippingHtml(order, context, settings, 'USD');
@@ -388,10 +391,14 @@ test('mobile shipping labels honor saved size and visibility, escape customer te
   assert.ok(result.html.includes('<svg')); assert.ok(result.html.includes('Balance due: $10.00'));
   assert.ok(!mobileShippingHtml(order, context, { ...settings, shipping_show_barcode: false }, 'USD').html.includes('<svg'));
   assert.throws(() => mobileShippingHtml({ ...order, guest_address: '' }, context, settings, 'USD'), /delivery address/);
+  const updated=mobileShippingHtml({...order,customers:[{name:'Updated name',phone:'new-phone',address:'Updated street'}]},context,settings,'USD').html;
+  for(const value of ['Updated name','new-phone','Updated street'])assert.ok(updated.includes(value));
+  assert.ok(!updated.includes('Street &amp; Lane'));assert.ok(!updated.includes('&lt;script&gt;bad&lt;/script&gt;'));
+  assert.throws(()=>mobileShippingHtml({...order,customers:{name:'Updated name',phone:null,address:''}},context,settings,'USD'),/delivery address/);
 });
 
 test('order QR resolver requires permissions and authorized order details', async()=>{
- const qr=loadTs('lib/orders/order-qr.ts',{qrcode:require('qrcode')});
+ const qr=loadTs('lib/orders/order-qr.ts',{qrcode:require('qrcode'),'@/lib/tenancy/domain':loadTs('lib/tenancy/domain.ts')});
  const value=qr.orderQrPayload(B),query='?value='+encodeURIComponent(value);
  assert.equal((await route({permissions:[]}).call('order-qr',{query})).status,403);
  const invalid=route();assert.equal((await invalid.call('order-qr',{query:'?value=https://example.com'})).status,400);

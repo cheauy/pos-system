@@ -118,18 +118,52 @@ async function upsertLabelSettings(values: Record<string, unknown>,expectedBranc
 }
 
 export async function saveShippingLabelSettings(formData: FormData): Promise<void> {
-  const { SHIPPING_LABEL_SIZES, isShippingTemplate, shippingTemplate } = await import('@/lib/receipts/shipping-templates');
+  await persistShippingLabelSettings(formData);
+}
+export async function saveShippingCustomTemplate(formData: FormData): Promise<{customTemplates:string;warning?:string}> {
+  if(!formData.has('shippingCustomTemplateDraft'))throw new Error('The custom template draft is unavailable.');
+  return persistShippingLabelSettings(formData);
+}
+async function persistShippingLabelSettings(formData: FormData): Promise<{customTemplates:string;warning?:string}> {
+  const { SHIPPING_LABEL_SIZES, isShippingTemplate, shippingTemplate, shippingCustomTemplates } = await import('@/lib/receipts/shipping-templates');
   const size = String(formData.get('shippingLabelSize') || '100x150');
   if (!SHIPPING_LABEL_SIZES.some(value => value.id === size)) throw new Error('Choose a valid shipping label size.');
   const business = await requirePermission('business.update');
   await printerBranch(business.id, String(formData.get('branchId') || '') || undefined);
   const { persistShippingSettings, loadShippingSettings } = await import('@/lib/receipts/shipping-design-store');
   // Older forms do not submit templates/extra flags. Keep the saved selection.
-  const current = !formData.has('shippingTemplate') ? await loadShippingSettings(business.id) : null;
-  const requestedTemplate = formData.has('shippingTemplate') ? formData.get('shippingTemplate') : shippingTemplate(current?.shipping_template).id;
+  const current = await loadShippingSettings(business.id);
+  const requestedTemplate = formData.has('shippingTemplate') ? formData.get('shippingTemplate') : shippingTemplate(current?.shipping_template,current?.shipping_custom_templates).id;
   if (!isShippingTemplate(requestedTemplate)) throw new Error('Choose a valid shipping template.');
+  let customTemplates=shippingCustomTemplates(current?.shipping_custom_templates);
+  let namedSaved=false;
+  if(formData.has('shippingCustomTemplateDraft')){
+    const raw=formData.get('shippingCustomTemplateDraft');
+    if(typeof raw!=='string'||raw.length>65536)throw new Error('Invalid custom template.');
+    const entry=shippingCustomTemplates(JSON.stringify([JSON.parse(raw)]))[0];
+    const mode=formData.get('shippingCustomTemplateMode');
+    const existing=customTemplates.find(template=>template.id===entry.id);
+    if(mode==='create'&&existing)throw new Error('That template identity already exists. Reload settings.');
+    if(mode==='update'&&!existing)throw new Error('The template is unavailable. Reload settings.');
+    if(mode==='update'){
+      const original=formData.get('shippingCustomTemplateOriginal');
+      if(typeof original!=='string'||original.length>65536)throw new Error('Reopen the template before saving changes.');
+      const expected=shippingCustomTemplates(JSON.stringify([JSON.parse(original)]))[0];
+      if(JSON.stringify(expected)!==JSON.stringify(existing))throw new Error('This template changed since you opened it. Reload settings before saving.');
+    }
+    if(mode!=='create'&&mode!=='update')throw new Error('Choose Save changes or Save as new.');
+    if(requestedTemplate!==`custom:${entry.id}`||entry.layout.size!==size)throw new Error('The selected template or size changed. Reopen the editor.');
+    // Early validation helps the editor; the database repeats uniqueness and revision CAS under its row lock.
+    shippingCustomTemplates(JSON.stringify(existing?customTemplates.map(template=>template.id===entry.id?entry:template):[...customTemplates,entry]));
+    const {persistShippingNamedTemplate}=await import('@/lib/receipts/shipping-template-store');
+    customTemplates=await persistShippingNamedTemplate(business.id,entry,mode,existing?.revision??0,customTemplates);
+    namedSaved=true;
+  }
   const extraFlag = (field: string, stored: string) => formData.has('shippingTemplate') ? labelChecked(formData, field) : current?.[stored] !== false;
-  await persistShippingSettings(business.id, {
+  let warning:string|undefined;
+  try{await persistShippingSettings(business.id, {
+    ...(customTemplates.length||current?.shipping_custom_templates?{shipping_custom_templates:JSON.stringify(customTemplates)}:{}),
+    ...(formData.has('shippingCustomLayout') ? {shipping_custom_layout:formData.get('shippingCustomLayout')} : current?.shipping_custom_layout ? {shipping_custom_layout:current.shipping_custom_layout} : {}),
     shipping_label_size: size,
     shipping_template: requestedTemplate,
     shipping_show_store_name: labelChecked(formData, 'shippingShowStoreName'),
@@ -144,10 +178,15 @@ export async function saveShippingLabelSettings(formData: FormData): Promise<voi
     shipping_show_linear_barcode: extraFlag('shippingShowLinearBarcode', 'shipping_show_linear_barcode'),
     shipping_show_logo: extraFlag('shippingShowLogo', 'shipping_show_logo'),
     shipping_show_footer: extraFlag('shippingShowFooter', 'shipping_show_footer'),
-  });
+  });}catch(error){
+    if(!namedSaved)throw error;
+    // The canonical template has committed. Never turn a selection/storage failure into a misleading failed create.
+    warning='The template was saved, but its default selection could not be saved. Select it again after reloading.';
+  }
   revalidatePath('/dashboard/settings/printers');
   revalidatePath('/dashboard/shipping-labels');
   revalidatePath('/dashboard/orders', 'layout');
+  return {customTemplates:JSON.stringify(customTemplates),...(warning?{warning}:{})};
 }
 
 export async function saveBarcodeLabelSettings(formData: FormData): Promise<void> {

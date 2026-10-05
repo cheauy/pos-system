@@ -1,19 +1,29 @@
 import { isOrderCode, orderQrSvg } from '@/lib/orders/order-qr';
 import { printTextScale, type ReceiptContext } from '@/lib/receipts/receipt-model';
-import { one, type DetailedOrder } from '@/app/(dashboard)/dashboard/orders/[id]/order-detail-model';
+import type { DetailedOrder } from '@/app/(dashboard)/dashboard/orders/[id]/order-detail-model';
+import { orderContact } from '@/lib/orders/order-contact';
 import { escapeHtml as e } from './receipt-html';
+import { shippingLabelMarkup, shippingPaymentText, SHIPPING_LABEL_CSS } from '@/lib/receipts/shipping-label-markup';
+import { orderBalanceDue } from '@/lib/orders/order-payment';
 
 export function mobileShippingHtml(order: DetailedOrder, context: ReceiptContext, settings: Record<string, unknown>, currency: string) {
-  const customer = one(order.customers);
+  const contact = orderContact(order);
   const code = (order as { order_code?: string | null }).order_code;
-  const address = order.guest_address || customer?.address || '';
+  const address = contact.address;
   if (!address.trim()) throw new Error('Add the delivery address before printing a shipping label.');
   const size = ['80x50', '100x100', '100x150'].includes(String(settings.shipping_label_size)) ? String(settings.shipping_label_size) : '100x150';
   const [width, height] = size.split('x').map(Number);
+  if (settings.shipping_template === 'custom' || String(settings.shipping_template).startsWith('custom:')) {
+    if (settings.shipping_custom_qr_needs_review === true) throw new Error('The saved Order QR was too small. Review the enlarged QR in Printer Settings and save the layout before printing.');
+    const output = shippingLabelMarkup({order,store:context.store,settings,size,currency});
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>@page{size:${width}mm ${height}mm;margin:0}html,body{margin:0;padding:0}${SHIPPING_LABEL_CSS}</style></head><body><article class="${output.className}" style="${output.style}">${output.inner}</article></body></html>`;
+    return {html,width:width*72/25.4,height:height*72/25.4,size};
+  }
   const compact = height <= 100 || settings.density === 'compact';
-  const name = order.guest_name || customer?.name || 'Customer', phone = order.guest_phone || customer?.phone || '';
+  const name = contact.name || 'Customer', phone = contact.phone;
   const showSender = (field: string) => settings[`shipping_show_store_${field}`] ?? settings.shipping_show_sender ?? true;
   const amount = (value: number) => e(new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(value) || 0));
+  const due = orderBalanceDue(order), balanceAmount = due == null ? 'Unavailable' : amount(due);
   const p = (label: string, value: string) => `<p>${e(label)}${e(value)}</p>`;
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
     @page{size:${width}mm ${height}mm;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#000}
@@ -30,7 +40,7 @@ export function mobileShippingHtml(order: DetailedOrder, context: ReceiptContext
     </section>${settings.shipping_show_barcode !== false && isOrderCode(code) ? `<div style="width:26mm;height:26mm">${orderQrSvg(code)}</div>` : ""}
     <div class="details" style="grid-column:1/-1">${settings.shipping_show_order_number !== false ? p('Order: ', isOrderCode(code) ? code : order.order_number) : ''}
     ${settings.shipping_show_item_count !== false ? p('Items: ', String(order.order_items.reduce((sum, item) => sum + Number(item.quantity), 0))) : ''}
-    ${settings.shipping_show_cod !== false ? `${p('Payment: ', order.payment_method)}<p>Total: ${amount(order.total)}</p><p>Balance due: ${amount(order.remaining_balance)}</p>` : ''}</div>
+    ${settings.shipping_show_cod !== false ? `${p('Payment: ', shippingPaymentText(order,currency))}<p>Total: ${amount(order.total)}</p><p>Balance due: ${balanceAmount}</p>` : ''}</div>
   </article></body></html>`;
   return { html, width: width * 72 / 25.4, height: height * 72 / 25.4, size };
 }

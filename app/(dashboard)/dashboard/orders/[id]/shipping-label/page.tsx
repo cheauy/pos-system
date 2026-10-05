@@ -10,6 +10,7 @@ import PrintButton from "@/components/print-button";
 import { ShippingLabel, ShippingPrintStyles } from "../../../shipping-labels/shipping-labels-client";
 import { loadDetailedOrder } from "../order-detail-data";
 import OrderPrintEmbedStyles from '@/components/order-print-embed-styles';
+import { orderContact } from '@/lib/orders/order-contact';
 
 export default async function OrderShippingLabelPage({ params,searchParams }: { params: Promise<{ id: string }>;searchParams?:Promise<{preview?:string}> }) {
   const embedded=(await searchParams)?.preview==='1';
@@ -27,8 +28,7 @@ export default async function OrderShippingLabelPage({ params,searchParams }: { 
   if (saved.error) throw new Error("Printer settings could not be loaded. Please retry.");
   const settings = { ...saved.data, ...custom };
   const size = ["80x50", "100x100", "100x150"].includes(String(settings.shipping_label_size ?? "")) ? String(settings.shipping_label_size) : "100x150";
-  const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers;
-  const hasAddress = !!(order.guest_address || customer?.address)?.trim();
+  const hasAddress = !!orderContact(order).address.trim();
   return <main id="order-print-preview" data-print-disabled={!hasAddress} className="mx-auto max-w-2xl rounded-xl bg-white p-6 text-black">
     {embedded&&<OrderPrintEmbedStyles/>}
     <nav className="no-print flex flex-wrap items-center justify-between gap-3"><Link href={`/dashboard/orders/${encodeURIComponent(id)}`}>Back to order</Link><PrintButton label="Print Shipping label" selector="#shipping-label-print-area" disabled={!hasAddress}/></nav>

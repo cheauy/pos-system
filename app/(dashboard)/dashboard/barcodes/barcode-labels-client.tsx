@@ -5,7 +5,7 @@ import { preparePrint } from '@/lib/printing/prepare-print';
 import { useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, FileDown, Minus, Plus, Printer, X } from "lucide-react";
 
-import { code39Bars } from "@/lib/barcode/code39";
+import { code39BarsExact, validateCode39 } from "@/lib/barcode/code39";
 import ProductPicker, { type PromotionProduct } from "@/components/product-picker";
 
 type Product = {
@@ -63,6 +63,7 @@ function money(value: number) {
 }
 
 const variantLabel = (product: Product) => [product.size, product.color].filter(Boolean).join(" / ");
+const labelBarcode = (product: Product) => product.barcode || product.sku || "";
 
 export function getTemplate(id: TemplateId) {
   return templates.find((template) => template.id === id) ?? templates[0];
@@ -115,6 +116,10 @@ export default function BarcodeLabelsClient({
   [filtered]);
 
   const selectedProducts = useMemo(() => products.filter((product) => selected.includes(product.id)), [products, selected]);
+  const barcodeErrors = useMemo(() => showElements.barcode ? selectedProducts.flatMap(product => {
+    const error = validateCode39(labelBarcode(product));
+    return error ? [`${product.name}: ${error}`] : [];
+  }) : [], [selectedProducts, showElements.barcode]);
 
   const currentPreview =
     selectedProducts.length > 0
@@ -130,6 +135,7 @@ export default function BarcodeLabelsClient({
   const [printing, setPrinting] = useState(false), [printError, setPrintError] = useState('');
   async function printLabels() {
     if (!selectedProducts.length || printLock.current) return;
+    if (barcodeErrors.length) { setPrintError("Printing blocked. " + barcodeErrors.join(" ")); return; }
     printLock.current = true; setPrinting(true); setPrintError('');
     try { await preparePrint(document, '#barcode-print-area'); window.print(); }
     catch (error) { setPrintError(error instanceof Error ? error.message : 'Could not prepare labels for printing.'); }
@@ -149,7 +155,7 @@ export default function BarcodeLabelsClient({
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Barcode & Label Printing</h1>
           <p className="mt-1 text-slate-500">Print scan-ready barcode labels for products and exact variants.</p>
         </div>
-        <button type="button" disabled={!selectedProducts.length || printing} onClick={printLabels}
+        <button type="button" disabled={!selectedProducts.length || printing || barcodeErrors.length > 0} onClick={printLabels}
           className="inline-flex items-center gap-2 self-start rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40">
           <Printer size={17} />
           Print Selected ({selectedProducts.length})
@@ -235,12 +241,12 @@ export default function BarcodeLabelsClient({
               )}
             </div>
 
-            <button type="button" disabled={!selectedProducts.length || printing} onClick={printLabels}
+            <button type="button" disabled={!selectedProducts.length || printing || barcodeErrors.length > 0} onClick={printLabels}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40">
               <FileDown size={18} />
               Generate PDF
             </button>
-            <button type="button" disabled={!selectedProducts.length || printing} onClick={printLabels}
+            <button type="button" disabled={!selectedProducts.length || printing || barcodeErrors.length > 0} onClick={printLabels}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 font-semibold text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40">
               <Printer size={18} />
               Print Labels
@@ -249,10 +255,11 @@ export default function BarcodeLabelsClient({
         </aside>
       </div>
 
+      {barcodeErrors.length > 0 && <div role="alert" className="no-print rounded-xl bg-red-50 p-3 text-sm text-red-700"><p>Printing blocked. Saved barcode values are unchanged. Edit the barcode or use a compatible encoder before printing.</p><ul>{barcodeErrors.map((error, index) => <li key={index}>{error}</li>)}</ul></div>}
       {printError && <p role="alert" className="no-print rounded-xl bg-red-50 p-3 text-sm text-red-700">{printError}</p>}
       {printing && <p role="status" className="no-print text-sm text-slate-600">Preparing images and fonts…</p>}
       <div id="barcode-print-area" className="hidden print:block">
-        {printedLabels.map(({ product, key }) => (
+        {barcodeErrors.length === 0 && printedLabels.map(({ product, key }) => (
           <LabelCard fontSize={settings.font_size} density={settings.density} key={key} product={product} businessName={businessName} size={labelSize} templateId={templateId} elements={showElements} customText="" />
         ))}
       </div>
@@ -287,8 +294,10 @@ export function LabelCard({
   customText: string;
   fontSize?:unknown; density?:unknown;
 }) {
-  const value = product.barcode || product.sku || product.id.slice(0, 12);
-  const data = code39Bars(value);
+  const value = labelBarcode(product);
+  const barcodeError = elements.barcode ? validateCode39(value) : null;
+  if (barcodeError) return <div role="alert" className="no-print rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{product.name}: {barcodeError} Saved barcode values are unchanged.</div>;
+  const data = elements.barcode ? code39BarsExact(value) : { text: value, bars: [], width: 0 };
   const [width, height] = size.split("x").map(Number);
   const image = product.variant_image_url ?? product.image_url;
   const split = templateId === "price";

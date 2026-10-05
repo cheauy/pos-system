@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { createClient } from "@/lib/supabase/client";
 import { incomingOrderSummary } from "@/app/(dashboard)/dashboard/online-orders/actions";
+import { requestOrdersWorkspaceRefresh } from "@/lib/orders/workspace-refresh";
 
 export const ORDER_ALERTS_KEY = "tenh-order-alerts";
 export const ORDER_SOUND_KEY = "tenh-order-sound";
@@ -21,6 +22,7 @@ export default function OnlineOrderListener({
   const router = useRouter();
 
   useEffect(() => {
+    const refresh = () => { if (!requestOrdersWorkspaceRefresh(businessId, branchId)) router.refresh(); };
     if (receiveAll) {
       let stopped = false, busy = false;
       let seen: Set<string> | null = null;
@@ -32,7 +34,7 @@ export default function OnlineOrderListener({
           if (stopped) return;
           const fresh = orders.filter(order => seen && !seen.has(order.id));
           seen = new Set(orders.map(order => order.id));
-          if (fresh.length) { announceNewOrder(() => router.push(NEW_ORDERS_HREF)); router.refresh(); }
+          if (fresh.length) { announceNewOrder(() => router.push(NEW_ORDERS_HREF)); refresh(); }
         } catch { /* Preserve the last snapshot during temporary connection failures. */ }
         finally { busy = false; }
       };
@@ -51,7 +53,7 @@ export default function OnlineOrderListener({
           if (row.location_id !== branchId) return;
           if (row.order_source !== "online" && row.order_source !== "qr") return;
           announceNewOrder(() => router.push(NEW_ORDERS_HREF));
-          router.refresh();
+          refresh();
         },
       )
       .subscribe();

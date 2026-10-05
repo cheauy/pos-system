@@ -19,7 +19,7 @@ for (const code of ['08006','08007','42501','42883','42703','42P01','PGRST202','
 }
 
 function workspace(overrides = {}) {
-  const tables = [], rpcCalls = [];
+  const tables = [], rpcCalls = [], cachePaths=[];
   const catalog = {
     businessId:B, inventoryVersion:2, checkoutVersion:3, defaultBranchId:C,
     settings:{currency:'USD'},
@@ -70,14 +70,14 @@ function workspace(overrides = {}) {
     '@/lib/promotions/pricing':loadTs('lib/promotions/pricing.ts'),
     '@/lib/supabase/branch-server':{createClient:async()=>{dbCreated++;return db;}},
     '@/lib/receipts/load-receipt-context':{loadReceiptContext:async()=>{if(overrides.receiptError)throw Error('Printer settings unavailable');return {source:'unchanged'};}},
-    'next/cache':{revalidatePath(){if(overrides.cacheError)throw Error('cache offline');}},
+    'next/cache':{revalidatePath(path){cachePaths.push(path);if(overrides.cacheError)throw Error('cache offline');}},
     './pos-workspace-helpers':{
       uuid:v=>typeof v==='string' && /^[0-9a-f-]{36}$/i.test(v),
       // Cart arithmetic itself is not under test in these orchestration cases.
       validateCheckout:()=>null,
     },
   });
-  return {api,tables,rpcCalls,dbCreated:()=>dbCreated};
+  return {api,tables,rpcCalls,cachePaths,dbCreated:()=>dbCreated};
 }
 
 test('catalog uses operating-branch drawer, even when the catalog returns another cashier branch', async()=>{
@@ -127,6 +127,16 @@ test('transport failure leaves outcome for the existing client recovery handler'
 });
 test('postcommit checkout cache failure still returns the saved order',async()=>{
   const h=workspace({cacheError:true});const r=await h.api.completePosSale(B,{requestId:REQUEST,branchId:A});assert.equal(r.success,true);assert.equal(r.data.orderId,'saved');
+});
+test('committed checkout and recovered sale invalidate detail, receipt and shipping previews',async()=>{
+ for(const mode of ['checkout','recovered']){
+  const h=workspace({savedSale:{orderId:'saved',remaining:0}});
+  const result=mode==='checkout'?await h.api.completePosSale(B,{requestId:REQUEST,branchId:A}):await h.api.checkPosSale(B,REQUEST);
+  assert.equal(result.success,true);
+  for(const path of ['/dashboard/orders','/dashboard/shipping-labels','/dashboard/orders/saved','/dashboard/orders/saved/receipt','/dashboard/orders/saved/shipping-label'])assert.ok(h.cachePaths.includes(path),path);
+  assert.equal(h.rpcCalls.filter(call=>call.name==='tenh_pos_checkout_registered').length,mode==='checkout'?1:0,'checking a saved sale must never create another payment');
+ }
+ const unresolved=workspace();await unresolved.api.checkPosSale(B,REQUEST);assert.deepEqual(unresolved.cachePaths,[]);
 });
 test('allocation cannot run against another operating branch',async()=>{
   const h=workspace();const r=await h.api.allocatePosStock(B,C,[{productId:CUSTOMER,quantity:1}]);assert.equal(r.success,false);assert.equal(h.rpcCalls.length,0);

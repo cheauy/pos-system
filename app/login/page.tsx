@@ -17,7 +17,8 @@ import {
 import { FaFacebookF } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 
-import { createClient, getRememberMe, setRememberMe as saveRememberMeChoice } from "@/lib/supabase/client";
+import { parseCookieHeader } from "@supabase/ssr";
+import { REMEMBER_ME_COOKIE } from "@/lib/auth/session-persistence";
 
 const signInErrorMessage =
   "Unable to sign in. Check your credentials or account status.";
@@ -36,7 +37,6 @@ type OAuthProvider = "google" | "facebook";
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClient();
 
   const [rememberMe, setRememberMe] = useState(false);
   const [email, setEmail] = useState("");
@@ -52,7 +52,7 @@ export default function LoginPage() {
   useEffect(() => {
     // Read the browser preference after hydration.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRememberMe(getRememberMe());
+    setRememberMe(parseCookieHeader(document.cookie).find(cookie => cookie.name === REMEMBER_ME_COOKIE)?.value === "1");
   }, []);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -62,7 +62,9 @@ export default function LoginPage() {
     setErrorMessage("");
 
     try {
+      const { createClient, setRememberMe: saveRememberMeChoice } = await import("@/lib/supabase/client");
       saveRememberMeChoice(rememberMe);
+      const supabase = createClient();
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
@@ -99,7 +101,9 @@ export default function LoginPage() {
     setOauthLoading(provider);
 
     try {
+      const { createClient, setRememberMe: saveRememberMeChoice } = await import("@/lib/supabase/client");
       saveRememberMeChoice(rememberMe);
+      const supabase = createClient();
       const redirectTo = `${window.location.origin}/auth/callback`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
@@ -139,7 +143,8 @@ export default function LoginPage() {
                   alt="Tenh POS logo"
                   width={76}
                   height={76}
-                  priority
+                  loading="eager"
+                  fetchPriority="high"
                   className="h-[68px] w-[68px] object-contain"
                 />
                 <span className="text-[38px] font-extrabold tracking-[-0.04em] text-[#08123b]">
@@ -149,7 +154,7 @@ export default function LoginPage() {
               <p className="text-[17px] font-medium text-slate-500">
                 Sign in to manage your business
               </p>
-              <p className="mt-1.5 text-[15px] text-slate-400">
+              <p className="mt-1.5 text-[15px] text-slate-600">
                 Manage your store, orders, and inventory in one place.
               </p>
             </div>
@@ -190,7 +195,7 @@ export default function LoginPage() {
 
             <div className="my-7 flex items-center gap-4">
               <div className="h-px flex-1 bg-slate-200" />
-              <span className="text-sm font-medium text-slate-400">
+              <span className="text-sm font-medium text-slate-600">
                 or sign in with email
               </span>
               <div className="h-px flex-1 bg-slate-200" />
@@ -217,7 +222,7 @@ export default function LoginPage() {
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder="owner@example.com"
-                    className="h-14 w-full rounded-xl border border-slate-300 bg-white pl-12 pr-4 text-[15px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    className="h-14 w-full rounded-xl border border-slate-300 bg-white pl-12 pr-4 text-[15px] text-slate-800 outline-none transition placeholder:text-slate-500 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                   />
                 </div>
               </div>
@@ -242,15 +247,16 @@ export default function LoginPage() {
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="Enter your password"
-                    className="h-14 w-full rounded-xl border border-slate-300 bg-white pl-12 pr-12 text-[15px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    className="h-14 w-full rounded-xl border border-slate-300 bg-white pl-12 pr-16 text-[15px] text-slate-800 outline-none transition placeholder:text-slate-500 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((current) => !current)}
                     aria-label={showPassword ? "Hide password" : "Show password"}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-800"
+                    aria-controls="password"
+                    className="absolute right-1 top-1/2 inline-flex h-[48px] w-[48px] -translate-y-1/2 items-center justify-center rounded-lg text-slate-600 transition hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                   >
-                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    {showPassword ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}
                   </button>
                 </div>
               </div>
@@ -336,7 +342,8 @@ export default function LoginPage() {
               alt="Tenh POS dashboard preview"
               width={850}
               height={570}
-              priority
+              loading="eager"
+              fetchPriority="high"
               className="relative -ml-[8%] h-auto w-[116%] max-w-none rotate-[-1.25deg] drop-shadow-[0_38px_52px_rgba(0,0,0,0.38)] xl:-ml-[10%] xl:w-[120%]"
             />
           </div>

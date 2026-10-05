@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/branch-server";
 import { getBranchCurrency } from "@/lib/settings/branch-currency";
+import { orderBalanceDue, orderPaymentMethod, orderPaymentNeedsReview, orderPaymentState, type PaymentRecord } from '@/lib/orders/order-payment';
 import type { OrderDetail, OrderRow, PaymentState, WorkspaceData, WorkspaceFilters } from "./order-workspace-types";
 
 type Customer = { id: string; name: string; phone: string | null; email: string | null; address: string | null };
@@ -15,6 +16,7 @@ type RawOrder = {
   coupon_code: string | null; coupon_discount: number; created_at: string; updated_at: string | null;
   location_id: string | null; guest_name: string | null; guest_phone: string | null; guest_address: string | null;
   customer_note: string | null; table_name: string | null; requested_for: string | null;
+  pos_checkout?: PaymentRecord['pos_checkout'];
   customers: Customer | Customer[] | null; order_items: RawItem[];
 };
 function one<T>(value: T | T[] | null): T | null { return Array.isArray(value) ? value[0] ?? null : value; }
@@ -52,7 +54,7 @@ export async function loadOrderDetail(businessId: string, orderId: string): Prom
   const supabase = await createClient();
   const { data, error } = await supabase.from("orders").select(`
     id,order_number,customer_id,order_source,fulfillment_type,status,online_status,
-    payment_method,payment_status,payment_reference,total,subtotal,discount,delivery_fee,
+    payment_method,payment_status,payment_reference,pos_checkout,total,subtotal,discount,delivery_fee,
     amount_paid,change_amount,remaining_balance,credit_amount,loyalty_points_earned,coupon_code,coupon_discount,
     created_at,updated_at,location_id,guest_name,guest_phone,guest_address,customer_note,table_name,requested_for,
     customers(id,name,phone,email,address),
@@ -77,11 +79,7 @@ export async function loadOrderDetail(businessId: string, orderId: string): Prom
   const fullyReturned = !returns.error && order.order_items.length > 0
     && order.order_items.some(item => number(item.quantity) > 0)
     && order.order_items.every(item => (returned.get(item.id) ?? 0) >= number(item.quantity));
-  const paid = Math.max(0, number(order.amount_paid) - number(order.change_amount));
-  const paymentState: PaymentState = fullyReturned || order.status === "refunded" || order.payment_status === "refunded" ? "refunded"
-    : order.payment_status === "pending_verification" ? "pending_verification"
-    : order.payment_status === "paid" || paid >= number(order.total) ? "paid"
-    : number(order.amount_paid) > 0 ? "partial" : "unpaid";
+  const paymentState: PaymentState = fullyReturned ? "refunded" : orderPaymentState(order);
   return {
     id: order.id, orderNumber: order.order_number, customerId: order.customer_id,
     customerName: customer?.name || order.guest_name || "Walk-in customer",
@@ -90,7 +88,7 @@ export async function loadOrderDetail(businessId: string, orderId: string): Prom
     guestName: order.guest_name, guestPhone: order.guest_phone, guestAddress: order.guest_address,
     source: order.order_source || "pos", fulfillment: !order.fulfillment_type || order.fulfillment_type === 'dine_in' ? 'walk_in' : order.fulfillment_type,
     status: fullyReturned ? "refunded" : order.status === "pending" && ["online", "qr"].includes(order.order_source) && ["preparing", "ready"].includes(order.online_status ?? "") ? "in_progress" : order.status, onlineStatus: order.online_status,
-    paymentState, paymentMethod: order.payment_method, total: number(order.total),
+    paymentState, paymentMethod: orderPaymentMethod(order), total: number(order.total),
     amountPaid: number(order.amount_paid), createdAt: order.created_at, updatedAt: order.updated_at,
     branchId: order.location_id, branchName: branch.data?.name || "Unassigned",
     itemCount: (order.order_items ?? []).length,
@@ -100,7 +98,8 @@ export async function loadOrderDetail(businessId: string, orderId: string): Prom
       || !!order.payment_reference || order.payment_method === "credit" || number(order.credit_amount) > 0 || number(order.loyalty_points_earned) > 0,
     note: order.customer_note, subtotal: number(order.subtotal), discount: number(order.discount),
     deliveryFee: number(order.delivery_fee), changeAmount: number(order.change_amount),
-    remainingBalance: number(order.remaining_balance), couponCode: order.coupon_code,
+    remainingBalance: fullyReturned ? 0 : orderBalanceDue(order), couponCode: order.coupon_code,
+    paymentReviewNeeded: !fullyReturned && order.payment_status !== 'pending_verification' && orderPaymentNeedsReview(order),
     couponDiscount: number(order.coupon_discount), paymentReference: order.payment_reference, paymentStatus: order.payment_status,
     tableName: order.table_name, requestedFor: order.requested_for,
     returnsUnavailable: !!returns.error,

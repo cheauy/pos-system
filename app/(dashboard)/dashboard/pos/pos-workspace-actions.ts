@@ -27,10 +27,10 @@ function errorMessage(error: unknown): string {
 function activeBusinessError(): ActionResult<never> {
   return { success: false, uncertain: true, message: 'The active business changed in another tab. Reload POS before continuing.' };
 }
-function refreshRoutes(): void {
+function refreshRoutes(orderId?: string): void {
   // The transaction is already committed. Cache revalidation must never turn a
   // successful sale into an apparent failure and invite a duplicate payment.
-  try { for (const path of ['/dashboard/pos', '/dashboard/orders', '/dashboard/products', '/dashboard/register', '/dashboard/customers']) revalidatePath(path); }
+  try { for (const path of ['/dashboard/pos', '/dashboard/orders', '/dashboard/products', '/dashboard/register', '/dashboard/customers','/dashboard/shipping-labels',...(orderId?[`/dashboard/orders/${orderId}`,`/dashboard/orders/${orderId}/receipt`,`/dashboard/orders/${orderId}/shipping-label`]:[])]) revalidatePath(path); }
   catch (error) { console.error('POS post-commit refresh failed', error); }
 }
 export async function loadPosWorkspace(expectedBusinessId?: string, expectedBranchId?: string, includeReceipt = true): Promise<ActionResult<Workspace>> {
@@ -104,7 +104,7 @@ export async function completePosSale(businessId: string, input: CheckoutInput):
     if (disabled) {
       // A settings change must never hide an already-committed retry result.
       const previous = await db.rpc('tenh_pos_checkout_status',{p_business_id:business.id,p_request_id:input.requestId});
-      if (!previous.error && previous.data?.orderId) return {success:true,data:await withOrderCode(db,previous.data as SaleReceipt)};
+      if (!previous.error && previous.data?.orderId) {refreshRoutes(previous.data.orderId);return {success:true,data:await withOrderCode(db,previous.data as SaleReceipt)};}
       return {success:false,uncertain:true,message:'This payment method is disabled in Currency Settings. Check the sale before changing payment.'};
     }
   }
@@ -117,7 +117,7 @@ export async function completePosSale(businessId: string, input: CheckoutInput):
     return { success: false, uncertain: !isConfirmedRollback(error) || /already used with different data/i.test(error.message), message: errorMessage(error) };
   }
   if (!data?.orderId) throw new Error('Checkout result not confirmed. Check the sale before retrying.');
-  refreshRoutes();
+  refreshRoutes(data.orderId);
   return { success: true, data: await withOrderCode(db, data as SaleReceipt) };
 }
 // The sale is committed: a failed lookup only means the receipt barcode uses the order number.
@@ -134,6 +134,7 @@ export async function checkPosSale(businessId: string, requestId: string): Promi
   try {
     const db = await createClient();
     const { data, error } = await db.rpc('tenh_pos_checkout_status', { p_business_id: business.id, p_request_id: requestId });
+    if(!error && data?.orderId)refreshRoutes(data.orderId);
     return error ? { success: false, message: errorMessage(error) } : { success: true, data: data ? await withOrderCode(db, data as SaleReceipt) : null };
   } catch (error) { return { success: false, message: errorMessage(error) }; }
 }

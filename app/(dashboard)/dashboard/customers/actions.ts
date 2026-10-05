@@ -262,6 +262,8 @@ export async function updateCustomer(formData: FormData) {
 
   revalidatePath("/dashboard/customers");
   revalidatePath(`/dashboard/customers/${customerId}`);
+  revalidatePath('/dashboard/orders', 'layout');
+  revalidatePath('/dashboard/shipping-labels');
   revalidatePath("/dashboard/pos");
 
   redirect(`/dashboard/customers?customer=${encodeURIComponent(customerId)}`);

@@ -30,6 +30,7 @@ import { formatStoreMoney, type CurrencyFormat } from "@/lib/currency-format";
 import { setIncomingOrderScope, updateOnlinePaymentStatus } from "../online-orders/actions";
 import { createClient } from "@/lib/supabase/client";
 import { realtimeTopic } from "@/lib/supabase/realtime-topic";
+import { createOrdersRefreshScheduler, ORDERS_REFRESH_EVENT } from "@/lib/orders/workspace-refresh";
 import { ORDER_ALERTS_KEY, ORDER_SOUND_KEY } from "@/components/online-order-listener";
 import { toast } from "sonner";
 import CancelOrderForm from "@/components/cancel-order-form";
@@ -52,14 +53,14 @@ function setOrderPreference(key: string, value: string) {
   window.dispatchEvent(new Event(PREFS_EVENT));
 }
 
-type Props = { businessId: string; businessName: string; showTableQr?: boolean; data: WorkspaceData; filters: WorkspaceFilters; permissions: WorkspacePermissions };
+type Props = { businessId: string; branchId: string; businessName: string; showTableQr?: boolean; data: WorkspaceData; filters: WorkspaceFilters; permissions: WorkspacePermissions };
 type ActionDialog = { type: "edit" | "status" | "delete"; order: OrderRow };
 type QueueItem = { id: string; number: string };
 const statusTabs = ["all", "new", "pending", "in_progress", "completed", "cancelled", "refunded"];
 
 const orderHref = (id: string) => `/dashboard/orders/${encodeURIComponent(id)}`;
 
-export default function OrdersWorkspace({ businessId, businessName, showTableQr = false, data, filters, permissions }: Props) {
+export default function OrdersWorkspace({ businessId, branchId, businessName, showTableQr = false, data, filters, permissions }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [selectedId, setSelectedId] = useState<string | null>(data.rows[0]?.id ?? null);
@@ -80,7 +81,23 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
   const filterForm = useRef<HTMLFormElement>(null);
   const loadedId = useRef<string | null>(null);
   const allCheckbox = useRef<HTMLInputElement>(null);
-  const visibleId = data.rows.some((row) => row.id === selectedId) ? selectedId : data.rows[0]?.id ?? null;
+  // New rows can push the selected order off this page. Keep its mounted
+  // detail/return draft until the user selects another order or closes it.
+  const visibleId = selectedId ?? data.rows[0]?.id ?? null;
+  const detailRevision = JSON.stringify([data.rows.find(row => row.id === visibleId) ?? null, permissions, data.receiveAllOnline]);
+  const detailSnapshot = useRef({ id: visibleId, revision: detailRevision });
+  const currentDetailFormat = { id: visibleId, viewingBranch: filters.branch, currency: data.currency, currencyFormat: data.currencyFormat, timezone: data.timezone };
+  const [detailFormat, setDetailFormat] = useState(currentDetailFormat);
+  // Adjust on every selection transition, including deletion/empty-list fallback.
+  // Same-scope settings stay current; a retained order keeps its original units
+  // while another branch's list is shown. This does not remount its return form.
+  if (detailFormat.id !== visibleId || (detailFormat.viewingBranch === filters.branch &&
+    (detailFormat.currency !== data.currency || detailFormat.timezone !== data.timezone || JSON.stringify(detailFormat.currencyFormat) !== JSON.stringify(data.currencyFormat)))) {
+    setDetailFormat(currentDetailFormat);
+  }
+  const pendingDetailRefresh = useRef(false);
+  const visibleIdRef = useRef(visibleId);
+  const refreshScheduler = useRef<ReturnType<typeof createOrdersRefreshScheduler> | null>(null);
   const allChecked = data.rows.length > 0 && data.rows.every((row) => selected.some((item) => item.id === row.id));
   const someChecked = data.rows.some((row) => selected.some((item) => item.id === row.id));
 
@@ -101,20 +118,45 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
   // New-order alerts themselves come from the dashboard-wide OnlineOrderListener.
   useEffect(() => {
     const supabase = createClient();
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const refreshSoon = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => { if (document.visibilityState === "visible") startTransition(() => router.refresh()); }, 700);
-    };
+    const scheduler = createOrdersRefreshScheduler((detailNeeded) => {
+      pendingDetailRefresh.current ||= detailNeeded;
+      startTransition(() => router.refresh());
+    }, () => document.visibilityState === "visible");
+    refreshScheduler.current = scheduler;
     const channel = supabase
       .channel(realtimeTopic(`orders-workspace:${businessId}`))
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `business_id=eq.${businessId}` }, refreshSoon)
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `business_id=eq.${businessId}` }, (payload) => {
+        const id = (payload.new as { id?: string }).id ?? (payload.old as { id?: string }).id;
+        scheduler.request(id === visibleIdRef.current);
+      })
       .subscribe((status) => setLive(status === "SUBSCRIBED"));
-    const poll = setInterval(() => { if (document.visibilityState === "visible") startTransition(() => router.refresh()); }, 30000);
-    const onVisible = () => { if (document.visibilityState === "visible") refreshSoon(); };
+    // Keep related return/item history fresh even if orders.updated_at does not change.
+    const poll = setInterval(() => scheduler.request(true, true), 30000);
+    const onVisible = () => { if (document.visibilityState === "visible") scheduler.request(true); };
+    const onIncoming = (event: Event) => {
+      const request = event as CustomEvent<{ businessId: string; branchId: string }>;
+      if (request.detail.businessId !== businessId || request.detail.branchId !== branchId) return;
+      event.preventDefault(); scheduler.request();
+    };
     document.addEventListener("visibilitychange", onVisible);
-    return () => { if (timer) clearTimeout(timer); clearInterval(poll); document.removeEventListener("visibilitychange", onVisible); void supabase.removeChannel(channel); };
-  }, [businessId, router]);
+    window.addEventListener(ORDERS_REFRESH_EVENT, onIncoming);
+    return () => {
+      scheduler.dispose(); refreshScheduler.current = null; clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisible); window.removeEventListener(ORDERS_REFRESH_EVENT, onIncoming);
+      void supabase.removeChannel(channel);
+    };
+  }, [businessId, branchId, router]);
+  useEffect(() => { visibleIdRef.current = visibleId; }, [visibleId]);
+  useEffect(() => {
+    const changed = detailSnapshot.current.id === visibleId && detailSnapshot.current.revision !== detailRevision;
+    detailSnapshot.current = { id: visibleId, revision: detailRevision };
+    // Consume a forced refresh with the new route payload, so a changed row and
+    // a periodic/mutation invalidation trigger one detail request together.
+    if (changed || pendingDetailRefresh.current) {
+      pendingDetailRefresh.current = false;
+      setDetailReload(value => value + 1);
+    }
+  }, [data, visibleId, detailRevision]);
   async function toggleAlerts() {
     if (alertsOn) { setOrderPreference(ORDER_ALERTS_KEY, "0"); toast.success("Desktop alerts turned off."); return; }
     if (!("Notification" in window)) { toast.error("This browser does not support desktop notifications."); return; }
@@ -145,7 +187,7 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
     }).catch(() => { if (active) setDetailError("Could not load the order. Check your connection and try again."); })
       .finally(() => { if (active) setDetailLoading(false); });
     return () => { active = false; };
-  }, [visibleId, businessId, data, detailReload, panelClosed, narrow, mobileOpen]);
+  }, [visibleId, businessId, detailReload, panelClosed, narrow, mobileOpen]);
 
   function navigate(changes: Partial<WorkspaceFilters>) {
     const next = { ...filters, ...changes };
@@ -164,8 +206,11 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
     // Status comes from the tabs, not this form, so keep the current tab when filtering.
     navigate({ search: values.search?.trim() ?? "", from: values.from ?? "", to: values.to ?? "", source: values.source || "all", fulfillment: values.fulfillment || "all", payment: values.payment || "all", page: 1 });
   }
-  function refresh() { setMenu(null); startTransition(() => router.refresh()); }
-  function selectRow(row: OrderRow) { setSelectedId(row.id); setPanelClosed(false); setMobileOpen(true); }
+  function refresh() { setMenu(null); refreshScheduler.current?.request(true, true); }
+  function selectRow(row: OrderRow) {
+    setDetailFormat({ id: row.id, viewingBranch: filters.branch, currency: data.currency, currencyFormat: data.currencyFormat, timezone: data.timezone });
+    setSelectedId(row.id); setPanelClosed(false); setMobileOpen(true);
+  }
   function toggleSelected(row: OrderRow) {
     setSelected((items) => items.some((item) => item.id === row.id) ? items.filter((item) => item.id !== row.id) : items.length < 50 ? [...items, { id: row.id, number: row.orderNumber }] : items);
   }
@@ -182,8 +227,8 @@ export default function OrdersWorkspace({ businessId, businessName, showTableQr 
   const lastShown = Math.min(data.page * filters.limit, data.total);
   const activeFilters = !!(filters.search || filters.from || filters.to || [filters.branch, filters.source, filters.fulfillment, filters.payment, filters.status].some((value) => value !== "all"));
   const filterCount = [filters.from || filters.to, filters.source !== "all", filters.fulfillment !== "all", filters.payment !== "all", filters.branch !== "all"].filter(Boolean).length;
-  const detailContent = <DetailPanel onPrint={(id,kind)=>setPrintPreview({id,kind})} detail={detail} loading={detailLoading} error={detailError} currency={data.currency} currencyFormat={data.currencyFormat} timezone={data.timezone} permissions={permissions} businessId={businessId}
-    onClose={() => { setPanelClosed(true); setMobileOpen(false); }} onRetry={() => setDetailReload((value) => value + 1)} onAction={openAction} onReturned={() => { setDetailReload(value => value + 1); refresh(); }} />;
+  const detailContent = <DetailPanel onPrint={(id,kind)=>setPrintPreview({id,kind})} detail={detail} loading={detailLoading} error={detailError} currency={detailFormat.currency} currencyFormat={detailFormat.currencyFormat} timezone={detailFormat.timezone} permissions={permissions} businessId={businessId}
+    onClose={() => { setPanelClosed(true); setMobileOpen(false); }} onRetry={() => setDetailReload((value) => value + 1)} onAction={openAction} onReturned={refresh} />;
 
   return <div className={styles.workspace}>
     <header className={styles.header}>
@@ -378,11 +423,11 @@ function DetailPanel({ detail, loading, error, currency, currencyFormat, timezon
       </dl>
     </OdCard>
 
-    <OdCard icon={<CreditCard size={17} />} title="Payment" aside={<Badge value={order.paymentState} payment />}>
+    <OdCard icon={<CreditCard size={17} />} title="Payment" aside={<Badge value={order.paymentReviewNeeded ? 'Needs review' : order.paymentState} payment />}>
       <p className={styles.odMethod}><CreditCard size={16} />{methodLabel(order.paymentMethod)}{order.paymentReference && !order.paymentReference.startsWith("proof:") && <small>Ref: {order.paymentReference}</small>}</p>
       <div className={styles.odTiles}>
         <div data-tone="green"><Wallet size={20} /><div><small>Amount paid</small><strong>{money(paid, currency, currencyFormat)}</strong></div></div>
-        <div data-tone="orange"><Coins size={20} /><div><small>Balance due</small><strong>{money(order.remainingBalance, currency, currencyFormat)}</strong></div></div>
+        <div data-tone="orange"><Coins size={20} /><div><small>Balance due</small><strong>{order.remainingBalance == null ? 'Unavailable' : money(order.remainingBalance, currency, currencyFormat)}</strong></div></div>
       </div>
       {order.changeAmount > 0 && <p className={styles.paymentExtra}>Change given <span>{money(order.changeAmount, currency, currencyFormat)}</span></p>}
     </OdCard>

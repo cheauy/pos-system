@@ -29,6 +29,7 @@ import { createPosCustomer } from '@/app/(dashboard)/dashboard/pos/pos-customer-
 import { openRegisterShift, closeRegisterShift } from '@/app/(dashboard)/dashboard/register/actions';
 import { loadDetailedOrder } from '@/app/(dashboard)/dashboard/orders/[id]/order-detail-data';
 import { recordReceipt, one } from '@/app/(dashboard)/dashboard/orders/[id]/order-detail-model';
+import { orderContact } from '@/lib/orders/order-contact';
 import { loadReceiptContext } from '@/lib/receipts/load-receipt-context';
 import { orderQrSvg, parseOrderQr } from '@/lib/orders/order-qr';
 import { orderIdFromScan } from '@/lib/orders/scanned-order';
@@ -260,9 +261,9 @@ async function handle(request: Request, feature: string) {
           if (!id) throw new RequestError('Choose an order.');
           const order = await loadDetailedOrder(business.id, id);
           if (!order || !['online', 'qr'].includes(order.order_source)) throw new RequestError('Online order not found.', 404);
-          const customer = one(order.customers);
-          return response({ id: order.id, orderNumber: order.order_number, customerName: order.guest_name || customer?.name || 'Customer',
-            customerPhone: order.guest_phone || customer?.phone, customerAddress: order.guest_address || customer?.address,
+          const contact = orderContact(order);
+          return response({ id: order.id, orderNumber: order.order_number, customerName: contact.name || 'Customer',
+            customerPhone: contact.phone, customerAddress: contact.address,
             total: order.total, discount: order.discount, couponCode: order.coupon_code, status: order.status, onlineStatus: order.online_status, paymentState: order.payment_status,
             note: order.customer_note, guestName: order.guest_name, guestPhone: order.guest_phone, guestAddress: order.guest_address, paymentMethod: order.payment_method, source: order.order_source, updatedAt: order.updated_at, createdAt: order.created_at,
             items: order.order_items.map(item => ({ id: item.id, name: item.product_name, quantity: item.quantity, subtotal: item.subtotal, variant: item.variant_label, imageUrl: one(item.products)?.image_url })) });
@@ -289,8 +290,7 @@ async function handle(request: Request, feature: string) {
           const store = await db.from('business_storefronts').select('currency').eq('business_id', business.id).maybeSingle();
           if (store.error) throw new RequestError('Unable to load receipt currency.', 503);
           if (feature === 'shipping-label') {
-            const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers;
-            if (!(order.guest_address || customer?.address || '').trim()) throw new RequestError('Add the delivery address before printing a shipping label.');
+            if (!orderContact(order).address.trim()) throw new RequestError('Add the delivery address before printing a shipping label.');
             const [saved, custom] = await Promise.all([
               supabaseAdmin.from('branch_receipt_settings').select('font_size,density,shipping_label_size,shipping_show_sender,shipping_show_phone,shipping_show_order_number,shipping_show_cod,shipping_show_item_count,shipping_show_barcode')
                 .eq('business_id', business.id).eq('location_id', receiptContext.branchId).maybeSingle(),

@@ -644,7 +644,7 @@ export type BusinessStatus =
   | "suspended"
   | "inactive";
 
-export function getBusinessStatus(business: {
+function getBusinessStatus(business: {
   is_active: boolean;
   disabled_reason: string | null;
   subscription_expires_at: string | null;

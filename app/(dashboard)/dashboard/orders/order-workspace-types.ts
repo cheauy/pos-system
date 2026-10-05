@@ -23,7 +23,7 @@ export type OrderDetail = OrderRow & {
   customerEmail: string | null; customerAddress: string | null; note: string | null;
   guestName: string | null; guestPhone: string | null; guestAddress: string | null;
   subtotal: number; discount: number; deliveryFee: number; changeAmount: number;
-  remainingBalance: number; couponCode: string | null; couponDiscount: number;
+  remainingBalance: number | null; paymentReviewNeeded?: boolean; couponCode: string | null; couponDiscount: number;
   paymentReference: string | null; paymentStatus: string | null; tableName: string | null; requestedFor: string | null;
   items: OrderItem[]; returnsUnavailable: boolean;
   activity: { id: string; description: string; createdAt: string }[];

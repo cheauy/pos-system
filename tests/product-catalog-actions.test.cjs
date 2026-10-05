@@ -29,7 +29,7 @@ test('catalog opens details directly and toggles Hide / Unhide through confirmat
         },
       });
       const product = { id:'p1', name:'Shirt', image_url:'https://images.test/cover.jpg', image_urls:['https://images.test/cover.jpg','https://images.test/back.jpg'], is_active:active, selling_price:5, stock_quantity:2, low_stock_quantity:1, created_at:'2026-09-30', updated_at:'2026-09-30' };
-      const render = () => { cursor = 0; return Catalog({ products:[product] }); };
+      const render = () => { cursor = 0; return Catalog({ products:[product], businessId:"business", branchId:"branch" }); };
       function nodes(node) {
         if (!node || typeof node !== 'object') return [];
         if (Array.isArray(node)) return node.flatMap(nodes);
@@ -67,7 +67,7 @@ test('catalog opens details directly and toggles Hide / Unhide through confirmat
       const confirm = nodes(dialog).filter(node => node.type === 'button').at(-1);
       assert.equal(confirm.props.children, active ? 'Hide' : 'Unhide');
       confirm.props.onClick(); await pending;
-      assert.deepEqual(writes, [['p1', !active]]);
+      assert.deepEqual(writes, [['p1', !active, { businessId:'business', branchId:'branch' }]]);
       find(render(), node => node.props?.['aria-label'] === 'List view').props.onClick();
       find(render(), node => node.props?.['aria-label'] === 'Select products on this page').props.onChange();
       const bulkMenu = find(render(), node => node.type === 'action-menu');
@@ -78,7 +78,7 @@ test('catalog opens details directly and toggles Hide / Unhide through confirmat
       const bulkDialog = find(render(), node => node.props?.role === 'alertdialog');
       nodes(bulkDialog).filter(node => node.type === 'button').at(-1).props.onClick();
       await pending;
-      assert.deepEqual(deletions, [['p1', '']]);
+      assert.deepEqual(deletions, [['p1', 'branch']]);
       assert.equal(find(render(), node => node.type === 'action-menu'), undefined);
     }
   } finally { global.document = previousDocument; global.window = previousWindow; }

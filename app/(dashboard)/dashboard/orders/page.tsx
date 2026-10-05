@@ -6,6 +6,7 @@ import { loadWorkspace } from "./order-workspace-data";
 import { parseFilters } from "./order-workspace-types";
 import OrdersWorkspace from "./orders-workspace";
 import { getCurrentBusinessMode } from '@/lib/business/get-current-business-mode';
+import { getBranchContext } from '@/lib/branches/context';
 
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const business = await requirePermission("orders.view");
@@ -14,7 +15,8 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const showTableQr = !['fashion', 'shoes', 'general'].includes(currentMode.value);
   if (!showTableQr && filters.source === 'qr') filters.source = 'all';
   let workspace;
-  try { workspace = await loadWorkspace(business.id, filters); }
+  let context;
+  try { workspace = await loadWorkspace(business.id, filters); context = await getBranchContext(); }
   catch (error) {
     return <section className="rounded-xl border border-amber-200 bg-white p-6 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
       <h1 className="text-2xl font-bold">Orders</h1>
@@ -28,7 +30,10 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
     businessHasPermission(business,"orders.return"),
     businessHasPermission(business,"pos.access"),
   ]);
-  return <OrdersWorkspace key={business.id} businessId={business.id} businessName={business.name} showTableQr={showTableQr} data={workspace} filters={filters} permissions={{
+  // Only a verified account/operating-branch change resets drafts. Ordinary
+  // list refreshes and filter changes keep the mounted workspace and forms.
+  const scopeKey = JSON.stringify([business.id, context.userId, context.branchId]);
+  return <OrdersWorkspace key={scopeKey} businessId={business.id} branchId={context.branchId} businessName={business.name} showTableQr={showTableQr} data={workspace} filters={filters} permissions={{
     edit, cancel, delete: cancel, refund, create,
   }} />;
 }

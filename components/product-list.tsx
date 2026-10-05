@@ -169,9 +169,10 @@ function groupProducts(products: Product[], variantMode: boolean): ProductGroup[
 
 export default function ProductList({
   products,
-  productMode = "standard", branchId="", businessType, canAdjustStock = false,
+  productMode = "standard", businessId, branchId="", businessType, canAdjustStock = false,
 }: {
   products: Product[];
+  businessId: string;
   productMode?: string; branches?:{id:string;name:string}[];branchId?:string; businessType?: string; canAdjustStock?: boolean;
 }) {
   const router = useRouter();
@@ -367,7 +368,7 @@ export default function ProductList({
         const group = targets[index];
         try {
           const result = request.kind === "hide"
-            ? await setProductGroupActive(group.representative.id, request.groups ? false : !group.active)
+            ? await setProductGroupActive(group.representative.id, request.groups ? false : !group.active, { businessId, branchId })
             : await deleteProductGroup(group.representative.id, branchId);
           if (!result.success) {
             setConfirmState({ ...request, ...(request.groups ? { groups: targets.slice(index) } : {}), error: result.message });

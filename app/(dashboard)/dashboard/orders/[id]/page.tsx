@@ -19,6 +19,8 @@ import { loadDetailedOrder } from './order-detail-data';
 import { numeric, one, orderType, paymentName, recordReceipt, titleCase } from './order-detail-model';
 import { money } from '../../pos/pos-workspace-helpers';
 import s from './order-detail.module.css';
+import { orderContact } from '@/lib/orders/order-contact';
+import { orderBalanceDue, orderPaymentStatusLabel } from '@/lib/orders/order-payment';
 export default async function OrderDetailsPage({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{scanned?:string}>}){
  const scanned=(await searchParams).scanned==='1';
  const business=await requirePermission('orders.view');const {id}=await params;
@@ -47,15 +49,16 @@ export default async function OrderDetailsPage({params,searchParams}:{params:Pro
  const canCancel=ownBranch && managed && !financiallyLinked && allowCancel;
  const canCancelItem=ownBranch && allowCancel && ['online','qr'].includes(order.order_source || '') && ['new','pending','in_progress'].includes(order.status) && !financiallyLinked && !order.pos_checkout && !numeric(order.discount);
  const visibleStatus=['online','qr'].includes(order.order_source || '') && ['preparing','ready'].includes(order.online_status || '') && order.status==='pending'?'in_progress':order.status;
- const paymentStatus=order.payment_status==='refunded'?'Refunded':order.payment_status==='pending_verification'?'Pending verification':numeric(order.remaining_balance)>0?(numeric(order.amount_paid)>0?'Partially paid':'Unpaid'):order.payment_status==='paid'?'Paid':titleCase(order.payment_status || 'Unpaid');
+ const paymentStatus=orderPaymentStatusLabel(order);
+ const balance=orderBalanceDue(order),balanceText=balance==null?'Unavailable':cash(balance);
  const fulfillment=orderType(order);const source=order.order_source==='qr'?'Table QR':order.order_source==='online'?'Online Store':'POS';
  const actor=order.pos_checkout?.createdBy;let cashier=original?.cashierName || 'Not recorded';
  if(actor && !original?.cashierName){const member=await db.from('business_members').select('user_id').eq('business_id',business.id).eq('user_id',actor).maybeSingle();if(member.data){const profile=await db.from('profiles').select('full_name').eq('id',actor).maybeSingle();cashier=profile.data?.full_name || cashier;}}
  const events=(activity.data || []).map((e:{id:string;description:string;created_at:string;action:string})=>({id:e.id,label:e.description,date:e.created_at})).reverse();
  if(!events.some((e:{date:string})=>e.date===order.created_at))events.unshift({id:'created',label:'Order created',date:order.created_at});
- const customerName=order.guest_name || customer?.name || 'Walk-in customer';
+ const contact=orderContact(order),customerName=contact.name || 'Walk-in customer';
  const initials=customerName.split(/\s+/).filter(Boolean).slice(0,2).map(part=>part[0]?.toUpperCase()).join('') || 'C';
- const phone=order.guest_phone || customer?.phone || '';const address=order.guest_address || customer?.address || '';
+ const phone=contact.phone;const address=contact.address;
  const unitsOrdered=items.reduce((n,i)=>n+numeric(i.quantity),0);
  const online=['online','qr'].includes(order.order_source || '');
  const cancelNow=canCancel || (ownBranch && allowCancel && online && ['new','accepted','preparing','ready'].includes(order.online_status || 'new') && !['completed','cancelled','refunded'].includes(order.status));
@@ -99,10 +102,10 @@ export default async function OrderDetailsPage({params,searchParams}:{params:Pro
  {returns.error && <p role="alert" className={s.warning}>Return history could not be checked. Return actions are unavailable until it reloads.</p>}
  <p className={s.infoNote}><Info size={16}/>Order-level discounts are shown in the totals. They are not invented as separate line discounts.</p>
  </div>
- <aside className={s.card}><Heading tone="green" icon={<ReceiptText/>} title="Order Summary" text=""/><div className={s.totals}><Total label="Subtotal" value={cash(order.subtotal)}/><Total label="Discount" value={`−${cash(order.discount)}`}/><Total label="Tax included at checkout" value={cash(original?.taxAmount || 0)}/><Total label="Shipping fee" value={cash(order.delivery_fee)}/><hr/><Total label="Amount recorded received" value={cash(order.amount_paid)}/><Total label="Change recorded" value={cash(order.change_amount)}/><Total label="Balance due" value={cash(order.remaining_balance)}/><div className={s.grand}><span>Order total</span><strong>{cash(order.total)}</strong></div>{hasReturns && <p className={s.muted}>Return records are separate. The original POS receipt retains the initial sale amounts.</p>}</div></aside>
+ <aside className={s.card}><Heading tone="green" icon={<ReceiptText/>} title="Order Summary" text=""/><div className={s.totals}><Total label="Subtotal" value={cash(order.subtotal)}/><Total label="Discount" value={`−${cash(order.discount)}`}/><Total label="Tax included at checkout" value={cash(original?.taxAmount || 0)}/><Total label="Shipping fee" value={cash(order.delivery_fee)}/><hr/><Total label="Amount recorded received" value={cash(order.amount_paid)}/><Total label="Change recorded" value={cash(order.change_amount)}/><Total label="Balance due" value={balanceText}/><div className={s.grand}><span>Order total</span><strong>{cash(order.total)}</strong></div>{hasReturns && <p className={s.muted}>Return records are separate. The original POS receipt retains the initial sale amounts.</p>}</div></aside>
  </section>
  <section className={s.twoColumns}><div className={s.card}><Heading tone="violet" icon={<Clock/>} title="Payment & Timeline" text="Recorded events and payment information."/>
- <div className={s.paymentSummary}><Wallet size={18}/><span>{paymentStatus} · Received {cash(order.amount_paid)} · Balance {cash(order.remaining_balance)}</span><PayBadge value={paymentStatus}/></div>
+ <div className={s.paymentSummary}><Wallet size={18}/><span>{paymentStatus} · Received {cash(order.amount_paid)} · Balance {balanceText}</span><PayBadge value={paymentStatus}/></div>
  {activity.error && <p role="alert" className={s.warning}>Activity history is unavailable. No payment or completion events have been assumed.</p>}
  <ol className={s.timeline}>{events.map((e:{id:string;label:string;date:string},index:number)=><li key={e.id}><span className={s.dot} data-latest={index===0}/><div><strong>{e.label}</strong><small>{formatDate(e.date)}</small></div></li>)}</ol>
  </div><div className={s.card}><Heading tone="violet" icon={<ReceiptText/>} title="Receipt" text="Preview and print the recorded receipt."/><div className={s.receiptBox}><div className={s.receiptMini} aria-label="Receipt preview"><PosReceipt receipt={receipt} context={context}/></div><div><h3>{original?'Original receipt':'Order receipt'}</h3><p>{original?'View or print the original POS sale amounts. Later changes remain in order history.':'View the current order record. No original POS snapshot exists for this order.'}</p><ReceiptViewer receipt={receipt} context={context} printHref={receiptHref}/><p className={s.infoNote}><Info size={16}/>{original?'This receipt shows the original transaction record.':'This receipt reflects the current order record.'}</p></div></div></div></section>

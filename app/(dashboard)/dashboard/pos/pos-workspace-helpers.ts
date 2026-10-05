@@ -17,10 +17,32 @@ function stockUnits(value: unknown): number {
   const n = Number(value);
   return Number.isSafeInteger(n) && n >= 0 ? n : 0;
 }
+type StockRow = Workspace['stock'][number];
+type StockIndex = { byProduct: Map<string, StockRow[]>; byProductBranch: Map<string, Map<string, StockRow>> };
+// Catalog refreshes replace the stock array. Keep the index with that snapshot,
+// never with a branch/business ID that could outlive refreshed stock or prices.
+const stockIndexes = new WeakMap<Workspace['stock'], StockIndex>();
+function stockIndex(stock: Workspace['stock']): StockIndex {
+  const existing = stockIndexes.get(stock);
+  if (existing) return existing;
+  const index: StockIndex = { byProduct: new Map(), byProductBranch: new Map() };
+  for (const row of stock) {
+    const productId = row.product_id;
+    let rows = index.byProduct.get(productId);
+    if (!rows) { rows = []; index.byProduct.set(productId, rows); }
+    rows.push(row);
+    let branches = index.byProductBranch.get(productId);
+    if (!branches) { branches = new Map(); index.byProductBranch.set(productId, branches); }
+    // Preserve Array.find's first-match behavior even for duplicate records.
+    if (!branches.has(row.location_id)) branches.set(row.location_id, row);
+  }
+  stockIndexes.set(stock, index);
+  return index;
+}
 export function inventoryFor(product: Product, branchId: string, data: Workspace) {
   const global = stockUnits(product.stock_quantity);
   if(!branchId)return {global,recorded:global,assigned:global,available:global,unassigned:0,singleLocation:false,mirrorNeedsSync:false,reason:global>0?"available":"sold_out"};
-  const rows = data.stock.filter(row => row.product_id === product.id);
+  const rows = stockIndex(data.stock).byProduct.get(product.id) ?? [];
   const record = rows.find(row => row.location_id === branchId);
   const recorded = stockUnits(record?.quantity);
   const assigned = rows.reduce((sum, row) => sum + stockUnits(row.quantity), 0);
@@ -94,7 +116,7 @@ export function restoreHeldDraft(saved: HeldOrder, data: Workspace): CartDraft {
     note: String(d.note || ''), shipping, tenders, paymentMethod: ['cash','cod','deposit','bank_transfer','other','credit','split'].includes(d.paymentMethod) ? d.paymentMethod : 'cash' };
 }
 export function thresholdFor(product: Product, branchId: string, data: Workspace): number {
-  const value = data.stock.find(s => s.location_id === branchId && s.product_id === product.id)?.low_stock_threshold;
+  const value = stockIndex(data.stock).byProductBranch.get(product.id)?.get(branchId)?.low_stock_threshold;
   return Math.max(0, Number(value ?? product.low_stock_quantity ?? 0));
 }
 export function configuredLine(product: Product, optionIds: string[], data: Workspace): CartLine {

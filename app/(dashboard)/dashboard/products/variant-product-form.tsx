@@ -259,7 +259,7 @@ export default function VariantProductForm({
             size: variant.size.trim(),
             color: variant.color.trim(),
             sku: variant.sku.trim(),
-            barcode: variant.barcode.trim(),
+            barcode: variant.barcode,
             costPrice: Number(variant.costPrice),
             sellingPrice: Number(variant.sellingPrice),
             stockQuantity: Number(variant.stockQuantity),

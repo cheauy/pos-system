@@ -10,7 +10,7 @@ import type { ActionResult, EditOrderInput, OrderDetail } from "./order-workspac
 const uuid = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 function validId(value: unknown): value is string { return typeof value === "string" && uuid.test(value); }
 function refreshOrderPaths(id: string) {
-  for (const path of ["/dashboard", "/dashboard/orders", "/dashboard/online-orders", `/dashboard/orders/${id}`, `/dashboard/orders/${id}/receipt`, "/dashboard/products", "/dashboard/inventory", "/dashboard/reports"]) revalidatePath(path);
+  for (const path of ["/dashboard", "/dashboard/orders", "/dashboard/online-orders", `/dashboard/orders/${id}`, `/dashboard/orders/${id}/receipt`, `/dashboard/orders/${id}/shipping-label`, "/dashboard/shipping-labels", "/dashboard/products", "/dashboard/inventory", "/dashboard/reports"]) revalidatePath(path);
 }
 export async function getOrderWorkspaceDetail(orderId: string, expectedBusinessId: string): Promise<ActionResult<OrderDetail>> {
   // Keep authorization redirects outside error handling.

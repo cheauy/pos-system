@@ -29,7 +29,7 @@ test('header Print targets only the preview frame after resources load',async()=
  const h=hooks();let prints=0,decoded=0;
  const content={querySelectorAll:selector=>selector==='img'?[{naturalWidth:100,decode:async()=>{decoded++;}}]:[]};
  const frame={current:{contentWindow:{document:{querySelector:()=>content,fonts:{ready:Promise.resolve()}},focus(){},print(){prints++;}}}};
- const Button=loadTs('components/print-button.tsx',{'react/jsx-runtime':require('react/jsx-runtime'),react:h.react,'lucide-react':require('lucide-react'),'@/lib/printing/prepare-print':loadTs('lib/printing/prepare-print.ts')}).default;
+ const Button=loadTs('components/print-button.tsx',{'react/jsx-runtime':require('react/jsx-runtime'),react:h.react,'lucide-react':require('lucide-react'),'@/lib/printing/prepare-print':loadTs('lib/printing/prepare-print.ts', {'@/lib/receipts/shipping-layout':loadTs('lib/receipts/shipping-layout.ts')})}).default;
  const tree=nodes(Button({frame,selector:'#order-receipt-print-area'}));await tree.find(n=>n.type==='button').props.onClick();assert.equal(prints,1);assert.equal(decoded,1);
  frame.current.contentWindow.document.querySelector=()=>null;await tree.find(n=>n.type==='button').props.onClick();assert.equal(prints,1);assert.ok(h.state.some(s=>typeof s==='string'&&s.includes('Print preview')));
 });

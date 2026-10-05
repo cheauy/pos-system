@@ -199,7 +199,7 @@ export default async function ProductsView() {
               {productError.message}
             </section>
           ) : (
-            <ProductList key={`${business.id}:${operatingBranchId}`} canAdjustStock={canAdjustStock} products={products} productMode={productMode} branches={branches||[]} branchId={branch?.id||""} businessType={businessType} />
+            <ProductList businessId={business.id} key={`${business.id}:${operatingBranchId}`} canAdjustStock={canAdjustStock} products={products} productMode={productMode} branches={branches||[]} branchId={branch?.id||""} businessType={businessType} />
           )}
       </div>
     </section>
