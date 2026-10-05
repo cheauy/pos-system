@@ -130,9 +130,8 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
         scheduler.request(id === visibleIdRef.current);
       })
       .subscribe((status) => setLive(status === "SUBSCRIBED"));
-    // Keep related return/item history fresh even if orders.updated_at does not change.
-    const poll = setInterval(() => scheduler.request(true, true), 30000);
-    const onVisible = () => { if (document.visibilityState === "visible") scheduler.request(true); };
+    // No timed polling: refresh only on real order changes or the Refresh button.
+    const onVisible = () => { if (document.visibilityState === "visible") scheduler.resume(); };
     const onIncoming = (event: Event) => {
       const request = event as CustomEvent<{ businessId: string; branchId: string }>;
       if (request.detail.businessId !== businessId || request.detail.branchId !== branchId) return;
@@ -141,7 +140,7 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener(ORDERS_REFRESH_EVENT, onIncoming);
     return () => {
-      scheduler.dispose(); refreshScheduler.current = null; clearInterval(poll);
+      scheduler.dispose(); refreshScheduler.current = null;
       document.removeEventListener("visibilitychange", onVisible); window.removeEventListener(ORDERS_REFRESH_EVENT, onIncoming);
       void supabase.removeChannel(channel);
     };
@@ -234,7 +233,7 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
     <header className={styles.header}>
       <div><h1>Orders</h1><p>POS, online store{showTableQr ? " and table QR" : ""} orders in one place. Confirm new online orders, track statuses, manage payments, and print receipts.</p></div>
       <div className={styles.headerActions}>
-        <span className={styles.liveBadge} data-live={live} title={live ? "Connected: orders update automatically" : "Connecting… orders still refresh every 30 seconds"}><span />{live ? "Live" : "Connecting"}</span>
+        <span className={styles.liveBadge} data-live={live} title={live ? "Connected: orders update when they change" : "Connecting… use Refresh to load the latest orders"}><span />{live ? "Live" : "Connecting"}</span>
         <button className={styles.button} type="button" onClick={() => void toggleAlerts()} aria-pressed={alertsOn} title="Desktop notification for new online orders">{alertsOn ? <BellRing size={15} /> : <Bell size={15} />}{alertsOn ? "Alerts On" : "Enable Alerts"}</button>
         <button className={styles.button} type="button" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "Mute new-order sound" : "Turn on new-order sound"} title={soundOn ? "New-order sound on" : "New-order sound off"}>{soundOn ? <Volume2 size={15} /> : <VolumeX size={15} />}</button>
         <button className={styles.button} type="button" onClick={refresh} disabled={pending}><RefreshCw size={15} className={pending ? styles.spin : ""} />Refresh</button>

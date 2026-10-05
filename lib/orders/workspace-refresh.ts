@@ -11,10 +11,13 @@ export function createOrdersRefreshScheduler(refresh: (detail: boolean) => void,
   let timer: ReturnType<typeof setTimeout> | null = null;
   let detailNeeded = false;
   let disposed = false;
+  let missed = false; // A change arrived while the tab was hidden.
   const flush = () => {
     if (timer !== null) clearTimeout(timer);
     timer = null;
-    if (disposed || !isVisible()) return;
+    if (disposed) return;
+    if (!isVisible()) { missed = true; return; }
+    missed = false;
     const detail = detailNeeded;
     detailNeeded = false;
     refresh(detail);
@@ -26,6 +29,8 @@ export function createOrdersRefreshScheduler(refresh: (detail: boolean) => void,
       if (timer !== null) clearTimeout(timer);
       if (immediate) flush(); else timer = setTimeout(flush, 700);
     },
+    /** Catch up once on return to the tab, only if something changed meanwhile. */
+    resume() { if (missed) this.request(true, true); },
     dispose() {
       disposed = true;
       if (timer !== null) clearTimeout(timer);

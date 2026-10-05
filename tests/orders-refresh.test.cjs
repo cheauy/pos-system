@@ -148,23 +148,24 @@ test('both existing listeners share one refresh for a new online order and keep 
   const initial = {...f.counts}; f.emit('INSERT', 'new', 'online'); await f.time.advance(1000);
   assert.deepEqual(delta(f.counts, initial), {route: 1, detail: 0}); assert.equal(f.counts.announcements, 1);
 }));
-test('bursts coalesce and subscription failure retains periodic detail reconciliation', () => withFixture(async f => {
+test('bursts coalesce; a subscription failure does not start timed polling', () => withFixture(async f => {
   let initial = {...f.counts};
   for (let i = 0; i < 100; i++) {f.emit(); await f.time.advance(2);}
   await f.time.advance(1000); assert.deepEqual(delta(f.counts, initial), {route: 1, detail: 0});
   initial = {...f.counts}; f.subscriptionError(); f.setReturnRevision(2); await f.time.advance(30000);
-  assert.deepEqual(delta(f.counts, initial), {route: 1, detail: 1}); assert.equal(f.detail.returnRevision, 2);
+  assert.deepEqual(delta(f.counts, initial), {route: 0, detail: 0});
+  f.manual(); await f.time.advance(100); assert.equal(f.detail.returnRevision, 2);
 }));
 test('selected changes refresh payment/status details once with the merged route response', () => withFixture(async f => {
   const initial = {...f.counts}; f.changeSelected({updatedAt: 'v2', paymentState: 'paid', amountPaid: 10}); f.emit('UPDATE', 'selected'); await f.time.advance(1000);
   assert.deepEqual(delta(f.counts, initial), {route: 1, detail: 1}); assert.equal(f.detail.updatedAt, 'v2'); assert.equal(f.detail.paymentState, 'paid');
 }));
-test('30-second reconciliation coalesces pending updates and refreshes related returns without an order revision', () => withFixture(async f => {
+test('a selected-order change refreshes related returns with the merged route response', () => withFixture(async f => {
   const initial = {...f.counts}; await f.time.advance(29700); f.setReturnRevision(1); f.emit('UPDATE', 'selected'); await f.time.advance(1000);
   assert.deepEqual(delta(f.counts, initial), {route: 1, detail: 1}); assert.equal(f.detail.updatedAt, 'v1'); assert.equal(f.detail.items[0].returnedQuantity, 1);
 }));
-test('visible idle reconciliation, manual refresh, hidden tabs and visibility recovery remain', () => withFixture(async f => {
-  let initial = {...f.counts}; await f.time.advance(120100); assert.deepEqual(delta(f.counts, initial), {route: 4, detail: 4});
+test('no idle auto refresh; manual refresh, hidden tabs and visibility catch-up remain', () => withFixture(async f => {
+  let initial = {...f.counts}; await f.time.advance(120100); assert.deepEqual(delta(f.counts, initial), {route: 0, detail: 0});
   initial = {...f.counts}; f.manual(); await f.time.advance(100); assert.deepEqual(delta(f.counts, initial), {route: 1, detail: 1});
   initial = {...f.counts}; f.visibility('hidden'); f.emit(); await f.time.advance(120100); assert.deepEqual(delta(f.counts, initial), {route: 0, detail: 0});
   f.visibility('visible'); await f.time.advance(1000); assert.deepEqual(delta(f.counts, initial), {route: 1, detail: 1});
