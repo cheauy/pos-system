@@ -395,11 +395,11 @@ export default function ProductList({
       </nav>
 
       <div className="flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2">
-          <select value={category} onChange={(event) => { setCategory(event.target.value); resetPage(); }} className={filterInputClass + " !w-auto max-w-36 shrink-0"}>
+          <select value={category} onChange={(event) => { setCategory(event.target.value); resetPage(); }} className={filterInputClass + " !w-auto max-w-36 shrink-0 max-sm:!max-w-[7.5rem] max-sm:!text-xs"}>
             <option value="all">All Categories</option>
             {categories.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
-        <div className="relative min-w-20 flex-1">
+        <div className="relative min-w-20 flex-1 max-sm:min-w-[11rem]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             value={search}
@@ -413,7 +413,7 @@ export default function ProductList({
         </div>
 
         <div className="contents">
-          <div className="flex w-fit shrink-0 rounded-lg border border-slate-200 p-1">
+          <div className="flex w-fit shrink-0 rounded-lg border border-slate-200 p-1 max-sm:hidden">
             <button type="button" onClick={() => setView("list")} className={`rounded-md p-2 ${view === "list" ? "bg-teal-50 text-teal-700" : "text-slate-400 hover:bg-slate-50"}`} aria-label="List view">
               <List size={16} />
             </button>

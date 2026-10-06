@@ -142,10 +142,10 @@ export default function BundleItemsClient({ branchId, branchName, bundles, produ
 
   return <div className="space-y-5 pb-8 text-slate-900 dark:text-slate-100">
     <header className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex items-center gap-3"><span className="rounded-2xl bg-blue-50 p-3 text-blue-600 dark:bg-blue-950"><Gift size={24} /></span><div><h1 className="text-2xl font-bold">Bundle Items</h1><p className="mt-1 text-sm text-slate-500">Create sets. Pack stock. Sell together.</p></div></div>
-      <div className="flex items-center gap-3"><span className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"><Store size={16} />{branchName}</span>{canCreate && <button className={button} onClick={() => { setError(''); setCreating(false); setCreateId(crypto.randomUUID()); }} disabled={Boolean(createId) || !branchId || busy || creating}><Plus size={17} />Add Bundle</button>}</div>
+      <div className="flex items-center gap-3 max-sm:hidden"><span className="rounded-2xl bg-blue-50 p-3 text-blue-600 dark:bg-blue-950"><Gift size={24} /></span><div><h1 className="text-2xl font-bold">Bundle Items</h1><p className="mt-1 text-sm text-slate-500">Create sets. Pack stock. Sell together.</p></div></div>
+      <div className="flex items-center gap-3"><span className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm max-sm:hidden dark:border-slate-700"><Store size={16} />{branchName}</span>{canCreate && <button className={`${button} max-sm:fixed max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:right-4 max-sm:z-40 max-sm:rounded-full max-sm:shadow-lg`} onClick={() => { setError(''); setCreating(false); setCreateId(crypto.randomUUID()); }} disabled={Boolean(createId) || !branchId || busy || creating}><Plus size={17} />Add Bundle</button>}</div>
     </header>
-    <div className="grid gap-3 sm:grid-cols-3">{[
+    <div className="hidden gap-3 sm:grid sm:grid-cols-3">{[
       { icon: Gift, label: 'Total bundles', value: bundles.length },
       { icon: PackageCheck, label: `Packed · ${branchName}`, value: bundles.filter(bundle => bundle.packed).reduce((sum, bundle) => sum + bundle.stock, 0) },
       { icon: Boxes, label: 'Ready to pack', value: bundles.filter(bundle => bundle.active && bundle.packed && bundle.capacity > 0).length },

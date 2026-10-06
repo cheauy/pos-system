@@ -252,7 +252,9 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
               <SlidersHorizontal size={15} />Filter{filterCount > 0 && <span className={styles.counter}>{filterCount}</span>}
             </button>
           </div>
+          {filtersOpen && <button type="button" aria-label="Close filters" className={styles.sheetBackdrop} onClick={() => setFiltersOpen(false)} />}
           <div id="order-filter-panel" className={styles.filterPanel} hidden={!filtersOpen}>
+            <button type="button" className={styles.sheetClose} aria-label="Close order filters" onClick={() => setFiltersOpen(false)}><X size={20} /></button>
             <div className={styles.dateRange}><label><span>From</span><input name="from" type="date" defaultValue={filters.from} aria-label="Start date" onChange={() => filterForm.current?.requestSubmit()} /></label><span className={styles.dateDash}>—</span><label><span>To</span><input name="to" type="date" defaultValue={filters.to} aria-label="End date" onChange={() => filterForm.current?.requestSubmit()} /></label></div>
             <select name="source" defaultValue={filters.source} aria-label="Filter by source" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Sources</option>{Object.entries(sourceLabels).filter(([value]) => value !== 'qr' || showTableQr).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             <select name="fulfillment" defaultValue={filters.fulfillment} aria-label="Filter by fulfillment" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Fulfillment Types</option>{Object.entries(fulfillmentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
@@ -278,13 +280,13 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
                 <td className={styles.checkColumn}><input type="checkbox" checked={selected.some((item) => item.id === row.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleSelected(row)} aria-label={`Select order ${row.orderNumber} for printing`} /></td>
                 <td><button className={styles.orderLink} type="button" onClick={(event) => { event.stopPropagation(); selectRow(row); }}>{row.orderNumber}</button></td>
                 <td className={styles.customerCell}><span title={row.customerName}>{row.customerName}</span><small>{row.customerPhone || "No phone"}</small></td>
-                <td>{row.itemCount} {row.itemCount === 1 ? "item" : "items"}</td>
+                <td><Package size={17} className={styles.phoneIcon} />{row.itemCount} {row.itemCount === 1 ? "item" : "items"}</td>
                 <td><span className={styles.source}><SourceIcon source={row.source} />{sourceLabels[row.source] || row.source}</span></td>
                 <td><Badge value={row.paymentState} payment /></td>
                 <td className={styles.total}>{money(row.total, data.currency, data.currencyFormat)}</td>
                 <td><Badge value={row.status} />{row.status === "pending" && row.onlineStatus && <small className={styles.subStatus}>{statusLabels[row.onlineStatus] || row.onlineStatus}</small>}</td>
-                <td className={styles.dateCell}>{dateText(row.createdAt, data.timezone)}<small>{dateText(row.createdAt, data.timezone, true)}</small></td>
-                <td className={styles.branchCell} title={row.branchName}>{row.branchName}</td>
+                <td className={styles.dateCell}><CalendarDays size={18} className={styles.phoneIcon} />{dateText(row.createdAt, data.timezone)}<small>{dateText(row.createdAt, data.timezone, true)}</small></td>
+                <td className={styles.branchCell} title={row.branchName}><MapPin size={18} className={styles.phoneIcon} />{row.branchName}</td>
                 <td className={styles.actionColumn}><button type="button" className={styles.iconButton} aria-label={`Actions for order ${row.orderNumber}`} aria-haspopup="menu" aria-expanded={menu?.row.id === row.id} onClick={(event) => { event.stopPropagation(); const trigger = event.currentTarget; setMenu({ row, rect: trigger.getBoundingClientRect(), trigger }); }}><Ellipsis size={17} /></button></td>
               </tr>)}</tbody>
             </table>

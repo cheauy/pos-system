@@ -111,6 +111,19 @@ export default function CategoriesClient({
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [editing, setEditing] = useState<CategoryViewModel | null>(null);
   const [deleting, setDeleting] = useState<CategoryViewModel | null>(null);
+  // Phones: Add New Category and category details open as full-screen sheets.
+  const [sheet, setSheet] = useState<"create" | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const detail = detailId ? categories.find((category) => category.id === detailId) ?? null : null;
+  const sheetOpen = sheet !== null || detail !== null;
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !document.querySelector("dialog[open]")) { setSheet(null); setDetailId(null); } };
+    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) { setSheet(null); setDetailId(null); } };
+    window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
+    return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
+  }, [sheetOpen]);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -256,6 +269,7 @@ export default function CategoriesClient({
         const result = await createCategory(formData);
         showResult(result);
         if (result.ok) {
+          setSheet(null);
           form.reset();
           setCreateName("");
           setCreateDescription("");
@@ -291,6 +305,23 @@ export default function CategoriesClient({
 
   return (
     <main className="space-y-5 pb-8">
+      {!sheetOpen && <button type="button" onClick={() => setSheet("create")} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg sm:hidden"><Plus size={18} />Create Category</button>}
+      {detail && <section role="dialog" aria-modal="true" aria-label="Category details" className="fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-16 bg-white px-5 pb-6 sm:hidden">
+        <button type="button" aria-label="Close category details" onClick={() => setDetailId(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-700 sm:hidden"><X size={20} /></button>
+        <h2 className="text-xl font-bold text-slate-950">{detail.name}</h2>
+        <div className="mt-2"><StatusPill online={detail.isOnline} /></div>
+        <dl className="mt-5 grid grid-cols-[7rem_1fr] gap-x-3 gap-y-3 text-sm">
+          <dt className="text-slate-500">Index</dt><dd className="font-semibold text-slate-800">{detail.index}</dd>
+          <dt className="text-slate-500">Products</dt><dd className="font-semibold text-slate-800">{detail.productCount}</dd>
+          <dt className="text-slate-500">Show in</dt><dd className="font-semibold text-slate-800">POS{detail.isOnline ? " · Online" : ""}</dd>
+          <dt className="text-slate-500">Description</dt><dd className="break-words text-slate-700">{detail.description || "No description"}</dd>
+        </dl>
+        <div className="mt-6 grid gap-2">
+          <button type="button" onClick={() => { setDetailId(null); setEditing(detail); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white"><Pencil size={16} />Edit</button>
+          <button type="button" disabled={isPending} onClick={() => runAction(() => setCategoryOnline(detail.id, !detail.isOnline))} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 disabled:opacity-50">{detail.isOnline ? <EyeOff size={16} /> : <Eye size={16} />}{detail.isOnline ? "Hide" : "Show"}</button>
+          <button type="button" onClick={() => { setDetailId(null); setDeleting(detail); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 px-4 text-sm font-semibold text-rose-600"><Trash2 size={16} />Delete</button>
+        </div>
+      </section>}
       {message ? (
         <div
           className={`flex items-start justify-between gap-4 rounded-xl border px-4 py-3 text-sm font-medium ${
@@ -317,8 +348,8 @@ export default function CategoriesClient({
           </p>
         </div>
 
-        <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto lg:items-center">
-          <div className="relative w-full lg:w-72 xl:w-80">
+        <div className="flex w-full flex-row gap-3 lg:w-auto lg:items-center">
+          <div className="relative w-full min-w-0 lg:w-72 xl:w-80">
             <Search
               size={18}
               className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
@@ -363,7 +394,8 @@ export default function CategoriesClient({
       </div>
 
       <div className="grid items-start gap-5 xl:grid-cols-[350px_minmax(0,1fr)]">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section role={sheet === "create" ? "dialog" : undefined} aria-modal={sheet === "create" || undefined} aria-label="Add new category" className={`${sheet === "create" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-16" : "max-sm:hidden"} border border-slate-200 bg-white p-5 shadow-sm sm:static sm:block sm:overflow-visible sm:rounded-2xl sm:pt-5`}>
+          {sheet === "create" && <button type="button" aria-label="Close add category" onClick={() => setSheet(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-700 sm:hidden"><X size={20} /></button>}
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-slate-950">Add New Category</h2>
@@ -472,32 +504,32 @@ export default function CategoriesClient({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[780px] border-collapse text-left">
+            <table data-phone-layout="custom" className="w-full min-w-[780px] border-collapse text-left max-sm:min-w-0">
               <thead className="bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr className="border-b border-slate-200">
-                  <th className="w-20 px-3 py-3.5">Index</th>
+                  <th className="w-20 px-3 py-3.5 max-sm:hidden">Index</th>
                   <th className="px-3 py-3.5">Category Name</th>
-                  <th className="px-3 py-3.5">Description</th>
-                  <th className="w-24 px-3 py-3.5">Products</th>
+                  <th className="px-3 py-3.5 max-sm:hidden">Description</th>
+                  <th className="w-24 px-3 py-3.5 max-sm:hidden">Products</th>
                   <th className="w-24 px-3 py-3.5">Status</th>
-                  <th className="w-36 px-3 py-3.5">Show In</th>
-                  <th className="w-24 px-4 py-3.5 text-center">Actions</th>
+                  <th className="w-36 px-3 py-3.5 max-sm:hidden">Show In</th>
+                  <th className="w-24 px-4 py-3.5 text-center max-sm:hidden">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {paginated.length ? (
                   paginated.map((category) => (
-                    <tr key={category.id} className="text-sm text-slate-700 transition hover:bg-slate-50/70">
-                      <td className="px-3 py-4 font-semibold text-slate-600">{category.index}</td>
+                    <tr key={category.id} onClick={() => { if (window.matchMedia("(max-width: 639px)").matches) setDetailId(category.id); }} className="text-sm text-slate-700 transition hover:bg-slate-50/70 max-sm:cursor-pointer">
+                      <td className="px-3 py-4 font-semibold text-slate-600 max-sm:hidden">{category.index}</td>
                       <td className="px-3 py-4">
                         <div className="font-semibold text-slate-950">{category.name}</div>
                       </td>
-                      <td className="max-w-72 px-3 py-4 text-slate-600">
+                      <td className="max-w-72 px-3 py-4 text-slate-600 max-sm:hidden">
                         <span className="line-clamp-2">{category.description || "No description"}</span>
                       </td>
-                      <td className="px-3 py-4 font-semibold text-slate-700">{category.productCount}</td>
+                      <td className="px-3 py-4 font-semibold text-slate-700 max-sm:hidden">{category.productCount}</td>
                       <td className="px-3 py-4"><StatusPill online={category.isOnline} /></td>
-                      <td className="px-3 py-4">
+                      <td className="px-3 py-4 max-sm:hidden">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-200">POS</span>
                           {category.isOnline ? (
@@ -507,7 +539,7 @@ export default function CategoriesClient({
                           )}
                         </div>
                       </td>
-                      <td className="relative px-4 py-4 text-center">
+                      <td className="relative px-4 py-4 text-center max-sm:hidden">
                         <button
                           type="button"
                           onClick={(event) => toggleActionMenu(category.id, event.currentTarget)}

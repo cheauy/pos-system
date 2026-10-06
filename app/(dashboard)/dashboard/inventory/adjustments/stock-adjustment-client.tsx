@@ -500,6 +500,16 @@ export default function StockAdjustmentClient({
   const router = useRouter();
   const [recovery, setRecovery] = useState<Record<string, string> | null>(null);
   const [ready, setReady] = useState(false);
+  // Phones: Recent Adjustments opens as a full-screen sheet from a link.
+  const [recentOpen, setRecentOpen] = useState(false);
+  useEffect(() => {
+    if (!recentOpen) return;
+    const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setRecentOpen(false); };
+    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setRecentOpen(false); };
+    window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
+    return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
+  }, [recentOpen]);
   const saving = useRef(false);
   const [state, formAction, pending] = useActionState(
     async (previous: typeof initialStockAdjustmentState, data: FormData) => {
@@ -634,7 +644,7 @@ export default function StockAdjustmentClient({
   return (
     <main className="mx-auto w-full max-w-[1680px] space-y-5 pb-10">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
+        <div className="max-sm:hidden">
           <Link
             href="/dashboard/inventory"
             className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-blue-600"
@@ -656,7 +666,7 @@ export default function StockAdjustmentClient({
           form="stock-adjustment-form"
           type="submit"
           disabled={(!canSubmit && !recovery) || pending || !ready}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 max-sm:fixed max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:right-4 max-sm:z-40 max-sm:rounded-full max-sm:shadow-lg"
         >
           <PackageCheck size={18} />
           {pending ? "Saving…" : recovery ? "Retry / Check Adjustment" : rows.length ? `Save ${rows.length} Adjustment${rows.length === 1 ? "" : "s"}` : "Save Adjustments"}
@@ -893,10 +903,11 @@ export default function StockAdjustmentClient({
             </div>
             </fieldset>
             <p className="text-xs text-slate-500">Stock corrections do not refund payments. Use Orders → Return items for customer refunds.</p>
+            <button type="button" onClick={() => setRecentOpen(true)} className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-blue-600 underline sm:hidden"><Clock3 size={16} />Recent Adjustments</button>
           </form>
         </section>
 
-        <aside className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <aside className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm max-sm:hidden">
           <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
               <Box size={18} />
@@ -971,7 +982,8 @@ export default function StockAdjustmentClient({
         </aside>
       </div>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section role={recentOpen ? "dialog" : undefined} aria-modal={recentOpen || undefined} aria-label="Recent adjustments" className={`${recentOpen ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-14" : "max-sm:hidden"} overflow-hidden border border-slate-200 bg-white shadow-sm sm:static sm:block sm:overflow-hidden sm:rounded-2xl sm:pt-0`}>
+        {recentOpen && <button type="button" aria-label="Close recent adjustments" onClick={() => setRecentOpen(false)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-700 sm:hidden"><X size={20} /></button>}
         <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">

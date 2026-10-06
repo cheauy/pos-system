@@ -15,6 +15,8 @@ import {
   TrendingDown,
   TrendingUp,
   WalletCards,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 
 import { businessHasPermission } from "@/lib/auth/effective-permissions";
@@ -265,7 +267,7 @@ export default async function DashboardPage({
       <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
         <div className="flex flex-col gap-5">
           <div className="relative min-w-0 sm:pr-64">
-            <div className="mb-4 flex flex-col items-end gap-3 sm:absolute sm:right-0 sm:top-0"><ViewBranchSelect branches={branches || []} branchId={branchId}/>
+            <div className="mb-4 flex flex-col items-end gap-3 max-sm:absolute max-sm:right-0 max-sm:top-7 max-sm:mb-0 sm:absolute sm:right-0 sm:top-0"><div className="max-sm:hidden"><ViewBranchSelect branches={branches || []} branchId={branchId}/></div>
             {canViewReports&&<Link href={`/dashboard/reports?range=custom&from=${period.selectedFrom}&to=${period.selectedTo}${branchId?`&branch=${branchId}`:""}`} className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-bold text-blue-700">View Report</Link>}</div>
             <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
               <CalendarDays size={14} className="text-blue-600 dark:text-blue-400" />
@@ -288,19 +290,26 @@ export default async function DashboardPage({
             </p>
           </div>
 
-          <div className="w-full border-t border-slate-100 pt-4">
-            <DashboardPeriodFilter
-              activeRange={period.range}
-              selectedFrom={period.selectedFrom}
-              selectedTo={period.selectedTo}
-              canViewReports={canViewReports}
-              branches={branches||[]} branchId={branchId}
-            />
+          {/* Phones: the period filter is a bottom sheet opened by a floating button (CSS :target). */}
+          <a href="#dashboard-filters" className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg sm:hidden"><SlidersHorizontal size={18} />Filter</a>
+          <div id="dashboard-filters" className="w-full border-t border-slate-100 pt-4 max-sm:!m-0 max-sm:fixed max-sm:inset-0 max-sm:z-50 max-sm:hidden max-sm:items-end max-sm:border-0 max-sm:bg-slate-950/40 max-sm:p-0 max-sm:target:flex">
+            <a href="#" aria-label="Close filters" className="absolute inset-0 sm:hidden" />
+            <div className="max-sm:relative max-sm:max-h-[85dvh] max-sm:w-full max-sm:overflow-y-auto max-sm:rounded-t-3xl max-sm:bg-white max-sm:px-5 max-sm:pb-[max(1.25rem,env(safe-area-inset-bottom))] max-sm:pt-14 max-sm:shadow-2xl dark:max-sm:bg-slate-900">
+              <div className="mb-5 sm:hidden"><ViewBranchSelect branches={branches || []} branchId={branchId}/></div>
+              <a href="#" aria-label="Close dashboard filters" className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600 sm:hidden"><X size={20} /></a>
+              <DashboardPeriodFilter
+                activeRange={period.range}
+                selectedFrom={period.selectedFrom}
+                selectedTo={period.selectedTo}
+                canViewReports={canViewReports}
+                branches={branches||[]} branchId={branchId}
+              />
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+      <section className="grid gap-4 max-sm:grid-cols-4 max-sm:gap-1.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         <KpiCard
           title="Net sales"
           value={money(revenue, currency)}
@@ -331,6 +340,7 @@ export default async function DashboardPage({
         />
         <KpiCard
           title="Discounts given"
+          phoneHidden
           value={money(totalDiscount, currency)}
           icon={CreditCard}
           tone="amber"
@@ -372,12 +382,14 @@ function KpiCard({
   icon: Icon,
   tone,
   hint,
+  phoneHidden = false,
 }: {
   title: string;
   value: string | number;
   icon: typeof Boxes;
   tone: "blue" | "violet" | "emerald" | "amber" | "slate";
   hint: string;
+  phoneHidden?: boolean;
 }) {
   const toneClass = {
     blue: "bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300",
@@ -392,19 +404,19 @@ function KpiCard({
   }[tone];
 
   return (
-    <article className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <article className={`min-w-0 rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm max-sm:rounded-xl max-sm:p-1.5 dark:border-slate-800 dark:bg-slate-900 ${phoneHidden ? "max-sm:hidden" : ""}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+          <p className="text-sm font-semibold text-slate-500 max-sm:text-[9px] max-sm:leading-tight dark:text-slate-400">
             {title}
           </p>
-          <p className="mt-2 truncate text-3xl font-black tracking-tight text-slate-950 dark:text-white">
+          <p className="mt-2 truncate text-3xl font-black tracking-tight text-slate-950 max-sm:mt-1 max-sm:whitespace-normal max-sm:break-all max-sm:text-[11px] dark:text-white">
             {value}
           </p>
-          <p className="mt-2 text-xs font-medium text-slate-400">{hint}</p>
+          <p className="mt-2 text-xs font-medium text-slate-400 max-sm:hidden">{hint}</p>
         </div>
         <span
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${toneClass}`}
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl max-sm:hidden ${toneClass}`}
         >
           <Icon size={21} strokeWidth={2.1} />
         </span>

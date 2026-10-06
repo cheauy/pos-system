@@ -57,9 +57,14 @@ function ScanDialog({ close, onNavigate }: { close: () => void; onNavigate?: () 
     return () => { cancelled = true; controls?.stop(); const stream = element?.srcObject as MediaStream | null; stream?.getTracks().forEach(track => track.stop()); };
   }, [attempt, router, close]);
   return <Modal title="Scan order QR code" onClose={close} locked={busy}>
-    <p className="mb-3 text-sm text-slate-500">Scan the QR code on a TENH POS shipping label.</p>
-    <video ref={video} muted playsInline className={`${busy || error ? 'hidden' : ''} aspect-square w-full rounded-xl bg-black object-cover`}/>
-    {busy && <div role="status" className="flex min-h-48 items-center justify-center gap-3"><LoaderCircle className="animate-spin"/>Loading order details…</div>}
-    {error && <div role="alert" className="space-y-4 rounded-xl bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200"><p>{error}</p><button type="button" className="rounded-lg border border-current px-4 py-2" onClick={() => { setError(''); setAttempt(value => value + 1); }}>Try again</button></div>}
+    {/* Phones: full-screen dark camera view with Close and caption at the foot, like the mobile app scanner. */}
+    <div className="max-sm:fixed max-sm:inset-0 max-sm:z-[60] max-sm:flex max-sm:flex-col max-sm:justify-end max-sm:gap-5 max-sm:bg-[#0f172a] max-sm:p-5 max-sm:pb-[max(1.25rem,env(safe-area-inset-bottom))] max-sm:text-white">
+    <p className="mb-3 text-sm text-slate-500 max-sm:hidden">Scan the QR code on a TENH POS shipping label.</p>
+    <video ref={video} muted playsInline className={`${busy || error ? 'hidden' : ''} aspect-square w-full rounded-xl bg-black object-cover max-sm:aspect-auto max-sm:min-h-0 max-sm:flex-1 max-sm:rounded-none`}/>
+    {busy && <div role="status" className="flex min-h-48 items-center justify-center gap-3 max-sm:flex-1 max-sm:flex-col"><LoaderCircle className="animate-spin"/>Loading order details…</div>}
+    {error && <div role="alert" className="space-y-4 rounded-xl bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200 max-sm:bg-transparent max-sm:p-0 max-sm:text-white"><p>{error}</p><button type="button" className="rounded-lg border border-current px-4 py-2 max-sm:w-full max-sm:min-h-12 max-sm:rounded-xl max-sm:border-0 max-sm:bg-blue-600 max-sm:font-semibold" onClick={() => { setError(''); setAttempt(value => value + 1); }}>Try again</button></div>}
+    <button type="button" disabled={busy} onClick={close} className="min-h-12 w-full rounded-xl bg-blue-600 font-semibold text-white disabled:opacity-50 sm:hidden">Close</button>
+    <p className="text-sm sm:hidden">Scan a TENH POS order QR code or barcode.</p>
+    </div>
   </Modal>;
 }

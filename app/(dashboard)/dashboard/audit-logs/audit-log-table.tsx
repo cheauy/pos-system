@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -59,6 +60,15 @@ export default function AuditLogsTable({
   branchLoadError,
 }: AuditLogsTableProps) {
   const [search, setSearch] = useState("");
+  // Phones: the secondary filters open as a bottom sheet from a floating Filter button.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setFiltersOpen(false); };
+    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setFiltersOpen(false); };
+    window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
+    return () => { window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
+  }, [filtersOpen]);
   const [moduleFilter, setModuleFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
   const [actionFilter, setActionFilter] = useState("all");
@@ -385,8 +395,11 @@ export default function AuditLogsTable({
             </FilterSelect>
           </div>
 
-          <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center">
-            <div className="relative min-w-[260px] flex-1 2xl:max-w-[330px]">
+          {filtersOpen ? <button type="button" aria-label="Close filters" onClick={() => setFiltersOpen(false)} className="fixed inset-0 z-40 bg-slate-950/40 sm:hidden" /> : null}
+          {!filtersOpen ? <button type="button" onClick={() => setFiltersOpen(true)} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg sm:hidden"><ListFilter className="h-4 w-4" />Filter</button> : null}
+          <div role={filtersOpen ? "dialog" : undefined} aria-modal={filtersOpen || undefined} aria-label="Audit log filters" data-sheet="bottom" className={`${filtersOpen ? "fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-14 shadow-2xl dark:bg-slate-900" : "max-sm:hidden"} flex flex-col gap-3 sm:static sm:max-h-none sm:overflow-visible sm:rounded-none sm:bg-transparent sm:p-0 sm:shadow-none 2xl:flex-row 2xl:items-center`}>
+            {filtersOpen ? <button type="button" aria-label="Close audit log filters" onClick={() => setFiltersOpen(false)} className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600 sm:hidden"><X className="h-5 w-5" /></button> : null}
+            <div className="relative min-w-[260px] flex-1 max-sm:min-w-0 2xl:max-w-[330px]">
               <button
                 type="button"
                 onClick={() => setShowDateMenu((open) => !open)}

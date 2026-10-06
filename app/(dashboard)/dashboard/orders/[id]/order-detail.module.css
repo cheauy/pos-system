@@ -80,3 +80,26 @@
 :global(.dark) .customerProfile p,:global(.dark) .totalRow strong,:global(.dark) .history strong{color:#e2e8f0!important}
 :global(.dark) .history,:global(.dark) .paymentSummary,:global(.dark) .receiptBox,:global(.dark) .table th,:global(.dark) .infoNote{background:#192941}
 :global(.dark) .grand{background:#1b3459;color:#8abbff}
+/* Phones: compact order detail (hidden header/metrics/actions), floating next-step banner, compact items card. */
+.headerActions>.phoneHide{display:contents}.phoneOnly{display:none}
+@media screen and (max-width:640px){
+.phoneHide{display:none!important}
+.phoneOnly{display:block}
+.page:has(.banner .bannerButton){padding-bottom:110px}
+.banner:has(.bannerButton){position:fixed;left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));z-index:30;box-shadow:0 10px 30px rgb(15 23 42/.25)}
+.compactTitle{font-size:1.125rem;font-weight:700;margin:0 0 10px}
+.compactItems{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.compactItems li{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:12px;align-items:center}
+.compactItems img,.compactThumb{width:56px;height:64px;border-radius:8px;object-fit:cover;display:grid;place-items:center;background:#f1f5f9;color:#94a3b8}
+.compactItems strong{display:block;font-size:0.9375rem}.compactItems small{display:block;color:#64748b;font-size:0.8125rem}
+.compactPrice{text-align:right}.compactPrice strong{font-size:0.9375rem}
+.compactRow{display:flex;justify-content:space-between;margin-top:12px;color:#64748b}
+.compactTotal{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0;font-size:1.125rem;font-weight:700}
+.compactTotal strong{font-size:1.5rem;color:#1d4ed8}
+}
+@media screen and (max-width:640px){.banner:has(.bannerButton){flex-wrap:nowrap;gap:10px;padding:10px 12px}.banner:has(.bannerButton) p:not(.bannerError){display:none}.banner:has(.bannerButton) strong{white-space:nowrap}.banner .bannerButton{flex:1;min-width:max-content;margin-left:auto;padding:12px 18px}}
+/* Phones: Order Information rows with dividers, copy buttons, red Unpaid; full-width action buttons. */
+.copyPhone{display:none}
+@media screen and (max-width:640px){.infoGrid{gap:0!important}.infoGrid .field{padding:9px 0;border-bottom:1px dashed #e2e8f0;align-items:center}.infoGrid .field:last-child{border-bottom:0}.copyRow{display:flex;align-items:center;justify-content:space-between;gap:8px}.copyPhone{display:inline-flex}.unpaidText{color:#dc2626;font-weight:600}.headerActions{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:10px;width:100%}.headerActions .button{min-height:46px;justify-content:center;font-size:.875rem}}
+@media screen and (max-width:640px){.copyPhone .copy{position:static;margin:0;transform:none;width:26px;height:26px}.copyPhone{align-items:center}}
+@media screen and (max-width:640px){.copyPhone .copy{min-height:0!important;height:26px!important;align-items:center;justify-content:center}}

@@ -10,6 +10,7 @@ import { getEffectivePermissions } from "@/lib/auth/effective-permissions";
 import PermissionRefresh from '@/components/permission-refresh';
 import WorkspaceActivity from '@/components/ui/workspace-activity';
 import PhoneTableLabels from '@/components/ui/phone-table-labels';
+import { workspacePage } from '@/lib/navigation/page-title';
 import WorkspaceBranchProvider from "./workspace-branch-provider";
 import SidebarClient from "./sidebar-client";
 import PosLockProvider from './pos-lock-provider';
@@ -106,6 +107,8 @@ export default async function DashboardLayout({
     ? await supabase.rpc("tenh_receive_all_online_orders", { p_business: business.id }) : null;
   const posLocked=effectivePermissions.includes('pos.access')&&(await cookies()).get(posLockCookie(business.id,branchContext.userId))?.value==='1';
   if(posLocked&&!posLockAllows(pathname))redirect('/dashboard/pos');
+  // Phones hide page titles/summary cards on list pages; these overview pages keep them.
+  const compactChrome = !workspacePage(pathname).back && !/^\/dashboard(\/(reports|staff-report|expenses))?$/.test(pathname);
   return (
     <div className="workspace-theme min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <WorkspaceActivity />
@@ -116,7 +119,7 @@ export default async function DashboardLayout({
       {effectivePermissions.includes("orders.view") && <OnlineOrderListener businessId={business.id} branchId={branchContext.branchId} receiveAll={onlineScope?.data === true} />}
 
       <div className="md:pl-16">
-        <main className="workspace-content min-w-0 max-w-full p-4 sm:p-6"><UpdateAlertBanner /><div className="min-w-0" key={branchContext.branchId}>{children}</div><PhoneTableLabels /></main>
+        <main className="workspace-content min-w-0 max-w-full p-4 sm:p-6" data-mobile-chrome={compactChrome ? "compact" : undefined}><UpdateAlertBanner /><div className="min-w-0" key={branchContext.branchId}>{children}</div><PhoneTableLabels /></main>
       </div>
       </WorkspaceBranchProvider>
       </PosLockProvider>
