@@ -31,5 +31,5 @@ as $$
   );
 $$;
 
-revoke all on function public.tenh_promotion_order_metrics(uuid) from public;
+revoke all on function public.tenh_promotion_order_metrics(uuid) from public,anon;
 grant execute on function public.tenh_promotion_order_metrics(uuid) to authenticated;
