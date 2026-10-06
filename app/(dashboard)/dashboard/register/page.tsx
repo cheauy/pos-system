@@ -1,6 +1,7 @@
 import { getBranchContext } from "@/lib/branches/context";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { readAllRows } from "@/lib/supabase/read-all-rows";
 import RegisterClient from "./register-client";
 import type { Movement, Order } from "./register-model";
 
@@ -30,38 +31,35 @@ export default async function RegisterPage() {
   const shifts = [
     ...new Map([...(opened.data ?? []), ...(recent.data ?? [])].map((shift) => [shift.id, shift])).values(),
   ].sort((a, b) => b.opened_at.localeCompare(a.opened_at));
-  const ids = shifts.map((shift) => shift.id);
+  // Closed shifts with a stored register_summary never read movements or orders
+  // (totals() returns the saved snapshot), so only live-calculated shifts need them.
+  const ids = shifts.filter((shift) => shift.status !== "closed" || !shift.register_summary).map((shift) => shift.id);
   const movements: Movement[] = [];
   const orders: Order[] = [];
 
   if (ids.length) {
-    for (let offset = 0; ; offset += 1000) {
-      const result = await supabaseAdmin
+    const [movementRows, orderRows] = await Promise.all([
+      readAllRows<Movement>((from, to) => supabaseAdmin
         .from("cash_movements")
         .select("id,shift_id,movement_type,amount,reason,reference,created_at,created_by")
         .eq("business_id", business.id)
         .in("shift_id", ids)
         .order("created_at", { ascending: false })
         .order("id")
-        .range(offset, offset + 999);
-      if (result.error) throw new Error("Unable to load cash movements.");
-      movements.push(...(result.data as Movement[]));
-      if (result.data.length < 1000) break;
-    }
-
-    for (let offset = 0; ; offset += 1000) {
-      const result = await supabaseAdmin
+        .range(from, to)),
+      readAllRows<Order>((from, to) => supabaseAdmin
         .from("orders")
         .select("id,order_number,register_shift_id,payment_method,total,amount_paid,change_amount,status,created_at,pos_checkout")
         .eq("business_id", business.id)
         .in("register_shift_id", ids)
         .order("created_at", { ascending: false })
         .order("id")
-        .range(offset, offset + 999);
-      if (result.error) throw new Error("Unable to load shift payments.");
-      orders.push(...(result.data as Order[]));
-      if (result.data.length < 1000) break;
-    }
+        .range(from, to)),
+    ]);
+    if (movementRows.error) throw new Error("Unable to load cash movements.");
+    if (orderRows.error) throw new Error("Unable to load shift payments.");
+    movements.push(...movementRows.data);
+    orders.push(...orderRows.data);
   }
 
   const people = [...new Set([...shifts.map((shift) => shift.opened_by), ...movements.map((movement) => movement.created_by)])];

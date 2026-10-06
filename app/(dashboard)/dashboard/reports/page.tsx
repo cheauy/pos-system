@@ -22,6 +22,7 @@ import {
   CreditCard,
 } from "lucide-react";
 import ReportCharts from "./report-charts";
+import { readAllRows } from "@/lib/supabase/read-all-rows";
 import { createClient } from "@/lib/supabase/server";
 
 type ReportPageProps = {
@@ -94,12 +95,17 @@ export default async function ReportsPage({
 
   const supabase = await createClient();
 
-  const { data: branches, error: branchError } = await supabase.from("business_locations").select("id,name").eq("business_id", business.id).order("name");
+  const [{ data: branches, error: branchError }, viewingBranchId] = await Promise.all([
+    supabase.from("business_locations").select("id,name").eq("business_id", business.id).order("name"),
+    getViewingBranchId(params.branch),
+  ]);
   if (branchError) throw new Error("Unable to load report branches.");
-  const viewingBranchId = await getViewingBranchId(params.branch);
   const branch = branches?.find(item => item.id === viewingBranchId);
   if (viewingBranchId && !branch) throw new Error("Branch does not belong to this business.");
-  const ordersQuery = supabase
+  // Totals cover the whole range: page past the PostgREST per-response row cap
+  // instead of summing only the first response.
+  const ordersPage = (from: number, to: number) => {
+   const query = supabase
     .from("orders")
     .select(`
       id,
@@ -127,9 +133,14 @@ export default async function ReportsPage({
     .lte("created_at", dateRange.endIso)
     .order("created_at", {
       ascending: false,
-    });
+    })
+    .order("id")
+    .range(from, to);
+   return branch ? query.eq("location_id", branch.id) : query;
+  };
 
-  const expensesQuery = supabase
+  const expensesPage = (from: number, to: number) => {
+   const query = supabase
     .from("expenses")
     .select(`
       id,
@@ -143,15 +154,18 @@ export default async function ReportsPage({
     .lte("expense_date", dateRange.endDate)
     .order("expense_date", {
       ascending: false,
-    });
+    })
+    .order("id")
+    .range(from, to);
+   return branch ? query.eq("location_id", branch.id) : query;
+  };
 
-  if (branch) { ordersQuery.eq("location_id", branch.id); expensesQuery.eq("location_id", branch.id); }
   const [
     { data: orderData, error: orderError },
     { data: expenseData, error: expenseError },
   ] = await Promise.all([
-    ordersQuery,
-    expensesQuery,
+    readAllRows(ordersPage),
+    readAllRows(expensesPage),
   ]);
 
   if (orderError || expenseError) {

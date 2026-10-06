@@ -15,6 +15,10 @@ export default async function StaffReport({searchParams}:{searchParams:Promise<{
  const branchId=business.role==='owner'?await getViewingBranchId(params.branch):context.ownBranchId;
  const branches=business.role==='owner'?context.branches:context.branches.filter(b=>b.id===branchId);
  let dates;try{dates=staffReportDates(params.range,params.from,params.to);}catch(error){return <p role="alert" className="rounded-xl bg-amber-50 p-5 text-amber-900">{error instanceof Error?error.message:'Invalid date range.'} <a href="/dashboard/staff-report" className="underline">Reset dates</a></p>;}
+ let roster=supabaseAdmin.from('business_members').select('user_id,team_name,role,default_location_id').eq('business_id',business.id).eq('is_active',true);
+ if(branchId)roster=roster.or(`default_location_id.eq.${branchId},role.eq.owner`);
+ // The staff roster does not depend on the sales pages; start it alongside them.
+ const rosterResult=roster.then(r=>r);
  const db=await createClient();const orders:StaffSale[]=[];
  for(let offset=0;;offset+=500){
   let query=db.from('orders').select('id,order_number,staff_user_id,staff_name,order_source,status,total,discount,created_at,order_items(quantity),returns(refund_amount,status,return_items(quantity))')
@@ -23,9 +27,7 @@ export default async function StaffReport({searchParams}:{searchParams:Promise<{
   const {data,error}=await query;if(error)throw new Error('Unable to load staff sales. Apply the staff report migration and retry.');
   orders.push(...(data??[]) as StaffSale[]);if(!data||data.length<500)break;
  }
- let roster=supabaseAdmin.from('business_members').select('user_id,team_name,role,default_location_id').eq('business_id',business.id).eq('is_active',true);
- if(branchId)roster=roster.or(`default_location_id.eq.${branchId},role.eq.owner`);
- const {data:members,error}=await roster;if(error)throw new Error('Unable to load staff.');
+ const {data:members,error}=await rosterResult;if(error)throw new Error('Unable to load staff.');
  const kpi=staffKpis(orders,(members??[]).map(m=>({userId:m.user_id,name:m.team_name||`${m.role==='owner'?'Owner':'Team member'}`})));
  const leaders=kpi.ranked.filter(r=>r.id!=='unassigned'&&r.orders>0).slice(0,5);
  return <main className="space-y-5">

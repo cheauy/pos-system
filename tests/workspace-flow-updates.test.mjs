@@ -46,7 +46,7 @@ test('register queries exclude other branches before returning browser data',asy
   for(const role of ['staff','owner']){
     const queries=[];
     const db={from:table=>queryDouble(table,{error:null,data:table==='business_locations'?[{id:'own',is_active:true},{id:'other',is_active:true},{id:'closing',is_active:true,plan_disable_pending:true}]:[]},queries)};
-    const Page=loadTs('app/(dashboard)/dashboard/register/page.tsx',{'react/jsx-runtime':jsx,'@/lib/branches/context':{getBranchContext:async()=>({branchId:'own'})},'@/lib/auth/require-permission':{requirePermission:async()=>({id:'business',role})},'@/lib/supabase/admin':{supabaseAdmin:db},'./register-client':()=>null}).default;
+    const Page=loadTs('app/(dashboard)/dashboard/register/page.tsx',{'react/jsx-runtime':jsx,'@/lib/branches/context':{getBranchContext:async()=>({branchId:'own'})},'@/lib/auth/require-permission':{requirePermission:async()=>({id:'business',role})},'@/lib/supabase/admin':{supabaseAdmin:db},'@/lib/supabase/read-all-rows':loadTs('lib/supabase/read-all-rows.ts',{}),'./register-client':()=>null}).default;
     const page=await Page();
     for(const query of queries.filter(q=>q.table==='cash_register_shifts'))assert.deepEqual(query.steps.find(s=>s[0]==='in'),['in','location_id',role==='owner'?['own','closing']:['own']]);
     assert.deepEqual(page.props.branches.map(b=>b.id),['own']);

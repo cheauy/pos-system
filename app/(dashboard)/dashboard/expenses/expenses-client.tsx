@@ -1,21 +1,20 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { CalendarDays, ChartNoAxesColumnIncreasing, CircleDollarSign, Receipt, Search, Trash2, ChevronLeft, ChevronRight, Plus, SlidersHorizontal, Store, X, House, Zap, Users, Megaphone, Truck, Paperclip, ShoppingBag, Wrench, MonitorSmartphone, Landmark, FileText, Briefcase, Phone, Plane, Utensils, SprayCan, type LucideIcon } from "lucide-react";
 import { createExpense, deleteExpense } from "./actions";
 import { CATEGORIES, categoryName, categoryTotals, money, sum, type Expense, type Branch } from "./expense-model";
 const input="w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 const panel="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
 export default function ExpensesClient({expenses,branches,today,defaultBranchId}:{expenses:Expense[];branches:Branch[];today:string;defaultBranchId:string}) {
- const router=useRouter(); const form=useRef<HTMLFormElement>(null);
+ const form=useRef<HTMLFormElement>(null);
  const [branch,setBranch]=useState(defaultBranchId);const [from,setFrom]=useState(today.slice(0,7)+"-01");const [to,setTo]=useState(today);const [query,setQuery]=useState("");const [category,setCategory]=useState("");const [page,setPage]=useState(1);const [busy,setBusy]=useState(false);const [message,setMessage]=useState("");const [error,setError]=useState("");
  const branchRows=expenses.filter(e=>!branch || (branch==="unassigned"?!e.location_id:e.location_id===branch));
  const period=branchRows.filter(e=>(!from||e.expense_date>=from)&&(!to||e.expense_date<=to));
  const filtered=period.filter(e=>(!category||categoryName(e.category)===category)&&[e.description,e.payee,e.reference,categoryName(e.category)].some(v=>v?.toLowerCase().includes(query.toLowerCase())));
  const pages=Math.max(1,Math.ceil(filtered.length/10));const current=Math.min(page,pages);const rows=filtered.slice((current-1)*10,current*10);const chart=categoryTotals(period);const total=sum(period);let angle=0;const stops=chart.map(c=>{const start=angle;angle+=total?c.value/total*360:0;return `${c.color} ${start}deg ${angle}deg`;}).join(",");
  const active=branches.filter(b=>b.is_active);const categoryOptions=Array.from(new Set([...CATEGORIES,...expenses.map(e=>categoryName(e.category))]));
- async function save(data:FormData){if(busy)return;setBusy(true);setError("");setMessage("");try{await createExpense(data);form.current?.reset();setMessage("Expense saved.");setSheet(null);router.refresh();}catch(e){setError(e instanceof Error?e.message:"Unable to save expense.");}finally{setBusy(false);}}
- async function remove(expense:Expense){if(busy||!window.confirm(`Delete ${expense.description} (${money(Number(expense.amount))})?`))return;setBusy(true);setError("");try{const data=new FormData();data.set("expenseId",expense.id);await deleteExpense(data);setMessage("Expense deleted.");router.refresh();}catch(e){setError(e instanceof Error?e.message:"Unable to delete expense.");}finally{setBusy(false);}}
+ async function save(data:FormData){if(busy)return;setBusy(true);setError("");setMessage("");try{await createExpense(data);form.current?.reset();setMessage("Expense saved.");setSheet(null);}catch(e){setError(e instanceof Error?e.message:"Unable to save expense.");}finally{setBusy(false);}}
+ async function remove(expense:Expense){if(busy||!window.confirm(`Delete ${expense.description} (${money(Number(expense.amount))})?`))return;setBusy(true);setError("");try{const data=new FormData();data.set("expenseId",expense.id);await deleteExpense(data);setMessage("Expense deleted.");}catch(e){setError(e instanceof Error?e.message:"Unable to delete expense.");}finally{setBusy(false);}}
  function resetPage(){setPage(1);}
  // Phones: Filter opens a bottom sheet and Add Expense a centred popup.
  const [sheet,setSheet]=useState<"filter"|"add"|"overview"|null>(null);
