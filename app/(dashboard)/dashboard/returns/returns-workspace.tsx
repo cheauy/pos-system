@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cancelReturn } from "./actions";
 import {
   ArrowRightLeft,
+  BarChart3,
   Clock3,
   DollarSign,
   PackageOpen,
@@ -70,6 +71,17 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState(initialRecords[0]?.id ?? null);
   const [message, setMessage] = useState<string | null>(null);
+  // Phones: detail and stats open as full-screen sheets.
+  const [sheet, setSheet] = useState<"detail" | "stats" | null>(null);
+  useEffect(() => {
+    if (!sheet) return;
+    const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setSheet(null); };
+    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setSheet(null); };
+    window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
+    return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
+  }, [sheet]);
+  const sheetClose = (label: string) => <button type="button" aria-label={label} onClick={() => setSheet(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-700 sm:hidden"><X size={20} /></button>;
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -125,7 +137,7 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
       <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Returns</h1>
-          <p className="mt-1 text-sm text-slate-500">Track customer returns, exchanges, refund activity, and return trends.</p>
+          <p className="mt-1 hidden text-sm text-slate-500 sm:block">Track customer returns, exchanges, refund activity, and return trends.</p>
         </div>
       </div>
 
@@ -135,7 +147,7 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="hidden gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard icon={<PackageOpen size={20} />} label="Total Returns" value={String(activeRecords.length)} helper="Recorded returns, excluding cancelled" />
         <MetricCard icon={<DollarSign size={20} />} label="Total Refunded" value={formatCurrency(totalRefunded)} helper="Recorded refund value" />
         <MetricCard icon={<Clock3 size={20} />} label="Pending Review" value={String(pendingCount)} helper="Awaiting review" />
@@ -145,13 +157,13 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
 
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0 space-y-4">
-          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[minmax(220px,1fr)_160px_160px]">
+          <div className="grid grid-cols-[minmax(0,1fr)_6.75rem_6.75rem] gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:grid-cols-1 md:grid-cols-[minmax(220px,1fr)_160px_160px]">
             <label className="relative">
               <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder="Search returns, customers, orders…" className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-blue-400" />
             </label>
-            <input type="date" value={fromDate} onChange={(event) => { setFromDate(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
-            <input type="date" value={toDate} onChange={(event) => { setToDate(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
+            <input type="date" aria-label="From date" value={fromDate} onChange={(event) => { setFromDate(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
+            <input type="date" aria-label="To date" value={toDate} onChange={(event) => { setToDate(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
           </div>
 
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -166,7 +178,7 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
                   <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3 text-left">Return ID</th><th className="px-4 py-3 text-left">Customer</th><th className="px-4 py-3 text-left">Order</th><th className="px-4 py-3 text-left">Items</th><th className="px-4 py-3 text-left">Type</th><th className="px-4 py-3 text-left">Reason</th><th className="px-4 py-3 text-right">Refund</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Date</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {pageRecords.map((record) => (
-                      <tr key={record.id} onClick={() => setSelectedId(record.id)} className={`cursor-pointer transition hover:bg-slate-50 ${selectedId === record.id ? "bg-blue-50/70" : ""}`}>
+                      <tr key={record.id} onClick={() => { setSelectedId(record.id); setSheet("detail"); }} className={`cursor-pointer transition hover:bg-slate-50 ${selectedId === record.id ? "bg-blue-50/70" : ""}`}>
                         <td className="px-4 py-3 font-bold text-blue-600">{record.returnNumber}</td><td className="px-4 py-3 font-medium text-slate-800">{record.customerName}</td><td className="px-4 py-3 text-blue-600">{record.orderNumber}</td><td className="px-4 py-3"><div className="max-w-[190px] truncate font-medium text-slate-800">{record.items[0]?.productName ?? "—"}</div><div className="text-xs text-slate-400">{record.items.reduce((sum, item) => sum + item.quantity, 0)} item(s)</div></td><td className="px-4 py-3 capitalize text-slate-600">{record.returnType}</td><td className="max-w-[170px] truncate px-4 py-3 text-slate-600">{record.reason}</td><td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(record.refundAmount)}</td><td className="px-4 py-3"><StatusBadge status={record.status} /></td><td className="px-4 py-3 text-slate-500">{formatDate(record.createdAt)}</td>
                       </tr>
                     ))}
@@ -180,7 +192,8 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
             </div>
           </section>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div role={sheet === "stats" ? "dialog" : undefined} aria-modal={sheet === "stats" || undefined} aria-label="Return stats" className={`${sheet === "stats" ? "fixed inset-0 z-50 grid content-start overflow-y-auto overscroll-contain bg-slate-100 p-3 pt-16" : "hidden"} gap-4 sm:static sm:z-auto sm:grid sm:overflow-visible sm:bg-transparent sm:p-0 lg:grid-cols-2`}>
+            {sheet === "stats" && sheetClose("Close return stats")}
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="font-bold text-slate-900">Return Reasons Breakdown</h2><p className="mt-1 text-xs text-slate-500">Why customers are returning products</p>
               <div className="mt-4 grid items-center gap-3 sm:grid-cols-[210px_1fr]">
@@ -195,10 +208,12 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
           </div>
         </section>
 
-        <aside className="h-fit rounded-2xl border border-slate-200 bg-white shadow-sm 2xl:sticky 2xl:top-4">
+        <aside role={sheet === "detail" ? "dialog" : undefined} aria-modal={sheet === "detail" || undefined} aria-label="Return details" className={`${sheet === "detail" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain pt-12" : "hidden"} rounded-none border border-slate-200 bg-white shadow-sm sm:static sm:h-fit sm:block sm:rounded-2xl sm:pt-0 2xl:sticky 2xl:top-4`}>
+          {sheet === "detail" && sheetClose("Close return details")}
           {!selected ? <div className="p-10 text-center text-sm text-slate-400">Select a return to view details.</div> : <ReturnDetail key={selected.id} record={selected} accentColor={accentColor} canCancel={canCancel} />}
         </aside>
       </div>
+      {!sheet && <button type="button" onClick={() => setSheet("stats")} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 font-semibold text-white shadow-lg sm:hidden"><BarChart3 size={18} />Stats</button>}
     </main>
   );
 }

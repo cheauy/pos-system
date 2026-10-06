@@ -3,7 +3,7 @@
 import CustomerFieldsHelp from "@/components/customer-fields-help";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import {
   ArrowLeft,
@@ -109,6 +109,17 @@ export function CustomersWorkspace({
   const [importError, setImportError] = useState("");
   const [importSuccess, setImportSuccess] = useState("");
   const [exportBusy, setExportBusy] = useState(false);
+  // Phones: Add Customer and Customer Details open as full-screen sheets.
+  const [sheet, setSheet] = useState<"add" | "detail" | null>(null);
+  useEffect(() => {
+    if (!sheet) return;
+    const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setSheet(null); };
+    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setSheet(null); };
+    window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
+    return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
+  }, [sheet]);
+  const sheetClose = (label: string) => <button type="button" aria-label={label} onClick={() => setSheet(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-700 sm:hidden"><X size={20} /></button>;
 
   const filteredCustomers = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -195,7 +206,7 @@ export function CustomersWorkspace({
 
   return (
     <main className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="hidden flex-wrap items-start justify-between gap-4 sm:flex">
         <div>
           <h1 className="text-2xl font-bold text-slate-950">Customers</h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -206,7 +217,7 @@ export function CustomersWorkspace({
         <CustomerFieldsHelp />
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="hidden gap-3 sm:grid md:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={<UsersRound size={20} />} label="Total Customers" value={stats.total} tone="blue" />
         <StatCard icon={<UserPlus size={20} />} label="New This Month" value={stats.newThisMonth} tone="green" />
         <StatCard icon={<ShoppingBag size={20} />} label="Repeat Customers" value={stats.repeat} tone="violet" />
@@ -220,7 +231,8 @@ export function CustomersWorkspace({
       </div>
 
       <div className="grid items-start gap-4 xl:grid-cols-[290px_minmax(0,1fr)_320px]">
-        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <section role={sheet === "add" ? "dialog" : undefined} aria-modal={sheet === "add" || undefined} aria-label="Add customer" className={`${sheet === "add" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-14" : "hidden"} sm:static sm:z-auto sm:block sm:overflow-visible sm:rounded-2xl sm:pt-0 border border-slate-200 bg-white shadow-sm`}>
+          {sheet === "add" && sheetClose("Close add customer")}
           <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-4">
             <span className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
               <UserPlus size={19} />
@@ -331,7 +343,7 @@ export function CustomersWorkspace({
                     return (
                       <tr
                         key={customer.id}
-                        onClick={() => selectCustomer(customer.id)}
+                        onClick={() => { selectCustomer(customer.id); setSheet("detail"); }}
                         className={`cursor-pointer transition ${active ? "bg-blue-50/70" : "hover:bg-slate-50"}`}
                       >
                         <td className="px-4 py-3">
@@ -384,8 +396,9 @@ export function CustomersWorkspace({
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4">
+        <section role={sheet === "detail" ? "dialog" : undefined} aria-modal={sheet === "detail" || undefined} aria-label="Customer details" className={`${sheet === "detail" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-14" : "hidden"} sm:static sm:z-auto sm:block sm:overflow-visible sm:rounded-2xl sm:pt-0 border border-slate-200 bg-white shadow-sm`}>
+          {sheet === "detail" && sheetClose("Close customer details")}
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4 pr-16 sm:pr-4">
             <div>
               <h2 className="font-semibold text-slate-900">
                 {panelMode === "history" ? "Purchase History" : "Customer Details"}
@@ -473,6 +486,12 @@ export function CustomersWorkspace({
           )}
         </section>
       </div>
+
+      {canCreate && !sheet ? (
+        <button type="button" onClick={() => setSheet("add")} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg sm:hidden">
+          <UserPlus size={18} /> Add Customer
+        </button>
+      ) : null}
 
       {importOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-[2px]" onMouseDown={() => setImportOpen(false)}>

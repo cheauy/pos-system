@@ -231,15 +231,15 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
 
   return <div className={styles.workspace}>
     <header className={styles.header}>
-      <div><h1>Orders</h1><p>POS, online store{showTableQr ? " and table QR" : ""} orders in one place. Confirm new online orders, track statuses, manage payments, and print receipts.</p></div>
+      <div className={styles.hidePhone}><h1>Orders</h1><p>POS, online store{showTableQr ? " and table QR" : ""} orders in one place. Confirm new online orders, track statuses, manage payments, and print receipts.</p></div>
       <div className={styles.headerActions}>
         <span className={styles.liveBadge} data-live={live} title={live ? "Connected: orders update when they change" : "Connecting… use Refresh to load the latest orders"}><span />{live ? "Live" : "Connecting"}</span>
         <button className={styles.button} type="button" onClick={() => void toggleAlerts()} aria-pressed={alertsOn} title="Desktop notification for new online orders">{alertsOn ? <BellRing size={15} /> : <Bell size={15} />}{alertsOn ? "Alerts On" : "Enable Alerts"}</button>
         <button className={styles.button} type="button" onClick={toggleSound} aria-pressed={soundOn} aria-label={soundOn ? "Mute new-order sound" : "Turn on new-order sound"} title={soundOn ? "New-order sound on" : "New-order sound off"}>{soundOn ? <Volume2 size={15} /> : <VolumeX size={15} />}</button>
-        <button className={styles.button} type="button" onClick={refresh} disabled={pending}><RefreshCw size={15} className={pending ? styles.spin : ""} />Refresh</button>
+        <button className={`${styles.button} ${styles.hidePhone}`} type="button" onClick={refresh} disabled={pending}><RefreshCw size={15} className={pending ? styles.spin : ""} />Refresh</button>
         <button className={styles.button} type="button" onClick={() => setQueueOpen(true)} disabled={!selected.length}><Printer size={15} />Print Queue<span className={styles.counter}>{selected.length}</span></button>
-        {permissions.create ? <Link className={`${styles.button} ${styles.primary}`} href="/dashboard/pos"><Plus size={17} />Create Order</Link>
-          : <button type="button" className={`${styles.button} ${styles.primary}`} disabled title="POS access is required to create an order."><Plus size={17} />Create Order</button>}
+        {permissions.create ? <Link className={`${styles.button} ${styles.primary} ${styles.hidePhone}`} href="/dashboard/pos"><Plus size={17} />Create Order</Link>
+          : <button type="button" className={`${styles.button} ${styles.primary} ${styles.hidePhone}`} disabled title="POS access is required to create an order."><Plus size={17} />Create Order</button>}
       </div>
     </header>
     {notice && <div className={styles.toast} role="status"><Check size={18} />{notice}<button type="button" aria-label="Dismiss notification" onClick={() => setNotice("")}><X size={15} /></button></div>}

@@ -66,11 +66,12 @@
   .workspace-content table:not([data-phone-layout]):not(:is(.receipt, [id$="print-area"]) table) td:is([data-label=""], :not([data-label])) { justify-content: flex-start; text-align: left; }
 }
 @media screen and (max-width: 639px) {
-  .workspace-header { gap: .5rem; padding-inline: max(.75rem, env(safe-area-inset-left)); }
-  .workspace-header > div:first-child { flex-basis: 100%; }
-  .workspace-header-actions { width: 100%; padding-left: 3.5rem; justify-content: space-between; }
-  .workspace-header-actions > button { flex: 1; }
-  .workspace-header-actions > span { flex-shrink: 0; }
+  /* One-row phone header: menu, title, compact branch switcher; role chip hidden. */
+  .workspace-header { flex-wrap: nowrap; gap: .5rem; padding-inline: max(.75rem, env(safe-area-inset-left)); }
+  .workspace-header > div:first-child { flex: 1 1 auto; min-width: 0; }
+  .workspace-header-actions { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; }
+  .workspace-header-actions > span { display: none; }
+  .workspace-header-actions > button { max-width: 9.5rem; padding-inline: .6rem; }
   .workspace-content { padding: 1rem .75rem max(1.5rem, env(safe-area-inset-bottom)); }
   .workspace-content header:not(.receipt header) { flex-wrap: wrap; gap: .75rem; }
   .workspace-content header > div { min-width: 0; max-width: 100%; }

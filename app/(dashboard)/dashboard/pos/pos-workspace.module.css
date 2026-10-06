@@ -124,3 +124,14 @@
 @media screen and (max-width:520px){.headerStats .branchStat{flex:1 0 100%}}
 /* Below 1280px the workspace header is sticky; keep the order panel clear of it. */
 @media screen and (min-width:801px) and (max-width:1279px){.orderPanel{top:calc(var(--workspace-header-h,72px) + 12px)}}
+/* Phones: catalog first; header stats hidden; Current Order opens full screen from the bar. */
+.orderClose{display:none}
+@media screen and (max-width:800px){
+.catalogColumn>.pageHeader{display:none}
+.orderPanel{display:none}
+.orderPanel[data-open]{display:block;position:fixed;inset:0;z-index:60;width:100%;max-width:none;margin:0;border-radius:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:env(safe-area-inset-bottom);background:var(--panel,#fff)}
+.orderPanel[data-open] .orderHeader{position:sticky;top:0;z-index:2;background:var(--panel,#fff);padding-top:max(14px,env(safe-area-inset-top))}
+.orderClose{display:grid;place-items:center;width:44px;height:44px;margin-left:8px;border:0;border-radius:12px;background:var(--pale,#f1f5f9);color:inherit;cursor:pointer}
+}
+/* Phones: search, grid/list toggle and Filters stay on one row (Filters shows its icon only). */
+@media screen and (max-width:800px){.searchRow{flex-wrap:nowrap;gap:8px}.searchRow>.searchInput{flex:1 1 auto;flex-basis:auto;min-width:0}.searchRow>.viewToggle{margin-left:0;flex-shrink:0}.searchRow>.button{flex-shrink:0;gap:0;padding-inline:12px;font-size:0}.searchInput kbd{display:none}.searchInput input{min-width:0;flex:1 1 auto}.searchInput .searchScan{flex-shrink:0;gap:0;font-size:0;padding-inline:8px}}

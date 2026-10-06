@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   distDir: process.env.TENH_BUILD_DIR || '.next',
   // Lets phones on the same Wi-Fi open the dev server by LAN IP (dev only).
   allowedDevOrigins: ['192.168.*.*', '*.devtunnels.ms'],
+  // Dev-only badge sat on top of floating mobile buttons; errors still show.
+  devIndicators: false,
   images: {
     // Private/signed image URLs must never enter the public optimizer cache.
     remotePatterns: process.env.NEXT_PUBLIC_SUPABASE_URL

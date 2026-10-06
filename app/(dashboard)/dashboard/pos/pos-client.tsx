@@ -95,6 +95,16 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   }));
   const customer = data.customers.find(c => c.id === customerId);
   const count = lines.reduce((sum, l) => sum + l.quantity, 0);
+  // Phones: Current Order is a full-screen panel opened from the "View order" bar.
+  const [orderOpen, setOrderOpen] = useState(false);
+  useEffect(() => {
+    if (!orderOpen) return;
+    const overflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('dialog[open]')) setOrderOpen(false); };
+    const wide = window.matchMedia('(min-width: 801px)'); const onWide = () => { if (wide.matches) setOrderOpen(false); };
+    window.addEventListener('keydown', onKey); wide.addEventListener('change', onWide);
+    return () => { document.body.style.overflow = overflow; window.removeEventListener('keydown', onKey); wide.removeEventListener('change', onWide); };
+  }, [orderOpen]);
   const appliedCoupon=data.coupons?.find(c=>c.code.toUpperCase()===couponCode);
   const couponValue=couponCode?couponPreview(appliedCoupon,lines,'pos'):{discount:0,error:null};
   const couponIssue=couponCode?(!data.settings.couponsEnabled?'POS coupon codes are disabled. Remove this coupon.':couponValue.error||(appliedCoupon?.per_customer_limit&&!customerId?'Select a customer for this coupon.':null)):null;
@@ -442,11 +452,11 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
       {groups.length > shown && <button className={`${s.button} ${s.loadMore}`} onClick={() => setShown(n => n + 32)}>Show more products ({groups.length - shown} remaining)</button>}
       <p className={s.footnote}>Stock checked again on sale. Favorites are saved on this browser. Newest products are shown first.</p>
       {/* Phones stack the order below the catalog; this bar sticks until the order panel is reached. */}
-      {count > 0 && <button type="button" className={s.cartBar} onClick={() => document.getElementById('pos-current-order')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><ShoppingCart size={18}/><span>View order · {count} {count === 1 ? 'item' : 'items'}</span><strong>{cash(values.total)}</strong></button>}
+      {<button type="button" className={s.cartBar} aria-haspopup="dialog" aria-expanded={orderOpen} onClick={() => setOrderOpen(true)}><ShoppingCart size={18}/><span>View order · {count} {count === 1 ? 'item' : 'items'}</span><strong>{cash(values.total)}</strong></button>}
     </div>
 
-    <aside id="pos-current-order" className={s.orderPanel} aria-label="Current order">
-      <header className={s.orderHeader}><ShoppingCart size={29}/><div><h2>Current Order</h2><p>{count} {count === 1 ? 'item' : 'items'}{hold ? ` · ${hold.label}` : ''}</p></div><div className={s.orderDate}><span>{dateLabel}</span><strong>{timeLabel}</strong></div></header>
+    <aside id="pos-current-order" className={s.orderPanel} data-open={orderOpen || undefined} aria-label="Current order">
+      <header className={s.orderHeader}><ShoppingCart size={29}/><div><h2>Current Order</h2><p>{count} {count === 1 ? 'item' : 'items'}{hold ? ` · ${hold.label}` : ''}</p></div><div className={s.orderDate}><span>{dateLabel}</span><strong>{timeLabel}</strong></div><button type="button" className={s.orderClose} aria-label="Close current order" onClick={() => setOrderOpen(false)}><X size={22}/></button></header>
       <fieldset disabled={frozen} className={s.orderFieldset}>
         <div className={s.customerBlock}><div className={s.between}><label>Type</label><button className={s.dangerText} onClick={() => open('clear')} disabled={!lines.length}><Trash2 size={14}/> Clear All</button></div><button className={s.customerButton} onClick={() => open('customer')}><UserRound size={20}/><span>{shipping.method === 'pickup' ? 'Pickup' : shipping.method === 'delivery' ? 'Delivery' : 'Walk-in customer'}</span><ChevronDown size={15}/></button>
           <button className={s.loyaltyBanner} onClick={() => open('adjustments')}><Gift size={23}/><span><strong>{!data.settings.loyaltyEnabled ? 'Loyalty program is off' : customer ? `${customer.loyalty_points || 0} loyalty points` : 'No loyalty account selected'}</strong><small>{!data.settings.loyaltyEnabled ? 'Enable loyalty in Promotions & Loyalty.' : !customer ? 'Add a customer to earn and redeem points.' : data.settings.pointValue > 0 ? `${cash(data.settings.pointValue)} per point · Manage redemption` : 'Earn points on eligible sales. Redemption is not configured.'}</small></span></button>

@@ -213,7 +213,7 @@ export default async function PromotionsPage({
 
   return (
     <main className="space-y-4 pb-6">
-      <header className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+      <header className="hidden flex-col gap-4 sm:flex xl:flex-row xl:items-start xl:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-[28px]">
             Promotions & Loyalty
@@ -240,7 +240,7 @@ export default async function PromotionsPage({
         </div>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+      <section className="hidden gap-3 sm:grid sm:grid-cols-2 2xl:grid-cols-4">
         <MetricCard
           icon={<TicketPercent size={23} />}
           iconClass="bg-blue-50 text-blue-600"
@@ -578,6 +578,12 @@ export default async function PromotionsPage({
 
       </section>
 
+      {canEdit ? (
+        <a href="#create-promotion" className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-semibold text-white shadow-lg sm:hidden">
+          <Plus size={18} />
+          Create Promotion
+        </a>
+      ) : null}
       <CenterPopup id="how-it-works" title="How Promotions & Loyalty work" icon={<Lightbulb size={18} />}>
         <div className="space-y-4 text-sm leading-6 text-slate-600">
           <div>
