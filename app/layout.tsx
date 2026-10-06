@@ -57,7 +57,7 @@ export const metadata: Metadata = {
       { url: "/icon.svg", type: "image/svg+xml" },
     ],
     shortcut: "/favicon.ico",
-    apple: [{ url: "/icon.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/tenh-pos-logo.png", type: "image/png" }],
   },
 };
 
