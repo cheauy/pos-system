@@ -18,6 +18,8 @@ import {
   TrendingUp,
   SlidersHorizontal,
   X,
+  PieChart,
+  CreditCard,
 } from "lucide-react";
 import ReportCharts from "./report-charts";
 import { createClient } from "@/lib/supabase/server";
@@ -228,7 +230,7 @@ export default async function ReportsPage({
  
 
   return (
-    <main>
+    <main className="max-lg:pb-24">
       <div className="mb-8 flex flex-col justify-between gap-5 max-sm:hidden lg:flex-row lg:items-end">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">
@@ -260,7 +262,9 @@ export default async function ReportsPage({
         to={dateRange.endDate}
       />
 
-      <div className="mt-6 grid gap-4 max-sm:mt-0 max-sm:grid-cols-4 max-sm:gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      {/* Phones/tablets: both KPI rows sit in one card, four compact tiles per row. */}
+      <div className="max-lg:rounded-2xl max-lg:border max-lg:border-slate-200 max-lg:bg-white max-lg:p-2 max-lg:shadow-sm">
+      <div className="mt-6 grid gap-4 max-lg:mt-0 max-lg:grid-cols-4 max-lg:gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           title="Revenue"
           value={formatCurrency(totalRevenue)}
@@ -294,7 +298,7 @@ export default async function ReportsPage({
         />
       </div>
 
-      <div className="mt-4 grid gap-4 max-sm:mt-2 max-sm:grid-cols-4 max-sm:gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-4 max-lg:mt-2 max-lg:grid-cols-4 max-lg:gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           title="Net Profit"
           value={formatCurrency(netProfit)}
@@ -336,7 +340,8 @@ export default async function ReportsPage({
           smallValue
         />
       </div>
-      <div className="mt-6">
+      </div>
+      <div className="mt-6 max-lg:mt-3">
   <ReportCharts
     dailySales={dailySales}
     topProducts={topProducts}
@@ -344,12 +349,13 @@ export default async function ReportsPage({
   />
 </div>
 
-      <div className="mt-5 grid items-start gap-5 max-sm:grid-cols-2 max-sm:gap-2 xl:grid-cols-2">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold text-slate-900">Payment Breakdown</h2><p className="mt-1 text-sm text-slate-500">Sales value by the recorded payment method</p><DonutBreakdown rows={Object.entries(paymentBreakdown).map(([label,value])=>({label:label.replaceAll("_"," "),value}))}/></section>
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold text-slate-900">Sales by Payment Method</h2><p className="mt-1 text-sm text-slate-500">Completed order count by payment method</p><DonutBreakdown count rows={Object.entries(paymentCounts).map(([label,value])=>({label:label.replaceAll("_"," "),value}))}/></section>
+      <div className="mt-5 grid items-start gap-5 max-lg:mt-2 max-lg:grid-cols-2 max-lg:items-stretch max-lg:gap-2 xl:grid-cols-2">
+        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-lg:p-3 max-sm:[&_[role=img]]:h-32 max-sm:[&_[role=img]]:w-32 max-sm:[&_[role=img]>div]:h-[5.5rem] max-sm:[&_[role=img]>div]:w-[5.5rem]"><div className="mb-2 flex items-start gap-3 lg:hidden"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><PieChart size={20} /></span><div className="min-w-0"><h2 className="text-sm font-bold leading-tight text-slate-900">Payment Breakdown</h2><p className="mt-1 text-xs leading-snug text-slate-500">Sales value by the recorded payment method</p></div></div><h2 className="text-lg font-semibold text-slate-900 max-lg:hidden">Payment Breakdown</h2><p className="mt-1 text-sm text-slate-500 max-lg:hidden">Sales value by the recorded payment method</p><DonutBreakdown rows={Object.entries(paymentBreakdown).map(([label,value])=>({label:label.replaceAll("_"," "),value}))}/></section>
+        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-lg:p-3 max-sm:[&_[role=img]]:h-32 max-sm:[&_[role=img]]:w-32 max-sm:[&_[role=img]>div]:h-[5.5rem] max-sm:[&_[role=img]>div]:w-[5.5rem]"><div className="mb-2 flex items-start gap-3 lg:hidden"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-600"><CreditCard size={20} /></span><div className="min-w-0"><h2 className="text-sm font-bold leading-tight text-slate-900">Sales by Payment Method</h2><p className="mt-1 text-xs leading-snug text-slate-500">Completed order count by payment method</p></div></div><h2 className="text-lg font-semibold text-slate-900 max-lg:hidden">Sales by Payment Method</h2><p className="mt-1 text-sm text-slate-500 max-lg:hidden">Completed order count by payment method</p><DonutBreakdown count rows={Object.entries(paymentCounts).map(([label,value])=>({label:label.replaceAll("_"," "),value}))}/></section>
       </div>
 
-      <div className="mt-6 grid gap-6 max-sm:grid-cols-2 max-sm:gap-2 xl:grid-cols-2">
+      {/* Long label/value rows: full width on phones, side by side on tablets. */}
+      <div className="mt-6 grid gap-6 max-lg:mt-2 max-lg:grid-cols-2 max-lg:gap-2 max-sm:grid-cols-1 xl:grid-cols-2">
        
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-6 py-5">
@@ -601,30 +607,31 @@ function SummaryCard({
   smallValue?: boolean;
 }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-sm:rounded-xl max-sm:p-2">
-      <div className="flex items-start justify-between gap-4">
+    <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-lg:rounded-xl max-lg:border-slate-100 max-lg:p-2 max-lg:shadow-none">
+      <div className="flex items-start justify-between gap-4 max-lg:justify-start max-lg:gap-1.5">
+        <div className={`hidden shrink-0 rounded-lg p-1.5 max-lg:block [&>svg]:h-4 [&>svg]:w-4 ${iconClass}`} aria-hidden>{icon}</div>
         <div className="min-w-0">
-          <p className="text-sm text-slate-500 max-sm:text-[10px] max-sm:leading-tight">
+          <p className="text-sm text-slate-500 max-lg:text-[10px] max-lg:leading-tight">
             {title}
           </p>
 
           <p
-            className={`mt-2 break-words font-bold text-slate-900 max-sm:mt-1 max-sm:text-xs ${
+            className={`mt-2 break-words font-bold text-slate-900 max-lg:mt-1 ${
               smallValue
-                ? "text-base"
-                : "text-2xl"
+                ? "text-base max-lg:text-[10px] max-lg:leading-tight"
+                : "text-2xl max-lg:text-sm"
             }`}
           >
             {value}
           </p>
 
-          <p className="mt-2 text-xs text-slate-500 max-sm:hidden">
+          <p className="mt-2 text-xs text-slate-500 max-lg:hidden">
             {description}
           </p>
         </div>
 
         <div
-          className={`rounded-xl p-3 max-sm:hidden ${iconClass}`}
+          className={`rounded-xl p-3 max-lg:hidden ${iconClass}`}
         >
           {icon}
         </div>

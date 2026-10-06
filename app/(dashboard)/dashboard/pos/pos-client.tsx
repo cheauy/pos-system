@@ -17,6 +17,7 @@ import { CheckoutPanel, VariantPicker } from './pos-workspace-flow';
 import { BarcodeScanner, Modal, ProductImage } from './pos-workspace-components';
 import { SaleCompleted, lineImageKey, type SaleMeta } from './pos-sale-completed';
 import { PosCustomerPicker, PosOrderTypePicker } from './pos-customer-picker';
+import { findPosCustomerByPhone } from './pos-customer-actions';
 import type { PickerCustomer } from './pos-customer-helpers';
 import type { CartDraft, CartLine, CatalogFilters, CheckoutInput, DiscountType, ShippingDetails, HeldOrder, PaymentMethod, Product, ProductGroup, SaleReceipt, Tender, Workspace } from './pos-workspace-types';
 import s from './pos-workspace.module.css';
@@ -200,12 +201,26 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   }
   function selectPickup(type: ShippingDetails['method'] = 'pickup') {
     if (frozen) return;
-    // Changing type requires choosing the customer again.
-    // Clear contact details from the previous customer instead of reusing them.
+    // Changing type requires choosing a saved customer again: clear that customer's
+    // contact details. Typed new-customer details are a checkout draft and are kept.
+    const kept = !customerId && shipping.method !== 'in_store' ? shipping : null;
     setCustomerId('');setPoints('0');setCreateCustomer(false);recipientEdited.current=false;
-    setShipping({method:type,recipientName:'',phone:'',address:'',carrier:'',carrierOther:''});
+    setShipping({method:type,recipientName:kept?.recipientName || '',phone:kept?.phone || '',address:kept?.address || '',carrier:kept && kept.method === type ? kept.carrier || '' : '',carrierOther:kept && kept.method === type ? kept.carrierOther || '' : ''});
     setDelivery('0');setMethod(type === 'delivery' ? 'cod' : 'cash');setPaid('');setTenders([]);setConfirmed(false);setEntryErrors({});
     setDialog(null);setChoosingCustomer(false);setModalError('');
+  }
+  // Quick Add details for Pickup/Delivery stay in the checkout draft (shipping).
+  // The customer record is created by the sale transaction itself, never here.
+  function changeCustomerDraft(patch: { name?: string; phone?: string; address?: string }) {
+    recipientEdited.current = true;
+    setShipping(old => ({ ...old, ...(patch.name !== undefined ? { recipientName: patch.name } : {}), ...(patch.phone !== undefined ? { phone: patch.phone } : {}), ...(patch.address !== undefined ? { address: patch.address } : {}) }));
+  }
+  function startCustomerDraft() {
+    if (!customerId) return;
+    // Switching from a selected customer to a new one drops the selected contact details.
+    setCustomerId('');setPoints('0');recipientEdited.current=false;
+    setShipping(old => ({ ...old, recipientName: '', phone: '', address: '' }));
+    setMethod(shipping.method === 'delivery' ? 'cod' : 'cash');setTenders([]);setPaid('');setConfirmed(false);
   }
   function updateShipping(next:ShippingDetails) {
     const changingMethod=next.method!==shipping.method;
@@ -354,14 +369,18 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     finally { inFlight.current = false; setBusy(''); }
   }
   function receivedAmount() { return method === 'credit' ? 0 : method === 'split' || method === 'bank_transfer' || method === 'other' ? values.total : paid === '' ? method === 'cash' ? values.total : 0 : Number(paid); }
-  function saleInput(requestId: string): CheckoutInput {
-    return { uiVersion:3,currencyQuote:quote,createCustomer:createCustomer && !customerId && shipping.method !== 'in_store',requestId, branchId:branch, customerId:customerId || null,
+  function saleInput(requestId: string, linkedCustomerId = customerId): CheckoutInput {
+    // Pickup/Delivery without a saved customer creates one atomically with the sale:
+    // a failed or cancelled sale rolls it back, and a retry reuses the same request.
+    // Only when a recipient name and a valid phone exist; otherwise the sale completes without saving one.
+    const phoneDigits = (shipping.phone || '').replace(/[^0-9]/g,'').length;
+    return { uiVersion:3,currencyQuote:quote,createCustomer:!linkedCustomerId && shipping.method !== 'in_store' && Boolean(shipping.recipientName?.trim()) && phoneDigits >= 5 && phoneDigits <= 20,requestId, branchId:branch, customerId:linkedCustomerId || null,
       items:lines.map(l => ({productId:l.productId,quantity:l.quantity,optionIds:l.optionIds,expectedUnitPrice:l.unitPrice})),
       paymentMethod:method,amountPaid:receivedAmount(),tenders:method === 'split' ? tenders : [],paymentsConfirmed:confirmed,
       couponCode:couponCode||undefined,discount:values.manualDiscount,discountType:couponCode?'amount':discountType,discountValue:couponCode?couponValue.discount:Number(discount),shipping:shipping.method === 'in_store' ? {method:'in_store',recipientName:'',phone:'',address:'',carrier:'',carrierOther:''} : {...shipping,carrier:shipping.method==='delivery'?shipping.carrier || '':'',carrierOther:shipping.method==='delivery' && shipping.carrier==='other'?shipping.carrierOther || '':''},
       deliveryFee:Number(delivery),redeemPoints:Number(points),note,expectedTotal:values.total,expectedTaxRate:Number(data.settings.taxRate),holdId:hold?.id ?? null,holdVersion:hold?.version ?? null };
   }
-  const reviewIssue = (shipping.method !== 'in_store' && !customerId ? 'Select a customer for this order.' : null) || Object.values(entryErrors).find(Boolean) || (method === 'cash' && paid === '' && values.total > 0 ? 'Enter cash received or choose Exact amount.' : null) || issue || validateCheckout(saleInput('00000000-0000-4000-8000-000000000000'));
+  const reviewIssue = (shipping.method !== 'in_store' && !customerId && !data.canCreateCustomer ? 'Select a saved customer. Adding a new customer requires customer-create permission.' : null) || Object.values(entryErrors).find(Boolean) || (method === 'cash' && paid === '' && values.total > 0 ? 'Enter cash received or choose Exact amount.' : null) || issue || validateCheckout(saleInput('00000000-0000-4000-8000-000000000000'));
   function setPending(input: CheckoutInput | null) {
     recoveryRef.current = input; setRecovery(input);
     if (input) sessionStorage.setItem(recoveryKey, JSON.stringify(input));
@@ -376,7 +395,11 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
       if (!images[key]) images[key] = data.products.find(p => p.name === line.name)?.image_url ?? null;
     }
     setSaleMeta({ method: recoveryRef.current?.paymentMethod ?? method, images });
-    setPending(null); setReceipt(r); clearCart(); setDialog('receipt'); setNotice({ kind: 'success', text: `Sale ${r.orderNumber} saved. ${r.remaining > 0 ? 'A balance remains due.' : 'Payment recorded.'}` }); await refresh(true);
+    // A sale that asked to create or link a customer must not report full success without that link.
+    const sent = recoveryRef.current;
+    const customerUnconfirmed = Boolean(sent && (sent.createCustomer || sent.customerId) && !r.customerId);
+    setPending(null); setReceipt(r); clearCart(); setDialog('receipt');
+    setNotice(customerUnconfirmed ? { kind: 'error', text: `Sale ${r.orderNumber} saved, but its customer link could not be confirmed. Check this order and Customers before continuing. Do not repeat the sale.` } : { kind: 'success', text: `Sale ${r.orderNumber} saved. ${r.remaining > 0 ? 'A balance remains due.' : 'Payment recorded.'}` }); await refresh(true);
   }
   async function submit(retry = false) {
     if (!retry && reviewIssue) { setModalError(reviewIssue); return; }
@@ -385,12 +408,22 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     if (!retry) {
       if (recoveryRef.current || !recoveryLoaded) return;
       if (issue || !lines.length) { setNotice({ kind: 'error', text: issue || 'Add products before completing the sale.' }); return; }
-      input = saleInput(newRequestId());
-      const error = validateCheckout(input); if (error) { setModalError(error); setNotice({ kind:'error',text:error }); return; }
     }
-    if (!input) return;
     inFlight.current = true; setBusy('checkout'); setNotice(null);
     try {
+      if (!retry) {
+        let linkedCustomerId = customerId;
+        if (!customerId && shipping.method !== 'in_store') {
+          // Reuse a saved customer with the same phone digits (the rule the database
+          // enforces) instead of creating a duplicate. Read-only; nothing is written.
+          const match = await findPosCustomerByPhone(data.businessId, shipping.phone, branch);
+          if (!match.success) { setModalError(match.message); return; }
+          if (match.data) { linkedCustomerId = match.data.id; upsertWorkspaceCustomer(match.data); setCustomerId(match.data.id); }
+        }
+        input = saleInput(newRequestId(), linkedCustomerId);
+        const error = validateCheckout(input); if (error) { setModalError(error); setNotice({ kind:'error',text:error }); return; }
+      }
+      if (!input) return;
       // Persist BEFORE sending; this same token survives a reload or lost response.
       try { setPending(input); } catch { if (!retry) { recoveryRef.current = null; setRecovery(null); } setNotice({ kind: 'error', text: 'Browser session storage is unavailable. Enable it before checkout so an interrupted sale can be recovered safely.' }); return; }
       const result = await completePosSale(data.businessId, input);
@@ -485,7 +518,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
       {dialog === 'clear' && <div className={s.stack}><p>This clears the current cart, customer, discounts and payment entries. No completed sale is deleted.{hold ? ' The saved held order remains in Held Orders.' : ''}</p><div className={s.modalActions}><button className={s.button} onClick={() => setDialog(null)}>Keep order</button><button className={s.dangerButton} onClick={() => { clearCart(); setDialog(null); }}>Clear order</button></div></div>}
       {dialog === 'variant' && variantGroup && <VariantPicker quote={quote} group={variantGroup} data={data} branchId={branch} lines={lines} onAdd={chooseProduct} onAllocate={reviewAllocation} initialColor={filters.color} initialSize={filters.size}/>}
       {dialog === 'stock' && allocationGroup && <div className={s.stack}><p>Assign <strong>{allocationPreview.reduce((sum,row) => sum+row.quantity,0)} existing, unallocated units</strong> of {allocationGroup.name} to <strong>{branchName}</strong>?</p><p className={s.paymentInfo}>This does not increase total stock and does not take units from another branch. Confirm only when these units physically belong at this branch. The server rechecks every quantity.</p><div className={s.stack}>{allocationPreview.map(row => { const p = data.products.find(p => p.id === row.productId); return <div key={row.productId} className={s.between}><span>{[p?.color,p?.size,p?.sku].filter(Boolean).join(' · ')}</span><strong>{row.quantity} units</strong></div>; })}</div><div className={s.modalActions}><button className={s.button} onClick={() => open('variant')}>Back</button><button className={s.primary} disabled={!allocationPreview.length || !data.canConfigure} onClick={allocateStock}>Confirm branch allocation</button></div></div>}
-      {dialog === 'checkout' && <CheckoutPanel onChooseCustomer={()=>setChoosingCustomer(true)} customerPicker={((shipping.method!=='in_store'&&!customerId)||choosingCustomer)?<PosCustomerPicker businessId={data.businessId} branchId={branch} userId={data.userId} customerId={customerId} canCreate={Boolean(data.canCreateCustomer)} onSelect={selectPickerCustomer} onCreated={handleCustomerCreated} onBusyChange={setPickerBusy}/>:null} splitPaymentEnabled={data.settings.splitPaymentEnabled} customerCreditEnabled={data.settings.customerCreditEnabled} quote={quote} customerId={customerId} customerName={customer?.name} onEntryError={setEntryError} total={values.total} subtotal={values.subtotal} discount={values.discount} discountLabel={couponCode?`Coupon ${couponCode}`:discountType === 'percent' ? `Discount (${discount}%)${Number(points) ? ' + loyalty' : ''}` : 'Discount / loyalty'} tax={values.tax} taxRate={data.settings.taxRate}
+      {dialog === 'checkout' && <CheckoutPanel onChooseCustomer={()=>setChoosingCustomer(true)} customerPicker={((shipping.method!=='in_store'&&!customerId)||choosingCustomer)?<PosCustomerPicker businessId={data.businessId} branchId={branch} userId={data.userId} customerId={customerId} canCreate={Boolean(data.canCreateCustomer)} onSelect={selectPickerCustomer} onCreated={handleCustomerCreated} onBusyChange={setPickerBusy} draft={shipping.method==='in_store'?undefined:{value:{name:shipping.recipientName,phone:shipping.phone,address:shipping.address},onChange:changeCustomerDraft,onStart:startCustomerDraft,showAddress:shipping.method==='delivery'}}/>:null} splitPaymentEnabled={data.settings.splitPaymentEnabled} customerCreditEnabled={data.settings.customerCreditEnabled} quote={quote} customerId={customerId} customerName={customer?.name} onEntryError={setEntryError} total={values.total} subtotal={values.subtotal} discount={values.discount} discountLabel={couponCode?`Coupon ${couponCode}`:discountType === 'percent' ? `Discount (${discount}%)${Number(points) ? ' + loyalty' : ''}` : 'Discount / loyalty'} tax={values.tax} taxRate={data.settings.taxRate}
         shipping={shipping} setShipping={updateShipping} delivery={delivery} setDelivery={setDelivery}
         method={method} setMethod={changePayment} paid={paid} setPaid={setPaid} received={receivedAmount()}
         tenders={tenders} setTenders={setTenders} confirmed={confirmed} setConfirmed={setConfirmed}

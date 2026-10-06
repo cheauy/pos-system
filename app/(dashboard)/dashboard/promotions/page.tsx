@@ -325,7 +325,7 @@ export default async function PromotionsPage({
                     </div>
                     <div id="promo-filters" className="sm:contents max-sm:fixed max-sm:inset-0 max-sm:z-50 max-sm:hidden max-sm:items-end max-sm:bg-slate-950/40 max-sm:target:flex">
                     <a href="#" aria-label="Close filters" className="absolute inset-0 sm:hidden" />
-                    <div className="sm:contents max-sm:relative max-sm:grid max-sm:w-full max-sm:gap-3 max-sm:rounded-t-3xl max-sm:bg-white max-sm:px-5 max-sm:pb-[max(1.25rem,env(safe-area-inset-bottom))] max-sm:pt-3 max-sm:shadow-2xl">
+                    <div data-sheet="bottom" className="sm:contents max-sm:relative max-sm:grid max-sm:w-full max-sm:gap-3 max-sm:rounded-t-3xl max-sm:bg-white max-sm:px-5 max-sm:pb-[max(1.25rem,env(safe-area-inset-bottom))] max-sm:pt-3 max-sm:shadow-2xl">
                     <div className="sm:hidden"><div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200" /><div className="mt-4 flex items-center justify-between"><h2 className="text-xl font-bold text-slate-900">Filter Promotions</h2><a href="#" aria-label="Close filters" className="grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600"><X size={20} /></a></div></div>
                     <label className="relative max-sm:w-full">
                       <Filter

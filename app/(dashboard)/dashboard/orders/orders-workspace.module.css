@@ -209,7 +209,7 @@
 @media(min-width:1600px){.workspaceGrid{grid-template-columns:minmax(0,1fr) 360px;gap:16px}.metric{padding:18px}.table td{height:61px}.table{font-size:0.6875rem}.table th{font-size:0.6875rem}.customerCell small,.dateCell small{font-size:0.625rem}}
 @media(max-width:1450px){.metric{padding:12px 9px;gap:8px}.metricIcon{width:33px;height:35px}.metricIcon svg{width:21px}.metric strong{font-size:1.1875rem}.metric h2{font-size:0.5625rem}.metricFooter{font-size:0.5rem}.metricFooter small{font-size:0.5rem}}
 @media(max-width:1279px){.workspaceGrid{grid-template-columns:minmax(0,1fr)}.detailColumn{display:none}.metric{padding:15px;gap:12px}.metricIcon{width:40px;height:40px}.metric strong{font-size:1.4375rem}.metric h2{font-size:0.6875rem}.metricFooter{font-size:0.5625rem}.metricFooter small{font-size:0.5625rem}.table{min-width:960px}.table td{padding-top:13px;padding-bottom:13px}.header h1{font-size:1.5625rem}}
-@media(max-width:767px){.header{align-items:flex-start;flex-direction:column;gap:12px;margin-bottom:14px}.headerActions{width:100%;gap:6px;flex-wrap:wrap}.headerActions .button{font-size:0.625rem;padding:8px 10px}.headerActions .primary{margin-left:auto}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.metric{padding:12px;min-height:90px;gap:9px}.metric h2{font-size:0.625rem}.metric strong{font-size:1.375rem}.filterTop{grid-template-columns:1fr}.filterBottom{grid-template-columns:repeat(2,minmax(0,1fr))}.filterBottom select:last-child{grid-column:1/-1}.dateRange{justify-content:space-between;height:37px}.dateRange label{justify-content:space-between}.dateRange input{max-width:none}.search{height:37px}.tabsRow{align-items:flex-start;flex-direction:column}.tabs{gap:5px}.tabs button{padding:7px 9px}.pagination{flex-direction:column;align-items:flex-start}.pagination>div{width:100%;flex-wrap:wrap}.pagination select{margin-left:auto}.scopeNote{font-size:0.5rem}.metricFooter{font-size:0.5rem}.header p{font-size:0.6875rem}.modal{max-height:calc(100dvh - 28px)}.formFields{grid-template-columns:1fr}.modalBody{padding:16px}.modalFooter .button{flex:1}.manageActions{flex-wrap:wrap}}
+@media(max-width:767px), screen and (orientation: portrait) and (max-width: 1024px){.header{align-items:flex-start;flex-direction:column;gap:12px;margin-bottom:14px}.headerActions{width:100%;gap:6px;flex-wrap:wrap}.headerActions .button{font-size:0.625rem;padding:8px 10px}.headerActions .primary{margin-left:auto}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.metric{padding:12px;min-height:90px;gap:9px}.metric h2{font-size:0.625rem}.metric strong{font-size:1.375rem}.filterTop{grid-template-columns:1fr}.filterBottom{grid-template-columns:repeat(2,minmax(0,1fr))}.filterBottom select:last-child{grid-column:1/-1}.dateRange{justify-content:space-between;height:37px}.dateRange label{justify-content:space-between}.dateRange input{max-width:none}.search{height:37px}.tabsRow{align-items:flex-start;flex-direction:column}.tabs{gap:5px}.tabs button{padding:7px 9px}.pagination{flex-direction:column;align-items:flex-start}.pagination>div{width:100%;flex-wrap:wrap}.pagination select{margin-left:auto}.scopeNote{font-size:0.5rem}.metricFooter{font-size:0.5rem}.header p{font-size:0.6875rem}.modal{max-height:calc(100dvh - 28px)}.formFields{grid-template-columns:1fr}.modalBody{padding:16px}.modalFooter .button{flex:1}.manageActions{flex-wrap:wrap}}
 @media(prefers-reduced-motion:reduce){.spin,.skeletonTitle,.skeletonLine,.skeletonBlock{animation:none}.workspace *{transition:none!important}}
 
 /* Keep financial figures readable rather than truncating them on phones. */
@@ -219,7 +219,7 @@
 :global(.dark) :is(.workspace,.dialog,.modal,.rowMenu) { --blue:#2563eb; --primary:#2563eb; --ink:#e2e8f0; --muted:#94a3b8; --border:#334155; --line:#334155; --panel:#0f172a; --surface:#0f172a; --screen-panel:#0f172a; --pale:#1e293b; --soft:#1e293b; color:var(--ink); }
 :global([data-high-contrast="true"].dark) :is(.workspace,.dialog,.modal,.rowMenu) { --ink:#fff; --muted:#e2e8f0; --border:#94a3b8; --line:#94a3b8; }
 }
-@media screen and (max-width:767px){
+@media screen and (max-width:767px), screen and (orientation: portrait) and (max-width: 1024px) {
   .search,.dateRange{height:auto;min-height:44px}
   .dateRange{flex-wrap:wrap;gap:8px;padding-block:6px}
   .dateRange label{min-width:0;flex:1}
@@ -249,7 +249,7 @@
 .filterToggleActive{border-color:#155eef;color:#155eef;background:#edf4ff}
 .filterPanel{display:grid;grid-template-columns:minmax(240px,1.3fr) repeat(3,minmax(0,1fr)) auto;gap:8px;align-items:center;margin-top:9px;padding-top:9px;border-top:1px solid var(--line)}
 .filterPanel[hidden]{display:none}
-@media(max-width:767px){.filterPanel{grid-template-columns:1fr 1fr}.filterPanel .dateRange{grid-column:1/-1}}
+@media(max-width:767px), screen and (orientation: portrait) and (max-width: 1024px){.filterPanel{grid-template-columns:1fr 1fr}.filterPanel .dateRange{grid-column:1/-1}}
 
 /* Order detail panel */
 .od{--od-card:#fff;--od-soft:#f6f8fc;--od-line:#e7edf6;background:linear-gradient(180deg,#f3f7ff 0,#f8fafd 180px);display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:16px}
@@ -327,7 +327,7 @@
 :global(.dark) .odTimeline:before{background:#2c3b53}
 :global(.dark) .odTimeline li:before{box-shadow:0 0 0 3px #1b3459}
 /* Phones: each order row becomes a card; every column stays visible. */
-@media screen and (max-width:640px){
+@media screen and (max-width:640px), screen and (orientation: portrait) and (max-width: 1024px) {
 .tableScroll{overflow-x:visible}
 .table{min-width:0;font-size:0.8125rem}
 .table thead{display:none}
@@ -344,12 +344,12 @@
 .table input[type=checkbox]{width:20px;height:20px}
 }
 @media screen and (max-width:1100px){.header{flex-wrap:wrap}.header>div:first-child{flex:1 1 100%;min-width:0}.headerActions{flex-wrap:wrap}}
-@media screen and (max-width:640px){.hidePhone{display:none!important}}
+@media screen and (max-width:640px), screen and (orientation: portrait) and (max-width: 1024px) {.hidePhone{display:none!important}}
 .sheetBackdrop,.sheetClose{display:none}
-@media screen and (max-width:640px){.filterPanel:not([hidden]){position:fixed;inset:auto 0 0 0;z-index:50;margin:0;grid-template-columns:1fr;gap:12px;padding:60px 18px max(18px,env(safe-area-inset-bottom));background:var(--panel,#fff);border:0;border-radius:24px 24px 0 0;box-shadow:0 -10px 40px rgb(15 23 42/.25)}.filterPanel select{width:100%}.sheetBackdrop{display:block;position:fixed;inset:0;z-index:45;border:0;background:rgb(15 23 42/.4)}.sheetClose{display:grid;place-items:center;position:absolute;right:12px;top:12px;width:44px;height:44px;border:0;border-radius:50%;background:#f1f5f9;color:#334155}}
+@media screen and (max-width:640px), screen and (orientation: portrait) and (max-width: 1024px) {.filterPanel:not([hidden]){position:fixed;inset:auto 0 0 0;z-index:50;margin:0;grid-template-columns:1fr;gap:12px;padding:60px 18px max(18px,env(safe-area-inset-bottom));background:var(--panel,#fff);border:0;border-radius:24px 24px 0 0;box-shadow:0 -10px 40px rgb(15 23 42/.25)}.filterPanel select{width:100%}.sheetBackdrop{display:block;position:fixed;inset:0;z-index:45;border:0;background:rgb(15 23 42/.4)}.sheetClose{display:grid;place-items:center;position:absolute;right:12px;top:12px;width:44px;height:44px;border:0;border-radius:50%;background:#f1f5f9;color:#334155}}
 /* Phones: one action row and spaced order cards with icons. */
 .phoneIcon{display:none}
-@media screen and (max-width:640px){
+@media screen and (max-width:640px), screen and (orientation: portrait) and (max-width: 1024px) {
 .headerActions{flex-wrap:nowrap!important;width:100%}.headerActions>button:last-of-type{margin-left:auto}.table td:nth-child(2) button{text-align:left}.table td:nth-child(2){justify-self:start}.table td:nth-child(5){justify-self:start}.headerActions{gap:5px!important}.headerActions .button{padding:0 7px;font-size:.75rem;white-space:nowrap}.table td:nth-child(11){justify-self:end}.table td:nth-child(2) button{white-space:nowrap}
 .tableCard{background:transparent;border:0;overflow:visible}
 .table tbody{display:grid;gap:12px}
@@ -364,3 +364,14 @@
 .phoneIcon{display:inline-block;flex-shrink:0;color:#64748b}
 }
 @media(max-width:520px){.odToolbar{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:4px}.odTool{min-height:52px;padding:6px 2px;font-size:.625rem}.odToolbar>*>button{width:100%;height:100%}}
+/* Bulk selection action. */
+.selectionBar button+button{margin-left:0}
+.selectionBar .selectionDelete{display:inline-flex;align-items:center;gap:4px;color:#b6364b;font-weight:700}
+/* Phone/tablet order details: right-side drawer. Repeated class raises specificity
+   above the global phone rule that turns form/table dialogs into full-screen sheets. */
+dialog.drawer.drawer.drawer.drawer{position:fixed;inset:0 0 0 auto;margin:0 0 0 auto!important;width:min(560px,calc(100vw - 40px))!important;max-width:calc(100vw - 40px)!important;height:100dvh!important;max-height:100dvh!important;border-radius:0!important;border-width:0 0 0 1px;overflow-y:auto;overscroll-behavior:contain}
+dialog.drawer[open]{animation:drawerIn .22s ease-out}
+@keyframes drawerIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+@media(prefers-reduced-motion:reduce){dialog.drawer[open]{animation:none}}
+/* Bounded, scrollable bottom sheet (hidden scrollbar) so every filter stays reachable. */
+@media screen and (max-width:640px), screen and (orientation: portrait) and (max-width: 1024px){.filterPanel:not([hidden]){max-height:calc(100dvh - 16px - env(safe-area-inset-top));overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}.filterPanel::-webkit-scrollbar{display:none}}

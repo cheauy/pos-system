@@ -35,7 +35,7 @@ async function manageOrder(businessId: string, orderId: string, updatedAt: strin
     return { success: false, message: error.code === "PGRST202"
       ? "Run the included Orders workspace SQL migration before editing orders."
       : error.code === "P0001" || error.code === "40001" || error.code === "42501" ? error.message
-      : "The order could not be changed. Refresh and try again; no changes from this action were committed." };
+      : `The order could not be changed. Refresh and try again; no changes from this action were committed.${error.code ? ` (Error ${error.code})` : ""}` };
   }
   refreshOrderPaths(orderId);
   return { success: true, data: undefined, message: action === "delete" ? "Order deleted from the list. Transaction history is retained." : action === "edit" ? "Order details saved." : "Order status updated." };
@@ -88,4 +88,24 @@ export async function deleteOrderWorkspaceOrder(orderId: string, updatedAt: stri
   if (business.id !== expectedBusinessId) return { success: false, message: "Your selected business changed. Reload this page." };
   if (typeof reason !== "string" || !reason.trim() || reason.length > 500) return { success: false, message: "Please enter a deletion reason (maximum 500 characters)." };
   return manageOrder(business.id, orderId, updatedAt, "delete", { reason: reason.trim() });
+}
+export type BulkDeleteResult = { deleted: string[]; failed: { id: string; message: string }[] };
+// Each order goes through the same single-order delete RPC (eligibility, stock and
+// version checks) one at a time, so one failure never rolls back or hides another.
+export async function deleteOrderWorkspaceOrders(items: { id: string; updatedAt: string | null }[], reason: string, expectedBusinessId: string): Promise<ActionResult<BulkDeleteResult>> {
+  const business = await requirePermission("orders.cancel");
+  if (business.id !== expectedBusinessId) return { success: false, message: "Your selected business changed. Reload this page." };
+  if (!Array.isArray(items) || !items.length || items.length > 50) return { success: false, message: "Select between 1 and 50 orders." };
+  if (typeof reason !== "string" || !reason.trim() || reason.length > 500) return { success: false, message: "Please enter a deletion reason (maximum 500 characters)." };
+  const result: BulkDeleteResult = { deleted: [], failed: [] };
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (!item || seen.has(item.id)) continue;
+    seen.add(item.id);
+    try {
+      const outcome = await manageOrder(business.id, item.id, item.updatedAt, "delete", { reason: reason.trim() });
+      if (outcome.success) result.deleted.push(item.id); else result.failed.push({ id: item.id, message: outcome.message });
+    } catch { result.failed.push({ id: item.id, message: "The result could not be confirmed. Refresh before retrying this order." }); }
+  }
+  return { success: true, data: result };
 }

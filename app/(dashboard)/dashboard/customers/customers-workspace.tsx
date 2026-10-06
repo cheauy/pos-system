@@ -1,5 +1,6 @@
 "use client";
 
+import PendingSubmitButton from "@/components/pending-submit-button";
 import CustomerFieldsHelp from "@/components/customer-fields-help";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -231,7 +232,7 @@ export function CustomersWorkspace({
       </div>
 
       <div className="grid items-start gap-4 xl:grid-cols-[290px_minmax(0,1fr)_320px]">
-        <section role={sheet === "add" ? "dialog" : undefined} aria-modal={sheet === "add" || undefined} aria-label="Add customer" className={`${sheet === "add" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-14" : "hidden"} sm:static sm:z-auto sm:block sm:overflow-visible sm:rounded-2xl sm:pt-0 border border-slate-200 bg-white shadow-sm`}>
+        <section role={sheet === "add" ? "dialog" : undefined} aria-modal={sheet === "add" || undefined} aria-label="Add customer" data-sheet="full" className={`${sheet === "add" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-14" : "hidden"} sm:static sm:z-auto sm:block sm:overflow-visible sm:rounded-2xl sm:pt-0 border border-slate-200 bg-white shadow-sm`}>
           {sheet === "add" && sheetClose("Close add customer")}
           <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-4">
             <span className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
@@ -266,10 +267,10 @@ export function CustomersWorkspace({
                 </Field>
               ) : null}
 
-              <button className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700">
+              <PendingSubmitButton pendingLabel="Creating…" className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700">
                 <UserPlus size={17} />
                 Add Customer
-              </button>
+              </PendingSubmitButton>
             </form>
           ) : (
             <div className="p-5 text-sm text-slate-500">You have view-only customer access.</div>
@@ -318,7 +319,21 @@ export function CustomersWorkspace({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Phones/tablets: one card per customer. Desktop keeps the table. */}
+          <ul className="space-y-2 bg-slate-50/70 p-2 lg:hidden">
+            {visibleCustomers.length === 0 ? <li className="px-4 py-14 text-center text-sm text-slate-500">No customers match your search.</li> : visibleCustomers.map((customer) => (
+              <li key={customer.id}><button type="button" onClick={() => { selectCustomer(customer.id); setSheet("detail"); }} className={`flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left shadow-sm ${selectedCustomer?.id === customer.id ? "border-blue-200" : "border-slate-200"}`}>
+                <Initials name={customer.name} card />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-bold text-slate-900">{customer.name}</span>
+                  <span className="block truncate text-sm text-blue-600">{customer.phone || "No phone"}</span>
+                  <span className="block truncate text-xs text-slate-500">{customer.orderCount} {customer.orderCount === 1 ? "order" : "orders"} • {formatMoney(customer.totalSpent, currency)} spent</span>
+                </span>
+                <span className="flex shrink-0 flex-col items-end justify-between gap-5 self-stretch py-0.5"><ChevronRight size={18} className="text-slate-300" /><span className="text-xs text-slate-500">{customer.lastPurchaseAt ? formatDate(customer.lastPurchaseAt) : "—"}</span></span>
+              </button></li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[680px] text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
@@ -396,7 +411,7 @@ export function CustomersWorkspace({
           </div>
         </section>
 
-        <section role={sheet === "detail" ? "dialog" : undefined} aria-modal={sheet === "detail" || undefined} aria-label="Customer details" className={`${sheet === "detail" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-14" : "hidden"} sm:static sm:z-auto sm:block sm:overflow-visible sm:rounded-2xl sm:pt-0 border border-slate-200 bg-white shadow-sm`}>
+        <section role={sheet === "detail" ? "dialog" : undefined} aria-modal={sheet === "detail" || undefined} aria-label="Customer details" data-sheet="full" className={`${sheet === "detail" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-14" : "hidden"} sm:static sm:z-auto sm:block sm:overflow-visible sm:rounded-2xl sm:pt-0 border border-slate-200 bg-white shadow-sm`}>
           {sheet === "detail" && sheetClose("Close customer details")}
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4 pr-16 sm:pr-4">
             <div>
@@ -486,12 +501,6 @@ export function CustomersWorkspace({
           )}
         </section>
       </div>
-
-      {canCreate && !sheet ? (
-        <button type="button" onClick={() => setSheet("add")} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg sm:hidden">
-          <UserPlus size={18} /> Add Customer
-        </button>
-      ) : null}
 
       {importOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-[2px]" onMouseDown={() => setImportOpen(false)}>
@@ -621,7 +630,8 @@ function StatCard({
   );
 }
 
-function Initials({ name, large = false }: { name: string; large?: boolean }) {
+const avatarTones = ["bg-blue-50 text-blue-600", "bg-violet-50 text-violet-600", "bg-emerald-50 text-emerald-600", "bg-amber-50 text-amber-600", "bg-rose-50 text-rose-600"];
+function Initials({ name, large = false, card = false }: { name: string; large?: boolean; card?: boolean }) {
   const initials = name
     .split(/\s+/)
     .filter(Boolean)
@@ -629,7 +639,7 @@ function Initials({ name, large = false }: { name: string; large?: boolean }) {
     .map((part) => part[0]?.toUpperCase())
     .join("");
   return (
-    <span className={`inline-flex shrink-0 items-center justify-center rounded-full bg-blue-50 font-bold text-blue-600 ${large ? "h-14 w-14 text-lg" : "h-8 w-8 text-xs"}`}>
+    <span className={`inline-flex shrink-0 items-center justify-center rounded-full font-bold ${card ? `h-12 w-12 text-base ${avatarTones[[...name].reduce((sum, char) => sum + (char.codePointAt(0) ?? 0), 0) % avatarTones.length]}` : `bg-blue-50 text-blue-600 ${large ? "h-14 w-14 text-lg" : "h-8 w-8 text-xs"}`}`}>
       {initials || "C"}
     </span>
   );

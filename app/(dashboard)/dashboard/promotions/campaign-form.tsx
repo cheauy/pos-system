@@ -1,4 +1,5 @@
 'use client';
+import { ButtonSpinner } from "@/components/pending-submit-button";
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -21,7 +22,7 @@ export default function CampaignForm({branchId,products}:{branchId:string;produc
  <div className="grid grid-cols-2 gap-2"><label className="text-sm">Starts<input type="datetime-local" name="startsAt" className={input}/></label><label className="text-sm">Ends<input type="datetime-local" name="endsAt" className={input}/></label></div>
  <label className="block text-sm"><input name="isActive" type="checkbox" defaultChecked/> Enable campaign</label>
  <p className="text-xs text-slate-500">The best automatic discount applies to each product. Coupon codes apply after product discounts. Online automatic discounts apply across the shared storefront; POS discounts apply to this branch.</p>
- <button className="w-full rounded-xl bg-blue-600 p-3 text-sm font-semibold text-white" type="submit">{busy?'Saving…':'Save promotion'}</button>
+ <button className="w-full rounded-xl bg-blue-600 p-3 text-sm font-semibold text-white" type="submit">{busy?<span className="inline-flex items-center justify-center gap-2"><ButtonSpinner />Saving…</span>:'Save promotion'}</button>
  </fieldset>{message&&<p role="status" className="text-sm">{message}</p>}
  </form>;
 }

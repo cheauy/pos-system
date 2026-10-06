@@ -23,7 +23,7 @@ test('editing removes and replaces old items, adds a third, and stops at eight',
  const Picker=()=>null;
  const Form=loadTs('app/(dashboard)/dashboard/products/bundle-product-form.tsx',{
   react:{useState:initial=>{const i=cursor++;if(!(i in state))state[i]=initial;return[state[i],v=>{state[i]=typeof v==='function'?v(state[i]):v;}];},useMemo:fn=>fn(),useRef:v=>({current:v})},
-  'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),sonner:{toast:{}},
+  'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'@/components/pending-submit-button':{ButtonSpinner:()=>null},sonner:{toast:{}},
   '@/components/product-gallery-input':{default:()=>null},'@/components/product-variant-picker':{default:Picker},
   '@/components/product-photo':{default:()=>null},'@/lib/products/bundle-items':bundleItemRules,'./bundle-actions':{},
  }).default;
@@ -66,7 +66,7 @@ test('bundle list renders status and permission-aware three-dot actions',()=>{
  const require=createRequire(import.meta.url);const loaded={exports:{}};
  const deps={
   'next/dynamic':{default:()=>()=>null},'@/components/product-photo':{default:({sizes,...props})=>React.createElement('img',props)},
-  'react':React,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),
+  'react':React,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'@/components/pending-submit-button':{ButtonSpinner:()=>null},
   'next/navigation':{useRouter:()=>({refresh:()=>{}})},'next/link':({children})=>children,
   'sonner':{toast:{}},'../products/bundle-product-form':()=>null,'../products/bundle-actions':{},
  };
@@ -85,7 +85,7 @@ test('bundle list renders status and permission-aware three-dot actions',()=>{
  assert.ok(!readOnly.includes('Edit Starter Set'));assert.ok(!readOnly.includes('Delete Starter Set'));
  assert.ok(!readOnly.includes('Actions for Starter Set'));
  const many=renderToStaticMarkup(React.createElement(loaded.exports.default,{...props,bundles:Array.from({length:45},(_,i)=>({...props.bundles[0],id:`bundle-${i}`,name:`Set ${i}`}))}));
- assert.equal((many.match(/aria-label="View Set /g)||[]).length,15);
+ assert.equal(new Set([...many.matchAll(/aria-label="View (Set \d+)"/g)].map(m=>m[1])).size,15); // phone cards and desktop table show the same page
  assert.match(many,/Page 1 of 3/);
 });
 
@@ -132,7 +132,7 @@ test('bundle edit sends contents and image removal atomically and rejects stale 
 test('edit form restores its image and component quantities for editing', () => {
  const require=createRequire(import.meta.url);
  const Form=loadTs('app/(dashboard)/dashboard/products/bundle-product-form.tsx',{
-  react:React,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),sonner:{toast:{}},
+  react:React,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'@/components/pending-submit-button':{ButtonSpinner:()=>null},sonner:{toast:{}},
   '@/components/product-gallery-input':{default:({initialUrls})=>React.createElement('div', {'data-gallery':true},initialUrls.map(url=>React.createElement('img',{key:url,src:url})))},
   '@/components/product-variant-picker':{default:()=>null},'./bundle-actions':{},'@/lib/products/bundle-items':bundleItemRules,'@/components/product-photo':{default:({sizes,...props})=>React.createElement('img',props)},
  }).default;
@@ -184,7 +184,7 @@ test('bundle selection, grid view and deletion confirmation remain separate from
  const require=createRequire(import.meta.url);let cursor=0;const state=[];
  const Client=loadTs('app/(dashboard)/dashboard/bundles/bundle-items-client.tsx',{
   react:{useState:initial=>{const id=cursor++;if(!(id in state))state[id]=initial;return [state[id],value=>{state[id]=typeof value==='function'?value(state[id]):value;}];},useRef:value=>({current:value}),useId:()=> 'id',useEffect(){},useMemo:fn=>fn(),useCallback:fn=>fn,useDeferredValue:value=>value,useTransition:()=>[false,fn=>fn()]},
-  'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'next/navigation':{useRouter:()=>({refresh(){}})},'next/link':{default:'a'},'next/dynamic':{default:()=>()=>null},
+  'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'@/components/pending-submit-button':{ButtonSpinner:()=>null},'next/navigation':{useRouter:()=>({refresh(){}})},'next/link':{default:'a'},'next/dynamic':{default:()=>()=>null},
   '@/components/product-photo':{default:'img'},'@/components/anchored-action-menu':{default:'actions'},sonner:{toast:{},Toaster:'toast-status'},'../products/bundle-actions':{},
  }).default;
  const props={branchId:'branch',branchName:'Main',categories:[],products:[{id:'one',canInclude:true},{id:'two',canInclude:true}],canCreate:true,canPack:true,canEdit:true,canDelete:true,bundles:[{id:'b',name:'Set',sku:'SET',price:5,cost:2,stock:0,capacity:3,packed:true,active:true,online:true,pos:true,components:[]}]};

@@ -1,5 +1,6 @@
 "use client";
 
+import { ButtonSpinner } from "@/components/pending-submit-button";
 import {
   Building2,
   Check,
@@ -746,7 +747,7 @@ export default function BranchesClient({
               disabled={isPending}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
             >
-              <Plus size={17} /> {isPending ? "Saving…" : "Create Branch"}
+              {isPending ? <><ButtonSpinner /> Creating…</> : <><Plus size={17} /> Create Branch</>}
             </button>
           </div>
         </form>

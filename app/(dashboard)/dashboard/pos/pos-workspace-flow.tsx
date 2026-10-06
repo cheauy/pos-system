@@ -115,7 +115,7 @@ export function CheckoutPanel(p: CheckoutPanelProps) {
     <div className={s.stack}>
       <div className={s.checkoutStep}><span>1</span><div><h3>{shippingLabel(p.shipping.method)}</h3><p>Selected order type</p></div></div>
       <section aria-label="Customer selection" className={s.stack}>
-        <div className={s.between}><strong>{p.customerName || (p.shipping.method==='in_store'?'Walk-in customer':'Select customer')}</strong>{!p.customerPicker && <button type="button" className={s.textButton} onClick={p.onChooseCustomer}>{p.customerId?'Change customer':'Select customer'}</button>}</div>
+        <div className={s.between}><strong>{p.customerName || (p.shipping.method==='in_store'?'Walk-in customer':p.shipping.recipientName.trim() || 'Customer details')}</strong>{!p.customerPicker && <button type="button" className={s.textButton} onClick={p.onChooseCustomer}>{p.customerId?'Change customer':'Select customer'}</button>}</div>
         {p.customerPicker}
       </section>
       {isDelivery && <div className={s.shippingForm}>

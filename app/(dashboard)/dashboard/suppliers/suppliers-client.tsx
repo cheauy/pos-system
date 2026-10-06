@@ -1,5 +1,7 @@
 "use client";
 
+import MobileListCard, { MobileList } from "@/components/mobile-list-card";
+import { ButtonSpinner } from "@/components/pending-submit-button";
 import Link from "next/link";
 import { usePagedWorkspace } from "@/lib/use-paged-workspace";
 import { loadSuppliers, type SupplierWorkspace, type SupplierMetric } from "./list-actions";
@@ -165,7 +167,7 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
       ) : null}
 
       <section className="grid items-start gap-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
-        <div role={sheet === "add" ? "dialog" : undefined} aria-modal={sheet === "add" || undefined} aria-label="Add supplier" className={`${sheet === "add" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-100 p-3 pt-16" : "max-sm:hidden"} sm:contents`}>
+        <div role={sheet === "add" ? "dialog" : undefined} aria-modal={sheet === "add" || undefined} aria-label="Add supplier" data-sheet="full" className={`${sheet === "add" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-100 p-3 pt-16" : "max-sm:hidden"} sm:contents`}>
           {sheet === "add" && <button type="button" aria-label="Close add supplier" onClick={() => setSheet(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-white text-slate-700 shadow sm:hidden"><X size={20} /></button>}
           <AddSupplierPanel />
         </div>
@@ -221,7 +223,8 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[930px] text-sm">
+              <MobileList>{visibleSuppliers.map((supplier) => { const m = metrics.get(supplier.id) ?? emptyMetric; return <MobileListCard key={supplier.id} selected={selectedSupplier?.id === supplier.id} onClick={() => { setSelectedSupplierId(supplier.id); if (window.matchMedia("(max-width: 639px)").matches) setSheet("detail"); }} media={<SupplierAvatar name={supplier.name} />} title={supplier.name} date={m.lastOrderDate ? `Last order ${formatDate(m.lastOrderDate)}` : "No orders yet"} primary={supplier.contact_person ?? supplier.phone ?? "No contact"} secondary={[supplier.phone, supplier.email].filter(Boolean).join(" · ") || undefined} amount={formatCurrency(m.openValue)} status={{ label: supplier.is_active ? "Active" : "Inactive" }} />; })}</MobileList>
+              <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[930px] text-sm">
                 <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Supplier</th>
@@ -317,7 +320,7 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
           </div>
         </div>
 
-        <div role={sheet === "detail" ? "dialog" : undefined} aria-modal={sheet === "detail" || undefined} aria-label="Supplier details" className={`${sheet === "detail" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-100 p-3 pt-16" : "max-sm:hidden"} sm:contents`}>
+        <div role={sheet === "detail" ? "dialog" : undefined} aria-modal={sheet === "detail" || undefined} aria-label="Supplier details" data-sheet="full" className={`${sheet === "detail" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-100 p-3 pt-16" : "max-sm:hidden"} sm:contents`}>
         {sheet === "detail" && <button type="button" aria-label="Close supplier details" onClick={() => setSheet(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-white text-slate-700 shadow sm:hidden"><X size={20} /></button>}
         <SupplierDetailsPanel
           onEdit={() => { setSheet(null); if (selectedSupplier) setEditing(selectedSupplier); }}
@@ -399,7 +402,7 @@ function SupplierForm({ supplier, onSaved, onBusyChange }: { supplier?: Supplier
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
         >
           {supplier ? <Pencil size={17} /> : <Plus size={17} />}
-          {busy ? "Saving…" : supplier ? "Save Changes" : "Create Supplier"}
+          {busy ? <span className="inline-flex items-center justify-center gap-2"><ButtonSpinner />{supplier ? "Saving…" : "Creating…"}</span> : supplier ? "Save Changes" : "Create Supplier"}
         </button>
       </fieldset>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}

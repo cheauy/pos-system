@@ -23,16 +23,16 @@ export default async function ProductsPage({ searchParams }: {
       <h1 className="text-lg font-bold tracking-tight text-slate-950">Products &amp; Stock</h1>
       <p className="mt-1 text-sm text-slate-500">Manage your products, variants and branch stock in one place.</p>
     </header>
-    {canAdjustStock && <Link href="/dashboard/inventory/adjustments" className="col-start-2 row-start-1 inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-800">
+    {canAdjustStock && <Link href="/dashboard/inventory/adjustments" className="col-start-2 row-start-1 inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-800 max-sm:fixed max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:left-4 max-sm:right-4 max-sm:z-40 max-sm:min-h-14 max-sm:rounded-2xl max-sm:text-base max-sm:shadow-lg">
       <SlidersHorizontal size={17} /> Adjust Stock
     </Link>}
-    <nav aria-label="Products and stock views" className="col-span-2 row-start-2 flex gap-1 border-b border-slate-200">
+    <nav aria-label="Products and stock views" className="col-span-2 row-start-2 flex gap-1 border-b border-slate-200 max-lg:grid max-lg:auto-cols-fr max-lg:grid-flow-col max-lg:gap-0">
       {canViewProducts && <Link href="/dashboard/products" prefetch={false} aria-current={!stock ? "page" : undefined}
-        className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold ${!stock ? "border-teal-600 text-teal-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
+        className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold max-lg:justify-center max-lg:text-base ${!stock ? "border-teal-600 text-teal-700 max-lg:border-blue-600 max-lg:text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
         <Package size={18} />Products
       </Link>}
       {canViewStock && <Link href="/dashboard/products?view=stock" prefetch={false} aria-current={stock ? "page" : undefined}
-        className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold ${stock ? "border-teal-600 text-teal-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
+        className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold max-lg:justify-center max-lg:text-base ${stock ? "border-teal-600 text-teal-700 max-lg:border-blue-600 max-lg:text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
         <Boxes size={18} />Stock
       </Link>}
     </nav>

@@ -1,5 +1,6 @@
 "use client";
 
+import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -1035,7 +1036,8 @@ export default function StockAdjustmentClient({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px] text-sm">
+            <MobileList>{filteredAdjustments.map((adjustment) => <MobileListCard key={adjustment.id} media={<ProductThumb src={adjustment.imageUrl} name={adjustment.productName} />} title={adjustment.productName} date={dateTime(adjustment.createdAt)} primary={[adjustment.color, adjustment.size, adjustment.sku].filter(Boolean).join(" · ") || "Standard item"} secondary={`${adjustment.stockBefore} → ${adjustment.stockAfter} · ${adjustment.reason}`} amount={<span className={adjustment.quantityDelta > 0 ? "text-emerald-600" : adjustment.quantityDelta < 0 ? "text-red-600" : "text-slate-900"}>{adjustment.quantityDelta > 0 ? "+" : ""}{adjustment.quantityDelta}</span>} status={{ label: adjustment.quantityDelta > 0 ? "Increase" : adjustment.quantityDelta < 0 ? "Decrease" : "Set exact", tone: adjustment.quantityDelta > 0 ? "green" : adjustment.quantityDelta < 0 ? "red" : "blue" }} />)}</MobileList>
+            <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[1040px] text-sm">
               <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Date</th>

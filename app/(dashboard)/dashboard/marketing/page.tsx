@@ -1,3 +1,4 @@
+import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import {
@@ -308,7 +309,8 @@ export default async function MarketingPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm">
+              <MobileList>{coupons.slice(0, 8).map((coupon) => <MobileListCard key={coupon.id} media={<TicketPercent size={24} className="text-blue-600" />} title={coupon.name || coupon.code} date={formatCouponPeriod(coupon)} primary={formatCouponValue(coupon, branchCurrency.currency)} secondary={`Code: ${coupon.code} · Used ${coupon.usage_count.toLocaleString()}${coupon.usage_limit ? ` / ${coupon.usage_limit.toLocaleString()}` : ""}`} status={{ label: getCouponStatus(coupon, now) }} />)}</MobileList>
+              <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[760px] text-sm">
                 <thead className="bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-5 py-3">Campaign</th>

@@ -1,5 +1,6 @@
 "use client";
 
+import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import {
   useEffect,
   useMemo,
@@ -477,7 +478,8 @@ export default function AuditLogsTable({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1280px] table-fixed">
+          <MobileList empty={pagedLogs.length === 0 ? <li className="px-6 py-12 text-center text-sm text-slate-500">No audit logs found. Try another date range or reset the filters.</li> : null}>{pagedLogs.map((log) => <MobileListCard key={log.id} onClick={() => setSelectedLog(log)} media={<span className="grid h-10 w-10 place-items-center rounded-full bg-blue-600 text-xs font-bold text-white">{initials(log.userName)}</span>} title={log.userName} date={formatDate(log.created_at)} primary={`${log.action} · ${log.moduleName}`} secondary={log.description ?? log.branchName} status={{ label: String(log.severity), tone: /critical|high|error/i.test(String(log.severity)) ? "red" : /warn|medium/i.test(String(log.severity)) ? "amber" : "blue" }} />)}</MobileList>
+          <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[1280px] table-fixed">
             <thead className="bg-slate-50/90 dark:bg-slate-950/70">
               <tr>
                 <TableHeading className="w-[170px]">Date &amp; time</TableHeading>

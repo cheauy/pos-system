@@ -1,3 +1,4 @@
+import PendingSubmitButton from "@/components/pending-submit-button";
 import { ExternalLink, FileCheck2, ReceiptText, UsersRound } from "lucide-react";
 
 import { requireSuperAdmin } from "@/lib/auth/require-super-admin";
@@ -112,7 +113,7 @@ export default async function SubscriptionPaymentList() {
                             Monthly price
                             <input name="monthlyPrice" type="number" min="1" step="0.01" required className="mt-1 block w-28 rounded-lg border border-slate-300 px-2.5 py-2 text-sm" />
                           </label>
-                          <button type="submit" className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white">Create quote</button>
+                          <PendingSubmitButton pendingLabel="Creating…" className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white">Create quote</PendingSubmitButton>
                         </form>
                       ) : order.status === "payment_submitted" ? (
                         <div className="space-y-3">

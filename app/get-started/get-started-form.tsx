@@ -1,5 +1,6 @@
 "use client";
 
+import { ButtonSpinner } from "@/components/pending-submit-button";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -685,7 +686,7 @@ function StoreDetailsForm({
         className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 font-bold text-white shadow-lg shadow-blue-600/15 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {pending
-          ? "Creating your business..."
+          ? <><ButtonSpinner />Creating your business…</>
           : storeAddressIsAvailable
             ? "Create my business"
             : "Check store address first"}

@@ -48,6 +48,25 @@ export async function fetchPosCustomers(businessId: string, search: string, offs
   } catch(error) {return {success:false,message:failure(error).message};}
 }
 
+// Read-only lookup for checkout: the same phone-digit rule the database uses to
+// reject duplicate customers. Never matches by name.
+export async function findPosCustomerByPhone(businessId: string, phone: string, expectedBranchId: string): Promise<ActionResult<PickerCustomer | null>> {
+  const business=await requirePermission('pos.access');
+  if(business.id!==businessId) return {success:false,message:'Your active business changed. Reload POS.'};
+  const digits=typeof phone==='string' ? phone.replace(/\D/g,'') : '';
+  if(digits.length<5 || digits.length>20) return {success:true,data:null};
+  try {
+    const context=await getBranchContext();
+    if(context.business.id!==business.id || context.branchId!==expectedBranchId) return {success:false,message:'The operating branch changed. Reload POS before completing the sale.'};
+    const db=await createClient();
+    // ponytail: '%d%i%g%' finds digits through any phone formatting; exact digit
+    // equality is checked below. 25 rows covers realistic near-duplicates.
+    const {data,error}=await db.from('customers').select('id,name,phone,address,loyalty_points,created_at').eq('business_id',business.id).eq('location_id',context.branchId).ilike('phone',`%${digits.split('').join('%')}%`).order('created_at',{ascending:true}).order('id',{ascending:true}).limit(25);
+    if(error) return {success:false,message:'Saved customers could not be checked. Retry; nothing was saved.'};
+    return {success:true,data:((data ?? []) as PickerCustomer[]).find(row=>(row.phone || '').replace(/\D/g,'')===digits) ?? null};
+  } catch { return {success:false,message:'Saved customers could not be checked. Retry; nothing was saved.'}; }
+}
+
 export async function createPosCustomer(businessId: string, input: CustomerInput): Promise<ActionResult<PickerCustomer>> {
   const business=await requirePermission('pos.access');
   if(business.id!==businessId) return {success:false,uncertain:true,message:'Your active business changed. Keep this customer request and reopen the original business.'};

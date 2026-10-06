@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Star, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { MAX_SAVE_UPLOAD_BYTES, shrinkPhoto, uploadBytes } from "@/lib/images/shrink-photo";
 
 type Photo = { key: string; url: string; file?: File };
-export default function ProductGalleryInput({ initialUrls = [], onChange, title = "Product gallery", description = "First photo is the cover. Up to 8 photos; colour images are managed with variants." }: { initialUrls?: string[]; onChange?: () => void; title?: string; description?: string }) {
+export default function ProductGalleryInput({ initialUrls = [], onChange, title = "Product gallery", description = "First photo is the cover. Up to 8 photos; colour images are managed with variants.", icon }: { initialUrls?: string[]; onChange?: () => void; title?: string; description?: string; icon?: ReactNode }) {
   const [photos, setPhotos] = useState<Photo[]>(() => initialUrls.map(url => ({ key: url, url })));
   const [changed, setChanged] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -47,7 +47,7 @@ export default function ProductGalleryInput({ initialUrls = [], onChange, title 
   }
   function move(index: number, target: number) { const next = [...photos]; next.splice(target, 0, next.splice(index, 1)[0]); update(next); }
   return <fieldset ref={root} disabled={uploading} className="min-w-0 space-y-3">
-    <div><h3 className="text-sm font-bold text-slate-900">{title}</h3><p className="mt-1 text-xs text-slate-500">{description}</p></div>
+    <div className="flex items-start gap-3">{icon}<div className="min-w-0"><h3 className="text-sm font-bold text-slate-900">{title}</h3><p className="mt-1 text-xs text-slate-500">{description}</p></div></div>
     {changed && <input type="hidden" name="productGallery" value={JSON.stringify(photos.map(photo => photo.file ? { slot: photo.key } : { url: photo.url }))} />}
     {photos.map(photo => photo.file && <input key={photo.key} name={`gallery_${photo.key}`} type="file" className="sr-only" tabIndex={-1} aria-hidden="true" ref={node => { if (node && photo.file) { const data = new DataTransfer(); data.items.add(photo.file); node.files = data.files; } }} />)}
     <div className="grid grid-cols-2 gap-3">

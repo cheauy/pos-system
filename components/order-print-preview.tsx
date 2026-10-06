@@ -34,6 +34,6 @@ export default function OrderPrintPreview({orderId,kind,onClose}:{orderId:string
   {!loaded&&!error&&<p role="status" className="flex items-center justify-center gap-2 p-4 text-sm text-slate-500"><Loader2 size={18} className="animate-spin"/>Loading preview…</p>}
   {error&&<p role="alert" className="p-4 text-sm text-red-700">{error}</p>}
   {blocked&&<p role="alert" className="p-4 text-sm text-amber-800">Add the customer’s delivery address before printing this shipping label.</p>}
-  <iframe ref={frame} title={`${title} preview`} src={`/dashboard/orders/${encodeURIComponent(orderId)}/${kind}?preview=1`} onLoad={ready} onError={()=>setError('Unable to load the print preview. Close it and try again.')} className="min-h-0 w-full flex-1 border-0 bg-white"/>
+  <iframe ref={frame} title={`${title} preview`} src={`/dashboard/orders/${encodeURIComponent(orderId)}/${kind}?preview=1`} onLoad={ready} onError={()=>setError('Unable to load the print preview. Close it and try again.')} className={`min-h-0 w-full flex-1 border-0 bg-white ${loaded?'':'invisible'}`}/>{/* The frame first paints the dashboard shell and loading skeleton; show it only once the paper is ready. */}
  </dialog>,document.body);
 }

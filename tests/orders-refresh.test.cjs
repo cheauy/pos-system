@@ -75,14 +75,14 @@ function clock() {
     }, pending: () => timers.size};
 }
 const row = (id = 'selected', updatedAt = 'v1') => ({id, updatedAt, orderNumber: id, customerId: null, customerName: 'Sample', customerPhone: null, source: 'pos', fulfillment: 'walk_in', status: 'pending', onlineStatus: null, paymentState: 'unpaid', paymentMethod: 'cash', total: 10, amountPaid: 0, createdAt: '2026-10-04T00:00:00Z', branchId: 'branch', branchName: 'Branch', itemCount: 1, deleteBlocked: false});
-function fixture({receiveAll = false, baseline = false, delayDetail = false} = {}) {
+function fixture({receiveAll = false, baseline = false, delayDetail = false, statusSucceeds = false} = {}) {
   const time = clock(); const saved = {};
   const document = new EventTarget(); document.visibilityState = 'visible'; document.activeElement = null; document.body = {};
   const window = new EventTarget(); window.localStorage = {getItem: () => '0'}; window.matchMedia = () => ({matches: false, addEventListener() {}, removeEventListener() {}});
   for (const [name, value] of Object.entries({window, document, HTMLElement: class HTMLElement {}, localStorage: window.localStorage, setTimeout: time.setTimeout, clearTimeout: time.clearTimeout, setInterval: time.setInterval, clearInterval: time.clearInterval})) {
     saved[name] = global[name]; global[name] = value;
   }
-  const counts = {route: 0, detail: 0, summary: 0, announcements: 0};
+  const counts = {route: 0, detail: 0, summary: 0, announcements: 0, mutations: 0};
   const subscriptions = []; let rows = [row()], returnRevision = 0, incoming = [], pendingDetail = [];
   let workspace;
   const data = () => ({rows: rows.map(r => ({...r})), total: rows.length, page: 1, pages: 1, counts: {}, metrics: {today: 0, yesterday: 0, completed: 0, pending: 0, pendingValue: 0, refunds: 0, refundedAmount: 0}, currency: 'USD', timezone: 'UTC', branches: [{id: 'branch', name: 'Branch'}], receiveAllOnline: receiveAll});
@@ -97,12 +97,14 @@ function fixture({receiveAll = false, baseline = false, delayDetail = false} = {
     return {success: true, data: value};
   };
   const failMutation = () => {throw Error('Real financial/order mutations prohibited in fixtures');};
+  // Synthetic success: models Next applying the action's revalidatePath payload 20ms later. No real mutation.
+  const statusAction = async () => {counts.mutations++; rows = rows.map(r => r.id === 'selected' ? {...r, status: 'in_progress', updatedAt: 'v2'} : r); time.setTimeout(() => workspace.update({...workspace.props, data: data()}), 20); return {success: true, data: undefined};};
   const deps = {
     react: hooks, 'react/jsx-runtime': jsx, 'react-dom': {createPortal: child => child}, 'next/link': {default: () => null}, 'next/navigation': {useRouter: () => router},
     'lucide-react': new Proxy({}, {get: () => () => null}), './orders-workspace.module.css': new Proxy({}, {get: (_obj, key) => key}),
     './[id]/return-items-form': {default: function ReturnItemsForm() {}}, './[id]/order-detail-controls': {CancelOrderItem: () => null},
     '@/components/order-print-menu': {default: () => null}, '@/components/order-print-preview': {default: () => null}, '@/components/cancel-order-form': {default: () => null},
-    './order-workspace-actions': {getOrderWorkspaceDetail, changeOrderWorkspaceStatus: failMutation, deleteOrderWorkspaceOrder: failMutation, saveOrderWorkspaceDetails: failMutation},
+    './order-workspace-actions': {getOrderWorkspaceDetail, changeOrderWorkspaceStatus: statusSucceeds ? statusAction : failMutation, deleteOrderWorkspaceOrder: failMutation, saveOrderWorkspaceDetails: failMutation},
     './order-workspace-types': types, '@/lib/currency-format': {formatStoreMoney: () => ''}, '../online-orders/actions': {setIncomingOrderScope: failMutation, updateOnlinePaymentStatus: failMutation},
     '@/lib/supabase/client': {createClient}, '@/lib/supabase/realtime-topic': {realtimeTopic: x => x}, '@/components/online-order-listener': {ORDER_ALERTS_KEY: 'alerts', ORDER_SOUND_KEY: 'sound'},
     '@/lib/orders/workspace-refresh': refreshApi, sonner: {toast: {success() {counts.announcements++;}, error() {}}},
@@ -264,4 +266,24 @@ if (process.env.TENH_PERF_BASELINE) test('paired actual-source fixture request c
   assert.deepEqual(results.map(r => r.before), [{route: 10, detail: 10}, {route: 2, detail: 2}, {route: 1, detail: 1}, {route: 4, detail: 4}]);
   assert.deepEqual(results.map(r => r.after), [{route: 10, detail: 0}, {route: 1, detail: 0}, {route: 1, detail: 1}, {route: 4, detail: 4}]);
   if (process.env.TENH_PERF_REPORT) fs.writeFileSync(process.env.TENH_PERF_REPORT, JSON.stringify({label: 'Synthetic actual-source effect/action counts. Arbitrary 20ms route response scheduling; not measured network latency.', results}, null, 2));
+});
+
+async function measureStatusClick(baseline) {
+  let result;
+  await withFixture(async f => {
+    const panel = renderer(f.orderModule.DetailPanel, component(f.workspace.tree, 'DetailPanel').props);
+    const progress = () => elements(panel.tree, node => node.type === 'button' && Array.isArray(node.props.children) && ['In Progress', 'Updating…', 'Complete'].includes(node.props.children[1]))[0];
+    const initial = {...f.counts};
+    progress().props.onClick(); progress().props.onClick(); await settle();
+    const pendingShown = progress().props.disabled === true;
+    progress().props.onClick(); // A third click while pending must not submit.
+    await f.time.advance(1000); panel.update(component(f.workspace.tree, 'DetailPanel').props); await settle();
+    result = {route: f.counts.route - initial.route, detail: f.counts.detail - initial.detail, mutations: f.counts.mutations - initial.mutations, pendingShown, status: f.detail.status, enabledAfter: progress()?.props.disabled === false};
+  }, {statusSucceeds: true, baseline});
+  return result;
+}
+test('status action shows pending, submits once, and reloads only the affected detail', async () => {
+  const after = await measureStatusClick(false);
+  if (process.env.TENH_PERF_BASELINE) console.log('status click counts', JSON.stringify({before: await measureStatusClick(true), after}));
+  assert.deepEqual(after, {route: 0, detail: 1, mutations: 1, pendingShown: true, status: 'in_progress', enabledAfter: true});
 });
