@@ -2,7 +2,7 @@
 import { printTextScale } from "@/lib/receipts/receipt-model";
 import { preparePrint } from '@/lib/printing/prepare-print';
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, FileDown, Minus, Plus, Printer, X } from "lucide-react";
 
 import { code39BarsExact, validateCode39 } from "@/lib/barcode/code39";
@@ -133,6 +133,16 @@ export default function BarcodeLabelsClient({
 
   const printLock = useRef(false);
   const [printing, setPrinting] = useState(false), [printError, setPrintError] = useState('');
+  // Phones: the Label/PDF preview opens full screen from the bottom bar.
+  const [previewOpen, setPreviewOpen] = useState(false);
+  useEffect(() => {
+    if (!previewOpen) return;
+    const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setPreviewOpen(false); };
+    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setPreviewOpen(false); };
+    window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
+    return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
+  }, [previewOpen]);
   async function printLabels() {
     if (!selectedProducts.length || printLock.current) return;
     if (barcodeErrors.length) { setPrintError("Printing blocked. " + barcodeErrors.join(" ")); return; }
@@ -149,14 +159,18 @@ export default function BarcodeLabelsClient({
   const labelCount = printedLabels.length;
 
   return (
-    <main className="min-w-0 space-y-4 pb-8">
+    <main className="min-w-0 space-y-4 pb-8 max-sm:pb-24">
+      {!previewOpen && <div className="fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 flex justify-center gap-2 px-4 sm:hidden">
+        <button type="button" onClick={() => setPreviewOpen(true)} className="inline-flex min-h-12 items-center gap-2 rounded-full border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-800 shadow-lg">Preview ({labelCount})</button>
+        <button type="button" disabled={!selectedProducts.length || printing || barcodeErrors.length > 0} onClick={printLabels} className="inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg disabled:opacity-50"><Printer size={17} />Print ({selectedProducts.length})</button>
+      </div>}
       <header className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Barcode & Label Printing</h1>
           <p className="mt-1 text-slate-500">Print scan-ready barcode labels for products and exact variants.</p>
         </div>
         <button type="button" disabled={!selectedProducts.length || printing || barcodeErrors.length > 0} onClick={printLabels}
-          className="inline-flex items-center gap-2 self-start rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40">
+          className="inline-flex items-center gap-2 self-start rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40 max-sm:hidden">
           <Printer size={17} />
           Print Selected ({selectedProducts.length})
         </button>
@@ -199,7 +213,8 @@ export default function BarcodeLabelsClient({
           </div>}
         </section>
 
-        <aside className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm 2xl:sticky 2xl:top-4 2xl:self-start">
+        <aside role={previewOpen ? "dialog" : undefined} aria-modal={previewOpen || undefined} aria-label="Label preview" className={`${previewOpen ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-14" : "max-sm:hidden"} min-w-0 overflow-hidden border border-slate-200 bg-white shadow-sm sm:static sm:block sm:overflow-hidden sm:rounded-2xl sm:pt-0 2xl:sticky 2xl:top-4 2xl:self-start`}>
+          {previewOpen && <button type="button" aria-label="Close label preview" onClick={() => setPreviewOpen(false)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-700 sm:hidden"><X size={20} /></button>}
           <div className="grid grid-cols-2 border-b border-slate-200">
             {(["label", "pdf"] as const).map((tab) => (
               <button key={tab} type="button" onClick={() => setPreviewTab(tab)}

@@ -16,6 +16,8 @@ import {
   ShoppingCart,
   TrendingDown,
   TrendingUp,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 import ReportCharts from "./report-charts";
 import { createClient } from "@/lib/supabase/server";
@@ -227,7 +229,7 @@ export default async function ReportsPage({
 
   return (
     <main>
-      <div className="mb-8 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+      <div className="mb-8 flex flex-col justify-between gap-5 max-sm:hidden lg:flex-row lg:items-end">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">
             Reports
@@ -250,7 +252,15 @@ export default async function ReportsPage({
         to={dateRange.endDate}
       />
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <MobileReportFilters
+        branches={branches ?? []}
+        branchId={branch?.id ?? ""}
+        selectedRange={selectedRange}
+        from={dateRange.startDate}
+        to={dateRange.endDate}
+      />
+
+      <div className="mt-6 grid gap-4 max-sm:mt-0 max-sm:grid-cols-4 max-sm:gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           title="Revenue"
           value={formatCurrency(totalRevenue)}
@@ -284,7 +294,7 @@ export default async function ReportsPage({
         />
       </div>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-4 max-sm:mt-2 max-sm:grid-cols-4 max-sm:gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           title="Net Profit"
           value={formatCurrency(netProfit)}
@@ -334,12 +344,12 @@ export default async function ReportsPage({
   />
 </div>
 
-      <div className="mt-5 grid items-start gap-5 xl:grid-cols-2">
+      <div className="mt-5 grid items-start gap-5 max-sm:grid-cols-2 max-sm:gap-2 xl:grid-cols-2">
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold text-slate-900">Payment Breakdown</h2><p className="mt-1 text-sm text-slate-500">Sales value by the recorded payment method</p><DonutBreakdown rows={Object.entries(paymentBreakdown).map(([label,value])=>({label:label.replaceAll("_"," "),value}))}/></section>
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold text-slate-900">Sales by Payment Method</h2><p className="mt-1 text-sm text-slate-500">Completed order count by payment method</p><DonutBreakdown count rows={Object.entries(paymentCounts).map(([label,value])=>({label:label.replaceAll("_"," "),value}))}/></section>
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+      <div className="mt-6 grid gap-6 max-sm:grid-cols-2 max-sm:gap-2 xl:grid-cols-2">
        
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-6 py-5">
@@ -452,6 +462,53 @@ export default async function ReportsPage({
   );
 }
 
+const REPORT_RANGES = [
+  { value: "today", label: "Today" },
+  { value: "yesterday", label: "Yesterday" },
+  { value: "week", label: "This Week" },
+  { value: "month", label: "This Month" },
+  { value: "year", label: "This Year" },
+];
+
+/** Phones: floating Filter button opening a bottom sheet (CSS :target, no client state). */
+function MobileReportFilters({ branches, branchId, selectedRange, from, to }: {
+  branches: { id: string; name: string }[];
+  branchId: string;
+  selectedRange: string;
+  from: string;
+  to: string;
+}) {
+  const branchParam = `&branch=${encodeURIComponent(branchId || "all")}`;
+  return <div className="sm:hidden">
+    <a href="#report-filters" className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg"><SlidersHorizontal size={18} />Filter</a>
+    <div id="report-filters" className="fixed inset-0 z-50 hidden items-end bg-slate-950/40 target:flex">
+      <a href="#" aria-label="Close filters" className="absolute inset-0" />
+      <section role="dialog" aria-modal="true" data-sheet="bottom" aria-labelledby="report-filters-title" className="relative max-h-[90dvh] w-full overflow-y-auto rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-2xl">
+        <div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200" />
+        <div className="mt-4 flex items-start justify-between gap-3">
+          <div><h2 id="report-filters-title" className="text-xl font-bold text-slate-900">Filter Reports</h2><p className="mt-1 text-sm text-slate-500">Select branch and date range</p></div>
+          <a href="#" aria-label="Close filters" className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600"><X size={20} /></a>
+        </div>
+        <div className="mt-5"><ViewBranchSelect branches={branches} branchId={branchId} /></div>
+        <p className="mt-5 text-sm font-semibold text-slate-600">Date Range</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {REPORT_RANGES.map((range) => <Link key={range.value} href={`/dashboard/reports?range=${range.value}${branchParam}`} className={`rounded-full px-4 py-2 text-sm font-semibold ${selectedRange === range.value ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}>{range.label}</Link>)}
+        </div>
+        <NavigationForm className="mt-5">
+          <div className="grid grid-cols-[1fr_1fr] gap-3">
+          <input type="hidden" name="branch" value={branchId || "all"} />
+          <input type="hidden" name="range" value="custom" />
+          <label className="text-sm font-semibold text-slate-600">From<input type="date" name="from" defaultValue={from} required className="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500" /></label>
+          <label className="text-sm font-semibold text-slate-600">To<input type="date" name="to" defaultValue={to} required className="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500" /></label>
+          </div>
+          <button type="submit" className="mt-5 min-h-12 w-full rounded-xl bg-blue-600 font-semibold text-white">Apply</button>
+          <Link href={`/dashboard/reports?${branchParam.slice(1)}`} className="mt-3 grid min-h-12 place-items-center rounded-xl bg-slate-100 font-semibold text-slate-600">Reset</Link>
+        </NavigationForm>
+      </section>
+    </div>
+  </div>;
+}
+
 function ReportFilters({
   branchId, selectedRange,
   from,
@@ -463,31 +520,10 @@ function ReportFilters({
   from: string;
   to: string;
 }) {
-  const ranges = [
-    {
-      value: "today",
-      label: "Today",
-    },
-    {
-      value: "yesterday",
-      label: "Yesterday",
-    },
-    {
-      value: "week",
-      label: "This Week",
-    },
-    {
-      value: "month",
-      label: "This Month",
-    },
-    {
-      value: "year",
-      label: "This Year",
-    },
-  ];
+  const ranges = REPORT_RANGES;
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm max-sm:hidden">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div className="flex flex-wrap gap-2">
           {ranges.map((range) => (
@@ -565,15 +601,15 @@ function SummaryCard({
   smallValue?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-sm:rounded-xl max-sm:p-2">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm text-slate-500">
+        <div className="min-w-0">
+          <p className="text-sm text-slate-500 max-sm:text-[10px] max-sm:leading-tight">
             {title}
           </p>
 
           <p
-            className={`mt-2 font-bold text-slate-900 ${
+            className={`mt-2 break-words font-bold text-slate-900 max-sm:mt-1 max-sm:text-xs ${
               smallValue
                 ? "text-base"
                 : "text-2xl"
@@ -582,13 +618,13 @@ function SummaryCard({
             {value}
           </p>
 
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-slate-500 max-sm:hidden">
             {description}
           </p>
         </div>
 
         <div
-          className={`rounded-xl p-3 ${iconClass}`}
+          className={`rounded-xl p-3 max-sm:hidden ${iconClass}`}
         >
           {icon}
         </div>

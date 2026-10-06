@@ -11,6 +11,7 @@ import {
   Package,
   Plus,
   Search,
+  SlidersHorizontal,
   Star,
   Store,
   Trash2,
@@ -18,7 +19,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { FormEvent, useMemo, useState, useTransition } from "react";
+import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -117,6 +118,15 @@ export default function BranchesClient({
   const [modal, setModal] = useState<ModalState>(null);
   const [notice, setNotice] = useState<BranchActionResult | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  // Phones: search/filters open as a bottom sheet from a floating Filter button.
+  const [filterOpen, setFilterOpen] = useState(false);
+  useEffect(() => {
+    if (!filterOpen) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setFilterOpen(false); };
+    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setFilterOpen(false); };
+    window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
+    return () => { window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
+  }, [filterOpen]);
 
   const activeBranches = branches.filter((branch) => branch.isActive);
   const inactiveBranches = branches.filter((branch) => !branch.isActive);
@@ -233,8 +243,10 @@ export default function BranchesClient({
 
   return (
     <>
+      {!filterOpen && <button type="button" onClick={() => setFilterOpen(true)} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-800 shadow-lg sm:hidden"><SlidersHorizontal size={17} />Filter</button>}
+      {filterOpen && <button type="button" aria-label="Close branch filters" onClick={() => setFilterOpen(false)} className="fixed inset-0 z-40 bg-slate-950/40 sm:hidden" />}
       <div className="space-y-5">
-        <header className="space-y-1">
+        <header className="space-y-1 max-sm:hidden">
           <div className="text-xs font-medium text-slate-500">Settings &gt; Branches</div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Branches</h1>
           <p className="text-sm text-slate-500">
@@ -255,7 +267,7 @@ export default function BranchesClient({
           </div>
         ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 max-sm:grid-cols-4 max-sm:gap-2 sm:grid-cols-2 xl:grid-cols-5">
           <SummaryCard
             icon={<Building2 size={20} />}
             label="Total Branches"
@@ -291,6 +303,7 @@ export default function BranchesClient({
             sublabel="Primary location"
             tone="amber"
             compact
+            phoneHidden
           />
         </div>
 
@@ -330,13 +343,14 @@ export default function BranchesClient({
               type="button"
               onClick={() => setCreateOpen(true)}
               disabled={isPending || branchCapacity.locked || branchCapacity.used >= branchCapacity.limit}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 max-sm:fixed max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:right-4 max-sm:z-40 max-sm:h-12 max-sm:rounded-full max-sm:shadow-lg"
             >
               <Plus size={18} /> {branchCapacity.locked || branchCapacity.used >= branchCapacity.limit ? 'Not available branch' : 'Add Branch'}
             </button>
           </div>
 
-          <div className="grid gap-3 border-b border-slate-100 px-4 py-4 lg:grid-cols-[minmax(240px,1fr)_170px_180px_180px]">
+          <div role={filterOpen ? "dialog" : undefined} aria-modal={filterOpen || undefined} aria-label="Branch filters" data-sheet="bottom" className={`${filterOpen ? "fixed inset-x-0 bottom-0 z-50 rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-14 shadow-2xl" : "max-sm:hidden"} grid gap-3 border-b border-slate-100 sm:static sm:rounded-none sm:px-4 sm:py-4 sm:shadow-none lg:grid-cols-[minmax(240px,1fr)_170px_180px_180px]`}>
+            {filterOpen && <button type="button" aria-label="Close branch filters" onClick={() => setFilterOpen(false)} className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600 sm:hidden"><X size={20} /></button>}
             <label className="relative">
               <Search
                 size={17}
@@ -412,9 +426,9 @@ export default function BranchesClient({
                   key={branch.id}
                   className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
                 >
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="flex flex-col gap-4 max-sm:flex-row max-sm:items-center max-sm:justify-between xl:flex-row xl:items-start xl:justify-between">
                     <div className="flex min-w-0 gap-4">
-                      <div className="relative flex h-24 w-28 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-slate-100 via-white to-blue-50 text-blue-600 shadow-inner">
+                      <div className="relative flex h-24 w-28 shrink-0 items-center justify-center overflow-hidden rounded-2xl max-sm:hidden bg-gradient-to-br from-slate-100 via-white to-blue-50 text-blue-600 shadow-inner">
                         <Building2 size={34} />
                         {branch.isDefault ? (
                           <span className="absolute left-2 top-2 rounded-lg bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white">
@@ -438,13 +452,13 @@ export default function BranchesClient({
                         </p>
 
                         {locationLine(branch) ? (
-                          <div className="flex items-start gap-1.5 text-sm text-slate-600">
+                          <div className="flex items-start gap-1.5 text-sm text-slate-600 max-sm:hidden">
                             <MapPin size={15} className="mt-0.5 shrink-0" />
                             <span>{locationLine(branch)}</span>
                           </div>
                         ) : null}
 
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-2 max-sm:hidden">
                           <InlineStat
                             icon={<UserRound size={14} />}
                             value={branch.managerName || "No manager assigned"}
@@ -475,7 +489,7 @@ export default function BranchesClient({
                         onClick={() => setModal({ type: "view", branch })}
                         className="inline-flex h-10 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-700 hover:bg-blue-100"
                       >
-                        View Details
+                        View<span className="max-sm:hidden">&nbsp;Details</span>
                       </button>
                       <button
                         type="button"
@@ -547,7 +561,7 @@ export default function BranchesClient({
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-2 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-5">
+                  <div className="mt-4 grid gap-2 border-t border-slate-100 pt-4 max-sm:hidden sm:grid-cols-2 xl:grid-cols-5">
                     <MetricCard
                       icon={<Store size={16} />}
                       label="Today&apos;s Sales"
@@ -958,6 +972,7 @@ function SummaryCard({
   sublabel,
   tone,
   compact = false,
+  phoneHidden = false,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -965,6 +980,7 @@ function SummaryCard({
   sublabel: string;
   tone: "blue" | "green" | "amber" | "violet";
   compact?: boolean;
+  phoneHidden?: boolean;
 }) {
   const toneClass =
     tone === "green"
@@ -975,20 +991,20 @@ function SummaryCard({
           ? "bg-violet-50 text-violet-600"
           : "bg-blue-50 text-blue-600";
   return (
-    <div className="flex min-h-28 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className={`flex min-h-28 min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm max-sm:min-h-0 max-sm:rounded-xl max-sm:p-2 ${phoneHidden ? "max-sm:hidden" : ""}`}>
       <span
-        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${toneClass}`}
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl max-sm:hidden ${toneClass}`}
       >
         {icon}
       </span>
       <div className="min-w-0">
-        <p className="text-xs font-medium text-slate-500">{label}</p>
+        <p className="text-xs font-medium text-slate-500 max-sm:text-[10px] max-sm:leading-tight">{label}</p>
         <p
-          className={`${compact ? "truncate text-xl" : "text-2xl"} mt-0.5 font-bold text-slate-950`}
+          className={`${compact ? "truncate text-xl" : "text-2xl"} mt-0.5 break-words font-bold text-slate-950 max-sm:text-xs`}
         >
           {value}
         </p>
-        <p className="mt-1 text-xs text-slate-500">{sublabel}</p>
+        <p className="mt-1 text-xs text-slate-500 max-sm:hidden">{sublabel}</p>
       </div>
     </div>
   );

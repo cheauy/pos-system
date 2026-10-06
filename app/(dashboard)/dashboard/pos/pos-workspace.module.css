@@ -135,3 +135,16 @@
 }
 /* Phones: search, grid/list toggle and Filters stay on one row (Filters shows its icon only). */
 @media screen and (max-width:800px){.searchRow{flex-wrap:nowrap;gap:8px}.searchRow>.searchInput{flex:1 1 auto;flex-basis:auto;min-width:0}.searchRow>.viewToggle{margin-left:0;flex-shrink:0}.searchRow>.button{flex-shrink:0;gap:0;padding-inline:12px;font-size:0}.searchInput kbd{display:none}.searchInput input{min-width:0;flex:1 1 auto}.searchInput .searchScan{flex-shrink:0;gap:0;font-size:0;padding-inline:8px}}
+/* Phones: bottom-sheet filters, always-floating View order bar, round favourite, stacked order types, full-width Hold. */
+.sheetBackdrop,.sheetClose{display:none}
+@media screen and (max-width:800px){
+.cartBar{position:fixed;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));width:auto;margin:0;z-index:30}
+.catalogColumn{padding-bottom:84px}
+.extraFilters{position:fixed;inset:auto 0 0 0;z-index:50;margin:0;display:grid;grid-template-columns:1fr;gap:12px;padding:60px 18px max(18px,env(safe-area-inset-bottom));background:var(--panel,#fff);border:0;border-radius:24px 24px 0 0;box-shadow:0 -10px 40px rgb(15 23 42/.25)}
+.extraFilters label{display:grid;gap:4px}.extraFilters select{width:100%}
+.sheetBackdrop{display:block;position:fixed;inset:0;z-index:45;border:0;background:rgb(15 23 42/.4)}
+.sheetClose{display:grid;place-items:center;position:absolute;right:12px;top:12px;width:44px;height:44px;border:0;border-radius:50%;background:#f1f5f9;color:#334155}
+.favorite{width:34px;height:34px;min-height:0!important;padding:0;border-radius:50%}
+.guestCustomerChoices{grid-template-columns:1fr}
+.checkoutButtons{grid-template-columns:1fr}
+}

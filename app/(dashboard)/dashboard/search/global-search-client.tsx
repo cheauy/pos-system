@@ -16,6 +16,7 @@ import {
   Search,
   Settings,
   ShoppingBag,
+  SlidersHorizontal,
   Truck,
   UserRound,
   Users,
@@ -184,6 +185,15 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sort, setSort] = useState("relevant");
+  // Phones: Filter Results opens as a bottom sheet from the button beside the search bar.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setFiltersOpen(false); };
+    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setFiltersOpen(false); };
+    window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
+    return () => { window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
+  }, [filtersOpen]);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -326,7 +336,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
     <main className="mx-auto w-full max-w-[1550px] space-y-5 pb-10">
       <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 max-sm:hidden">
             <Search size={23} />
           </span>
           <div>
@@ -344,7 +354,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
       </section>
 
       <section className="space-y-3">
-        <form onSubmit={submit} className="flex flex-col gap-3 sm:flex-row">
+        <form onSubmit={submit} className="flex gap-3 max-sm:gap-2">
           <div className="relative min-w-0 flex-1">
             <Search size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -373,10 +383,11 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
             ) : null}
             <div className="absolute right-1 top-1/2 -translate-y-1/2"><OrderQrScanner/></div>
           </div>
+          <button type="button" onClick={() => setFiltersOpen(true)} aria-label="Filter results" className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm sm:hidden"><SlidersHorizontal size={18} /></button>
         </form>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-          <span>Try searching:</span>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 max-sm:-mx-1 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-1 max-sm:pb-1 max-sm:[scrollbar-width:none]">
+          <span className="max-sm:hidden">Try searching:</span>
           {suggestions.map((suggestion) => (
             <button
               type="button"
@@ -385,7 +396,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
                 setQuery(suggestion);
                 void searchNow(suggestion);
               }}
-              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 font-medium text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+              className="shrink-0 whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 font-medium text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
             >
               {suggestion}
             </button>
@@ -400,7 +411,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
         </div>
       ) : null}
 
-      <section className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 dark:border-slate-800 dark:bg-slate-900">
+      <section className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm max-sm:hidden sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 dark:border-slate-800 dark:bg-slate-900">
         {groups.map((group) => {
           const count = group.key === "all" ? response.results.length : resultCount(response.results, group.kinds);
           const active = activeGroup === group.key;
@@ -428,7 +439,9 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
       </section>
 
       <section className="grid min-h-[560px] gap-4 xl:grid-cols-[300px_minmax(0,1fr)_360px]">
-        <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        {filtersOpen ? <button type="button" aria-label="Close filters" onClick={() => setFiltersOpen(false)} className="fixed inset-0 z-40 bg-slate-950/40 sm:hidden" /> : null}
+        <aside role={filtersOpen ? "dialog" : undefined} aria-modal={filtersOpen || undefined} aria-label="Filter results" data-sheet="bottom" className={`${filtersOpen ? "fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto rounded-t-3xl pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-14" : "max-sm:hidden"} rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:static sm:max-h-none sm:overflow-visible dark:border-slate-800 dark:bg-slate-900`}>
+          {filtersOpen ? <button type="button" aria-label="Close filter results" onClick={() => setFiltersOpen(false)} className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600 sm:hidden"><X size={20} /></button> : null}
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-slate-900 dark:text-white">Filter Results</h2>
             <button type="button" onClick={clearFilters} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Clear all</button>
@@ -514,7 +527,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
 
         <aside className="flex min-h-[560px] flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           {selected ? <ResultDetail result={selected} /> : <SelectResultPanel />}
-          <SearchTips />
+          <div className="max-sm:hidden"><SearchTips /></div>
         </aside>
       </section>
     </main>
@@ -546,7 +559,7 @@ function EmptyResults({ title, text }: { title: string; text: string }) {
 }
 
 function SelectResultPanel() {
-  return <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl bg-slate-50/70 px-6 text-center dark:bg-slate-950/50"><Search size={45} className="text-slate-400" /><h3 className="mt-4 font-bold text-slate-900 dark:text-white">Select a result</h3><p className="mt-1 text-sm leading-6 text-slate-500">Choose an item from the search results to see more details here.</p></div>;
+  return <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl max-sm:hidden bg-slate-50/70 px-6 text-center dark:bg-slate-950/50"><Search size={45} className="text-slate-400" /><h3 className="mt-4 font-bold text-slate-900 dark:text-white">Select a result</h3><p className="mt-1 text-sm leading-6 text-slate-500">Choose an item from the search results to see more details here.</p></div>;
 }
 
 function ResultDetail({ result }: { result: GlobalSearchResult }) {

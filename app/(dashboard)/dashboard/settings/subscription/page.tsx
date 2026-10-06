@@ -21,6 +21,7 @@ import {
   UserPlus,
   UsersRound,
   Wallet,
+  X,
 } from "lucide-react";
 
 import LogoutButton from "@/components/logout-button";
@@ -299,6 +300,8 @@ export default async function SubscriptionSettingsPage({
 
   return (
     <main className="mx-auto w-full max-w-[1540px] space-y-4 pb-10">
+      {/* Phones: Billing History opens full screen from this button (CSS :target). */}
+      <div className="flex justify-end sm:hidden"><a href="#billing-history" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm"><History size={17} />Billing History</a></div>
       {params.quote === "requested" ? (
         <Notice tone="blue">
           Custom Team quote requested. TENH can set the monthly price in Super Admin; payment becomes available after the quote is created.
@@ -515,6 +518,8 @@ export default async function SubscriptionSettingsPage({
             )}
           </section>
 
+          <div id="billing-history" className="max-sm:!m-0 max-sm:fixed max-sm:inset-0 max-sm:z-50 max-sm:hidden max-sm:overflow-y-auto max-sm:overscroll-contain max-sm:bg-slate-100 max-sm:p-3 max-sm:pt-16 max-sm:target:block">
+          <a href="#" aria-label="Close billing history" className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-xl bg-white text-slate-700 shadow sm:hidden"><X size={20} /></a>
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <SectionHeader
               icon={<History size={19} />}
@@ -564,9 +569,10 @@ export default async function SubscriptionSettingsPage({
               </div>
             )}
           </section>
+          </div>
         </div>
 
-        <aside className="space-y-4">
+        <aside className="space-y-4 max-sm:hidden">
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <SectionHeader
               icon={<UsersRound size={19} />}

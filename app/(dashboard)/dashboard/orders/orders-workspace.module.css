@@ -345,3 +345,22 @@
 }
 @media screen and (max-width:1100px){.header{flex-wrap:wrap}.header>div:first-child{flex:1 1 100%;min-width:0}.headerActions{flex-wrap:wrap}}
 @media screen and (max-width:640px){.hidePhone{display:none!important}}
+.sheetBackdrop,.sheetClose{display:none}
+@media screen and (max-width:640px){.filterPanel:not([hidden]){position:fixed;inset:auto 0 0 0;z-index:50;margin:0;grid-template-columns:1fr;gap:12px;padding:60px 18px max(18px,env(safe-area-inset-bottom));background:var(--panel,#fff);border:0;border-radius:24px 24px 0 0;box-shadow:0 -10px 40px rgb(15 23 42/.25)}.filterPanel select{width:100%}.sheetBackdrop{display:block;position:fixed;inset:0;z-index:45;border:0;background:rgb(15 23 42/.4)}.sheetClose{display:grid;place-items:center;position:absolute;right:12px;top:12px;width:44px;height:44px;border:0;border-radius:50%;background:#f1f5f9;color:#334155}}
+/* Phones: one action row and spaced order cards with icons. */
+.phoneIcon{display:none}
+@media screen and (max-width:640px){
+.headerActions{flex-wrap:nowrap!important;width:100%}.headerActions>button:last-of-type{margin-left:auto}.table td:nth-child(2) button{text-align:left}.table td:nth-child(2){justify-self:start}.table td:nth-child(5){justify-self:start}.headerActions{gap:5px!important}.headerActions .button{padding:0 7px;font-size:.75rem;white-space:nowrap}.table td:nth-child(11){justify-self:end}.table td:nth-child(2) button{white-space:nowrap}
+.tableCard{background:transparent;border:0;overflow:visible}
+.table tbody{display:grid;gap:12px}
+.table tbody tr{grid-template-columns:24px auto minmax(0,1fr) auto;grid-template-areas:"chk id id act" "cust cust cust total" "cust cust cust pay" "items items src src" "status status date branch";gap:10px 14px;padding:16px;background:var(--surface,#fff);border:1px solid var(--line)!important;border-radius:16px;box-shadow:0 2px 10px rgb(15 23 42/.05)}
+.table td:nth-child(4){grid-area:items}.table td:nth-child(5){grid-area:src}.table td:nth-child(6){grid-area:pay;justify-self:end}.table td:nth-child(8){grid-area:status}.table td:nth-child(9){grid-area:date}.table td:nth-child(10){grid-area:branch;justify-self:end}
+.table td:nth-child(4),.table td:nth-child(10){display:flex;align-items:center;gap:6px;font-size:0.875rem}
+.table td:nth-child(5){padding-left:14px!important;border-left:1px solid var(--line)!important;font-size:0.875rem}
+.table td:nth-child(9){display:grid;grid-template-columns:auto auto;column-gap:8px;align-items:center;font-size:0.875rem}.table td:nth-child(9) svg{grid-row:span 2}
+.table td:nth-child(7){font-size:1.25rem;font-weight:800}
+.table td:nth-child(3) span{font-size:1rem;font-weight:700}
+.table td:nth-child(2) button{font-size:1.0625rem;font-weight:800}
+.phoneIcon{display:inline-block;flex-shrink:0;color:#64748b}
+}
+@media(max-width:520px){.odToolbar{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:4px}.odTool{min-height:52px;padding:6px 2px;font-size:.625rem}.odToolbar>*>button{width:100%;height:100%}}

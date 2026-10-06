@@ -60,6 +60,16 @@ const PAGE_SIZE = 15;
 export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace}) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  // Phones: Add Supplier and Supplier Details open as full-screen sheets.
+  const [sheet, setSheet] = useState<"add" | "detail" | null>(null);
+  useEffect(() => {
+    if (!sheet) return;
+    const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !document.querySelector("dialog[open]")) setSheet(null); };
+    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setSheet(null); };
+    window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
+    return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
+  }, [sheet]);
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [editingBusy, setEditingBusy] = useState(false);
@@ -155,7 +165,10 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
       ) : null}
 
       <section className="grid items-start gap-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
-        <AddSupplierPanel />
+        <div role={sheet === "add" ? "dialog" : undefined} aria-modal={sheet === "add" || undefined} aria-label="Add supplier" className={`${sheet === "add" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-100 p-3 pt-16" : "max-sm:hidden"} sm:contents`}>
+          {sheet === "add" && <button type="button" aria-label="Close add supplier" onClick={() => setSheet(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-white text-slate-700 shadow sm:hidden"><X size={20} /></button>}
+          <AddSupplierPanel />
+        </div>
 
         <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-4 py-4">
@@ -167,8 +180,8 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
                 <p className="text-sm text-slate-500">View and manage your suppliers.</p>
               </div>
 
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <label className="relative min-w-0 sm:w-64">
+              <div className="flex flex-row gap-2">
+                <label className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
                   <Search
                     size={16}
                     className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -229,7 +242,7 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
                     return (
                       <tr
                         key={supplier.id}
-                        onClick={() => setSelectedSupplierId(supplier.id)}
+                        onClick={() => { setSelectedSupplierId(supplier.id); if (window.matchMedia("(max-width: 639px)").matches) setSheet("detail"); }}
                         className={`cursor-pointer transition hover:bg-slate-50 ${
                           isSelected ? "bg-blue-50/60" : "bg-white"
                         }`}
@@ -304,12 +317,16 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
           </div>
         </div>
 
+        <div role={sheet === "detail" ? "dialog" : undefined} aria-modal={sheet === "detail" || undefined} aria-label="Supplier details" className={`${sheet === "detail" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-100 p-3 pt-16" : "max-sm:hidden"} sm:contents`}>
+        {sheet === "detail" && <button type="button" aria-label="Close supplier details" onClick={() => setSheet(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-white text-slate-700 shadow sm:hidden"><X size={20} /></button>}
         <SupplierDetailsPanel
-          onEdit={() => selectedSupplier && setEditing(selectedSupplier)}
+          onEdit={() => { setSheet(null); if (selectedSupplier) setEditing(selectedSupplier); }}
           supplier={selectedSupplier}
           metric={selectedSupplier ? metrics.get(selectedSupplier.id) ?? emptyMetric : emptyMetric}
         />
+        </div>
       </section>
+      {!sheet && <button type="button" onClick={() => setSheet("add")} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg sm:hidden"><Plus size={18} />Add Supplier</button>}
     </main>
   );
 }

@@ -5,7 +5,7 @@ import { usePagedWorkspace } from "@/lib/use-paged-workspace";
 import { loadPurchaseOrders, type PurchaseWorkspace } from "./list-actions";
 import OrderWorkflow from "./order-workflow";
 import NewOrderDialog from "./new-order-dialog";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   CheckCircle2,
@@ -133,6 +133,16 @@ export default function PurchaseOrdersClient({
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(true);
+  // Phones: purchase order details open as a full-screen sheet.
+  const [detailOpen, setDetailOpen] = useState(false);
+  useEffect(() => {
+    if (!detailOpen) return;
+    const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !document.querySelector("dialog[open]")) setDetailOpen(false); };
+    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setDetailOpen(false); };
+    window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
+    return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
+  }, [detailOpen]);
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(openNew);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -183,7 +193,7 @@ export default function PurchaseOrdersClient({
           <button
             type="button"
             onClick={() => setFiltersOpen((open) => !open)}
-            className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 max-sm:hidden"
           >
             <Filter size={17} />
             Filters
@@ -191,7 +201,7 @@ export default function PurchaseOrdersClient({
           {canCreate ? (
             <button
               type="button" onClick={() => setCreating(true)}
-              className="inline-flex h-11 items-center gap-2 rounded-xl bg-teal-700 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800"
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-teal-700 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 max-sm:fixed max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:right-4 max-sm:z-40 max-sm:h-12 max-sm:rounded-full max-sm:shadow-lg"
             >
               <Plus size={18} />
               New Purchase Order
@@ -213,8 +223,8 @@ export default function PurchaseOrdersClient({
         <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           {filtersOpen && (
             <div className="border-b border-slate-200 bg-white p-3">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 2xl:grid-cols-[minmax(160px,1.5fr)_minmax(110px,.8fr)_minmax(110px,.8fr)_minmax(220px,1.3fr)_minmax(110px,.8fr)]">
-                <label className="relative block">
+              <div className="grid grid-cols-6 gap-2 sm:grid-cols-2 2xl:grid-cols-[minmax(160px,1.5fr)_minmax(110px,.8fr)_minmax(110px,.8fr)_minmax(220px,1.3fr)_minmax(110px,.8fr)]">
+                <label className="relative col-span-2 block max-sm:order-4 sm:col-span-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input
                     value={search}
@@ -227,7 +237,7 @@ export default function PurchaseOrdersClient({
                 <select
                   value={supplierFilter}
                   onChange={(event) => { setSupplierFilter(event.target.value); setPage(1); }}
-                  className={selectClass}
+                  className={`${selectClass} col-span-2 min-w-0 max-sm:text-xs sm:col-span-1`}
                 >
                   <option value="all">All Suppliers</option>
                   {suppliers.map((supplier) => (
@@ -240,7 +250,7 @@ export default function PurchaseOrdersClient({
                 <select
                   value={statusFilter}
                   onChange={(event) => { setStatusFilter(event.target.value as StatusFilter); setPage(1); }}
-                  className={selectClass}
+                  className={`${selectClass} col-span-2 min-w-0 max-sm:text-xs sm:col-span-1`}
                 >
                   <option value="all">All Statuses</option>
                   <option value="draft">Draft</option>
@@ -250,7 +260,7 @@ export default function PurchaseOrdersClient({
                   <option value="cancelled">Cancelled</option>
                 </select>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="col-span-4 grid grid-cols-2 gap-2 max-sm:order-5 sm:col-span-1">
                   <label className="relative">
                     <CalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                     <input
@@ -273,7 +283,7 @@ export default function PurchaseOrdersClient({
                 <select
                   value={sortMode}
                   onChange={(event) => { setSortMode(event.target.value as SortMode); setPage(1); }}
-                  className={selectClass}
+                  className={`${selectClass} col-span-2 min-w-0 max-sm:text-xs sm:col-span-1`}
                 >
                   <option value="newest">Newest first</option>
                   <option value="oldest">Oldest first</option>
@@ -320,6 +330,7 @@ export default function PurchaseOrdersClient({
                       onClick={() => {
                         setSelectedId(order.id);
                         setDetailTab("overview");
+                        if (window.matchMedia("(max-width: 639px)").matches) setDetailOpen(true);
                       }}
                       className={`cursor-pointer transition ${
                         active
@@ -408,6 +419,8 @@ export default function PurchaseOrdersClient({
           </div>
         </section>
 
+        <div role={detailOpen ? "dialog" : undefined} aria-modal={detailOpen || undefined} aria-label="Purchase order details" className={`${detailOpen ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-100 p-3 pt-16" : "max-sm:hidden"} sm:contents`}>
+        {detailOpen && <button type="button" aria-label="Close purchase order details" onClick={() => setDetailOpen(false)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-white text-slate-700 shadow sm:hidden"><X size={20} /></button>}
         <PurchaseOrderDetails
           order={selectedOrder}
           supplier={selectedSupplier}
@@ -415,6 +428,7 @@ export default function PurchaseOrdersClient({
           onTabChange={setDetailTab}
           canUpdate={canUpdate}
         />
+        </div>
       </div>
     </main>
   );

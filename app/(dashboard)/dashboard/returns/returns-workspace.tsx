@@ -12,6 +12,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  SlidersHorizontal,
   X,
   XCircle,
 } from "lucide-react";
@@ -72,7 +73,7 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
   const [selectedId, setSelectedId] = useState(initialRecords[0]?.id ?? null);
   const [message, setMessage] = useState<string | null>(null);
   // Phones: detail and stats open as full-screen sheets.
-  const [sheet, setSheet] = useState<"detail" | "stats" | null>(null);
+  const [sheet, setSheet] = useState<"detail" | "stats" | "filter" | null>(null);
   useEffect(() => {
     if (!sheet) return;
     const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
@@ -157,13 +158,20 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
 
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0 space-y-4">
-          <div className="grid grid-cols-[minmax(0,1fr)_6.75rem_6.75rem] gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:grid-cols-1 md:grid-cols-[minmax(220px,1fr)_160px_160px]">
+          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:grid-cols-1 md:grid-cols-[minmax(220px,1fr)_160px_160px]">
             <label className="relative">
               <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder="Search returns, customers, orders…" className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-blue-400" />
+              <input value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder="Search returns, customers, orders…" className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-blue-400 max-sm:pr-11" />
+              <button type="button" aria-label="Open filters" onClick={() => setSheet("filter")} className="absolute right-1 top-1/2 grid h-8 w-9 -translate-y-1/2 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 sm:hidden"><SlidersHorizontal size={17} /></button>
             </label>
+            {/* Phones: date range opens as a bottom sheet. */}
+            {sheet === "filter" && <button type="button" aria-label="Close filters" onClick={() => setSheet(null)} className="fixed inset-0 z-40 bg-slate-950/40 sm:hidden" />}
+            <div role={sheet === "filter" ? "dialog" : undefined} aria-modal={sheet === "filter" || undefined} aria-label="Return filters" data-sheet="bottom" className={`${sheet === "filter" ? "fixed inset-x-0 bottom-0 z-50 grid gap-3 rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-2xl" : "max-sm:hidden"} sm:contents`}>
+            {sheet === "filter" && <div className="sm:hidden"><div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200" /><div className="mt-4 flex items-center justify-between"><h2 className="text-xl font-bold text-slate-900">Filter Returns</h2><button type="button" aria-label="Close filters" onClick={() => setSheet(null)} className="grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600"><X size={20} /></button></div></div>}
             <input type="date" aria-label="From date" value={fromDate} onChange={(event) => { setFromDate(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
             <input type="date" aria-label="To date" value={toDate} onChange={(event) => { setToDate(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
+            {sheet === "filter" && <button type="button" onClick={() => setSheet(null)} className="min-h-12 rounded-xl bg-blue-600 font-semibold text-white sm:hidden">Apply</button>}
+            </div>
           </div>
 
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -208,7 +216,8 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
           </div>
         </section>
 
-        <aside role={sheet === "detail" ? "dialog" : undefined} aria-modal={sheet === "detail" || undefined} aria-label="Return details" className={`${sheet === "detail" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain pt-12" : "hidden"} rounded-none border border-slate-200 bg-white shadow-sm sm:static sm:h-fit sm:block sm:rounded-2xl sm:pt-0 2xl:sticky 2xl:top-4`}>
+        {sheet === "detail" && <button type="button" aria-label="Close return details" onClick={() => setSheet(null)} className="fixed inset-0 z-40 bg-slate-950/40 sm:hidden" />}
+        <aside role={sheet === "detail" ? "dialog" : undefined} aria-modal={sheet === "detail" || undefined} aria-label="Return details" data-sheet="right" className={`${sheet === "detail" ? "fixed inset-y-0 right-0 z-50 w-[88%] max-w-sm overflow-y-auto overscroll-contain pt-12 shadow-2xl" : "hidden"} rounded-none border border-slate-200 bg-white shadow-sm sm:static sm:h-fit sm:block sm:rounded-2xl sm:pt-0 2xl:sticky 2xl:top-4`}>
           {sheet === "detail" && sheetClose("Close return details")}
           {!selected ? <div className="p-10 text-center text-sm text-slate-400">Select a return to view details.</div> : <ReturnDetail key={selected.id} record={selected} accentColor={accentColor} canCancel={canCancel} />}
         </aside>

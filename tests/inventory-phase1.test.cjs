@@ -196,11 +196,11 @@ test('scanner fixtures are accepted by the actual POS scan callback, retaining l
 test('invalid selected labels disable every print entry and never prepare or print, including a mixed selection', async () => {
   for(const invalid of ['bad_code',' SKU1 ','   ']) {
   let cursor=0, preparations=0;const states=[];
-  const react={useState:initial=>{const k=cursor++;if(!(k in states))states[k]=k===0?['valid','legacy']:initial;return[states[k],value=>{states[k]=value;}];},useMemo:fn=>fn(),useRef:value=>({current:value})};
+  const react={useState:initial=>{const k=cursor++;if(!(k in states))states[k]=k===0?['valid','legacy']:initial;return[states[k],value=>{states[k]=value;}];},useMemo:fn=>fn(),useRef:value=>({current:value}),useEffect:()=>{}};
   const Client=loadTs('app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx',{...labelDeps,react,'@/lib/printing/prepare-print':{preparePrint:()=>{preparations++;throw Error('must not prepare');}}}).default;
   const props={products:[{id:'valid',name:'Good',barcode:'000123',sku:'GOOD',selling_price:1},{id:'legacy',name:'Legacy',barcode:invalid,sku:'BAD',selling_price:1}],categories:[],settings:{},businessName:'Fixture'};
   const tree=Client(props);const buttons=nodes(tree).filter(node=>node.type==='button'&&node.props.onClick?.constructor.name==='AsyncFunction');
-  assert.equal(buttons.length,3);for(const button of buttons){assert.equal(button.props.disabled,true);await button.props.onClick();}
+  assert.equal(buttons.length,4);for(const button of buttons){assert.equal(button.props.disabled,true);await button.props.onClick();}
   assert.equal(preparations,0);assert.ok(states.some(value=>typeof value==='string'&&value.includes('Printing blocked')));
   assert.ok(nodes(tree).find(node=>node.props?.id==='barcode-print-area').props.children===false);
   }

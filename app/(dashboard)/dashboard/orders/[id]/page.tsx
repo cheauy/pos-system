@@ -51,6 +51,9 @@ export default async function OrderDetailsPage({params,searchParams}:{params:Pro
  const visibleStatus=['online','qr'].includes(order.order_source || '') && ['preparing','ready'].includes(order.online_status || '') && order.status==='pending'?'in_progress':order.status;
  const paymentStatus=orderPaymentStatusLabel(order);
  const balance=orderBalanceDue(order),balanceText=balance==null?'Unavailable':cash(balance);
+ // Courier chosen at checkout (same mapping as the shipping label).
+ const shipping=original?.shipping ?? order.pos_checkout?.shipping;const carrier=(shipping?.carrier || '').trim().toLowerCase();
+ const shippingType=carrier==='other'?shipping?.carrierOther?.trim() || 'Other':({jt:'J&T',vet:'VET',grab:'Grab'} as Record<string,string>)[carrier] || (shipping?.carrier || '').trim();
  const fulfillment=orderType(order);const source=order.order_source==='qr'?'Table QR':order.order_source==='online'?'Online Store':'POS';
  const actor=order.pos_checkout?.createdBy;let cashier=original?.cashierName || 'Not recorded';
  if(actor && !original?.cashierName){const member=await db.from('business_members').select('user_id').eq('business_id',business.id).eq('user_id',actor).maybeSingle();if(member.data){const profile=await db.from('profiles').select('full_name').eq('id',actor).maybeSingle();cashier=profile.data?.full_name || cashier;}}
@@ -64,13 +67,13 @@ export default async function OrderDetailsPage({params,searchParams}:{params:Pro
  const cancelNow=canCancel || (ownBranch && allowCancel && online && ['new','accepted','preparing','ready'].includes(order.online_status || 'new') && !['completed','cancelled','refunded'].includes(order.status));
  return <main className={s.page}>
  {scanned && ownBranch && allowEdit && ['new','pending'].includes(order.status) && <ScannedOrderComplete id={id} number={order.order_number} businessId={business.id} updatedAt={order.updated_at}/>}
- <header className={s.header}><div><Link className={s.back} href="/dashboard/orders"><ArrowLeft size={15}/>Back to orders</Link><h1>Order Details</h1><p>View customer, products and payment information.</p></div><div className={s.headerActions}>
- <OrderPrintMenu orderId={id} className={s.button}/>
- <OrderMoreActions id={id} businessId={business.id} updatedAt={order.updated_at} canEdit={ownBranch && allowEdit} note={order.customer_note || ''}/>
+ <header className={s.header}><div className={s.phoneHide}><Link className={s.back} href="/dashboard/orders"><ArrowLeft size={15}/>Back to orders</Link><h1>Order Details</h1><p>View customer, products and payment information.</p></div><div className={s.headerActions}>
+ <div className={s.phoneHide}><OrderPrintMenu orderId={id} className={s.button}/>
+ <OrderMoreActions id={id} businessId={business.id} updatedAt={order.updated_at} canEdit={ownBranch && allowEdit} note={order.customer_note || ''}/></div>
  {canReturn && <ReturnItemsForm orderId={id} orderNumber={order.order_number} items={returnable} triggerClassName={`${s.button} ${s.buttonReturn}`}/>}
  {cancelNow && <CancelOrderForm orderId={id} orderNumber={order.order_number} businessId={business.id} online={online} className={`${s.button} ${s.buttonCancel}`}/>}
  </div></header>
- <section className={s.metrics}>
+ <section className={`${s.metrics} ${s.phoneHide}`}>
  <Metric tone="blue" icon={<ReceiptText/>} label="Order number"><strong>{order.order_number}</strong><CopyOrderNumber value={order.order_number}/></Metric>
  <Metric tone="green" icon={<CheckCircle2/>} label="Status"><Badge value={visibleStatus}/></Metric>
  <Metric tone="blue" icon={<CreditCard/>} label="Payment"><strong>{paymentName(order)}</strong><PayBadge value={paymentStatus}/></Metric>
@@ -79,8 +82,9 @@ export default async function OrderDetailsPage({params,searchParams}:{params:Pro
  <OrderProgressBanner id={id} updatedAt={order.updated_at} businessId={business.id} status={visibleStatus} source={order.order_source} onlineStatus={order.online_status} fulfillment={fulfillment} canAdvance={ownBranch && allowEdit}/>
  <section className={s.twoColumns}>
  <div className={s.card}><Heading tone="violet" icon={<ReceiptText/>} title="Order Information" text="General information about this order."/><div className={s.infoGrid}>
- <Field label="Order number" value={order.order_number}/><Field label="Branch" value={name}/><Field label="Sales channel" value={`${source} · ${fulfillment}`}/><Field label="Created at" value={formatDate(order.created_at)}/><Field label="Payment method" value={paymentName(order)}/><Field label="Status" value={<Badge value={visibleStatus}/>}/><Field label="Cashier / Staff" value={cashier}/><Field label="Payment status" value={paymentStatus}/>
- {order.order_code && <Field label="Order code" value={order.order_code}/>}
+ <Field label="Order number" value={<span className={s.copyRow}>{order.order_number}<span className={s.copyPhone}><CopyOrderNumber value={order.order_number}/></span></span>}/><Field label="Branch" value={name}/><Field label="Sales channel" value={`${source} · ${fulfillment}`}/><Field label="Created at" value={formatDate(order.created_at)}/><Field label="Payment method" value={paymentName(order)}/><Field label="Status" value={<Badge value={visibleStatus}/>}/><Field label="Cashier / Staff" value={cashier}/><Field label="Payment status" value={<span className={paymentStatus.toLowerCase()==='unpaid'?s.unpaidText:undefined}>{paymentStatus}</span>}/>
+ {order.order_code && <Field label="Order code" value={<span className={s.copyRow}>{order.order_code}<span className={s.copyPhone}><CopyOrderNumber value={order.order_code}/></span></span>}/>}
+ <Field label="Shipping type" value={shippingType || '—'}/>
  </div></div>
  <div className={s.card}><div className={s.between}><Heading tone="blue" icon={<UserRound/>} title="Customer Information" text="Customer details and purchase history."/>{customer && ownBranch && allowCustomerView && <Link className={s.soft} href={`/dashboard/customers/${customer.id}`}>View customer<ExternalLink size={13}/></Link>}</div>
  <div className={s.customerGrid}>
@@ -96,7 +100,16 @@ export default async function OrderDetailsPage({params,searchParams}:{params:Pro
   </div>
  </div>
  </div></section>
- <section className={s.itemsRow}>
+ {/* Phones: one compact items + total card instead of the table and summary. */}
+ <section className={`${s.card} ${s.phoneOnly}`} aria-label="Items and total">
+  <h2 className={s.compactTitle}>Items ({unitsOrdered})</h2>
+  <ul className={s.compactItems}>{items.map(i=>{const p=one(i.products);return <li key={i.id}>{p?.image_url?<img src={p.image_url} alt={i.product_name || p.name}/>:<span className={s.compactThumb}><Package size={22}/></span>}<div><strong>{i.product_name || p?.name || 'Product'}</strong>{i.variant_label?<small>{i.variant_label}</small>:null}{(qtyMap.get(i.id)||0)>0 && <small className={s.returnedText}>Returned: {qtyMap.get(i.id)}</small>}</div><div className={s.compactPrice}><small>Qty {numeric(i.quantity)}</small><strong>{cash(i.subtotal)}</strong></div></li>;})}</ul>
+  {!items.length && <p className={s.muted}>No recorded items.</p>}
+  {numeric(order.discount)>0 && <div className={s.compactRow}><span>Discount</span><span>−{cash(order.discount)}</span></div>}
+  {numeric(order.delivery_fee)>0 && <div className={s.compactRow}><span>Shipping fee</span><span>{cash(order.delivery_fee)}</span></div>}
+  <div className={s.compactTotal}><span>Total</span><strong>{cash(order.total)}</strong></div>
+ </section>
+ <section className={`${s.itemsRow} ${s.phoneHide}`}>
  <div className={s.card}><Heading tone="blue" icon={<ShoppingCart/>} title="Items Purchased" text={`${items.length} item ${items.length===1?'line':'lines'} · ${unitsOrdered} ${unitsOrdered===1?'unit':'units'} originally ordered`}/>
  <div className={s.tableWrap}><table className={s.table}><thead><tr><th>Product</th><th>SKU</th><th>Variant</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead><tbody>{items.map(i=>{const p=one(i.products);return <tr key={i.id}><td><div className={s.product}>{p?.image_url?<img src={p.image_url} alt={i.product_name || p.name}/>:<Package size={26}/>}<div><strong>{i.product_name || p?.name || 'Product'}</strong>{i.selected_options?.length? <small>{i.selected_options.map(o=>o.name).filter(Boolean).join(', ')}</small>:null}{(qtyMap.get(i.id)||0)>0 && <small className={s.returnedText}>Returned: {qtyMap.get(i.id)}</small>}{canCancelItem && <CancelOrderItem orderId={id} itemId={i.id} name={i.product_name || p?.name || 'item'} updatedAt={order.updated_at} businessId={business.id}/>}</div></div></td><td>{p?.sku || '—'}</td><td>{i.variant_label || '—'}</td><td>{numeric(i.quantity)}</td><td>{cash(i.unit_price)}</td><td><strong>{cash(i.subtotal)}</strong></td></tr>;})}</tbody></table>{!items.length && <p className={s.muted}>No recorded items.</p>}</div>
  {returns.error && <p role="alert" className={s.warning}>Return history could not be checked. Return actions are unavailable until it reloads.</p>}

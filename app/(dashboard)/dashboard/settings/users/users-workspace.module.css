@@ -22,3 +22,18 @@
 :global(.dark) :is(.workspace,.dialog,.modal,.rowMenu) { --blue:#2563eb; --primary:#2563eb; --ink:#e2e8f0; --muted:#94a3b8; --border:#334155; --line:#334155; --panel:#0f172a; --surface:#0f172a; --screen-panel:#0f172a; --pale:#1e293b; --soft:#1e293b; color:var(--ink); }
 :global([data-high-contrast="true"].dark) :is(.workspace,.dialog,.modal,.rowMenu) { --ink:#fff; --muted:#e2e8f0; --border:#94a3b8; --line:#94a3b8; }
 }
+/* Phones: one-row metrics without icons, floating Filter / Create New User, full-screen create form, bottom-sheet filters. */
+.fabs,.sheetClose{display:none}
+@media screen and (max-width:639px){
+.metrics{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.metric{padding:8px 6px;min-height:0;border-radius:12px}.metricIcon{display:none}.metric small{display:none}.metric p{font-size:0.625rem;line-height:1.2}.metric strong{font-size:0.8125rem}
+.tools>.button{display:none}
+.bottomGrid{display:none}.pageIcon{display:none}
+.createCard{display:none}
+.createCard[data-open]{display:block;position:fixed;inset:0;z-index:50;margin:0;max-width:none;overflow-y:auto;overscroll-behavior:contain;border-radius:0;padding-top:56px}
+.filterBar{position:fixed;inset:auto 0 0 0;z-index:50;margin:0;display:grid;gap:12px;padding:56px 18px max(18px,env(safe-area-inset-bottom));background:var(--panel,#fff);border-radius:24px 24px 0 0;box-shadow:0 -10px 40px rgb(15 23 42/.25)}
+.filterBar select{width:100%}
+.sheetClose{display:grid;place-items:center;position:absolute;right:12px;top:12px;z-index:1;width:44px;height:44px;border:0;border-radius:12px;background:#f1f5f9;color:#334155}
+.fabs{display:flex;gap:8px;position:fixed;right:16px;bottom:max(16px,env(safe-area-inset-bottom));z-index:40}
+.fabPrimary,.fabSecondary{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 18px;border-radius:999px;font-size:0.875rem;font-weight:600;box-shadow:0 10px 24px rgb(15 23 42/.2)}
+.fabPrimary{background:#2563eb;color:#fff;border:0}.fabSecondary{background:#fff;color:#1e293b;border:1px solid #e2e8f0}
+}
