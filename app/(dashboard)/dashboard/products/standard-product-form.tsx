@@ -1,5 +1,6 @@
 "use client";
 
+import { ButtonSpinner } from "@/components/pending-submit-button";
 import { useActionState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
@@ -286,7 +287,7 @@ export default function StandardProductForm({
         disabled={pending}
         className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {pending ? "Adding product..." : experience.buttonLabel}
+        {pending ? <span className="inline-flex items-center justify-center gap-2"><ButtonSpinner />Creating product…</span> : experience.buttonLabel}
       </button>
     </form>
   );

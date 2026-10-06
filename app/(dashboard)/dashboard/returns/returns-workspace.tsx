@@ -1,18 +1,19 @@
 "use client";
 
+import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cancelReturn } from "./actions";
 import {
   ArrowRightLeft,
   BarChart3,
+  CalendarDays,
   Clock3,
   DollarSign,
   PackageOpen,
   RefreshCw,
   RotateCcw,
   Search,
-  SlidersHorizontal,
   X,
   XCircle,
 } from "lucide-react";
@@ -46,6 +47,7 @@ export type ReturnWorkspaceRecord = {
   items: {
     id: string;
     productName: string;
+    imageUrl?: string | null;
     quantity: number;
     unitPrice: number;
     subtotal: number;
@@ -78,7 +80,8 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
     if (!sheet) return;
     const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setSheet(null); };
-    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setSheet(null); };
+    // The date sheet is used below 768px; the detail and stats sheets below 640px.
+    const wide = window.matchMedia(sheet === "filter" ? "(min-width: 768px)" : "(min-width: 640px)"); const onWide = () => { if (wide.matches) setSheet(null); };
     window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
     return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
   }, [sheet]);
@@ -158,30 +161,38 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
 
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0 space-y-4">
-          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:grid-cols-1 md:grid-cols-[minmax(220px,1fr)_160px_160px]">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[minmax(220px,1fr)_160px_160px]">
             <label className="relative">
               <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder="Search returns, customers, orders…" className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-blue-400 max-sm:pr-11" />
-              <button type="button" aria-label="Open filters" onClick={() => setSheet("filter")} className="absolute right-1 top-1/2 grid h-8 w-9 -translate-y-1/2 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 sm:hidden"><SlidersHorizontal size={17} /></button>
+              <input value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder="Search returns, customers, orders…" className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-blue-400" />
             </label>
-            {/* Phones: date range opens as a bottom sheet. */}
-            {sheet === "filter" && <button type="button" aria-label="Close filters" onClick={() => setSheet(null)} className="fixed inset-0 z-40 bg-slate-950/40 sm:hidden" />}
-            <div role={sheet === "filter" ? "dialog" : undefined} aria-modal={sheet === "filter" || undefined} aria-label="Return filters" data-sheet="bottom" className={`${sheet === "filter" ? "fixed inset-x-0 bottom-0 z-50 grid gap-3 rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-2xl" : "max-sm:hidden"} sm:contents`}>
-            {sheet === "filter" && <div className="sm:hidden"><div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200" /><div className="mt-4 flex items-center justify-between"><h2 className="text-xl font-bold text-slate-900">Filter Returns</h2><button type="button" aria-label="Close filters" onClick={() => setSheet(null)} className="grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600"><X size={20} /></button></div></div>}
+            {/* Phones/tablets: compact date range beside search; it opens the date sheet. */}
+            <button type="button" aria-label="Select date range" onClick={() => setSheet("filter")} className={`inline-flex h-10 max-w-[45vw] items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold md:hidden ${fromDate || toDate ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600"}`}><CalendarDays size={16} className="shrink-0" /><span className="truncate">{fromDate || toDate ? `${fromDate ? formatShortDate(fromDate) : "…"} – ${toDate ? formatShortDate(toDate) : "…"}` : "Date"}</span></button>
+            {sheet === "filter" && <button type="button" aria-label="Close filters" onClick={() => setSheet(null)} className="fixed inset-0 z-40 bg-slate-950/40 md:hidden" />}
+            <div role={sheet === "filter" ? "dialog" : undefined} aria-modal={sheet === "filter" || undefined} aria-label="Return filters" data-sheet="bottom" className={`${sheet === "filter" ? "fixed inset-x-0 bottom-0 z-50 grid gap-3 rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-2xl" : "max-md:hidden"} md:contents`}>
+            {sheet === "filter" && <div className="md:hidden"><div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200" /><div className="mt-4 flex items-center justify-between"><h2 className="text-xl font-bold text-slate-900">Filter Returns</h2><button type="button" aria-label="Close filters" onClick={() => setSheet(null)} className="grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600"><X size={20} /></button></div></div>}
             <input type="date" aria-label="From date" value={fromDate} onChange={(event) => { setFromDate(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
             <input type="date" aria-label="To date" value={toDate} onChange={(event) => { setToDate(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
-            {sheet === "filter" && <button type="button" onClick={() => setSheet(null)} className="min-h-12 rounded-xl bg-blue-600 font-semibold text-white sm:hidden">Apply</button>}
+            {sheet === "filter" && (fromDate || toDate) && <button type="button" onClick={() => { setFromDate(""); setToDate(""); resetPage(); }} className="min-h-11 rounded-xl border border-slate-200 font-semibold text-slate-700 md:hidden">Clear dates</button>}
+            {sheet === "filter" && <button type="button" onClick={() => setSheet(null)} className="min-h-12 rounded-xl bg-blue-600 font-semibold text-white md:hidden">Apply</button>}
             </div>
           </div>
 
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm max-lg:overflow-visible max-lg:border-0 max-lg:bg-transparent max-lg:shadow-none">
+            <p className="px-1 pb-2 text-sm text-slate-500 lg:hidden">{filtered.length} {filtered.length === 1 ? "return" : "returns"} total</p>
+            <div className="hidden items-center justify-between border-b border-slate-200 px-5 py-4 lg:flex">
               <div><h2 className="font-bold text-slate-900">Return Records</h2><p className="text-xs text-slate-500">{filtered.length} matching returns</p></div>
             </div>
             {pageRecords.length === 0 ? (
               <div className="p-14 text-center text-sm text-slate-500"><RotateCcw className="mx-auto mb-3 text-slate-300" size={38} />No return records match these filters.</div>
-            ) : (
-              <div className="overflow-x-auto">
+            ) : (<>
+              {/* Phones/tablets: one card per return. Desktop keeps the table. */}
+              <MobileList>{pageRecords.map((record) => {
+                const item = record.items[0], image = record.items.find((entry) => entry.imageUrl)?.imageUrl;
+                const tone = record.status === "refunded" || record.status === "approved" ? "green" : record.status === "pending" ? "amber" : record.status === "rejected" ? "red" : record.status === "exchanged" ? "violet" : "slate";
+                return <MobileListCard key={record.id} selected={selectedId === record.id} onClick={() => { setSelectedId(record.id); setSheet("detail"); }} media={image ? <img src={image} alt="" loading="lazy" className="h-full w-full object-contain" /> : <PackageOpen size={24} className="text-slate-300" />} title={record.returnNumber} date={formatDate(record.createdAt)} primary={`${item?.productName ?? "Return record"}${record.items.length > 1 ? ` +${record.items.length - 1}` : ""}`} secondary={`Customer: ${record.customerName}`} amount={formatCurrency(record.refundAmount)} status={{ label: record.status, tone }} />;
+              })}</MobileList>
+              <div className="hidden overflow-x-auto lg:block">
                 <table className="w-full min-w-[980px] text-sm">
                   <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3 text-left">Return ID</th><th className="px-4 py-3 text-left">Customer</th><th className="px-4 py-3 text-left">Order</th><th className="px-4 py-3 text-left">Items</th><th className="px-4 py-3 text-left">Type</th><th className="px-4 py-3 text-left">Reason</th><th className="px-4 py-3 text-right">Refund</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Date</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
@@ -193,8 +204,8 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
                   </tbody>
                 </table>
               </div>
-            )}
-            <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4 text-sm text-slate-500">
+            </>)}
+            <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4 text-sm text-slate-500 max-lg:mt-2 max-lg:border-0 max-lg:px-1">
               <span>Showing {pageRecords.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}</span>
               <div className="flex gap-2"><button disabled={safePage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Previous</button><span className="rounded-lg bg-slate-100 px-3 py-1.5 font-semibold text-slate-700">{safePage} / {totalPages}</span><button disabled={safePage >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Next</button></div>
             </div>
@@ -276,6 +287,7 @@ function MetricCard({ icon, label, value, helper }: { icon: React.ReactNode; lab
 function StatusBadge({ status }: { status: ReturnWorkspaceRecord["status"] }) { const classes = status === "cancelled" ? "bg-slate-100 text-slate-600" : status === "pending" ? "bg-amber-50 text-amber-700" : status === "rejected" ? "bg-red-50 text-red-700" : status === "exchanged" ? "bg-violet-50 text-violet-700" : status === "approved" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"; return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${classes}`}>{status}</span>; }
 
 function formatCurrency(value: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value); }
+function formatShortDate(value: string) { return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(`${value}T00:00:00`)); }
 function formatDate(value: string) { return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value)); }
 function formatDateTime(value: string) { return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
 function formatLabel(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }

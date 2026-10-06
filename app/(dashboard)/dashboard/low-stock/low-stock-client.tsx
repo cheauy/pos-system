@@ -1,5 +1,6 @@
 "use client";
 
+import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -320,7 +321,8 @@ export default function LowStockClient({
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1020px] text-sm">
+                <MobileList>{pageRows.map((row) => <MobileListCard key={row.id} href={`/dashboard/products/${row.productId}/edit`} media={row.imageUrl ? <img src={row.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : <PackageOpen size={24} />} title={row.productName} date={[row.sku, row.branchName].filter(Boolean).join(" · ")} primary={`Reorder ${row.suggestedReorder} · Level ${row.reorderLevel}`} secondary={`Supplier: ${row.supplierName || "Unassigned"}`} amount={<span className={row.currentStock <= 0 ? "text-red-600" : "text-rose-600"}>{row.currentStock} left</span>} status={{ label: statusLabel(row.status) }} />)}</MobileList>
+                <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[1020px] text-sm">
                   <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="w-10 px-4 py-3">

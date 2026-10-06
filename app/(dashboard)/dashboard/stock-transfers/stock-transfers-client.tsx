@@ -1,4 +1,5 @@
 "use client";
+import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import ProductPicker from "@/components/product-picker";
 import { Modal } from "../pos/pos-workspace-components";
 
@@ -748,7 +749,8 @@ export default function StockTransfersClient({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-[980px] w-full text-left text-sm">
+            <MobileList>{visibleTransfers.map((transfer) => <MobileListCard key={transfer.id} onClick={() => openTransfer(transfer.id)} media={<Package size={24} />} title={transfer.transferNumber} date={formatDateTime(transfer.createdAt)} primary={`${locationMap.get(transfer.sourceLocationId) ?? "Source"} → ${locationMap.get(transfer.destinationLocationId) ?? "Destination"}`} secondary={`${transfer.items.length} ${transfer.items.length === 1 ? "item" : "items"} · Qty ${transfer.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)}`} status={{ label: String(transfer.status).replaceAll("_", " ") }} />)}</MobileList>
+            <table data-phone-layout="custom" className="max-lg:hidden min-w-[980px] w-full text-left text-sm">
               <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-5 py-3">Transfer ID</th>

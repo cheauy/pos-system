@@ -24,7 +24,7 @@
 }
 /* Phones: one-row metrics without icons, floating Filter / Create New User, full-screen create form, bottom-sheet filters. */
 .fabs,.sheetClose{display:none}
-@media screen and (max-width:639px){
+@media screen and (max-width:639px), screen and (orientation: portrait) and (max-width: 1024px) {
 .metrics{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.metric{padding:8px 6px;min-height:0;border-radius:12px}.metricIcon{display:none}.metric small{display:none}.metric p{font-size:0.625rem;line-height:1.2}.metric strong{font-size:0.8125rem}
 .tools>.button{display:none}
 .bottomGrid{display:none}.pageIcon{display:none}
@@ -37,3 +37,5 @@
 .fabPrimary,.fabSecondary{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 18px;border-radius:999px;font-size:0.875rem;font-weight:600;box-shadow:0 10px 24px rgb(15 23 42/.2)}
 .fabPrimary{background:#2563eb;color:#fff;border:0}.fabSecondary{background:#fff;color:#1e293b;border:1px solid #e2e8f0}
 }
+/* Bounded, scrollable bottom sheet (hidden scrollbar) so every filter stays reachable. */
+@media screen and (max-width:639px){.filterBar{max-height:calc(100dvh - 16px - env(safe-area-inset-top));overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}.filterBar::-webkit-scrollbar{display:none}}

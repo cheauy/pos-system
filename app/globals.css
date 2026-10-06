@@ -44,7 +44,7 @@
   .workspace-content :is(.grid, [class*="grid-cols"]) > * { min-width: 0; }
 }
 /* Phones: complex dialogs (forms, tables, tabs) open as full-screen sheets; short confirmations stay compact. */
-@media screen and (max-width: 640px) {
+@media screen and (max-width: 640px), screen and (orientation: portrait) and (max-width: 1024px) {
   .workspace-theme dialog:not(.workspace-mobile-navigation):has(form, textarea, table, [role="tablist"]) { width: 100vw; max-width: 100vw !important; height: 100dvh; max-height: 100dvh !important; margin: 0; border-radius: 0; overscroll-behavior: contain; }
   .workspace-theme .fixed:has(> [role="dialog"][aria-modal="true"]:not([data-sheet]):is(:has(form), :has(textarea), :has(table), :has([role="tablist"]))) { padding: 0 !important; align-items: stretch; }
   .workspace-theme .fixed[role="dialog"][aria-modal="true"]:not([data-sheet]):is(:has(form), :has(textarea), :has(table), :has([role="tablist"])) { padding: 0 !important; align-items: stretch; }
@@ -52,17 +52,17 @@
   .workspace-theme .fixed > [role="dialog"][aria-modal="true"]:not([data-sheet]):is(:has(form), :has(textarea), :has(table), :has([role="tablist"])) { width: 100%; max-width: none !important; min-height: 100dvh; max-height: 100dvh; border-radius: 0 !important; overflow-y: auto; overscroll-behavior: contain; padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
 }
 /* Phones: keep a form's final action row (with its submit button) reachable inside dialogs. */
-@media screen and (max-width: 640px) {
+@media screen and (max-width: 640px), screen and (orientation: portrait) and (max-width: 1024px) {
   .workspace-theme :is(dialog, [role="dialog"][aria-modal="true"]) form > :last-child:has(button[type="submit"]):not(:has(input, textarea, select)) { position: sticky; bottom: 0; z-index: 5; margin-top: .75rem; padding-top: .75rem; padding-bottom: max(.75rem, env(safe-area-inset-bottom)); background: var(--workspace-panel, #fff); border-top: 1px solid rgb(226 232 240); }
 }
 /* Phones: list pages drop the page title, subtitle and summary-card grids (see layout compactChrome). */
-@media screen and (max-width: 640px) {
+@media screen and (max-width: 640px), screen and (orientation: portrait) and (max-width: 1024px) {
   .workspace-content[data-mobile-chrome="compact"] h1:not(dialog h1, [role="dialog"] h1),
   .workspace-content[data-mobile-chrome="compact"] h1:not(dialog h1, [role="dialog"] h1) + p,
   .workspace-content[data-mobile-chrome="compact"] [data-stat-grid] { display: none !important; }
 }
 /* Phones: workspace tables become labeled cards (labels from components/ui/phone-table-labels). */
-@media screen and (max-width: 640px) {
+@media screen and (max-width: 640px), screen and (orientation: portrait) and (max-width: 1024px) {
   .workspace-content table:not([data-phone-layout]):not(:is(.receipt, [id$="print-area"]) table) { display: block; width: 100%; min-width: 0 !important; }
   .workspace-content table:not([data-phone-layout]):not(:is(.receipt, [id$="print-area"]) table) thead { display: none; }
   .workspace-content table:not([data-phone-layout]):not(:is(.receipt, [id$="print-area"]) table) :is(tbody, tfoot) { display: block; }
@@ -71,7 +71,7 @@
   .workspace-content table:not([data-phone-layout]):not(:is(.receipt, [id$="print-area"]) table) td[data-label]:not([data-label=""])::before { content: attr(data-label); flex-shrink: 0; max-width: 45%; text-align: left; font-size: .75rem; font-weight: 600; color: rgb(100 116 139); }
   .workspace-content table:not([data-phone-layout]):not(:is(.receipt, [id$="print-area"]) table) td:is([data-label=""], :not([data-label])) { justify-content: flex-start; text-align: left; }
 }
-@media screen and (max-width: 639px) {
+@media screen and (max-width: 639px), screen and (orientation: portrait) and (max-width: 1024px) {
   /* One-row phone header: menu, title, compact branch switcher; role chip hidden. */
   .workspace-header { flex-wrap: nowrap; gap: .5rem; padding-inline: max(.75rem, env(safe-area-inset-left)); }
   .workspace-header > div:first-child { flex: 1 1 auto; min-width: 0; }
@@ -136,6 +136,11 @@
   :root[data-high-contrast="true"] .workspace-theme .sidebar-surface :is([class*="text-slate-"], [class~="text-blue-600"], [class~="text-blue-700"]):not(.sidebar-neutral *) { color: var(--sidebar-foreground); }
 }
 @custom-variant dark (&:where(.dark, .dark *));
+/* Portrait viewports up to 1024px (incl. tablets) reuse the phone layout: sm/md/lg only apply in landscape or above 1024px. */
+@custom-variant sm { @media (width >= 40rem) and (orientation: landscape), (width > 64rem) { @slot; } }
+@custom-variant md { @media (width >= 48rem) and (orientation: landscape), (width > 64rem) { @slot; } }
+@custom-variant lg { @media (width >= 64rem) and (orientation: landscape), (width > 64rem) { @slot; } }
+@custom-variant max-sm { @media (width < 40rem), (orientation: portrait) and (width <= 64rem) { @slot; } }
 
 @theme inline {
   --color-background: var(--background);
@@ -233,4 +238,14 @@ body {
   .no-print {
     display: none !important;
   }
+}
+
+/* Phones and tablets (<=1024px): bottom sheets stay inside the viewport and scroll;
+   overlay scroll areas (nav drawer, dialogs, sheets) keep scrolling with the scrollbar hidden. */
+@media screen and (max-width: 1024px) {
+  .workspace-theme [role="dialog"][data-sheet="bottom"], .workspace-theme .max-sm\:fixed > [data-sheet="bottom"] { max-height: calc(100dvh - 16px - env(safe-area-inset-top)); overflow-y: auto; overscroll-behavior: contain; }
+  .workspace-theme :is(dialog, [role="dialog"], [data-sheet]),
+  .workspace-theme :is(dialog, [role="dialog"], [data-sheet]) :is(.overflow-y-auto, .overflow-auto) { scrollbar-width: none; -ms-overflow-style: none; }
+  .workspace-theme :is(dialog, [role="dialog"], [data-sheet])::-webkit-scrollbar,
+  .workspace-theme :is(dialog, [role="dialog"], [data-sheet]) :is(.overflow-y-auto, .overflow-auto)::-webkit-scrollbar { display: none; }
 }

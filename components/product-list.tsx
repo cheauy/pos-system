@@ -16,12 +16,17 @@ import {
   Grid2X2,
   List,
   MoreHorizontal,
+  Layers,
   Package,
   Pencil,
   Search,
+  Shirt,
   SlidersHorizontal,
+  Tag,
   Trash2,
   X,
+  ArrowUpDown,
+  ChevronDown,
 } from "lucide-react";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -387,19 +392,19 @@ export default function ProductList({
   }
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <nav aria-label="Catalog filters" className="flex gap-4 overflow-x-auto border-b border-slate-200 px-4">
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm max-sm:overflow-visible max-sm:border-0 max-sm:bg-transparent max-sm:shadow-none">
+      <nav aria-label="Catalog filters" className="flex gap-4 overflow-x-auto border-b border-slate-200 px-4 max-lg:gap-2 max-lg:[scrollbar-width:none] max-lg:border-0 max-lg:pb-3 max-lg:pt-3 max-sm:px-0 max-sm:pt-0">
         {([{ id: "all", label: "All Products", icon: Package }, { id: "low", label: "Low Stock", icon: SlidersHorizontal }, { id: "out", label: "Out of Stock", icon: Package }, { id: "hidden", label: "Hidden", icon: EyeOff }]).map(({ id, label, icon: Icon }) => (
-          <button key={id} type="button" aria-pressed={catalogTab === id} onClick={() => { setCatalogTab(id); resetPage(); }} className={`inline-flex shrink-0 items-center gap-2 border-b-2 py-3 text-xs font-semibold ${catalogTab === id ? "border-teal-600 text-teal-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}><Icon size={15} />{label}</button>
+          <button key={id} type="button" aria-pressed={catalogTab === id} onClick={() => { setCatalogTab(id); resetPage(); }} className={`inline-flex shrink-0 items-center gap-2 border-b-2 py-3 text-xs font-semibold max-lg:rounded-full max-lg:border max-lg:px-4 max-lg:py-2.5 max-lg:text-sm ${catalogTab === id ? "border-teal-600 text-teal-700 max-lg:border-blue-100 max-lg:bg-blue-50 max-lg:text-blue-700" : "border-transparent text-slate-500 hover:text-slate-800 max-lg:border-slate-200 max-lg:bg-white"}`}><Icon size={15} />{label}</button>
         ))}
       </nav>
 
-      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2">
-          <select value={category} onChange={(event) => { setCategory(event.target.value); resetPage(); }} className={filterInputClass + " !w-auto max-w-36 shrink-0 max-sm:!max-w-[7.5rem] max-sm:!text-xs"}>
+      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 max-lg:border-0 max-lg:bg-transparent max-lg:pb-3 max-lg:pt-0 max-sm:px-0">
+          <select value={category} onChange={(event) => { setCategory(event.target.value); resetPage(); }} className={filterInputClass + " !w-auto max-w-36 shrink-0 max-lg:hidden"}>
             <option value="all">All Categories</option>
             {categories.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
-        <div className="relative min-w-20 flex-1 max-sm:min-w-[11rem]">
+        <div className="relative min-w-20 flex-1 max-sm:min-w-0">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             value={search}
@@ -408,9 +413,27 @@ export default function ProductList({
               resetPage();
             }}
             placeholder="Search products..."
-            className={filterInputClass + " min-w-0 pl-9"}
+            className={filterInputClass + " min-w-0 pl-9 max-lg:!h-11 max-lg:!rounded-xl max-lg:!bg-white max-lg:!text-sm"}
           />
         </div>
+        {/* Phones/tablets: Filter and Sort pills; the transparent native select opens the picker. */}
+        <label className="relative inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 lg:hidden">
+          <SlidersHorizontal size={15} /><span className="max-w-24 truncate">{category === "all" ? "Filter" : category}</span><ChevronDown size={14} className="text-slate-400" />
+          <select aria-label="Filter by category" value={category} onChange={(event) => { setCategory(event.target.value); resetPage(); }} className="absolute inset-0 cursor-pointer opacity-0">
+            <option value="all">All Categories</option>
+            {categories.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>
+        <label className="relative inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 lg:hidden">
+          <ArrowUpDown size={15} />Sort<ChevronDown size={14} className="text-slate-400" />
+          <select aria-label="Sort products" value={sort} onChange={(event) => setSort(event.target.value)} className="absolute inset-0 cursor-pointer opacity-0">
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+            <option value="name">Name</option>
+            <option value="stock">Stock</option>
+            <option value="price">Price</option>
+          </select>
+        </label>
 
         <div className="contents">
           <div className="flex w-fit shrink-0 rounded-lg border border-slate-200 p-1 max-sm:hidden">
@@ -421,7 +444,7 @@ export default function ProductList({
               <Grid2X2 size={16} />
             </button>
           </div>
-          <div className="relative shrink-0">
+          <div className="relative shrink-0 max-lg:hidden">
             <SlidersHorizontal size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <select value={sort} onChange={(event) => setSort(event.target.value)} className={filterInputClass + " pl-8"}>
               <option value="newest">Sort: Newest</option>
@@ -452,7 +475,36 @@ export default function ProductList({
           ))}
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+        {/* Phones: product cards with variants / price / stock / sizes. */}
+        <p className="pb-2 pt-4 text-sm text-slate-500 sm:hidden">{filtered.length} products</p>
+        <ul className="grid gap-3 pb-24 sm:hidden">
+          {pageRows.map((group, index) => (
+            <li key={group.key} onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input, a, label")) openDetails(group); }} className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex items-start gap-3">
+                <input type="checkbox" aria-label={`Select ${group.name}`} disabled={actionPending} checked={selectedGroups.has(group.key)} onChange={() => toggleSelected(group.key)} className="mt-1 h-5 w-5 shrink-0" />
+                {group.imageUrl ? <ProductPhoto loading={index < 3 ? 'eager' : 'lazy'} src={group.imageUrl} alt={group.name} sizes="64px" className="h-16 w-16 shrink-0 rounded-xl border border-slate-200 object-cover" /> : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><Package size={22} /></div>}
+                <div className="min-w-0 flex-1">
+                  <button type="button" onClick={() => openDetails(group)} aria-label={`View ${group.name}`} className="block w-full truncate text-left text-[15px] font-bold text-slate-900">{group.name}</button>
+                  <p className="truncate text-[11px] text-slate-400">{group.sku || "No SKU"}</p>
+                  <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-600"><Tag size={13} className="shrink-0 text-slate-400" />{group.category}</p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <button type="button" onClick={(event) => openActionMenu(event, group)} aria-label={`Actions for ${group.name}`} aria-haspopup="menu" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500"><MoreHorizontal size={17} /></button>
+                  <StatusBadge group={group} />
+                  <span className="text-[11px] text-slate-500">{formatUpdated(group.updatedAt)}</span>
+                </div>
+              </div>
+              <dl className="mt-3 grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 pt-3 text-[11px]">
+                <div className="min-w-0 pr-2"><dt className="flex items-center gap-1 text-slate-500"><Layers size={12} />{isVariantMode ? "Variants" : "Options"}</dt><dd className="mt-0.5 truncate text-[13px] font-bold text-slate-900">{group.variants}</dd></div>
+                <div className="min-w-0 px-2"><dt className="flex items-center gap-1 text-slate-500"><Tag size={12} />Price</dt><dd className="mt-0.5 truncate text-[13px] font-bold text-slate-900">{formatMoney(group.minPrice)}</dd></div>
+                <div className="min-w-0 px-2"><dt className="flex items-center gap-1 text-slate-500"><Package size={12} />Stock</dt><dd className="mt-0.5 truncate text-[13px] font-bold text-slate-900">{group.totalStock}</dd></div>
+                <div className="min-w-0 pl-2"><dt className="flex items-center gap-1 text-slate-500"><Shirt size={12} />Sizes</dt><dd className="mt-0.5 truncate text-slate-600">{group.sizes.length ? group.sizes.join(" · ") : "—"}</dd></div>
+              </dl>
+            </li>
+          ))}
+        </ul>
+        <div className="overflow-x-auto max-sm:hidden">
           <table className="w-full min-w-[920px] text-sm">
             <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
               <tr className="border-b border-slate-200">
@@ -534,6 +586,7 @@ export default function ProductList({
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {canAdjustStock && <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3 text-xs">

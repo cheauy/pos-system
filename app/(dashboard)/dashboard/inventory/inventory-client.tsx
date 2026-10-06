@@ -329,15 +329,15 @@ export default function InventoryClient({ products, categories, locations, locat
       </section>
 
       <div className="grid min-w-0 items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_280px]">
-      <section className="min-w-0 rounded-xl border border-slate-200 bg-white">
-        <nav aria-label="Stock views" className="flex gap-1 overflow-x-auto border-b border-slate-200 px-3">
-          {tabItems.map(({ id, label, count, icon: Icon }) => <button key={id} type="button" aria-pressed={tab === id} onClick={() => { setTab(id); setStatusFilter("all"); setPage(1); }} className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-xs font-semibold ${tab === id ? "border-teal-600 text-teal-700" : "border-transparent text-slate-500 hover:text-slate-800"}`}><Icon size={15} />{label}{count === undefined ? "" : ` (${count})`}</button>)}
+      <section className="min-w-0 rounded-xl border border-slate-200 bg-white max-sm:border-0 max-sm:bg-transparent">
+        <nav aria-label="Stock views" className="flex gap-1 overflow-x-auto border-b border-slate-200 px-3 max-sm:gap-2 max-sm:border-0 max-sm:px-0 max-sm:pb-3 max-sm:[scrollbar-width:none]">
+          {tabItems.map(({ id, label, count, icon: Icon }) => <button key={id} type="button" aria-pressed={tab === id} onClick={() => { setTab(id); setStatusFilter("all"); setPage(1); }} className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-xs font-semibold max-sm:rounded-full max-sm:border max-sm:px-4 max-sm:py-2.5 max-sm:text-sm ${tab === id ? "border-teal-600 text-teal-700 max-sm:border-blue-100 max-sm:bg-blue-50 max-sm:text-blue-700" : "border-transparent text-slate-500 hover:text-slate-800 max-sm:border-slate-200 max-sm:bg-white"}`}><Icon size={15} />{label}{count === undefined ? "" : ` (${count})`}</button>)}
         </nav>
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200 p-3">
-          <label className="relative min-w-20 flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Search products…" aria-label="Search stock" className="h-10 w-full min-w-0 rounded-lg border border-slate-200 pl-9 pr-3 text-sm" /></label>
-          <select aria-label="Category" value={categoryId} onChange={event => { setCategoryId(event.target.value); setPage(1); }} className={`${selectClass} !w-auto max-w-36 shrink-0`}><option value="all">All Categories</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
-          <select aria-label="Sort stock" value={sort} onChange={event => { setSort(event.target.value); setPage(1); }} className={`${selectClass} !w-auto shrink-0`}><option value="newest">Sort: Newest</option><option value="oldest">Sort: Oldest</option><option value="name">Sort: Name</option><option value="stock">Sort: Stock</option><option value="price">Sort: Price</option></select>
-          <AnchoredActionMenu label="Customize Columns">{(Object.keys(visibleColumns) as ColumnKey[]).map(key => <label key={key} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-sm"><input type="checkbox" checked={visibleColumns[key]} onChange={event => setVisibleColumns(current => ({ ...current, [key]: event.target.checked }))} /><span className="capitalize">{key === "cost" ? "Unit Cost" : key}</span></label>)}</AnchoredActionMenu>
+        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200 p-3 max-sm:rounded-2xl max-sm:border max-sm:bg-white max-sm:p-2 max-sm:shadow-sm">
+          <label className="relative min-w-20 flex-1 max-sm:min-w-0"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Search products…" aria-label="Search stock" className="h-10 w-full min-w-0 rounded-lg border border-slate-200 pl-9 pr-3 text-sm" /></label>
+          <select aria-label="Category" value={categoryId} onChange={event => { setCategoryId(event.target.value); setPage(1); }} className={`${selectClass} !w-auto max-w-36 shrink-0 max-sm:!max-w-[7.5rem] max-sm:!text-xs`}><option value="all">All Categories</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+          <select aria-label="Sort stock" value={sort} onChange={event => { setSort(event.target.value); setPage(1); }} className={`${selectClass} !w-auto shrink-0 max-sm:!w-[6.5rem] max-sm:!text-xs`}><option value="newest">Sort: Newest</option><option value="oldest">Sort: Oldest</option><option value="name">Sort: Name</option><option value="stock">Sort: Stock</option><option value="price">Sort: Price</option></select>
+          <span className="contents max-sm:hidden"><AnchoredActionMenu label="Customize Columns">{(Object.keys(visibleColumns) as ColumnKey[]).map(key => <label key={key} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-sm"><input type="checkbox" checked={visibleColumns[key]} onChange={event => setVisibleColumns(current => ({ ...current, [key]: event.target.checked }))} /><span className="capitalize">{key === "cost" ? "Unit Cost" : key}</span></label>)}</AnchoredActionMenu></span>
           {selectedRows.length > 0 && <AnchoredActionMenu label={`Actions (${selectedRows.length})`}>
             <button type="button" disabled={!canDisable || busy} onClick={() => setConfirmation({ kind: "delete", ids: selectedRows.map(row => row.id) })} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-red-600 disabled:opacity-45"><Trash2 size={14} />Delete selected</button>
             <button type="button" disabled={!canDisable || busy} onClick={() => setConfirmation({ kind: "hide", ids: selectedRows.map(row => row.id) })} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-45"><EyeOff size={14} />Hide selected</button>
@@ -345,9 +345,11 @@ export default function InventoryClient({ products, categories, locations, locat
           </AnchoredActionMenu>}
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[840px] text-sm">
-            <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        {/* Phones: rows render as product-style cards (CSS only). */}
+        <p className="pb-2 pt-4 text-sm text-slate-500 sm:hidden">{filtered.length} items</p>
+        <div className="overflow-x-auto max-sm:overflow-visible max-sm:pb-24">
+          <table data-phone-layout="custom" className="w-full min-w-[840px] text-sm max-sm:block max-sm:min-w-0">
+            <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 max-sm:hidden">
               <tr>
                 <th className="w-10 px-4 py-3"><input type="checkbox" aria-label="Select products on this page" disabled={busy} checked={paginated.length > 0 && paginated.every(row => selectedIds.has(row.id))} onChange={() => setSelectedIds(current => { const next = new Set(current); const all = paginated.every(row => next.has(row.id)); paginated.forEach(row => all ? next.delete(row.id) : next.add(row.id)); return next; })} /></th>
                 <th className="px-3 py-3">Product / Variant</th>
@@ -361,7 +363,7 @@ export default function InventoryClient({ products, categories, locations, locat
                 <th className="w-16 px-3 py-3 text-center">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 max-sm:grid max-sm:gap-3 max-sm:divide-y-0">
               {paginated.map((product) => (
                 <InventoryRow
                   key={product.id}
@@ -490,10 +492,10 @@ function InventoryRow({
 
   return (
     <tr
-      className={`cursor-pointer transition hover:bg-blue-50/50 ${selected ? "bg-blue-50/70" : ""}`}
+      className={`cursor-pointer transition hover:bg-blue-50/50 max-sm:relative max-sm:grid max-sm:grid-cols-4 max-sm:gap-x-2 max-sm:gap-y-1 max-sm:rounded-2xl max-sm:border max-sm:border-slate-200 max-sm:bg-white max-sm:p-3 max-sm:shadow-sm ${selected ? "bg-blue-50/70" : ""}`}
       onClick={onSelect}
     >
-      <td className="px-4 py-3" onClick={event => event.stopPropagation()}>
+      <td className="px-4 py-3 max-sm:absolute max-sm:left-3 max-sm:top-3 max-sm:p-0" onClick={event => event.stopPropagation()}>
         <input
           type="checkbox"
           className="h-4 w-4 rounded border-slate-300"
@@ -503,9 +505,9 @@ function InventoryRow({
           aria-label={`Select ${product.name}`}
         />
       </td>
-      <td className="px-3 py-3">
+      <td className="px-3 py-3 max-sm:col-span-3 max-sm:row-start-1 max-sm:min-w-0 max-sm:p-0 max-sm:pl-7">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 max-sm:h-16 max-sm:w-16 max-sm:rounded-xl">
             {image ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={image} alt="" className="h-full w-full object-cover" loading="lazy" />
@@ -514,7 +516,7 @@ function InventoryRow({
             )}
           </div>
           <div className="min-w-0">
-            <p className="truncate font-semibold text-slate-900">
+            <p className="truncate font-semibold text-slate-900 max-sm:text-[15px] max-sm:font-bold">
               {product.name}{product.color ? ` - ${product.color}` : ""}{product.size ? ` / ${product.size}` : ""}
             </p>
             <p className="truncate text-xs text-slate-500">
@@ -523,11 +525,11 @@ function InventoryRow({
           </div>
         </div>
       </td>
-      {visibleColumns.sku && <td className="px-3 py-3 text-slate-600">{product.sku || "—"}</td>}
-      {visibleColumns.category && <td className="px-3 py-3 text-slate-600">{product.categoryName}</td>}
+      {visibleColumns.sku && <td className="px-3 py-3 text-slate-600 max-sm:col-span-3 max-sm:row-start-2 max-sm:truncate max-sm:p-0 max-sm:pl-[6.25rem] max-sm:text-[11px] max-sm:text-slate-400">{product.sku || "—"}</td>}
+      {visibleColumns.category && <td className="px-3 py-3 text-slate-600 max-sm:col-span-3 max-sm:row-start-3 max-sm:truncate max-sm:p-0 max-sm:pl-[6.25rem] max-sm:text-xs">{product.categoryName}</td>}
       {visibleColumns.stock && (
-        <td className="px-3 py-3">
-          <div className="w-28">
+        <td className="px-3 py-3 max-sm:row-start-4 max-sm:mt-2 max-sm:border-t max-sm:border-slate-100 max-sm:p-0 max-sm:pt-2 max-sm:before:content-['Stock'] max-sm:before:block max-sm:before:text-[11px] max-sm:before:font-normal max-sm:before:text-slate-500">
+          <div className="w-28 max-sm:w-full">
             <span className={`font-bold ${product.displayStatus === "in" ? "text-emerald-700" : "text-red-600"}`}>{product.displayStock}</span>
             <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200">
               <div
@@ -538,15 +540,15 @@ function InventoryRow({
           </div>
         </td>
       )}
-      {visibleColumns.threshold && <td className="px-3 py-3 text-slate-600">{product.displayThreshold}</td>}
-      {visibleColumns.cost && <td className="px-3 py-3 font-medium text-slate-700">{money(Number(product.cost_price || 0))}</td>}
-      {visibleColumns.value && <td className="px-3 py-3 font-semibold text-slate-800">{money(value)}</td>}
+      {visibleColumns.threshold && <td className="px-3 py-3 text-slate-600 max-sm:row-start-4 max-sm:mt-2 max-sm:border-t max-sm:border-slate-100 max-sm:p-0 max-sm:pt-2 max-sm:font-bold max-sm:text-slate-900 max-sm:before:content-['Threshold'] max-sm:before:block max-sm:before:text-[11px] max-sm:before:font-normal max-sm:before:text-slate-500">{product.displayThreshold}</td>}
+      {visibleColumns.cost && <td className="px-3 py-3 font-medium text-slate-700 max-sm:row-start-4 max-sm:mt-2 max-sm:border-t max-sm:border-slate-100 max-sm:p-0 max-sm:pt-2 max-sm:font-bold max-sm:text-slate-900 max-sm:before:content-['Unit_Cost'] max-sm:before:block max-sm:before:text-[11px] max-sm:before:font-normal max-sm:before:text-slate-500">{money(Number(product.cost_price || 0))}</td>}
+      {visibleColumns.value && <td className="px-3 py-3 font-semibold text-slate-800 max-sm:row-start-4 max-sm:mt-2 max-sm:border-t max-sm:border-slate-100 max-sm:p-0 max-sm:pt-2 max-sm:font-bold max-sm:text-slate-900 max-sm:before:content-['Value'] max-sm:before:block max-sm:before:text-[11px] max-sm:before:font-normal max-sm:before:text-slate-500">{money(value)}</td>}
       {visibleColumns.status && (
-        <td className="px-3 py-3">
+        <td className="px-3 py-3 max-sm:col-start-4 max-sm:row-start-2 max-sm:row-span-2 max-sm:justify-self-end max-sm:whitespace-nowrap max-sm:p-0">
           <StatusBadge status={product.displayStatus} />
         </td>
       )}
-      <td className="px-3 py-3 text-center" onClick={(event) => event.stopPropagation()}>
+      <td className="px-3 py-3 text-center max-sm:col-start-4 max-sm:row-start-1 max-sm:justify-self-end max-sm:p-0" onClick={(event) => event.stopPropagation()}>
         {actions}
       </td>
     </tr>

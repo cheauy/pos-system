@@ -147,7 +147,7 @@ export default async function ProductsView() {
   return (
     <section aria-label="Product catalog" className="contents">
 
-      <div className="col-start-2 row-start-1 justify-self-end max-sm:fixed max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:right-4 max-sm:z-40 max-sm:[&>button]:rounded-full max-sm:[&>button]:shadow-lg">
+      <div className="col-start-2 row-start-1 justify-self-end max-sm:fixed max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:left-4 max-sm:right-4 max-sm:z-40 max-sm:justify-self-stretch max-sm:[&>button]:!min-h-14 max-sm:[&>button]:w-full max-sm:[&>button]:rounded-2xl max-sm:[&>button]:text-base max-sm:[&>button]:shadow-lg">
         {canCreate && <AddProductModal
           categories={categories}
           branches={branches || []}

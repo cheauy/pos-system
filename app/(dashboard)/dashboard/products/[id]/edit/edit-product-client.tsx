@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Loader2, Package, SlidersHorizontal, Plus, RotateCcw, Save, Shirt, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Barcode, Boxes, Check, ChevronDown, ChevronLeft, ChevronRight, ImageIcon, Loader2, Package, SlidersHorizontal, Plus, RotateCcw, Save, Shirt, Tag, Trash2, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
@@ -50,6 +50,7 @@ export default function EditProductClient({ product, categories, initialVariants
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(new Set<string>());
   const [page, setPage] = useState(1);
+  const [collapsed, setCollapsed] = useState(new Set<string>());
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [deleteText, setDeleteText] = useState("");
   const [visibility, setVisibility] = useState<{ ids: string[]; pos: boolean; online: boolean } | null>(null);
@@ -106,6 +107,7 @@ export default function EditProductClient({ product, categories, initialVariants
   const visible = sortedVariants.slice((safePage - 1) * pageSize, safePage * pageSize);
   const selectedRows = draft.variants.filter(row => selected.has(row.localId));
   const allVisible = visible.length > 0 && visible.every(row => selected.has(row.localId));
+  const sectionTitle = supportsVariants ? businessType === "fashion" ? "Clothing sizes & colours" : businessType === "shoes" ? "Shoe sizes & colours" : "Variants" : "Inventory & pricing";
   const combinations = useMemo(() => missingVariantCombinations(draft.variants, splitVariantValues(add.colors), splitVariantValues(add.sizes)), [draft.variants, add.colors, add.sizes]);
 
   function updateRow(localId: string, field: keyof Variant, value: string | boolean | null) {
@@ -263,14 +265,15 @@ export default function EditProductClient({ product, categories, initialVariants
           <div className="grid grid-cols-1 items-start gap-2 lg:grid-cols-3">
             <div className="order-1 min-w-0 space-y-2 lg:col-span-2">
               <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-4">
-                <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900"><Package size={17} /> Product information</h2>
+                <h2 className="mb-3 hidden items-center gap-2 text-sm font-bold text-slate-900 lg:flex"><Package size={17} /> Product information</h2>
+                <CardTitle icon={<Package size={17} />} title="Product information" subtitle="Basic details about your product." />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Product name"><input required minLength={2} maxLength={160} value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} className={inputClass} /></Field>
                   <Field label="Category"><select value={draft.categoryId} onChange={e => setDraft({ ...draft, categoryId: e.target.value })} className={inputClass}><option value="">No category</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
                   <div className="sm:col-span-2"><Field label="Description"><textarea value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} rows={2} className={`${inputClass} h-auto py-2`} /></Field></div>
                 </div>
               </section>
-      {supportsVariants && canCreateVariants && <details className="rounded-xl border border-slate-200 bg-white px-4 py-3"><summary className="cursor-pointer text-sm font-bold text-slate-900">Quick size run<span className="ml-2 text-xs font-normal text-slate-500">Add several sizes together</span></summary>
+      {supportsVariants && canCreateVariants && <details className="group rounded-xl border border-slate-200 bg-white px-4 py-3"><summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 text-sm font-bold text-slate-900 lg:list-item"><span className="row-span-2 lg:hidden"><IconTile><Tag size={17} /></IconTile></span>Quick size run<span className="col-start-2 row-start-2 text-xs font-normal text-slate-500 lg:ml-2">Add several sizes together</span><ChevronRight size={18} className="col-start-3 row-span-2 row-start-1 text-slate-400 transition group-open:rotate-90 lg:hidden" /></summary>
         <p className="text-sm text-slate-500">Enter colours and sizes separated by commas. Every colour gets every size; existing combinations are skipped.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2"><Field label="Colours"><input value={add.colors} placeholder="Black, White, Blue" onChange={e => setAdd({ ...add, colors: e.target.value })} className={inputClass} /></Field><Field label="Sizes"><input value={add.sizes} placeholder={businessType === "shoes" ? "36, 37, 38, 39" : "S, M, L, XL"} onChange={e => setAdd({ ...add, sizes: e.target.value })} className={inputClass} /></Field></div>
         <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-teal-300 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700">{runImageKey && imageUrl(runImageKey) ? <img src={imageUrl(runImageKey)!} alt="Quick size run" className="h-8 w-8 rounded object-contain" /> : <Upload size={16} />} {runImageKey ? "Replace run image" : "Upload run image"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label="Quick size run image" onChange={event => uploadImage(event, "run")} /></label>
@@ -283,12 +286,13 @@ export default function EditProductClient({ product, categories, initialVariants
 
               <section className="order-4 col-span-full min-w-0 rounded-xl border border-slate-200 bg-white">
                 <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 px-3 py-2.5">
-                  <div><h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Shirt size={17} /> {supportsVariants ? businessType === "fashion" ? "Clothing sizes & colours" : businessType === "shoes" ? "Shoe sizes & colours" : "Variants" : "Inventory & pricing"}</h2><p className="mt-1 text-xs text-slate-500">Edit sizes, colours and prices below.</p></div>
+                  <div className="hidden lg:block"><h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Shirt size={17} /> {sectionTitle}</h2><p className="mt-1 text-xs text-slate-500">Edit sizes, colours and prices below.</p></div>
+                  <div className="lg:hidden"><CardTitle icon={<Shirt size={17} />} title={sectionTitle} subtitle="Edit sizes, colours and prices below." flush /></div>
                   {supportsVariants && canCreateVariants && <div className="flex flex-wrap gap-2"><button type="button" onClick={addOne} className={buttonClass}><Plus size={14} /> {businessType === "fashion" || businessType === "shoes" ? "Add Size" : "Add Variant"}</button></div>}
                 </div>
-                <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-2.5 py-1.5 text-xs">
+                <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-2.5 py-1.5 text-xs max-lg:flex-nowrap max-lg:overflow-x-auto max-lg:[scrollbar-width:none] max-lg:[&>*]:shrink-0 max-lg:[&>button]:whitespace-nowrap">
                   <button type="button" onClick={() => selectRows(selectedRows.length ? [] : draft.variants.map(row => row.localId))} className={buttonClass}>{selectedRows.length ? "Clear" : "Select All"}</button>
-                  <button type="button" onClick={() => setDraft(current => ({ ...current, variants: current.variants.map(row => row.barcode?.trim() ? row : { ...row, barcode: generateInternalBarcode() }) }))} className={buttonClass}>Generate missing barcodes</button>
+                  <button type="button" onClick={() => setDraft(current => ({ ...current, variants: current.variants.map(row => row.barcode?.trim() ? row : { ...row, barcode: generateInternalBarcode() }) }))} className={buttonClass}><Barcode size={14} className="lg:hidden" />Generate missing barcodes</button>
                   <ActionMenu label="Actions" disabled={!selectedRows.length}>
                     {canAdjustStock && <button type="button" onClick={() => openStockAdjustment(selectedRows)} className={buttonClass}><SlidersHorizontal size={13} /> Adjust stock ({selectedRows.length})</button>}
                     <label className={`${buttonClass} cursor-pointer`}><Upload size={13} /> Upload for selected<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label="Upload image for selected variants" onChange={event => uploadImage(event, selectedRows.map(row => row.localId))} /></label>
@@ -297,7 +301,61 @@ export default function EditProductClient({ product, categories, initialVariants
                   </ActionMenu>
                 </div>
                 {validation && <p className="m-3 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800" role="status">{validation}</p>}
-                <div className="overflow-x-auto">
+                {/* Phones and tablets: one card per variant, grouped by colour. Desktop keeps the table below. */}
+                <div className="space-y-2 p-2 lg:hidden">
+                  {visible.map((row, index) => {
+                    const label = `${row.color || "New colour"} ${row.size || "New size"}`, preview = imageUrl(row.imageKey) ?? mainImageUrl;
+                    const colorKey = normalizeVariantText(row.color), first = index === 0 || normalizeVariantText(visible[index - 1].color) !== colorKey;
+                    const groupCount = visible.filter(item => normalizeVariantText(item.color) === colorKey).length, open = !collapsed.has(colorKey);
+                    return <Fragment key={row.localId}>
+                      {first && <div className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5">
+                        <span className="h-8 w-8 shrink-0 rounded-full border border-slate-200 bg-slate-200" style={{ backgroundColor: row.color.trim().toLowerCase() || undefined }} aria-hidden />
+                        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-900">{row.color.trim() || "New / unassigned colour"}</span><span className="block text-xs text-slate-500">{groupCount} {groupCount === 1 ? "variant" : "variants"}</span></span>
+                        <button type="button" onClick={() => selectRows(draft.variants.filter(item => normalizeVariantText(item.color) === colorKey).map(item => item.localId))} className="text-xs font-semibold text-blue-700">Select</button>
+                        <button type="button" aria-expanded={open} aria-label={`${open ? "Collapse" : "Expand"} ${row.color.trim() || "unassigned colour"}`} onClick={() => setCollapsed(current => { const next = new Set(current); if (next.has(colorKey)) next.delete(colorKey); else next.add(colorKey); return next; })} className="grid h-9 w-9 place-items-center rounded-lg text-slate-600 hover:bg-white"><ChevronDown size={18} className={`transition ${open ? "rotate-180" : ""}`} /></button>
+                      </div>}
+                      {open && <div className={`rounded-xl border p-3 ${selected.has(row.localId) ? "border-blue-200 bg-blue-50/30" : "border-slate-200 bg-white"}`}>
+                        <div className="flex items-center gap-2">
+                          <input type="checkbox" checked={selected.has(row.localId)} onChange={() => toggleRow(row.localId)} aria-label={`Select ${label}`} className="h-4 w-4" />
+                          <strong className="min-w-0 flex-1 truncate text-sm text-slate-900">Size {row.size || "New size"} · {row.color || "New colour"}</strong>
+                          <button type="button" disabled={!canDisable} aria-label={`Toggle status for ${label}`} onClick={() => updateRow(row.localId, "isActive", !row.isActive)} className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{row.isActive ? "Active" : "Hidden"}</button>
+                          <ActionMenu label={`More actions for ${label}`} iconOnly>
+                            <button type="button" disabled={!canDisable} onClick={() => updateRow(row.localId, "isActive", !row.isActive)} className={buttonClass}>{row.isActive ? "Hide variant" : "Show variant"}</button>
+                            {canAdjustStock && <button type="button" disabled={!row.id} onClick={() => openStockAdjustment([row])} className={buttonClass}><SlidersHorizontal size={13} /> Adjust stock</button>}
+                            {row.imageKey && <button type="button" onClick={() => updateRow(row.localId, "imageKey", null)} className={buttonClass}>Use main product image</button>}
+                          </ActionMenu>
+                        </div>
+                        {!row.id && <p className="mt-1 text-[11px] font-semibold text-blue-600">New · not saved</p>}
+                        <div className="mt-3 grid grid-cols-[4.5rem_minmax(0,1fr)_minmax(0,1fr)] gap-x-2 gap-y-2.5">
+                          <div className="relative row-span-2">
+                            <label className="flex cursor-pointer flex-col items-center gap-1 text-blue-700">
+                              {preview ? <img src={preview} alt={label} className="h-[4.5rem] w-[4.5rem] rounded-lg border border-slate-200 object-cover" /> : <span className="grid h-[4.5rem] w-[4.5rem] place-items-center rounded-lg border border-dashed border-teal-300 bg-teal-50 text-teal-700"><ImageIcon size={20} /></span>}
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold"><Upload size={12} />{preview ? "Replace" : "Upload"}</span>
+                              <input type="file" accept="image/jpeg,image/png,image/webp" aria-label={`Upload image for ${label}`} className="sr-only" onChange={event => uploadImage(event, [row.localId])} />
+                            </label>
+                            {row.imageKey && <button type="button" aria-label={`Remove image override for ${label}`} title="Use main product image" onClick={() => updateRow(row.localId, "imageKey", null)} className="absolute -right-1.5 -top-1.5 grid h-6 min-h-0! w-6 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm"><X size={12} /></button>}
+                          </div>
+                          <MobileField label="Size"><Cell label={`Size ${label}`} value={row.size} onChange={value => updateRow(row.localId, "size", value)} /></MobileField>
+                          <MobileField label="Colour"><Cell label={`Colour ${label}`} value={row.color} onChange={value => updateRow(row.localId, "color", value)} /></MobileField>
+                          <MobileField label="SKU"><Cell label={`SKU ${label}`} value={row.sku} onChange={value => updateRow(row.localId, "sku", value)} /></MobileField>
+                          <MobileField label="Barcode"><Cell label={`Barcode for ${label}`} value={row.barcode ?? ""} onChange={value => updateRow(row.localId, "barcode", value)} /></MobileField>
+                          <div className="col-start-2"><MobileField label="Cost"><Cell label={`Cost ${label}`} number value={row.costPrice} onChange={value => updateRow(row.localId, "costPrice", value)} /></MobileField></div>
+                          <MobileField label="Price"><Cell label={`Price ${label}`} number value={row.sellingPrice} onChange={value => updateRow(row.localId, "sellingPrice", value)} /></MobileField>
+                        </div>
+                        <div className="mt-3 grid grid-cols-[minmax(0,1fr)_5rem] gap-2">
+                          <div className="rounded-lg border border-slate-200 p-2">
+                            <div className="flex items-center justify-between gap-2"><span className="inline-flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-700"><Boxes size={14} className="shrink-0" /> Inventory</span><button type="button" disabled={!row.id || !canAdjustStock} onClick={() => openStockAdjustment([row])} aria-label={`Adjust stock ${label}`} className={`${buttonClass} h-8 shrink-0 gap-1 whitespace-nowrap px-1.5 text-[11px]`}><SlidersHorizontal size={12} /> Adjust stock</button></div>
+                            <p className="mt-1 text-[11px] text-slate-500">{row.id ? `Current stock: ${row.stockQuantity}` : "Save variant first · starts at 0"}</p>
+                          </div>
+                          <MobileField label="Low stock"><Cell label={`Low stock ${label}`} number integer value={row.lowStockQuantity} onChange={value => updateRow(row.localId, "lowStockQuantity", value)} /></MobileField>
+                        </div>
+                        {supportsVariants && (canDisable || !row.id) && <div className="mt-2 flex justify-end"><button type="button" onClick={() => requestDelete([row.localId])} aria-label={`Remove variant ${label}`} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"><Trash2 size={14} /> Delete variant</button></div>}
+                      </div>}
+                    </Fragment>;
+                  })}
+                  {!visible.length && <p className="p-6 text-center text-sm text-slate-500">No variants yet. Add a size or use Quick size run above.</p>}
+                </div>
+                <div className="hidden overflow-x-auto lg:block">
                   <table className="w-full min-w-[1000px] text-left text-xs">
                     <thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="p-3"><input type="checkbox" checked={allVisible} onChange={togglePage} aria-label="Select this page" /></th><th className="p-2">Image</th><th className="p-2">Size</th><th className="p-2">Colour</th><th className="p-2">SKU</th><th className="p-2">Cost</th><th className="p-2">Price</th><th className="p-2">Inventory</th><th className="p-2">Low stock</th><th className="p-2">Status</th><th className="p-2">Action</th></tr></thead>
                     <tbody>
@@ -331,13 +389,13 @@ export default function EditProductClient({ product, categories, initialVariants
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 p-3 text-xs text-slate-500"><p>{sortedVariants.length ? (safePage - 1) * pageSize + 1 : 0}–{Math.min(safePage * pageSize, sortedVariants.length)} of {sortedVariants.length} shown · {draft.variants.length} total</p><div className="flex items-center gap-2"><button type="button" aria-label="Previous page" disabled={safePage === 1} onClick={() => setPage(safePage - 1)} className={buttonClass}><ChevronLeft size={15} /></button><span>{safePage} / {pageCount}</span><button type="button" aria-label="Next page" disabled={safePage >= pageCount} onClick={() => setPage(safePage + 1)} className={buttonClass}><ChevronRight size={15} /></button></div></div>
               </section>
             <aside className="order-2 min-w-0 space-y-4 lg:col-start-3 lg:row-start-1">
-              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><ProductGalleryInput key={`${product.id}:${initialVariants[0]?.expectedUpdatedAt}:${galleryVersion}`} initialUrls={product.galleryUrls?.length ? product.galleryUrls : product.imageUrl ? [product.imageUrl] : []} onChange={() => setGalleryChanged(true)} /></section>
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><ProductGalleryInput icon={<span className="lg:hidden"><IconTile><ImageIcon size={17} /></IconTile></span>} key={`${product.id}:${initialVariants[0]?.expectedUpdatedAt}:${galleryVersion}`} initialUrls={product.galleryUrls?.length ? product.galleryUrls : product.imageUrl ? [product.imageUrl] : []} onChange={() => setGalleryChanged(true)} /></section>
             </aside>
           </div>
           <div className="sticky bottom-2 z-40 flex flex-wrap items-center justify-end gap-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
             <span className="mr-auto hidden text-xs font-semibold text-slate-500 sm:block">{busy ? "Saving / refreshing…" : dirty ? "Review changes, then save" : "No unsaved changes"}</span>
-            <button type="button" onClick={() => setConfirmation({ kind: "discard" })} disabled={!dirty || busy} className={buttonClass}><RotateCcw size={14} /> Discard</button>
-            <button type="submit" disabled={!dirty || busy || Boolean(validation) || mustReload || stale} className={`${primaryClass} whitespace-nowrap`}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} {busy ? "Saving…" : "Save Changes"}</button>
+            <button type="button" onClick={() => setConfirmation({ kind: "discard" })} disabled={!dirty || busy} className={`${buttonClass} max-lg:h-11 max-lg:flex-1 max-lg:border-0 max-lg:bg-slate-100 max-lg:text-sm`}><RotateCcw size={14} className="max-lg:hidden" /> Discard</button>
+            <button type="submit" disabled={!dirty || busy || Boolean(validation) || mustReload || stale} className={`${primaryClass} whitespace-nowrap max-lg:h-11 max-lg:flex-[2]`}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} {busy ? "Saving…" : "Save Changes"}</button>
           </div>
         </fieldset>
       </form>
@@ -362,6 +420,11 @@ function Modal({ title, onClose, locked = false, children }: { title: string; on
   useEffect(() => { const dialog = ref.current; dialog?.showModal(); return () => dialog?.close(); }, []);
   return <dialog ref={ref} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); if (!locked) onClose(); }} className="m-auto max-h-[85vh] w-[calc(100%_-_2rem)] max-w-md overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 text-slate-900 shadow-2xl backdrop:bg-slate-950/40"><div className="mb-3 flex items-start justify-between gap-3"><h3 id={titleId} className="text-base font-bold">{title}</h3><button type="button" aria-label="Close dialog" disabled={locked} onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><X size={18} /></button></div>{children}</dialog>;
 }
+function IconTile({ children }: { children: ReactNode }) { return <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-700">{children}</span>; }
+function CardTitle({ icon, title, subtitle, flush = false }: { icon: ReactNode; title: string; subtitle: string; flush?: boolean }) {
+  return <div className={`flex items-center gap-3 lg:hidden ${flush ? "" : "mb-4"}`}><IconTile>{icon}</IconTile><div className="min-w-0"><h2 className="text-sm font-bold text-slate-900">{title}</h2><p className="text-xs text-slate-500">{subtitle}</p></div></div>;
+}
+function MobileField({ label, children }: { label: string; children: ReactNode }) { return <label className="block min-w-0"><span className="mb-1 block text-[11px] font-semibold text-slate-500">{label}</span>{children}</label>; }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="block"><span className="mb-1.5 block text-xs font-semibold text-slate-600">{label}</span>{children}</label>; }
 function Cell({ label, value, onChange, number = false, integer = false }: { label: string; value: string; onChange: (value: string) => void; number?: boolean; integer?: boolean }) {
   return <input aria-label={label} value={value} type={number ? "number" : "text"} min={number ? "0" : undefined} step={number ? integer ? "1" : "0.01" : undefined} onChange={e => onChange(e.target.value)} className="h-9 w-full min-w-16 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100" />;

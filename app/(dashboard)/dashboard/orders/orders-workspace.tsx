@@ -17,7 +17,7 @@ import {
   CalendarDays, CheckCircle2, Coins, ReceiptText, RotateCcw, Truck, UserRound, Wallet,
 } from "lucide-react";
 import {
-  changeOrderWorkspaceStatus, deleteOrderWorkspaceOrder, getOrderWorkspaceDetail, saveOrderWorkspaceDetails,
+  changeOrderWorkspaceStatus, deleteOrderWorkspaceOrder, deleteOrderWorkspaceOrders, getOrderWorkspaceDetail, saveOrderWorkspaceDetails,
 } from "./order-workspace-actions";
 import {
   dateText, deleteReason, fulfillmentLabels, methodLabel, money as plainMoney, nextStatuses,
@@ -55,7 +55,8 @@ function setOrderPreference(key: string, value: string) {
 
 type Props = { businessId: string; branchId: string; businessName: string; showTableQr?: boolean; data: WorkspaceData; filters: WorkspaceFilters; permissions: WorkspacePermissions };
 type ActionDialog = { type: "edit" | "status" | "delete"; order: OrderRow };
-type QueueItem = { id: string; number: string };
+// The row snapshot lets bulk delete reuse per-order eligibility and version checks.
+type QueueItem = { id: string; number: string; row: OrderRow };
 const statusTabs = ["all", "new", "pending", "in_progress", "completed", "cancelled", "refunded"];
 
 const orderHref = (id: string) => `/dashboard/orders/${encodeURIComponent(id)}`;
@@ -73,6 +74,7 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selected, setSelected] = useState<QueueItem[]>([]);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [printPreview,setPrintPreview]=useState<{id:string;kind:OrderPrintKind}|null>(null);
   const [menu, setMenu] = useState<{ row: OrderRow; rect: DOMRect; trigger: HTMLButtonElement } | null>(null);
   const [dialog, setDialog] = useState<ActionDialog | null>(null);
@@ -211,16 +213,23 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
     setSelectedId(row.id); setPanelClosed(false); setMobileOpen(true);
   }
   function toggleSelected(row: OrderRow) {
-    setSelected((items) => items.some((item) => item.id === row.id) ? items.filter((item) => item.id !== row.id) : items.length < 50 ? [...items, { id: row.id, number: row.orderNumber }] : items);
+    setSelected((items) => items.some((item) => item.id === row.id) ? items.filter((item) => item.id !== row.id) : items.length < 50 ? [...items, { id: row.id, number: row.orderNumber, row }] : items);
   }
   function toggleAll() {
-    setSelected((items) => allChecked ? items.filter((item) => !data.rows.some((row) => row.id === item.id)) : [...items, ...data.rows.filter((row) => !items.some((item) => item.id === row.id)).map((row) => ({ id: row.id, number: row.orderNumber }))].slice(0, 50));
+    setSelected((items) => allChecked ? items.filter((item) => !data.rows.some((row) => row.id === item.id)) : [...items, ...data.rows.filter((row) => !items.some((item) => item.id === row.id)).map((row) => ({ id: row.id, number: row.orderNumber, row }))].slice(0, 50));
   }
   function openAction(type: ActionDialog["type"], order: OrderRow) { setMenu(null); setDialog({ type, order }); }
   function actionSuccess(message: string, deletedId?: string) {
     setDialog(null); setNotice(message);
     if (deletedId) { setSelected((items) => items.filter((item) => item.id !== deletedId)); setSelectedId(data.rows.find((row) => row.id !== deletedId)?.id ?? null); setMobileOpen(false); }
-    refresh();
+    // A status action's revalidatePath already returned the fresh list; refreshing again doubled the page fetch.
+    if (dialog?.type !== "status") refresh();
+  }
+  function bulkDeleted(deleted: string[], failed: number) {
+    if (!deleted.length) return;
+    setSelected((items) => items.filter((item) => !deleted.includes(item.id)));
+    if (visibleId && deleted.includes(visibleId)) { setSelectedId(data.rows.find((row) => !deleted.includes(row.id))?.id ?? null); setMobileOpen(false); }
+    setNotice(`${deleted.length} ${deleted.length === 1 ? "order" : "orders"} deleted.${failed ? ` ${failed} could not be deleted and remain selected.` : ""}`);
   }
   const firstShown = data.total === 0 ? 0 : (data.page - 1) * filters.limit + 1;
   const lastShown = Math.min(data.page * filters.limit, data.total);
@@ -267,17 +276,17 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
           {activeFilters && <button className={styles.textButton} type="button" onClick={() => navigate({ search: "", branch: "all", source: "all", fulfillment: "all", payment: "all", status: "all", from: "", to: "", page: 1 })}>Clear filters</button>}
         </div>
         <section className={styles.tableCard} aria-label="Orders list" aria-busy={pending}>
-          {selected.length > 0 && <div className={styles.selectionBar}><Printer size={14} /><span>{selected.length} selected for printing <small>(up to 50)</small></span><button type="button" onClick={() => setSelected([])}>Clear selection</button></div>}
+          {selected.length > 0 && <div className={styles.selectionBar} role="toolbar" aria-label="Selected orders"><Check size={14} /><span>{selected.length} selected <small>(up to 50)</small></span><button type="button" onClick={() => setSelected([])}>Clear selection</button>{permissions.delete && <button type="button" className={styles.selectionDelete} onClick={() => setBulkDeleteOpen(true)}><Trash2 size={13} />Delete ({selected.length})</button>}</div>}
           <div className={styles.tableScroll}>
             <table className={styles.table} data-phone-layout="custom">
               <thead><tr>
-                <th className={styles.checkColumn}><input type="checkbox" ref={allCheckbox} checked={allChecked} onChange={toggleAll} disabled={!data.rows.length} aria-label="Select all orders on this page for printing" /></th>
+                <th className={styles.checkColumn}><input type="checkbox" ref={allCheckbox} checked={allChecked} onChange={toggleAll} disabled={!data.rows.length} aria-label="Select all orders on this page" /></th>
                 <th>Order ID</th><th>Customer</th><th>Items</th><th>Source</th><th>Payment</th><th>Total</th><th>Status</th>
                 <th><button type="button" className={styles.sortButton} onClick={() => navigate({ sort: filters.sort === "newest" ? "oldest" : "newest", page: 1 })} aria-label={`Sort by date, currently ${filters.sort}`}>Date/Time <ArrowUpDown size={12} /></button></th>
                 <th>Branch</th><th className={styles.actionColumn}>Actions</th>
               </tr></thead>
               <tbody>{data.rows.map((row) => <tr key={row.id} className={!panelClosed && visibleId === row.id ? styles.selectedRow : ""} onClick={() => selectRow(row)}>
-                <td className={styles.checkColumn}><input type="checkbox" checked={selected.some((item) => item.id === row.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleSelected(row)} aria-label={`Select order ${row.orderNumber} for printing`} /></td>
+                <td className={styles.checkColumn}><input type="checkbox" checked={selected.some((item) => item.id === row.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleSelected(row)} aria-label={`Select order ${row.orderNumber}`} /></td>
                 <td><button className={styles.orderLink} type="button" onClick={(event) => { event.stopPropagation(); selectRow(row); }}>{row.orderNumber}</button></td>
                 <td className={styles.customerCell}><span title={row.customerName}>{row.customerName}</span><small>{row.customerPhone || "No phone"}</small></td>
                 <td><Package size={17} className={styles.phoneIcon} />{row.itemCount} {row.itemCount === 1 ? "item" : "items"}</td>
@@ -306,9 +315,10 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
       </div>
       {!narrow && <aside className={styles.detailColumn}>{panelClosed || !visibleId ? <div className={styles.detailPlaceholder}><FileText size={32} /><h3>Select an order</h3><p>Review customer details, items, payments, and activity.</p>{panelClosed && visibleId && <button className={styles.button} type="button" onClick={() => setPanelClosed(false)}>Show details</button>}</div> : detailContent}</aside>}
     </div>
-    {narrow && mobileOpen && !panelClosed && visibleId && <Modal title="Order details" onClose={() => setMobileOpen(false)} wide>{detailContent}</Modal>}
+    {narrow && mobileOpen && !panelClosed && visibleId && <Modal title="Order details" onClose={() => setMobileOpen(false)} wide drawer>{detailContent}</Modal>}
     {printPreview&&<OrderPrintPreview orderId={printPreview.id} kind={printPreview.kind} onClose={()=>setPrintPreview(null)}/>}
     {menu && <RowMenu onPrint={kind=>{setPrintPreview({id:menu.row.id,kind});setMenu(null);}} menu={menu} permissions={permissions} onClose={() => setMenu(null)} onAction={openAction} onView={() => { selectRow(menu.row); setMenu(null); }} />}
+    {bulkDeleteOpen && selected.length > 0 && <BulkDeleteDialog items={selected.map((item) => ({ ...item, row: data.rows.find((row) => row.id === item.id) ?? item.row }))} businessId={businessId} onClose={() => setBulkDeleteOpen(false)} onDeleted={bulkDeleted} />}
     {dialog && <ManageOrderDialog action={dialog} businessId={businessId} permissions={permissions} onClose={() => setDialog(null)} onSuccess={actionSuccess} />}
     {queueOpen && <Modal title={`Print Queue (${selected.length})`} onClose={() => setQueueOpen(false)}>
       <p className={styles.modalHelp}>Choose a receipt or shipping label for each order, review the preview, then print using your saved settings.</p>
@@ -336,8 +346,12 @@ function DetailPanel({ detail, loading, error, currency, currencyFormat, timezon
   detail: OrderDetail | null; loading: boolean; error: string; currency: string; currencyFormat?: CurrencyFormat; timezone: string; permissions: WorkspacePermissions; businessId: string;
   onClose: () => void; onRetry: () => void; onAction: (type: ActionDialog["type"], row: OrderRow) => void;
 }) {
-  const [statusBusy,setStatusBusy]=useState(false);
+  // Pending stays tied to the detail it was started from, so the button cannot be
+  // clicked again with a stale version before the revalidated detail arrives.
+  const [statusBusyFor,setStatusBusyFor]=useState<OrderDetail|null>(null);
+  const statusLock=useRef(false);
   const [statusError,setStatusError]=useState("");
+  const statusBusy=statusBusyFor!==null && statusBusyFor===detail;
   if (loading) return <div className={styles.detailCard} aria-busy="true" aria-label="Loading order details"><div className={styles.skeletonTitle} /><div className={styles.skeletonLine} /><div className={styles.skeletonBlock} /><div className={styles.skeletonBlock} /><div className={styles.skeletonLine} /></div>;
   if (error) return <div className={styles.detailCard}><div className={styles.error} role="alert"><AlertCircle size={19} />{error}</div><button className={styles.button} type="button" onClick={onRetry}>Try again</button></div>;
   if (!detail) return <div className={styles.detailPlaceholder}><FileText size={30} /><p>Select an order to view its details.</p></div>;
@@ -349,14 +363,15 @@ function DetailPanel({ detail, loading, error, currency, currencyFormat, timezon
   const allReturned = order.items.length > 0 && order.items.every(item => item.returnedQuantity >= item.quantity);
   const canCancelItem = permissions.cancel && ["online","qr"].includes(order.source) && ["new","pending","in_progress"].includes(order.status) && !order.deleteBlocked && !order.discount && !order.couponCode && !order.returnsUnavailable;
   async function advanceStatus() {
-    if (!nextStatus || !order.updatedAt || statusBusy) return;
-    setStatusBusy(true); setStatusError("");
+    if (!nextStatus || !order.updatedAt || statusBusy || statusLock.current) return;
+    statusLock.current = true; setStatusBusyFor(order); setStatusError("");
     try {
       const result = await changeOrderWorkspaceStatus(order.id, order.updatedAt, nextStatus.value, "", businessId);
-      if (!result.success) setStatusError(result.message);
-      else onReturned();
-    } catch { setStatusError("Refresh the order before trying again."); }
-    finally { setStatusBusy(false); }
+      // Success: the action's revalidatePath returns the fresh list, whose changed
+      // row reloads this detail once. No extra full-page refresh is requested.
+      if (!result.success) { setStatusError(result.message); setStatusBusyFor(null); }
+    } catch { setStatusError("Refresh the order before trying again."); setStatusBusyFor(null); }
+    finally { statusLock.current = false; }
   }
   const canReturn = permissions.refund && !order.returnsUnavailable && ["new", "pending", "in_progress", "completed"].includes(order.status);
   const online = ["online", "qr"].includes(order.source);
@@ -524,7 +539,7 @@ function RowMenu({ menu, permissions, onClose, onAction, onView, onPrint }: {
   </div>, document.body);
 }
 
-function Modal({ title, onClose, children, busy = false, wide = false }: { title: string; onClose: () => void; children: ReactNode; busy?: boolean; wide?: boolean }) {
+function Modal({ title, onClose, children, busy = false, wide = false, drawer = false }: { title: string; onClose: () => void; children: ReactNode; busy?: boolean; wide?: boolean; drawer?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -534,10 +549,51 @@ function Modal({ title, onClose, children, busy = false, wide = false }: { title
     dialog?.showModal();
     return () => { dialog?.close(); if (prior?.isConnected) prior.focus(); };
   }, []);
-  return createPortal(<dialog ref={ref} className={`${styles.modal} ${wide ? styles.wideModal : ""}`} aria-label={title} onCancel={(event) => { event.preventDefault(); if (!busy) closeRef.current(); }} onClick={(event) => { const element = ref.current; if (!busy && element && event.target === element) { const rect = element.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeRef.current(); } }}>
+  return createPortal(<dialog ref={ref} className={`${styles.modal} ${wide ? styles.wideModal : ""} ${drawer ? styles.drawer : ""}`} aria-label={title} onCancel={(event) => { event.preventDefault(); if (!busy) closeRef.current(); }} onClick={(event) => { const element = ref.current; if (!busy && element && event.target === element) { const rect = element.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeRef.current(); } }}>
     <div className={styles.modalHeader}><h2>{title}</h2><button className={styles.iconButton} type="button" onClick={onClose} disabled={busy} aria-label="Close dialog"><X size={18} /></button></div>
     <div className={styles.modalBody}>{children}</div>
   </dialog>, document.body);
+}
+
+function BulkDeleteDialog({ items, businessId, onClose, onDeleted }: { items: QueueItem[]; businessId: string; onClose: () => void; onDeleted: (deleted: string[], failed: number) => void }) {
+  const [reason, setReason] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [failures, setFailures] = useState<{ number: string; message: string }[]>([]);
+  const lock = useRef(false);
+  const eligible = items.filter((item) => !deleteReason(item.row));
+  const blocked = items.filter((item) => deleteReason(item.row));
+  const phrase = `DELETE ${eligible.length}`;
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (lock.current || !eligible.length || confirm.trim() !== phrase || !reason.trim()) return;
+    lock.current = true; setSaving(true); setError(""); setFailures([]);
+    try {
+      const result = await deleteOrderWorkspaceOrders(eligible.map((item) => ({ id: item.id, updatedAt: item.row.updatedAt })), reason, businessId);
+      if (!result.success) { setError(result.message); return; }
+      const numbers = new Map(items.map((item) => [item.id, item.number]));
+      setFailures(result.data.failed.map((failure) => ({ number: numbers.get(failure.id) ?? failure.id, message: failure.message })));
+      onDeleted(result.data.deleted, result.data.failed.length);
+      setConfirm("");
+      if (!result.data.failed.length && !blocked.length) onClose();
+    } catch { setError("The result could not be confirmed. Refresh the list before retrying; some orders may already be deleted."); }
+    finally { lock.current = false; setSaving(false); }
+  }
+  return <Modal title={`Delete ${items.length} selected ${items.length === 1 ? "order" : "orders"}`} onClose={onClose} busy={saving}>
+    <form onSubmit={submit}>
+      {error && <div role="alert" className={styles.error}><AlertCircle size={18} /><div>{error}</div></div>}
+      {failures.length > 0 && <div role="alert" className={styles.error}><AlertCircle size={18} /><div><strong>{failures.length} not deleted (still selected):</strong><ul>{failures.map((failure) => <li key={failure.number}>{failure.number}: {failure.message}</li>)}</ul></div></div>}
+      <p className={styles.modalHelp}>Only the orders listed here are submitted. Each one uses the single-order delete checks: unpaid orders are cancelled with the existing stock-restoration procedure first; transactions, items and audit history stay stored.</p>
+      {eligible.length > 0 && <div className={styles.modalOrder}><strong>Will delete ({eligible.length})</strong><span>{eligible.map((item) => item.number).join(", ")}</span></div>}
+      {blocked.length > 0 && <div className={styles.warning}><ShieldCheck size={18} /><div><strong>Skipped ({blocked.length}), not eligible:</strong><ul>{blocked.map((item) => <li key={item.id}>{item.number}: {deleteReason(item.row)}</li>)}</ul></div></div>}
+      {eligible.length > 0 && <>
+        <label className={styles.fieldLabel}>Deletion reason<textarea required value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} rows={3} disabled={saving} placeholder="Why are these orders being removed?" /></label>
+        <label className={styles.fieldLabel}>Type <strong>{phrase}</strong> to confirm<input required value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="off" disabled={saving} /></label>
+      </>}
+      <div className={styles.modalFooter}><button type="button" className={styles.button} onClick={onClose} disabled={saving}>{eligible.length ? "Cancel" : "Close"}</button>{eligible.length > 0 && <button type="submit" className={`${styles.button} ${styles.dangerButton}`} disabled={saving || confirm.trim() !== phrase || !reason.trim()}>{saving ? <Loader2 size={16} className={styles.spin} /> : <Trash2 size={15} />}{saving ? "Deleting…" : `Delete ${eligible.length}`}</button>}</div>
+    </form>
+  </Modal>;
 }
 
 function ManageOrderDialog({ action, businessId, permissions, onClose, onSuccess }: { action: ActionDialog; businessId: string; permissions: WorkspacePermissions; onClose: () => void; onSuccess: (message: string, deletedId?: string) => void }) {

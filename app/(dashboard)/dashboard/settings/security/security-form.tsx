@@ -1,4 +1,5 @@
 "use client";
+import { ButtonSpinner } from "@/components/pending-submit-button";
 import { PASSWORD_HELP } from "@/lib/auth/password-policy";
 
 import {
@@ -372,7 +373,7 @@ export default function SecurityForm({
                   disabled={passwordPending}
                   className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <LockKeyhole className="h-4 w-4" />
+                  {passwordPending ? <ButtonSpinner /> : <LockKeyhole className="h-4 w-4" />}
                   {passwordPending
                     ? "Updating..."
                     : hasPasswordIdentity

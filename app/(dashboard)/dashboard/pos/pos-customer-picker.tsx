@@ -21,6 +21,9 @@ type Props = {
   canCreate:boolean;
   onSelect:(customer:PickerCustomer)=>void; onCreated:(customer:PickerCustomer)=>void;
   onBusyChange:(busy:boolean)=>void;
+  // Pickup/Delivery: Quick Add edits the checkout draft only. The customer is saved
+  // by Complete Sale, so there is no separate save button or pending request here.
+  draft?:{value:{name:string;phone:string;address:string};onChange:(patch:{name?:string;phone?:string;address?:string})=>void;onStart:()=>void;showAddress:boolean};
 };
 
 export function PosCustomerPicker(p:Props) {
@@ -32,7 +35,7 @@ export function PosCustomerPicker(p:Props) {
   const [offset,setOffset]=useState(0);
   const [refresh,setRefresh]=useState(0);
   const [canCreate,setCanCreate]=useState(p.canCreate);
-  const [showForm,setShowForm]=useState(false);
+  const [showForm,setShowForm]=useState(Boolean(p.draft && !p.customerId && p.canCreate));
   const [form,setForm]=useState({name:'',phone:'',address:'',email:'',birthday:'',gender:''});
   const [fields,setFields]=useState<CustomerFieldFlags|null>(null);
   const [formError,setFormError]=useState('');
@@ -45,14 +48,16 @@ export function PosCustomerPicker(p:Props) {
   const savingRef=useRef(false);
   const searchRef=useRef<HTMLInputElement>(null);
   const key=`tenh-pos:customer-create:${p.businessId}:${p.userId}`;
+  const draftMode=Boolean(p.draft);
 
   // Keep an unresolved save across reopening/reloading. Its UUID makes retry safe.
   useEffect(()=>{
+    if(draftMode)return;
     try {
       const saved=JSON.parse(sessionStorage.getItem(key)||'null');
       if(saved && !customerInputIssue(saved,undefined,true)) {setPending(saved);setForm({name:saved.name,phone:saved.phone,address:saved.address,email:saved.email || '',birthday:saved.birthday || '',gender:saved.gender || ''});setShowForm(true);setFormError('A previous customer save needs confirmation. Retry the same request.');}
     } catch { /* Unavailable storage is handled before any create call. */ }
-  },[key]);
+  },[key,draftMode]);
 
   useEffect(()=>{
     const request=++serial.current;
@@ -111,8 +116,21 @@ export function PosCustomerPicker(p:Props) {
     finally {savingRef.current=false;setSaving(false);p.onBusyChange(false);}
   }
 
+  if(showForm && p.draft){
+    const d=p.draft;
+    return <div className={s.customerCreateForm}>
+      <div className={s.between}><h3>Quick Add customer</h3><button type="button" className={`${s.textButton} ${s.hidePhoneBack}`} onClick={back}><ChevronLeft size={15}/>Back to customers</button></div>
+      <p className={s.muted}>Kept with this checkout. The customer is saved and linked when the sale completes; a saved customer with the same phone is reused.</p>
+      <fieldset className={s.customerFormFields}>
+        <label className={s.field}>Customer name *<input autoFocus aria-label="New customer name" autoComplete="off" maxLength={120} value={d.value.name} onChange={e=>d.onChange({name:e.target.value})}/></label>
+        <label className={s.field}>Phone *<input type="tel" aria-label="New customer phone" autoComplete="off" maxLength={40} value={d.value.phone} onChange={e=>d.onChange({phone:e.target.value})}/></label>
+        {d.showAddress && <label className={s.field}>Address *<textarea aria-label="New customer address" autoComplete="off" maxLength={500} rows={3} value={d.value.address} onChange={e=>d.onChange({address:e.target.value})}/></label>}
+      </fieldset>
+      <p className={s.muted}>{d.showAddress?'Name, phone and address are required for Delivery.':'Name and phone are required for Pickup.'}</p>
+    </div>;
+  }
   if(showForm)return <div className={s.customerCreateForm}>
-    <div className={s.between}><h3>Quick Add customer</h3><button type="button" className={s.textButton} disabled={saving} onClick={back}><ChevronLeft size={15}/>Back to customers</button></div>
+    <div className={s.between}><h3>Quick Add customer</h3><button type="button" className={`${s.textButton} ${s.hidePhoneBack}`} disabled={saving} onClick={back}><ChevronLeft size={15}/>Back to customers</button></div>
     <p className={s.muted}>Saves a customer to this business now. It does not create a sale, record a payment, or change the current cart.</p>
     {pending && <p className={s.paymentInfo}>Retry uses the same saved details to avoid a duplicate customer.</p>}
     {formError && <p role="alert" className={`${s.notice} ${s.error}`}>{formError}</p>}
@@ -146,7 +164,7 @@ export function PosCustomerPicker(p:Props) {
     {hasMore && <button type="button" className={s.button} disabled={loading} onClick={()=>void more()}>{loading?'Loading…':'Load more customers'}</button>}
     <footer className={s.customerPickerFooter}>
       <span className={s.muted}>Only customers from this business are shown.</span>
-      <button type="button" className={s.customerAddButton} disabled={!canCreate} title={!canCreate?'Customer creation permission required':undefined} onClick={()=>{setShowForm(true);setFormError('');}}><Plus size={16}/>Quick Add</button>
+      <button type="button" className={s.customerAddButton} disabled={!canCreate} title={!canCreate?'Customer creation permission required':undefined} onClick={()=>{p.draft?.onStart();setShowForm(true);setFormError('');}}><Plus size={16}/>Quick Add</button>
     </footer>
   </div>;
 }

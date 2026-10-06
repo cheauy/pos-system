@@ -1,5 +1,6 @@
 "use client";
 
+import { ButtonSpinner } from "@/components/pending-submit-button";
 import CategoryDisplayBranches from "./category-display-branches";
 import { useRouter } from "next/navigation";
 import {
@@ -394,7 +395,7 @@ export default function CategoriesClient({
       </div>
 
       <div className="grid items-start gap-5 xl:grid-cols-[350px_minmax(0,1fr)]">
-        <section role={sheet === "create" ? "dialog" : undefined} aria-modal={sheet === "create" || undefined} aria-label="Add new category" className={`${sheet === "create" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-16" : "max-sm:hidden"} border border-slate-200 bg-white p-5 shadow-sm sm:static sm:block sm:overflow-visible sm:rounded-2xl sm:pt-5`}>
+        <section role={sheet === "create" ? "dialog" : undefined} aria-modal={sheet === "create" || undefined} aria-label="Add new category" data-sheet="full" className={`${sheet === "create" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-16" : "max-sm:hidden"} border border-slate-200 bg-white p-5 shadow-sm sm:static sm:block sm:overflow-visible sm:rounded-2xl sm:pt-5`}>
           {sheet === "create" && <button type="button" aria-label="Close add category" onClick={() => setSheet(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-700 sm:hidden"><X size={20} /></button>}
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -489,7 +490,7 @@ export default function CategoriesClient({
               className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Plus size={18} />
-              {isPending ? "Saving..." : "Create Category"}
+              {isPending ? <span className="inline-flex items-center justify-center gap-2"><ButtonSpinner />Creating…</span> : "Create Category"}
             </button>
           </form>
         </section>

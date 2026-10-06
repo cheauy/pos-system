@@ -1,5 +1,6 @@
 "use client";
 
+import { ButtonSpinner } from "@/components/pending-submit-button";
 import { useMemo, useRef, useState } from "react";
 import { Gift, Globe, Monitor, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -227,7 +228,7 @@ export default function BundleProductForm({
       </Field>
 
       <button type="submit" disabled={pending || items.length < 2 || items.length > MAX_BUNDLE_ITEMS} className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
-        {pending ? "Saving bundle..." : initial ? "Save changes" : "Create Bundle"}
+        {pending ? <span className="inline-flex items-center justify-center gap-2"><ButtonSpinner />{initial ? "Saving bundle…" : "Creating bundle…"}</span> : initial ? "Save changes" : "Create Bundle"}
       </button>
       <p className="text-xs text-slate-500">{initial ? 'Images and details can change anytime. To change items, unpack all sets first. Bundles with sales or pending transactions keep their original contents.' : 'Creates an empty bundle. Pack sets from branch stock before selling.'}</p>
       </fieldset>

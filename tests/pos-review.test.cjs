@@ -36,8 +36,29 @@ test('selecting Pickup or Delivery closes the type dialog without fetching custo
  const code=ts.transpileModule(select.getText(file),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
  for(const method of ['pickup','delivery']){
    let shipping,dialog='customer';
-   const context={frozen:false,setCustomerId(){},setPoints(){},setCreateCustomer(){},recipientEdited:{current:false},setShipping:value=>shipping=value,setDelivery(){},setMethod(){},setPaid(){},setTenders(){},setConfirmed(){},setEntryErrors(){},setDialog:value=>dialog=value,setChoosingCustomer(){},setModalError(){}};
+   const context={frozen:false,shipping:{method:'in_store',recipientName:'',phone:'',address:''},customerId:'',setCustomerId(){},setPoints(){},setCreateCustomer(){},recipientEdited:{current:false},setShipping:value=>shipping=value,setDelivery(){},setMethod(){},setPaid(){},setTenders(){},setConfirmed(){},setEntryErrors(){},setDialog:value=>dialog=value,setChoosingCustomer(){},setModalError(){}};
    new Function(...Object.keys(context),code+';return selectPickup;')(...Object.values(context))(method);
    assert.equal(shipping.method,method);assert.equal(dialog,null);
  }
+});
+
+test('typed Pickup/Delivery customer details survive reopening or switching type; a saved customer is cleared',()=>{
+ let select;function find(n){if(ts.isFunctionDeclaration(n)&&n.name?.text==='selectPickup')select=n;ts.forEachChild(n,find)}find(file);
+ const code=ts.transpileModule(select.getText(file),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+ const run=(current,customerId,method)=>{let shipping;const context={frozen:false,shipping:current,customerId,setCustomerId(){},setPoints(){},setCreateCustomer(){},recipientEdited:{current:true},setShipping:value=>shipping=value,setDelivery(){},setMethod(){},setPaid(){},setTenders(){},setConfirmed(){},setEntryErrors(){},setDialog(){},setChoosingCustomer(){},setModalError(){}};new Function(...Object.keys(context),code+';return selectPickup;')(...Object.values(context))(method);return shipping;};
+ const typed={method:'pickup',recipientName:'New Buyer',phone:'012 345 678',address:'',carrier:'',carrierOther:''};
+ assert.equal(run(typed,'','pickup').recipientName,'New Buyer');
+ const delivery=run(typed,'','delivery');assert.equal(delivery.method,'delivery');assert.equal(delivery.phone,'012 345 678');
+ assert.equal(run(typed,'saved-customer','delivery').recipientName,'');
+ assert.equal(run({method:'in_store',recipientName:'',phone:'',address:''},'','pickup').recipientName,'');
+});
+
+test('Pickup/Delivery checkout creates or links the customer inside the sale request, never before it',()=>{
+ const src=file.getFullText();
+ assert.match(src,/createCustomer:!linkedCustomerId && shipping\.method !== 'in_store'/);
+ assert.match(src,/findPosCustomerByPhone\(data\.businessId, shipping\.phone, branch\)/);
+ assert.doesNotMatch(src,/Select a customer for this order\./);
+ const picker=fs.readFileSync('app/(dashboard)/dashboard/pos/pos-customer-picker.tsx','utf8');
+ const draftForm=picker.slice(picker.indexOf('if(showForm && p.draft)'),picker.indexOf('if(showForm)return'));
+ assert.ok(draftForm.length>0);assert.doesNotMatch(draftForm,/createPosCustomer|Save customer|sessionStorage/);
 });

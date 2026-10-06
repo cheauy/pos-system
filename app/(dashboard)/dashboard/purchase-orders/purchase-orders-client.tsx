@@ -1,5 +1,6 @@
 "use client";
 
+import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import Link from "next/link";
 import { usePagedWorkspace } from "@/lib/use-paged-workspace";
 import { loadPurchaseOrders, type PurchaseWorkspace } from "./list-actions";
@@ -307,7 +308,8 @@ export default function PurchaseOrdersClient({
           )}
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-xs">
+            <MobileList>{visibleOrders.map((order) => <MobileListCard key={order.id} selected={order.id === selectedOrder?.id} onClick={() => { setSelectedId(order.id); setDetailTab("overview"); if (window.matchMedia("(max-width: 639px)").matches) setDetailOpen(true); }} media={<FileText size={24} />} title={order.po_number} date={formatDate(order.order_date)} primary={order.supplier_name || "No supplier"} secondary={`${order.item_count} items · Expected ${formatDate(order.expected_date)}`} amount={money(order.total)} status={{ label: statusLabel(order.status) }} />)}</MobileList>
+            <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[760px] text-xs">
               <thead className="border-b border-slate-200 bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">PO Number</th>

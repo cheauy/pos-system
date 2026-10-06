@@ -23,6 +23,7 @@ type OrderRelation =
 
 type ReturnItemRow = {
   id: string;
+  product_id: string | null;
   product_name: string;
   quantity: number;
   unit_price: number;
@@ -86,6 +87,7 @@ export default async function ReturnsPage() {
         ),
         return_items (
           id,
+          product_id,
           product_name,
           quantity,
           unit_price,
@@ -111,7 +113,9 @@ export default async function ReturnsPage() {
     throw new Error(returnsResult.error.message);
   }
 
-  const records: ReturnWorkspaceRecord[] = ((returnsResult.data ?? []) as ReturnRow[]).map(
+  const rows = (returnsResult.data ?? []) as ReturnRow[];
+  const images = await productImages(supabase, business.id, rows.flatMap((row) => (row.return_items ?? []).map((item) => item.product_id)));
+  const records: ReturnWorkspaceRecord[] = rows.map(
     (record) => {
       const order = Array.isArray(record.orders) ? record.orders[0] : record.orders;
       const customer = Array.isArray(order?.customers)
@@ -149,6 +153,7 @@ export default async function ReturnsPage() {
           ...(record.return_items ?? []).map((item) => ({
             id: item.id,
             productName: item.product_name,
+            imageUrl: item.product_id ? images.get(item.product_id) ?? null : null,
             quantity: Number(item.quantity ?? 0),
             unitPrice: Number(item.unit_price ?? 0),
             subtotal: Number(item.subtotal ?? 0),
@@ -180,6 +185,20 @@ export default async function ReturnsPage() {
       canCancel={business.role === "owner"}
     />
   );
+}
+
+// Thumbnails for the phone list. A failed lookup only hides images; it never blocks the page.
+async function productImages(supabase: Awaited<ReturnType<typeof createClient>>, businessId: string, ids: (string | null)[]) {
+  const images = new Map<string, string>();
+  const unique = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  for (let start = 0; start < unique.length; start += 150) {
+    const { data } = await supabase.from("products").select("id,image_url,variant_image_url").eq("business_id", businessId).in("id", unique.slice(start, start + 150));
+    for (const product of data ?? []) {
+      const url = product.variant_image_url || product.image_url;
+      if (typeof url === "string" && /^https?:\/\//.test(url)) images.set(product.id, url);
+    }
+  }
+  return images;
 }
 
 function normalizeStatus(value: string | null): ReturnWorkspaceRecord["status"] {

@@ -1,3 +1,4 @@
+import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import Link from "next/link";
 import {
   Eye,
@@ -119,7 +120,8 @@ export default async function PurchasesPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[850px]">
+            <MobileList>{purchases.map((purchase) => <MobileListCard key={purchase.id} href={`/dashboard/purchases/${purchase.id}`} media={<PackagePlus size={24} />} title={purchase.purchase_number} date={formatDate(purchase.purchase_date)} primary={purchase.supplier_name ?? "No supplier"} secondary={purchase.reference_number ? `Ref: ${purchase.reference_number}` : undefined} amount={formatCurrency(Number(purchase.total))} status={{ label: formatStatus(purchase.status), tone: purchase.status === "cancelled" ? "red" : purchase.status === "draft" ? "amber" : "green" }} />)}</MobileList>
+            <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[850px]">
               <thead className="bg-slate-50">
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
                   <th className="px-6 py-4">
