@@ -29,3 +29,23 @@ test('purchase orders save in-place with the selected status and reject stale st
   change.set('status','received');await assert.rejects(api.setPurchaseOrderStatus(change),/Invalid status/);
   assert.ok(permissions.includes('purchases.create'));assert.ok(permissions.includes('purchases.update'));
 });
+
+test('purchase order choices load every product page once and in order',async()=>{
+  const catalog=Array.from({length:1203},(_,index)=>({id:`p${String(index).padStart(4,'0')}`})),ranges=[];
+  const db={from(table){
+    let range=[0,0],count=false;const query={};
+    for(const method of ['eq','order'])query[method]=()=>query;
+    query.select=(columns,options)=>{count=options?.count==='exact';return query;};
+    query.range=(from,to)=>{range=[from,to];ranges.push(from);return query;};
+    query.then=(resolve,reject)=>Promise.resolve(table==='suppliers'?{error:null,data:[{id:'supplier'}]}:{error:null,data:catalog.slice(range[0],range[1]+1),count:count?catalog.length:null}).then(resolve,reject);
+    return query;
+  }};
+  const api=loadTs('app/(dashboard)/dashboard/purchase-orders/actions.ts',{
+    'next/cache':{revalidatePath(){}},'next/navigation':{redirect(){}},
+    '@/lib/auth/require-permission':{requirePermission:async()=>({id:'business'})},
+    '@/lib/supabase/branch-server':{createClient:async()=>db},
+  });
+  const choices=await api.getPurchaseOrderChoices();
+  assert.deepEqual(choices.products.map(product=>product.id),catalog.map(product=>product.id));
+  assert.deepEqual(ranges.sort((a,b)=>a-b),[0,500,1000]);
+});

@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from 'react';
+import { requestScoped } from '@/lib/request-scoped';
 import { mobileRequest } from '@/lib/mobile/request-context';
 import { needsTeamPasswordSetup } from "@/lib/users/setup-state";
 
@@ -125,7 +126,11 @@ async function loadContext() {
     redirect(getAppUrl("/login"));
   }
 
-  if (await needsTeamPasswordSetup(user.id)) redirect(getAppUrl("/team-setup"));
+  // Started now so it overlaps the first membership/business read; it is awaited
+  // before any subscription maintenance or return.
+  const setupRequired = needsTeamPasswordSetup(user.id);
+  setupRequired.catch(() => {});
+  const requireSetupDone = async () => { if (await setupRequired) redirect(getAppUrl("/team-setup")); };
 
   let member: BusinessMember | null = null;
   let business: Business | null = null;
@@ -145,6 +150,7 @@ async function loadContext() {
     }
 
     business = (businessData ?? null) as Business | null;
+    await requireSetupDone();
 
     if (!business) {
       redirect(getAppUrl("/no-business"));
@@ -214,10 +220,15 @@ async function loadContext() {
         );
       }
 
+      await requireSetupDone();
       if (selectedMember) {
-        // Verify membership before any privileged subscription maintenance.
-        await applyDueSubscriptionRenewal(selectedMember.business_id);
-        const selectedBusiness = await loadBusiness(selectedMember.business_id);
+        // Verify membership before any privileged subscription maintenance. The
+        // business read overlaps the renewal and is repeated only if one applied.
+        const [renewed, loaded] = await Promise.all([
+          applyDueSubscriptionRenewal(selectedMember.business_id),
+          loadBusiness(selectedMember.business_id),
+        ]);
+        const selectedBusiness = renewed ? await loadBusiness(selectedMember.business_id) : loaded;
 
         if (selectedBusiness) {
           member = selectedMember as BusinessMember;
@@ -229,6 +240,7 @@ async function loadContext() {
     // Missing/stale selection falls back to TENH's existing first active
     // membership behavior so existing accounts remain backward-compatible.
     if (!member || !business) {
+      await requireSetupDone();
       if (mobileRequest.getStore()?.businessId) throw new Error('This business is unavailable to your account.');
       const { data: memberData, error: memberError } =
         await supabase
@@ -302,6 +314,7 @@ async function loadContext() {
     }
   }
 
+  await requireSetupDone();
   if (!member || !business) {
     redirect(getAppUrl("/no-business"));
   }
@@ -312,10 +325,11 @@ async function loadContext() {
 async function refreshSubscriptionState(
   business: Business,
   role: BusinessRole,
-  options: { startTrial?: boolean } = {},
+  options: { startTrial?: boolean; renewalChecked?: boolean } = {},
 ) {
   const supabase = await createClient();
   let current = business;
+  let trialStarted = false;
 
   if (
     options.startTrial === true &&
@@ -335,9 +349,11 @@ async function refreshSubscriptionState(
 
     const reloaded = await loadBusiness(current.id);
     if (reloaded) current = reloaded;
+    trialStarted = true;
   }
 
-  if (await applyDueSubscriptionRenewal(current.id)) {
+  // loadContext already applied due renewals for this business in this request.
+  if ((!options.renewalChecked || trialStarted) && await applyDueSubscriptionRenewal(current.id)) {
     const reloaded = await loadBusiness(current.id);
     if (reloaded) current = reloaded;
   }
@@ -457,7 +473,7 @@ function toAccess(
 export async function getCurrentBusinessForSubscription(
   options: { startTrial?: boolean } = {},
 ): Promise<CurrentBusinessAccess> {
-  const { member, business } = await loadContext();
+  const { member, business, user } = await loadContext();
 
   const legacySubscriptionExpiry =
     business.disabled_reason === "subscription_expired";
@@ -469,27 +485,27 @@ export async function getCurrentBusinessForSubscription(
   const current = await refreshSubscriptionState(
     business,
     member.role,
-    options,
+    { ...options, renewalChecked: true },
   );
 
-  return toAccess(current, member.role);
+  return Object.defineProperty(toAccess(current, member.role), "userId", { value: user.id, enumerable: false });
 }
 
 // Deduplicate layout/page/permission reads within this request only. Every new
 // request still checks current membership and subscription access.
-export const getCurrentBusiness = cache(async (): Promise<CurrentBusiness> => {
+export const getCurrentBusiness = requestScoped(cache(async (): Promise<CurrentBusiness> => {
   const business = await getCurrentBusinessForSubscription({ startTrial: false });
 
   if (business.subscriptionLocked) {
     redirect("/dashboard/settings/subscription?locked=1");
   }
 
-  return {
+  return Object.defineProperty({
     id: business.id,
     name: business.name,
     slug: business.slug,
     role: business.role,
     productMode: business.productMode,
     product_mode: business.product_mode,
-  };
-});
+  }, "userId", { value: business.userId, enumerable: false }) as CurrentBusiness;
+}));

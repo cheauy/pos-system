@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from "react";
+import { requestScoped } from "@/lib/request-scoped";
 import { mobileRequest } from '@/lib/mobile/request-context';
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
@@ -9,10 +10,11 @@ export const branchCookie = (businessId: string, userId: string) => `tenh-branch
 
 // The cookie is a preference, never authorization. Resolve it against the signed-in
 // membership and this business's active locations on every request.
-export const getBranchContext = cache(async () => {
+export const getBranchContext = requestScoped(cache(async () => {
   const business = await getCurrentBusiness();
   const db = await createClient();
-  const { data: { user } } = await db.auth.getUser();
+  // getCurrentBusiness already verified the user with Supabase Auth in this request.
+  const user = business.userId ? { id: business.userId } : (await db.auth.getUser()).data.user;
   if (!user) throw new Error("Please sign in again.");
   const [membership, locations] = await Promise.all([
     db.from("business_members").select("default_location_id,role").eq("business_id", business.id).eq("user_id", user.id).eq("is_active", true).single(),
@@ -33,7 +35,7 @@ export const getBranchContext = cache(async () => {
   const saved = mobileBranch ?? (await cookies()).get(branchCookie(business.id, user.id))?.value;
   const branchId = owner ? branches.find(b => b.id === saved)?.id ?? ownBranchId : ownBranchId;
   return { business, userId: user.id, branches, ownBranchId, branchId };
-});
+}));
 
 // A fresh workspace always defaults to the operating branch. Explicit report
 // comparisons remain view-only and do not alter the operating-branch cookie.

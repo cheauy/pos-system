@@ -35,20 +35,22 @@ type LocationStockRow = {
 type SoldLine = { product_id: string | null; quantity: number };
 
 export default async function InventoryView() {
-  const business = await requirePermission("inventory.view");
-  const {branchId}=await getBranchContext();
-  const supabase = await createClient();
+  const [business, {branchId}, supabase] = await Promise.all([requirePermission("inventory.view"), getBranchContext(), createClient()]);
 
   const movementStart = new Date();
   movementStart.setDate(movementStart.getDate() - 30);
 
   const [
+    canAdjustStock,
+    canDisable,
     { data: productData, error: productError },
     { data: categoryData, error: categoryError },
     { data: locationData, error: locationError },
     { data: locationStockData, error: locationStockError },
-    { data: soldLineData, error: soldLineError },
+    soldResult,
   ] = await Promise.all([
+    businessHasPermission(business, "products.stock_adjust"),
+    businessHasPermission(business, "products.disable"),
     readAllRows((from,to)=>supabase
       .from("branch_products")
       .select(
@@ -77,15 +79,20 @@ export default async function InventoryView() {
       .eq("business_id", business.id)
       .eq("location_id", branchId)
       .order("product_id").range(from,to)),
-    readAllRows((from,to)=>supabase
+    // Summed per product in the database instead of downloading every 30-day order line.
+    supabase.rpc("tenh_branch_units_sold", { p_business: business.id, p_since: movementStart.toISOString() }),
+  ]);
+  // Fallback until the aggregate migration is applied: page through the order lines.
+  const { data: soldLineData, error: soldLineError } = !soldResult.error
+    ? { data: (soldResult.data ?? []) as SoldLine[], error: null }
+    : await readAllRows((from,to)=>supabase
       .from("order_items")
       .select("product_id,quantity,orders!inner(business_id,status,created_at,location_id)")
       .eq("orders.business_id", business.id)
       .eq("orders.location_id", branchId)
       .eq("orders.status", "completed")
       .gte("orders.created_at", movementStart.toISOString())
-      .order("id").range(from,to)),
-  ]);
+      .order("id").range(from,to));
 
   const loadError =
     productError ??
@@ -127,8 +134,8 @@ export default async function InventoryView() {
     <InventoryClient
       key={`${business.id}:${branchId}`}
       defaultBranchId={branchId}
-      canAdjustStock={await businessHasPermission(business, "products.stock_adjust")}
-      canDisable={await businessHasPermission(business, "products.disable")}
+      canAdjustStock={canAdjustStock}
+      canDisable={canDisable}
       products={products}
       categories={(categoryData ?? []) as CategoryRow[]}
       locations={(locationData ?? []) as LocationRow[]}

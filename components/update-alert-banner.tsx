@@ -49,7 +49,9 @@ export default function UpdateAlertBanner() {
     }
     void refresh();
     const timer = window.setInterval(() => { void refresh(); }, 30000);
-    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
+      // INITIAL_SESSION fires on subscribe; refresh() above already covers it.
+      if (event === 'INITIAL_SESSION') return;
       authVersion++;
       dismissed.current.clear();
       setAlert(null);

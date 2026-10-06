@@ -33,9 +33,13 @@ function refreshRoutes(orderId?: string): void {
   try { for (const path of ['/dashboard/pos', '/dashboard/orders', '/dashboard/products', '/dashboard/register', '/dashboard/customers','/dashboard/shipping-labels',...(orderId?[`/dashboard/orders/${orderId}`,`/dashboard/orders/${orderId}/receipt`,`/dashboard/orders/${orderId}/shipping-label`]:[])]) revalidatePath(path); }
   catch (error) { console.error('POS post-commit refresh failed', error); }
 }
-export async function loadPosWorkspace(expectedBusinessId?: string, expectedBranchId?: string, includeReceipt = true): Promise<ActionResult<Workspace>> {
+// customerIds undefined: every branch customer (mobile app and settings callers).
+// An array: only those customers plus the ones referenced by held orders. The web
+// POS finds everyone else through the paginated customer search.
+export async function loadPosWorkspace(expectedBusinessId?: string, expectedBranchId?: string, includeReceipt = true, customerIds?: string[]): Promise<ActionResult<Workspace>> {
   const business = await requirePermission('pos.access');
   if (expectedBusinessId && expectedBusinessId !== business.id) return activeBusinessError();
+  if (customerIds !== undefined && (!Array.isArray(customerIds) || customerIds.length > 50 || customerIds.some(id => !uuid(id)))) return { success: false, message: 'Invalid customer selection. Reload POS.' };
   try {
     const { branchId, branches, business: operatingBusiness } = await getBranchContext();
     if (operatingBusiness.id !== business.id) return activeBusinessError();
@@ -43,13 +47,17 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
       return { success: false, message: 'The operating branch changed in another tab. Copy your unsaved cart details before reloading; no sale has been submitted.' };
     }
     const db = await createClient();
+    // Settled so an early validation return never leaves an unhandled rejection.
+    const receiptRequest = includeReceipt ? loadReceiptContext(business.id, business.name).then(value => ({ value }), error => ({ error })) : null;
     // These reads share the validated scope but do not depend on one another.
     const [catalog, formatting, campaigns, ready, customers, categories, openShifts] = await Promise.all([
       db.rpc('tenh_pos_catalog_scoped', { p_business_id: business.id }),
       db.from('branch_pos_settings').select('currency_format,enable_coupons,require_open_register,split_payment_enabled,customer_credit_enabled').eq('business_id',business.id).eq('location_id',branchId).maybeSingle(),
       db.from('business_coupons').select('*').eq('business_id',business.id).eq('location_id',branchId).eq('apply_pos',true).eq('is_active',true),
       db.rpc('tenh_pos_receipt_update_ready', { p_business_id: business.id }),
-      db.from('customers').select('id,name,phone,address,loyalty_points').eq('business_id',business.id).eq('location_id',branchId).order('created_at',{ascending:false,nullsFirst:false}).order('id',{ascending:false}),
+      customerIds === undefined
+        ? db.from('customers').select('id,name,phone,address,loyalty_points').eq('business_id',business.id).eq('location_id',branchId).order('created_at',{ascending:false,nullsFirst:false}).order('id',{ascending:false})
+        : Promise.resolve({ data: [], error: null }),
       db.from('categories').select('id,name,branch_ids').eq('business_id',business.id),
       db.from('cash_register_shifts').select('id,location_id').eq('business_id',business.id).eq('location_id',branchId).eq('status','open').limit(2),
     ]);
@@ -76,8 +84,16 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
     data.defaultBranchId = branchId;
     data.branches = (data.branches ?? []).filter((b:{id:string}) => branches.some(allowed => allowed.id === b.id));
     data.stock = (data.stock ?? []).filter((stock:{location_id:string}) => stock.location_id === branchId);
-    data.customers = customers.data;
     data.holds = (data.holds ?? []).filter((h: {draft: CartDraft}) => h.draft.branchId === branchId);
+    if (customerIds === undefined) data.customers = customers.data;
+    else {
+      const wanted = [...new Set([...customerIds, ...data.holds.map((h: {draft: CartDraft}) => h.draft.customerId).filter((id: string) => uuid(id))])];
+      const referenced = wanted.length
+        ? await db.from('customers').select('id,name,phone,address,loyalty_points').eq('business_id',business.id).eq('location_id',branchId).in('id',wanted)
+        : { data: [], error: null };
+      if (referenced.error) throw new Error('Unable to load branch customers, categories or register.');
+      data.customers = referenced.data ?? [];
+    }
     data.categories = (categories.data ?? []).filter(c => c.branch_ids === null || c.branch_ids.includes(branchId));
     const visibleCategories = new Set(data.categories.map((c: {id:string}) => c.id));
     const assigned = new Set((data.stock ?? []).filter((s: {location_id:string}) => s.location_id === branchId).map((s: {product_id:string}) => s.product_id));
@@ -85,7 +101,9 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
     const visibleProducts = new Set(data.products.map((p:{id:string})=>p.id));
     data.groups = (data.groups ?? []).filter((group:{product_id:string})=>visibleProducts.has(group.product_id));
     data.options = (data.options ?? []).filter((option:{product_id:string})=>visibleProducts.has(option.product_id));
-    const receiptContext = includeReceipt ? await loadReceiptContext(business.id, business.name) : undefined;
+    const receipt = receiptRequest ? await receiptRequest : null;
+    if (receipt && 'error' in receipt) throw receipt.error;
+    const receiptContext = receipt?.value;
     return { success: true, data: { ...data, receiptContext } as Workspace };
   } catch (error) { return { success: false, message: errorMessage(error) }; }
 }

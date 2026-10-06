@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
+import { requestScoped } from "@/lib/request-scoped";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from '@/lib/supabase/server';
 import { getBranchContext } from '@/lib/branches/context';
@@ -17,7 +18,7 @@ function fallback(role: BusinessRole): Permission[] {
   return [...(rolePermissions[role] ?? [])];
 }
 
-export const getRolePermissions = cache(
+export const getRolePermissions = requestScoped(cache(
   async (businessId: string, role: BusinessRole, locationId?: string): Promise<Permission[]> => {
     if (role === "owner") return [...permissions];
     if (role === "admin") return fallback(role);
@@ -52,16 +53,16 @@ export const getRolePermissions = cache(
         : rolePermissions[role]?.includes(permission) === true,
     );
   },
-);
+));
 
-const currentUserId = cache(async () => {
+const currentUserId = requestScoped(cache(async () => {
   const db = await createClient();
   const { data: { user }, error } = await db.auth.getUser();
   if (error || !user) throw new Error('Sign in again to verify permissions.');
   return user.id;
-});
+}));
 
-export const getEffectivePermissions = cache(async (businessId: string, role: BusinessRole) => {
+export const getEffectivePermissions = requestScoped(cache(async (businessId: string, role: BusinessRole) => {
   const userId = await currentUserId();
   const { data: member, error } = await supabaseAdmin.from('business_members')
     .select('id,role,is_active,team_password_required,default_location_id').eq('business_id',businessId).eq('user_id',userId).maybeSingle();
@@ -73,7 +74,7 @@ export const getEffectivePermissions = cache(async (businessId: string, role: Bu
   if (result.error) throw new Error('Unable to load individual permissions. Apply the user-permissions migration.');
   const overrides = new Map<string, boolean>((result.data ?? []).map(row => [row.permission, row.enabled === true]));
   return permissions.filter(permission => overrides.has(permission) ? overrides.get(permission) : baseline.includes(permission));
-});
+}));
 
 export async function businessHasPermission(
   business: Pick<CurrentBusiness, "id" | "role">,

@@ -5,8 +5,8 @@ import Link from "next/link";
 import { usePagedWorkspace } from "@/lib/use-paged-workspace";
 import { loadPurchaseOrders, type PurchaseWorkspace } from "./list-actions";
 import OrderWorkflow from "./order-workflow";
-import NewOrderDialog from "./new-order-dialog";
-import { useEffect, useMemo, useState } from "react";
+import NewOrderDialog, { type ChoicesCache } from "./new-order-dialog";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   CheckCircle2,
@@ -146,12 +146,13 @@ export default function PurchaseOrdersClient({
   }, [detailOpen]);
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(openNew);
+  const choicesCache = useRef<ChoicesCache>(null);
   const [selectedId, setSelectedId] = useState<string | null>(
     workspace.orders[0]?.id ?? null,
   );
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
 
-  const {data,busy,error}=usePagedWorkspace(workspace,{page,search,supplierFilter,statusFilter,fromDate,toDate,sortMode},loadPurchaseOrders);
+  const {data,busy,error}=usePagedWorkspace(workspace,{page,search,supplierFilter,statusFilter,fromDate,toDate,sortMode},loadPurchaseOrders,"search");
   const {orders,suppliers,stats}=data;
   const supplierMap=useMemo(()=>new Map(suppliers.map(supplier=>[supplier.id,supplier])),[suppliers]);
 
@@ -179,7 +180,7 @@ export default function PurchaseOrdersClient({
   return (
     <main className="space-y-5" aria-busy={busy}>
       {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {creating && <NewOrderDialog close={() => setCreating(false)} created={id => { setCreating(false); setSearch(""); setSupplierFilter("all"); setStatusFilter("all"); setFromDate(""); setToDate(""); setSortMode("newest"); setPage(1); setSelectedId(id); setDetailTab("overview"); }} />}
+      {creating && <NewOrderDialog cacheRef={choicesCache} close={() => setCreating(false)} created={id => { setCreating(false); setSearch(""); setSupplierFilter("all"); setStatusFilter("all"); setFromDate(""); setToDate(""); setSortMode("newest"); setPage(1); setSelectedId(id); setDetailTab("overview"); }} />}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">

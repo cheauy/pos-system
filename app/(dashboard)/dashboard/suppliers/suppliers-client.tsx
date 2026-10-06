@@ -83,7 +83,7 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
     workspace.suppliers[0]?.id ?? "",
   );
 
-  const {data,busy,error:loadError}=usePagedWorkspace(workspace,{page,query,statusFilter},loadSuppliers);
+  const {data,busy,error:loadError}=usePagedWorkspace(workspace,{page,query,statusFilter},loadSuppliers,"query");
   const {suppliers,stats}=data;
   const metrics=useMemo(()=>new Map(Object.entries(data.metrics)),[data.metrics]);
   const filteredSuppliers=suppliers;

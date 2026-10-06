@@ -27,7 +27,12 @@ function imageUrl(value: string | null | undefined) {
 }
 export async function loadWorkspace(businessId: string, filters: WorkspaceFilters): Promise<WorkspaceData> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("tenh_orders_workspace", { p_business_id: businessId, p_filters: filters });
+  // Currency and online-order scope do not depend on the list, so they load alongside it.
+  const [{ data, error }, settings, scope] = await Promise.all([
+    supabase.rpc("tenh_orders_workspace", { p_business_id: businessId, p_filters: filters }),
+    getBranchCurrency(businessId, filters.branch !== "all" ? filters.branch : undefined),
+    supabase.rpc("tenh_receive_all_online_orders", { p_business: businessId }),
+  ]);
   if (error) {
     if (error.code === "PGRST202" || /tenh_orders_workspace|archived_at/.test(error.message)) {
       throw new Error("Run the included 20260919_orders_workspace_safe_actions.sql migration in Supabase, then refresh this page.");
@@ -38,10 +43,6 @@ export async function loadWorkspace(businessId: string, filters: WorkspaceFilter
   if (!data || !Array.isArray(data.rows)) throw new Error("The Orders workspace returned an invalid response.");
   const workspace = data as WorkspaceData;
   // Use the same per-branch currency settings as POS; "all branches" uses the operating branch.
-  const [settings, scope] = await Promise.all([
-    getBranchCurrency(businessId, filters.branch !== "all" ? filters.branch : undefined),
-    supabase.rpc("tenh_receive_all_online_orders", { p_business: businessId }),
-  ]);
   workspace.receiveAllOnline = scope.data === true;
   workspace.currency = settings.currency;
   workspace.currencyFormat = settings.format;
@@ -52,25 +53,24 @@ export async function loadWorkspace(businessId: string, filters: WorkspaceFilter
 // Called only with the current business ID resolved on the server.
 export async function loadOrderDetail(businessId: string, orderId: string): Promise<OrderDetail> {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("orders").select(`
+  // Returns and activity only need the order ID, so they load alongside the order.
+  const returnsQuery = supabase.from("returns").select("id,status,return_items(order_item_id,quantity)", { count: "exact" }).eq("business_id", businessId).eq("order_id", orderId);
+  const activityQuery = supabase.from("audit_logs").select("id,description,created_at,action").eq("business_id", businessId).eq("entity_type", "order").eq("entity_id", orderId).order("created_at", { ascending: false }).limit(30);
+  const [{ data, error }, returns, activity] = await Promise.all([supabase.from("orders").select(`
     id,order_number,customer_id,order_source,fulfillment_type,status,online_status,
     payment_method,payment_status,payment_reference,pos_checkout,total,subtotal,discount,delivery_fee,
     amount_paid,change_amount,remaining_balance,credit_amount,loyalty_points_earned,coupon_code,coupon_discount,
     created_at,updated_at,location_id,guest_name,guest_phone,guest_address,customer_note,table_name,requested_for,
     customers(id,name,phone,email,address),
     order_items(id,product_name,quantity,unit_price,subtotal,variant_label,selected_options,products(name,image_url,variant_image_url))
-  `).eq("id", orderId).eq("business_id", businessId).is("archived_at", null).maybeSingle();
+  `).eq("id", orderId).eq("business_id", businessId).is("archived_at", null).maybeSingle(), returnsQuery, activityQuery]);
   if (error) { console.error("Order detail:", error.message); throw new Error("Unable to load this order. Please try again."); }
   if (!data) throw new Error("This order is no longer available. Refresh the Orders list.");
   const order = data as unknown as RawOrder;
   const customer = one(order.customers);
-  const [branch, returns, activity] = await Promise.all([
-    order.location_id
-      ? supabase.from("business_locations").select("name").eq("id", order.location_id).eq("business_id", businessId).maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
-    supabase.from("returns").select("id,status,return_items(order_item_id,quantity)", { count: "exact" }).eq("business_id", businessId).eq("order_id", orderId),
-    supabase.from("audit_logs").select("id,description,created_at,action").eq("business_id", businessId).eq("entity_type", "order").eq("entity_id", orderId).order("created_at", { ascending: false }).limit(30),
-  ]);
+  const branch = order.location_id
+    ? await supabase.from("business_locations").select("name").eq("id", order.location_id).eq("business_id", businessId).maybeSingle()
+    : { data: null, error: null };
   const returned = new Map<string, number>();
   for (const record of returns.data ?? []) {
     if ((record.status ?? "refunded") !== "refunded") continue;

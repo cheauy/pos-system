@@ -52,10 +52,9 @@ type ReturnRow = {
 };
 
 export default async function ReturnsPage() {
-  const business = await requirePermission("orders.view");
-  const supabase = await createClient();
+  const [business, supabase] = await Promise.all([requirePermission("orders.view"), createClient()]);
 
-  const [returnsResult, ordersCountResult, storefrontResult] = await Promise.all([
+  const [returnsResult, ordersCountResult, storefrontResult, canManage] = await Promise.all([
     supabase
       .from("returns")
       .select(`
@@ -107,6 +106,7 @@ export default async function ReturnsPage() {
       .select("primary_color")
       .eq("business_id", business.id)
       .maybeSingle(),
+    businessHasPermission(business, "orders.return"),
   ]);
 
   if (returnsResult.error) {
@@ -174,8 +174,6 @@ export default async function ReturnsPage() {
     },
   );
 
-  const canManage = await businessHasPermission(business, "orders.return");
-
   return (
     <ReturnsWorkspace
       initialRecords={records}
@@ -191,8 +189,11 @@ export default async function ReturnsPage() {
 async function productImages(supabase: Awaited<ReturnType<typeof createClient>>, businessId: string, ids: (string | null)[]) {
   const images = new Map<string, string>();
   const unique = [...new Set(ids.filter((id): id is string => Boolean(id)))];
-  for (let start = 0; start < unique.length; start += 150) {
-    const { data } = await supabase.from("products").select("id,image_url,variant_image_url").eq("business_id", businessId).in("id", unique.slice(start, start + 150));
+  const chunks: string[][] = [];
+  for (let start = 0; start < unique.length; start += 150) chunks.push(unique.slice(start, start + 150));
+  // Chunks are independent; read them together instead of one round trip each.
+  const results = await Promise.all(chunks.map(chunk => supabase.from("products").select("id,image_url,variant_image_url").eq("business_id", businessId).in("id", chunk)));
+  for (const { data } of results) {
     for (const product of data ?? []) {
       const url = product.variant_image_url || product.image_url;
       if (typeof url === "string" && /^https?:\/\//.test(url)) images.set(product.id, url);

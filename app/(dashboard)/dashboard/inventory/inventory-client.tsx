@@ -509,8 +509,7 @@ function InventoryRow({
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 max-sm:h-16 max-sm:w-16 max-sm:rounded-xl">
             {image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={image} alt="" className="h-full w-full object-cover" loading="lazy" />
+              <ProductPhoto src={image} alt="" sizes="64px" className="h-full w-full object-cover" loading="lazy" />
             ) : (
               <Boxes size={18} className="text-slate-300" />
             )}
@@ -599,8 +598,7 @@ function InventoryDetailDrawer({
           <section className="flex gap-4 rounded-2xl border border-slate-200 p-4">
             <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
               {image ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={image} alt="" className="h-full w-full object-cover" />
+                <ProductPhoto src={image} alt="" sizes="96px" className="h-full w-full object-cover" />
               ) : (
                 <Boxes size={30} className="text-slate-300" />
               )}

@@ -387,7 +387,6 @@ export default function ProductList({
       }
 
       setConfirmState(null);
-      router.refresh();
     });
   }
 

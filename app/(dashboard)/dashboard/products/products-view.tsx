@@ -11,6 +11,7 @@ import ProductList from "@/components/product-list";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
 import { createClient } from "@/lib/supabase/branch-server";
+import { readAllRows } from "@/lib/supabase/read-all-rows";
 import AddProductModal from "./add-product-modal";
 
 type Category = {
@@ -52,61 +53,77 @@ function groupKey(product: Product, variantMode: boolean) {
 }
 
 export default async function ProductsView() {
-  const { branchId: operatingBranchId } = await getBranchContext();
+  const [{ branchId: operatingBranchId }, supabase, business] = await Promise.all([
+    getBranchContext(),
+    createClient(),
+    requirePermission("products.view"),
+  ]);
   const selectedBranch = operatingBranchId;
-  const supabase = await createClient();
-  const business = await requirePermission("products.view");
-  const [canAdjustStock, canCreate] = await Promise.all([
+
+  // Independent reads run together; each list is paged so catalogs past the
+  // PostgREST row cap are not silently truncated.
+  const [
+    canAdjustStock,
+    canCreate,
+    currentMode,
+    { data: categoryData, error: categoryError },
+    { data: productData, error: productError },
+    { data: branches, error: branchError },
+    { data: stock, error: stockError },
+  ] = await Promise.all([
     businessHasPermission(business, "products.stock_adjust"),
     businessHasPermission(business, "products.create"),
+    getCurrentBusinessMode({ businessId: business.id, productMode: business.productMode }),
+    supabase
+      .from("categories")
+      .select("id, name, branch_ids")
+      .eq("business_id", business.id)
+      .order("name"),
+    readAllRows<Omit<Product, "categories"> & { category_id: string | null; image_urls: string[] | null }>((from, to) => supabase
+      .from("branch_products")
+      .select(`
+        id,
+        name,
+        sku,
+        barcode,
+        image_url,
+        image_urls,
+        variant_image_url,
+        cost_price,
+        selling_price,
+        stock_quantity,
+        low_stock_quantity,
+        is_active,
+        is_online,
+        created_at,
+        updated_at,
+        size,
+        color,
+        product_type,
+        variant_group_id,
+        category_id
+      `)
+      .eq("business_id", business.id)
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, to)),
+    supabase.from("business_locations").select("id,name").eq("business_id", business.id).eq("is_active", true).eq("id", operatingBranchId).order("is_default", { ascending: false }).order("name"),
+    readAllRows<{ product_id: string; quantity: number; low_stock_threshold: number | null }>((from, to) => supabase
+      .from("product_location_stock")
+      .select("product_id,quantity,low_stock_threshold")
+      .eq("business_id", business.id)
+      .eq("location_id", operatingBranchId)
+      .order("product_id")
+      .range(from, to)),
   ]);
 
-  const currentMode = await getCurrentBusinessMode({
-    businessId: business.id,
-    productMode: business.productMode,
-  });
-
-  const { data: categoryData, error: categoryError } = await supabase
-    .from("categories")
-    .select("id, name, branch_ids")
-    .eq("business_id", business.id)
-    .order("name");
-
-  const { data: productData, error: productError } = await supabase
-    .from("branch_products")
-    .select(`
-      id,
-      name,
-      sku,
-      barcode,
-      image_url,
-      image_urls,
-      variant_image_url,
-      cost_price,
-      selling_price,
-      stock_quantity,
-      low_stock_quantity,
-      is_active,
-      is_online,
-      created_at,
-      updated_at,
-      size,
-      color,
-      product_type,
-      variant_group_id,
-      category_id
-    `)
-    .eq("business_id", business.id)
-    .order("created_at", { ascending: false });
-
   const categories = (categoryData ?? []).filter(c => c.branch_ids === null || c.branch_ids.includes(operatingBranchId)) as Category[];
-  const { data: branches, error: branchError } = await supabase.from("business_locations").select("id,name").eq("business_id", business.id).eq("is_active", true).eq("id", operatingBranchId).order("is_default", { ascending: false }).order("name");
   if (branchError) throw new Error("Unable to load product branches.");
   const branch = branches?.find(row => row.id === selectedBranch);
   if (selectedBranch && !branch) throw new Error("Branch not found in this business.");
-  let products = (productData ?? []).map(p => ({...p,categories:categories.find(c => c.id === p.category_id) ?? null})) as Product[];
+  const categoryById = new Map(categories.map(category => [category.id, category]));
+  let products = (productData ?? []).map(p => ({...p,categories:categoryById.get(p.category_id ?? "") ?? null})) as Product[];
   if (branch) {
-    const { data: stock, error: stockError } = await supabase.from("product_location_stock").select("product_id,quantity,low_stock_threshold").eq("business_id", business.id).eq("location_id", branch.id);
     if (stockError) throw new Error("Unable to load branch inventory.");
     const byProduct = new Map((stock ?? []).map(row => [row.product_id, row]));
     products = products.filter(product=>byProduct.has(product.id)).map(product => ({ ...product, stock_quantity: byProduct.get(product.id)?.quantity ?? 0, low_stock_quantity: byProduct.get(product.id)?.low_stock_threshold ?? product.low_stock_quantity }));

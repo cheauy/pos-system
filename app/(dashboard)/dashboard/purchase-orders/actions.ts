@@ -5,17 +5,28 @@ import { redirect } from "next/navigation";
 
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/branch-server";
-import { readAllRows } from "@/lib/supabase/read-all-rows";
 
 export async function getPurchaseOrderChoices() {
   const business = await requirePermission("purchases.create");
   const supabase = await createClient();
-  const [suppliers, products] = await Promise.all([
+  const size = 500;
+  const page = (from: number, count?: "exact") => supabase.from("branch_products").select("id,name,sku,barcode,cost_price,size,color,image_url,variant_image_url", count ? {count} : undefined).eq("business_id", business.id).eq("is_active", true).order("name").order("id").range(from, from + size - 1);
+  const [suppliers, first] = await Promise.all([
     supabase.from("suppliers").select("id,name,contact_person,phone,email,address,notes,is_active").eq("business_id", business.id).eq("is_active", true).order("name"),
-    readAllRows<{id:string;name:string;sku:string|null;barcode:string|null;cost_price:number|string|null;size:string|null;color:string|null;image_url:string|null;variant_image_url:string|null}>((from,to) => supabase.from("branch_products").select("id,name,sku,barcode,cost_price,size,color,image_url,variant_image_url").eq("business_id", business.id).eq("is_active", true).order("name").order("id").range(from,to)),
+    page(0, "exact"),
   ]);
-  if (suppliers.error || products.error) throw new Error("Unable to load products or suppliers. Please try again.");
-  return {suppliers:suppliers.data ?? [],products:products.data ?? []};
+  if (suppliers.error || first.error) throw new Error("Unable to load products or suppliers. Please try again.");
+  const total = first.count ?? first.data.length;
+  if (total > 100_000) throw new Error("This list is too large to load completely. Narrow the selection.");
+  // The first page reports the count, so later pages load 8 at a time instead of one round trip each.
+  const products = [...first.data];
+  const starts = Array.from({length: Math.max(0, Math.ceil(total / size) - 1)}, (_, index) => (index + 1) * size);
+  for (let index = 0; index < starts.length; index += 8) {
+    const results = await Promise.all(starts.slice(index, index + 8).map(from => page(from)));
+    if (results.some(result => result.error)) throw new Error("Unable to load products or suppliers. Please try again.");
+    for (const result of results) products.push(...(result.data ?? []));
+  }
+  return {suppliers:suppliers.data ?? [],products};
 }
 
 function text(formData: FormData, key: string) {

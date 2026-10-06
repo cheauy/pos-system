@@ -26,4 +26,7 @@ export type CurrentBusiness = {
   // Compatibility alias for newer server actions that use the DB-style name.
   product_mode: ProductMode;
   role: BusinessRole;
+  // Signed-in user verified while resolving this business. Non-enumerable, so it
+  // is never serialized to client components.
+  readonly userId?: string;
 };

@@ -238,7 +238,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   async function refresh(silent = false) {
     if (!silent && inFlight.current) return;
     if (!silent) setBusy('refresh');
-    try { const result = await loadPosWorkspace(data.businessId, branch); if (result.success) { setData(result.data); if (!silent) setNotice({ kind: 'success', text: 'Products, stock and held orders refreshed.' }); } else setNotice({ kind: 'error', text: result.message }); }
+    try { const result = await loadPosWorkspace(data.businessId, branch, true, customerId ? [customerId] : []); if (result.success) { setData(result.data); if (!silent) setNotice({ kind: 'success', text: 'Products, stock and held orders refreshed.' }); } else setNotice({ kind: 'error', text: result.message }); }
     catch (e) { setNotice({ kind: 'error', text: messageOf(e) }); }
     finally { if (!silent) setBusy(''); }
   }
@@ -305,7 +305,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     if (lines.length) { setModalError('Hold or clear the current cart before resuming another order.'); return; }
     inFlight.current = true; setBusy('resume');
     try {
-      const result = await loadPosWorkspace(data.businessId, branch);
+      const result = await loadPosWorkspace(data.businessId, branch, true, customerId ? [customerId] : []);
       if (!result.success) throw new Error(result.message);
       const latest = result.data.holds.find(h => h.id === saved.id);
       if (!latest) throw new Error('This hold was deleted or completed elsewhere. Refresh Held Orders.');

@@ -2,6 +2,7 @@
 
 import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import Link from "next/link";
+import ProductPhoto from "@/components/product-photo";
 import { useRouter } from "next/navigation";
 import {
   ArrowDown,
@@ -125,12 +126,7 @@ function variantText(product: Pick<AdjustmentProduct, "color" | "size">) {
 function ProductThumb({ src, name }: { src: string | null; name: string }) {
   if (src) {
     return (
-      <img
-        src={src}
-        alt=""
-        className="h-full w-full object-cover"
-        loading="lazy"
-      />
+      <ProductPhoto src={src} alt="" sizes="64px" className="h-full w-full object-cover" loading="lazy" />
     );
   }
 

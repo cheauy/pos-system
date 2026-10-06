@@ -37,11 +37,9 @@ type PurchaseHistoryItem = {
 };
 
 export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ customer?: string | string[] }> }) {
-  const business = await requirePermission("customers.view");
-  const requested = (await searchParams).customer;
-  const supabase = await createClient();
+  const [business, { customer: requested }, supabase] = await Promise.all([requirePermission("customers.view"), searchParams, createClient()]);
 
-  const [customerResult, orderResult, fieldSettings, storefrontSettings, branchCurrency] =
+  const [customerResult, orderResult, fieldSettings, storefrontSettings, branchCurrency, canCreate, canUpdate] =
     await Promise.all([
       supabase
         .from("customers")
@@ -60,6 +58,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
       getCustomerFieldSettings(business.id),
       getStorefrontSettings(business.id),
       getBranchCurrency(business.id),
+      businessHasPermission(business, "customers.create"),
+      businessHasPermission(business, "customers.update"),
     ]);
 
   if (customerResult.error) {
@@ -139,10 +139,6 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
     active: enrichedCustomers.filter((customer) => customer.isActive).length,
   };
 
-  const [canCreate, canUpdate] = await Promise.all([
-    businessHasPermission(business, "customers.create"),
-    businessHasPermission(business, "customers.update"),
-  ]);
   return (
     <CustomersWorkspace
       key={typeof requested === "string" ? requested : "customers"}

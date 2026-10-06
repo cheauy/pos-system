@@ -11,12 +11,14 @@ import { getBranchContext } from '@/lib/branches/context';
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const business = await requirePermission("orders.view");
   const filters = parseFilters(await searchParams);
-  const currentMode = await getCurrentBusinessMode({ businessId: business.id, productMode: business.productMode });
-  const showTableQr = !['fashion', 'shoes', 'general'].includes(currentMode.value);
-  if (!showTableQr && filters.source === 'qr') filters.source = 'all';
+  const modeRequest = getCurrentBusinessMode({ businessId: business.id, productMode: business.productMode });
+  const tableQr = (mode: Awaited<typeof modeRequest>) => !['fashion', 'shoes', 'general'].includes(mode.value);
+  // Only the QR source filter depends on the mode; otherwise both load together.
+  if (filters.source === 'qr' && !tableQr(await modeRequest)) filters.source = 'all';
   let workspace;
   let context;
-  try { workspace = await loadWorkspace(business.id, filters); context = await getBranchContext(); }
+  let showTableQr;
+  try { [workspace, context, showTableQr] = await Promise.all([loadWorkspace(business.id, filters), getBranchContext(), modeRequest.then(tableQr)]); }
   catch (error) {
     return <section className="rounded-xl border border-amber-200 bg-white p-6 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
       <h1 className="text-2xl font-bold">Orders</h1>

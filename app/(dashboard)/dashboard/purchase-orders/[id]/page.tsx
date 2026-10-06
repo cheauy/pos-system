@@ -10,10 +10,8 @@ import {setPurchaseOrderStatus} from "../actions";
 const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(value);
 export default async function Page({params}:{params:Promise<{id:string}>}) {
   const {id}=await params;
-  const business=await requirePermission("purchases.view");
-  const [canUpdate,canCancel,canCreate]=await Promise.all([businessHasPermission(business,"purchases.update"),businessHasPermission(business,"purchases.cancel"),businessHasPermission(business,"purchases.create")]);
-  const db=await createClient();
-  const [orderResult,itemResult]=await Promise.all([
+  const [business,db]=await Promise.all([requirePermission("purchases.view"),createClient()]);
+  const [canUpdate,canCancel,canCreate,orderResult,itemResult]=await Promise.all([businessHasPermission(business,"purchases.update"),businessHasPermission(business,"purchases.cancel"),businessHasPermission(business,"purchases.create"),
     db.from("purchase_orders").select("id,po_number,status,supplier_name,order_date,expected_date,reference_number,notes,total").eq("id",id).eq("business_id",business.id).maybeSingle(),
     db.from("purchase_order_items").select("id,purchase_order_id,product_name,sku,ordered_quantity,received_quantity,unit_cost").eq("purchase_order_id",id).eq("business_id",business.id).order("created_at"),
   ]);

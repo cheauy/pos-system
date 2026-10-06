@@ -56,10 +56,26 @@ type Coupon = {
 type PromotionOrder = {
   customer_id: string | null;
   discount: number | null;
-  coupon_code: string | null;
-  status: string;
-  created_at: string;
 };
+
+type ScopedDb = Awaited<ReturnType<typeof createClient>>;
+
+// Metric cards only need two totals. The database aggregates them when
+// 20261007001000_promotion_order_metrics.sql is applied; until then the previous
+// download-and-count query keeps working. Other failures show zeros, as before.
+async function loadOrderMetrics(db: ScopedDb, businessId: string) {
+  const metrics = await db.rpc("tenh_promotion_order_metrics", { p_business_id: businessId });
+  if (!metrics.error) return { totalDiscount: Number(metrics.data?.total_discount ?? 0), loyalCustomers: Number(metrics.data?.loyal_customers ?? 0) };
+  if (!["PGRST202", "42883"].includes(metrics.error.code ?? "")) return { totalDiscount: 0, loyalCustomers: 0 };
+  const result = await db.from("orders").select("customer_id,discount").eq("business_id", businessId).eq("status", "completed").order("created_at", { ascending: false }).limit(10000);
+  const orders = result.error ? [] : ((result.data ?? []) as PromotionOrder[]);
+  const counts = new Map<string, number>();
+  for (const order of orders) if (order.customer_id) counts.set(order.customer_id, (counts.get(order.customer_id) ?? 0) + 1);
+  return {
+    totalDiscount: orders.reduce((sum, order) => sum + Number(order.discount ?? 0), 0),
+    loyalCustomers: [...counts.values()].filter((count) => count >= 2).length,
+  };
+}
 
 type PromotionsPageProps = {
   searchParams: Promise<{
@@ -86,11 +102,9 @@ export default async function PromotionsPage({
   const business = await requirePermission("storefront.view");
   const scopedDb=await createClient();
   const context=await getBranchContext();
-  const productChoices=await scopedDb.from('product_location_stock').select('product_id,products(name,size,color,sku,image_url,variant_image_url)').eq('business_id',business.id).eq('location_id',context.branchId);
-  if(productChoices.error)throw new Error('Unable to load branch promotion settings.');
-  const products=(productChoices.data??[]).map(row=>{const p=Array.isArray(row.products)?row.products[0]:row.products;return {id:row.product_id,name:p?.name||'Unnamed product',variant:[p?.size,p?.color].filter(Boolean).join(' / '),sku:p?.sku||null,image:p?.variant_image_url||p?.image_url||null};}).sort((a,b)=>a.name.localeCompare(b.name)||a.variant.localeCompare(b.variant,undefined,{numeric:true}));
-
-  const [couponResult, orderResult, branchCurrency] = await Promise.all([
+  // Independent reads run together instead of one after another.
+  const [productChoices, couponResult, orderMetrics, branchCurrency, canEdit] = await Promise.all([
+    scopedDb.from('product_location_stock').select('product_id,products(name,size,color,sku,image_url,variant_image_url)').eq('business_id',business.id).eq('location_id',context.branchId),
     scopedDb
       .from("business_coupons")
       .select(`
@@ -112,25 +126,18 @@ export default async function PromotionsPage({
       `)
       .eq("business_id", business.id)
       .order("created_at", { ascending: false }),
-    scopedDb
-      .from("orders")
-      .select("customer_id,discount,coupon_code,status,created_at")
-      .eq("business_id", business.id)
-      .eq("status", "completed")
-      .order("created_at", { ascending: false })
-      .limit(10000),
+    loadOrderMetrics(scopedDb, business.id),
     getBranchCurrency(business.id, context.branchId),
+    businessHasPermission(business, "storefront.update"),
   ]);
+  if(productChoices.error)throw new Error('Unable to load branch promotion settings.');
+  const products=(productChoices.data??[]).map(row=>{const p=Array.isArray(row.products)?row.products[0]:row.products;return {id:row.product_id,name:p?.name||'Unnamed product',variant:[p?.size,p?.color].filter(Boolean).join(' / '),sku:p?.sku||null,image:p?.variant_image_url||p?.image_url||null};}).sort((a,b)=>a.name.localeCompare(b.name)||a.variant.localeCompare(b.variant,undefined,{numeric:true}));
 
   if (couponResult.error) {
     throw new Error(`Unable to load promotions: ${couponResult.error.message}`);
   }
 
   const coupons = (couponResult.data ?? []) as Coupon[];
-  const orders = orderResult.error
-    ? []
-    : ((orderResult.data ?? []) as PromotionOrder[]);
-  const canEdit = await businessHasPermission(business, "storefront.update");
 
   const now = Date.now();
   const activeCount = coupons.filter(
@@ -140,21 +147,8 @@ export default async function PromotionsPage({
     (sum, coupon) => sum + Number(coupon.usage_count ?? 0),
     0,
   );
-  const totalDiscountGiven = orders.reduce(
-    (sum, order) => sum + Number(order.discount ?? 0),
-    0,
-  );
-  const customerOrderCounts = new Map<string, number>();
-  for (const order of orders) {
-    if (!order.customer_id) continue;
-    customerOrderCounts.set(
-      order.customer_id,
-      (customerOrderCounts.get(order.customer_id) ?? 0) + 1,
-    );
-  }
-  const loyalCustomerCount = [...customerOrderCounts.values()].filter(
-    (count) => count >= 2,
-  ).length;
+  const totalDiscountGiven = orderMetrics.totalDiscount;
+  const loyalCustomerCount = orderMetrics.loyalCustomers;
 
   const query = params.q?.trim().toLowerCase() ?? "";
   const status = ["all", "active", "scheduled", "paused", "expired"].includes(

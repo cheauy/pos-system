@@ -1,6 +1,7 @@
 "use client";
 
 import MobileListCard, { MobileList } from "@/components/mobile-list-card";
+import ProductPhoto from "@/components/product-photo";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -321,7 +322,7 @@ export default function LowStockClient({
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <MobileList>{pageRows.map((row) => <MobileListCard key={row.id} href={`/dashboard/products/${row.productId}/edit`} media={row.imageUrl ? <img src={row.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : <PackageOpen size={24} />} title={row.productName} date={[row.sku, row.branchName].filter(Boolean).join(" · ")} primary={`Reorder ${row.suggestedReorder} · Level ${row.reorderLevel}`} secondary={`Supplier: ${row.supplierName || "Unassigned"}`} amount={<span className={row.currentStock <= 0 ? "text-red-600" : "text-rose-600"}>{row.currentStock} left</span>} status={{ label: statusLabel(row.status) }} />)}</MobileList>
+                <MobileList>{pageRows.map((row) => <MobileListCard key={row.id} href={`/dashboard/products/${row.productId}/edit`} media={row.imageUrl ? <ProductPhoto src={row.imageUrl} alt="" sizes="64px" loading="lazy" className="h-full w-full object-cover" /> : <PackageOpen size={24} />} title={row.productName} date={[row.sku, row.branchName].filter(Boolean).join(" · ")} primary={`Reorder ${row.suggestedReorder} · Level ${row.reorderLevel}`} secondary={`Supplier: ${row.supplierName || "Unassigned"}`} amount={<span className={row.currentStock <= 0 ? "text-red-600" : "text-rose-600"}>{row.currentStock} left</span>} status={{ label: statusLabel(row.status) }} />)}</MobileList>
                 <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[1020px] text-sm">
                   <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
@@ -362,8 +363,7 @@ export default function LowStockClient({
                           <div className="flex items-center gap-3">
                             <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
                               {row.imageUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={row.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+                                <ProductPhoto src={row.imageUrl} alt="" sizes="36px" loading="lazy" className="h-full w-full object-cover" />
                               ) : (
                                 <PackageOpen className="m-2 text-slate-400" size={18} />
                               )}

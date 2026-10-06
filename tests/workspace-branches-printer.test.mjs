@@ -55,7 +55,7 @@ test('view defaults now follow operating branch rather than own assigned branch'
  };
  const ctx=loadTs('lib/branches/context.ts',{
    '@/lib/mobile/request-context':{mobileRequest:{getStore:()=>undefined}},
-   'server-only':{}, react:{cache:fn=>fn},
+   'server-only':{}, react:{cache:fn=>fn}, '@/lib/request-scoped':{requestScoped:fn=>fn},
    'next/headers':{cookies:async()=>({get:()=>({value:C})})},
    '@/lib/supabase/server':{createClient:async()=>db},
    '@/lib/business/get-current-business':{getCurrentBusiness:async()=>({id:B,role:'owner'})},

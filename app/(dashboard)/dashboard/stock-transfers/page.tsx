@@ -1,5 +1,6 @@
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/server";
+import { readAllRows } from "@/lib/supabase/read-all-rows";
 
 import StockTransfersClient, {
   type TransferLocation,
@@ -39,8 +40,7 @@ type TransferDbRow = {
 };
 
 export default async function StockTransfersPage() {
-  const business = await requirePermission("transfers.manage");
-  const supabase = await createClient();
+  const [business, supabase] = await Promise.all([requirePermission("transfers.manage"), createClient()]);
 
   const [
     locationsResult,
@@ -55,7 +55,8 @@ export default async function StockTransfersPage() {
       .eq("business_id", business.id)
       .eq("is_active", true)
       .order("name", { ascending: true }),
-    supabase
+    // Paged so the picker lists every active product, not just the first 500.
+    readAllRows<ProductRow>((from, to) => supabase
       .from("products")
       .select(
         "id, name, sku, size, color, image_url, stock_quantity, category_id",
@@ -63,7 +64,8 @@ export default async function StockTransfersPage() {
       .eq("business_id", business.id)
       .eq("is_active", true)
       .order("name", { ascending: true })
-      .limit(500),
+      .order("id")
+      .range(from, to)),
     supabase
       .from("categories")
       .select("id, name")
@@ -77,10 +79,15 @@ export default async function StockTransfersPage() {
       .eq("business_id", business.id)
       .order("created_at", { ascending: false })
       .limit(200),
-    supabase
+    // Display-only availability for every branch; sending re-reads stock on the
+    // server. Paged so businesses past the row cap see every balance.
+    readAllRows<{ location_id: string; product_id: string; quantity: number }>((from, to) => supabase
       .from("product_location_stock")
       .select("location_id, product_id, quantity")
-      .eq("business_id", business.id),
+      .eq("business_id", business.id)
+      .order("location_id")
+      .order("product_id")
+      .range(from, to)),
   ]);
 
   if (locationsResult.error) {

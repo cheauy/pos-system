@@ -178,7 +178,7 @@ export default function CategoriesClient({
       try {
         const result = await repairCategoryIndexes();
         if (result.ok) {
-          router.refresh();
+          // The action's revalidatePath already returned the re-rendered page.
         } else {
           setMessage({ type: "error", text: result.message });
         }
@@ -241,7 +241,6 @@ export default function CategoriesClient({
 
   function showResult(result: { ok: boolean; message: string }) {
     setMessage({ type: result.ok ? "success" : "error", text: result.message });
-    if (result.ok) router.refresh();
   }
 
   function runAction(task: () => Promise<{ ok: boolean; message: string }>) {

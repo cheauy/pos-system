@@ -19,9 +19,12 @@ test('supplier form reports success only after save, prevents duplicate submissi
     'react/jsx-runtime': jsx, 'next/link': () => null, 'lucide-react': icons, '@/components/pending-submit-button': { ButtonSpinner: () => null },
     react: { useState: initial => [initial, value => states.push(value)], useMemo: fn => fn(), useEffect() {}, useRef: value => ({current:value}) },
     'react-dom': { createPortal: node => node }, sonner: {toast:{success:(...args)=>messages.push(args)}},
+    '@/components/mobile-list-card': { default: () => null, MobileList: () => null },
+    './list-actions': { loadSuppliers: async () => ({}) },
+    '@/lib/use-paged-workspace': { usePagedWorkspace: initial => ({ data: initial, busy: false, error: '' }) },
     './actions': {createSupplier:()=>{calls++;return new Promise((yes,no)=>{resolve=yes;reject=no;});},updateSupplier(){},deleteSupplier(){},toggleSupplierStatus(){}},
   }).default;
-  const root = Client({suppliers:[],purchaseOrders:[],loadError:null});
+  const root = Client({workspace:{suppliers:[],total:0,page:1,metrics:{},stats:{total:0,active:0,thisMonthOrders:0,openPoValue:0}}});
   const panel = find(root, node => node.type?.name === 'AddSupplierPanel');
   const formElement = find(panel.type(panel.props), node => node.type?.name === 'SupplierForm');
   const form = formElement.type(formElement.props);

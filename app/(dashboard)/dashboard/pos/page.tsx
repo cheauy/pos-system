@@ -3,7 +3,8 @@ import PosClient from './pos-client';
 import { loadPosWorkspace } from './pos-workspace-actions';
 
 export default async function PosPage() {
-  const result = await loadPosWorkspace();
+  // Customers come from the picker's paginated search; only held-order customers load here.
+  const result = await loadPosWorkspace(undefined, undefined, true, []);
   if (!result.success) return (
     <main className="rounded-2xl border border-amber-200 bg-white p-8 shadow-sm">
       <h1 className="text-2xl font-bold text-slate-900">Point of Sale</h1>

@@ -11,7 +11,7 @@ test('POS lock permits checkout, receipts, Orders and Register only',()=>{
 function branchContext({role='cashier',assigned=A,saved=C,mobileBranch}={}){
  const log=[];const business={id:B,role};
  const db={auth:{getUser:async()=>({data:{user:{id:U}}})},from(table){return queryDouble(table,{data:table==='business_members'?{default_location_id:assigned,role}:[{id:A,name:'A'},{id:C,name:'C'}],error:null},log);}};
- return loadTs('lib/branches/context.ts',{'@/lib/mobile/request-context':{mobileRequest:{getStore:()=>mobileBranch?{branchId:mobileBranch}:undefined}},'server-only':{},react:{cache:fn=>fn},'next/headers':{cookies:async()=>({get:()=>({value:saved})})},'@/lib/supabase/server':{createClient:async()=>db},'@/lib/business/get-current-business':{getCurrentBusiness:async()=>business}});
+ return loadTs('lib/branches/context.ts',{'@/lib/mobile/request-context':{mobileRequest:{getStore:()=>mobileBranch?{branchId:mobileBranch}:undefined}},'server-only':{},react:{cache:fn=>fn},'@/lib/request-scoped':{requestScoped:fn=>fn},'next/headers':{cookies:async()=>({get:()=>({value:saved})})},'@/lib/supabase/server':{createClient:async()=>db},'@/lib/business/get-current-business':{getCurrentBusiness:async()=>business}});
 }
 test('mobile branch requests cannot bypass assigned staff branch',async()=>{
  await assert.rejects(branchContext({mobileBranch:C}).getBranchContext(),/unavailable/);

@@ -1,6 +1,7 @@
 "use client";
 import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import ProductPicker from "@/components/product-picker";
+import ProductPhoto from "@/components/product-photo";
 import { Modal } from "../pos/pos-workspace-components";
 
 import {
@@ -33,7 +34,6 @@ import {
   type FormEvent,
 } from "react";
 import { useFormStatus } from "react-dom";
-import { useRouter } from "next/navigation";
 
 import {
   createTransfer,
@@ -166,7 +166,6 @@ export default function StockTransfersClient({
   locationStock,
   transfers,
 }: Props) {
-  const router = useRouter();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createPending, setCreatePending] = useState(false);
@@ -334,7 +333,6 @@ export default function StockTransfersClient({
       await cancelDraftTransfer(data);
       setCancelTarget(null);
       setDetailsOpen(false);
-      router.refresh();
     } catch (error) {
       setCancelError(error instanceof Error ? error.message : "Unable to cancel transfer.");
     } finally {
@@ -382,7 +380,6 @@ export default function StockTransfersClient({
       setEditingTransferId(null);
       setCreateOpen(false);
       setActionMenuId(null);
-      router.refresh();
     } catch (error) {
       setCreateError(
         error instanceof Error ? error.message : "Unable to create stock transfer.",
@@ -567,12 +564,7 @@ export default function StockTransfersClient({
                           <div className="flex min-w-0 items-center gap-3">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
                               {product?.imageUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={product.imageUrl}
-                                  alt=""
-                                  className="h-full w-full object-cover"
-                                />
+                                <ProductPhoto src={product.imageUrl} alt="" sizes="40px" className="h-full w-full object-cover" />
                               ) : (
                                 <Box size={17} className="text-slate-400" />
                               )}
@@ -1047,8 +1039,7 @@ function TransferDetails({
                     <div className="flex min-w-0 items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
                         {product?.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={product.imageUrl} alt="" className="h-full w-full object-cover" />
+                          <ProductPhoto src={product.imageUrl} alt="" sizes="40px" className="h-full w-full object-cover" />
                         ) : (
                           <Box size={17} className="text-slate-400" />
                         )}

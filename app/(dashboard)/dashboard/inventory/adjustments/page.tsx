@@ -69,7 +69,7 @@ export default async function StockAdjustmentPage({ searchParams }: { searchPara
     supabase
       .from("stock_adjustments")
       .select(
-        "*",
+        "id,location_id,product_id,adjustment_type,quantity_delta,stock_before,stock_after,reason,reference,created_at",
       )
       .eq("business_id", business.id)
       .eq("location_id", selectedBranch)

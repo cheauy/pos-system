@@ -115,7 +115,7 @@ export default function BarcodeLabelsClient({
     .map((product) => ({ id: product.id, name: product.name, variant: variantLabel(product), sku: product.sku, image: product.variant_image_url ?? product.image_url })),
   [filtered]);
 
-  const selectedProducts = useMemo(() => products.filter((product) => selected.includes(product.id)), [products, selected]);
+  const selectedProducts = useMemo(() => { const ids = new Set(selected); return products.filter((product) => ids.has(product.id)); }, [products, selected]);
   const barcodeErrors = useMemo(() => showElements.barcode ? selectedProducts.flatMap(product => {
     const error = validateCode39(labelBarcode(product));
     return error ? [`${product.name}: ${error}`] : [];
@@ -143,12 +143,21 @@ export default function BarcodeLabelsClient({
     window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
     return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
   }, [previewOpen]);
+  // Mount the print sheet on demand and keep it until the dialog closes; some
+  // browsers return from window.print() before the snapshot is taken.
+  const [printSheet, setPrintSheet] = useState(false);
+  useEffect(() => {
+    const open = () => setPrintSheet(true), close = () => setPrintSheet(false);
+    window.addEventListener("beforeprint", open); window.addEventListener("afterprint", close);
+    return () => { window.removeEventListener("beforeprint", open); window.removeEventListener("afterprint", close); };
+  }, []);
   async function printLabels() {
     if (!selectedProducts.length || printLock.current) return;
     if (barcodeErrors.length) { setPrintError("Printing blocked. " + barcodeErrors.join(" ")); return; }
-    printLock.current = true; setPrinting(true); setPrintError('');
-    try { await preparePrint(document, '#barcode-print-area'); window.print(); }
-    catch (error) { setPrintError(error instanceof Error ? error.message : 'Could not prepare labels for printing.'); }
+    printLock.current = true; setPrinting(true); setPrintError(''); setPrintSheet(true);
+    // Wait one frame so React has committed the sheet before images/fonts are checked.
+    try { await new Promise(resolve => requestAnimationFrame(resolve)); await preparePrint(document, '#barcode-print-area'); window.print(); }
+    catch (error) { setPrintSheet(false); setPrintError(error instanceof Error ? error.message : 'Could not prepare labels for printing.'); }
     finally { printLock.current = false; setPrinting(false); }
   }
 
@@ -274,7 +283,7 @@ export default function BarcodeLabelsClient({
       {printError && <p role="alert" className="no-print rounded-xl bg-red-50 p-3 text-sm text-red-700">{printError}</p>}
       {printing && <p role="status" className="no-print text-sm text-slate-600">Preparing images and fonts…</p>}
       <div id="barcode-print-area" className="hidden print:block">
-        {barcodeErrors.length === 0 && printedLabels.map(({ product, key }) => (
+        {barcodeErrors.length === 0 && printSheet && printedLabels.map(({ product, key }) => (
           <LabelCard fontSize={settings.font_size} density={settings.density} key={key} product={product} businessName={businessName} size={labelSize} templateId={templateId} elements={showElements} customText="" />
         ))}
       </div>

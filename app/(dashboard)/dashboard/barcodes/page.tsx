@@ -1,6 +1,7 @@
 import { getBranchContext } from "@/lib/branches/context";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/branch-server";
+import { readAllRows } from "@/lib/supabase/read-all-rows";
 import BarcodeLabelsClient from "./barcode-labels-client";
 
 type ProductRow = {
@@ -26,21 +27,22 @@ type CategoryRow = {
 
 export default async function BarcodeLabelsPage() {
   const business = await requirePermission("products.view");
-  const supabase = await createClient();
-  const {branchId}=await getBranchContext();
-  const stock = await supabase.from("product_location_stock").select("product_id,quantity").eq("business_id",business.id).eq("location_id",branchId);
-  if(stock.error) throw new Error("Unable to load branch products.");
-  const assigned = new Map((stock.data ?? []).map(row=>[row.product_id,Number(row.quantity)]));
+  const [supabase, {branchId}] = await Promise.all([createClient(), getBranchContext()]);
 
-  const [productResult, categoryResult, settingsResult] = await Promise.all([
-    supabase
+  // Branch stock, products, categories and settings are independent: read them
+  // together, paging the lists so large catalogs are not truncated.
+  const [stock, productResult, categoryResult, settingsResult] = await Promise.all([
+    readAllRows<{ product_id: string; quantity: number }>((from, to) => supabase.from("product_location_stock").select("product_id,quantity").eq("business_id",business.id).eq("location_id",branchId).order("product_id").range(from, to)),
+    readAllRows<ProductRow>((from, to) => supabase
       .from("branch_products")
       .select(
         "id,name,sku,barcode,image_url,variant_image_url,cost_price,selling_price,stock_quantity,size,color,category_id,is_active",
       )
       .eq("business_id", business.id)
       .eq("is_active", true)
-      .order("name"),
+      .order("name")
+      .order("id")
+      .range(from, to)),
     supabase
       .from("categories")
       .select("id,name")
@@ -54,6 +56,8 @@ export default async function BarcodeLabelsPage() {
       .maybeSingle(),
   ]);
 
+  if(stock.error) throw new Error("Unable to load branch products.");
+  const assigned = new Map((stock.data ?? []).map(row=>[row.product_id,Number(row.quantity)]));
   if(settingsResult.error)throw new Error('Unable to load saved barcode settings. Please retry.');
   if (productResult.error) {
     return (

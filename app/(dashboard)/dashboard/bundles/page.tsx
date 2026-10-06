@@ -17,9 +17,7 @@ async function rows<T>(query: { range(from: number, to: number): PromiseLike<{ d
 }
 
 export default async function BundleItemsPage() {
-  const business = await requirePermission('products.view');
-  const { branchId, branches } = await getBranchContext();
-  const db = await createClient();
+  const [business, { branchId, branches }, db] = await Promise.all([requirePermission('products.view'), getBranchContext(), createClient()]);
   const [products, stock, items, categories, groups, options, canCreate, canPack, canEdit, canDelete] = await Promise.all([
     rows(db.from('branch_products').select('id,name,sku,description,category_id,image_url,image_urls,created_at,variant_image_url,size,color,product_type,bundle_stock_mode,cost_price,selling_price,is_active,is_online,is_pos,updated_at').eq('business_id', business.id).order('id')),
     rows(db.from('product_location_stock').select('product_id,quantity').eq('business_id', business.id).eq('location_id', branchId).order('product_id')),
@@ -34,15 +32,19 @@ export default async function BundleItemsPage() {
   ]);
   const quantities = new Map(stock.map(row => [row.product_id, Number(row.quantity)]));
   const byId = new Map(products.map(product => [product.id, product]));
+  // Index once instead of scanning every list per product (quadratic on large catalogs).
+  const group = <T, K>(list: T[], keyOf: (row: T) => K) => { const map = new Map<K, T[]>(); for (const row of list) { const key = keyOf(row); const bucket = map.get(key); if (bucket) bucket.push(row); else map.set(key, [row]); } return map; };
+  const categoryNames = new Map(categories.map(category => [category.id, category.name]));
+  const groupsByProduct = group(groups, row => row.product_id), optionsByProduct = group(options, row => row.product_id), itemsByBundle = group(items, row => row.bundle_product_id);
   const componentProducts = products.filter(product => product.product_type !== 'bundle').map(product => ({
     canInclude: product.is_active && quantities.has(product.id),
     ...product, cost_price: Number(product.cost_price), selling_price: Number(product.selling_price), stock_quantity: quantities.get(product.id) ?? 0,
-    imageUrl: product.variant_image_url || product.image_url, categoryId: product.category_id, categoryName: categories.find(category => category.id === product.category_id)?.name ?? 'Uncategorized', businessStock: quantities.get(product.id) ?? 0,
-    groups: product.product_type === 'configurable' ? groups.filter(group => group.product_id === product.id) : [],
-    options: product.product_type === 'configurable' ? options.filter(option => option.product_id === product.id) : [],
+    imageUrl: product.variant_image_url || product.image_url, categoryId: product.category_id, categoryName: categoryNames.get(product.category_id) ?? 'Uncategorized', businessStock: quantities.get(product.id) ?? 0,
+    groups: product.product_type === 'configurable' ? groupsByProduct.get(product.id) ?? [] : [],
+    options: product.product_type === 'configurable' ? optionsByProduct.get(product.id) ?? [] : [],
   })).sort((a, b) => a.name.localeCompare(b.name));
   const bundles = products.filter(product => product.product_type === 'bundle' && product.is_active).map(product => {
-    const components = items.filter(item => item.bundle_product_id === product.id).map(item => {
+    const components = (itemsByBundle.get(product.id) ?? []).map(item => {
       const component = byId.get(item.component_product_id);
       const selected = Array.isArray(item.selected_options) ? item.selected_options as { id: string; name: string }[] : [];
       return { id: item.component_product_id, name: component ? [component.name, component.color, component.size].filter(Boolean).join(' / ') : 'Unavailable product', imageUrl: component?.variant_image_url || component?.image_url || null, sku: component?.sku ?? null, quantity: item.quantity, optionIds: selected.map(option => option.id), options: selected.map(option => option.name).join(', '), available: component?.is_active ? quantities.get(item.component_product_id) ?? 0 : 0 };
