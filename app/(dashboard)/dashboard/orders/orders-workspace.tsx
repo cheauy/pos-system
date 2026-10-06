@@ -267,7 +267,7 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
         <section className={styles.tableCard} aria-label="Orders list" aria-busy={pending}>
           {selected.length > 0 && <div className={styles.selectionBar}><Printer size={14} /><span>{selected.length} selected for printing <small>(up to 50)</small></span><button type="button" onClick={() => setSelected([])}>Clear selection</button></div>}
           <div className={styles.tableScroll}>
-            <table className={styles.table}>
+            <table className={styles.table} data-phone-layout="custom">
               <thead><tr>
                 <th className={styles.checkColumn}><input type="checkbox" ref={allCheckbox} checked={allChecked} onChange={toggleAll} disabled={!data.rows.length} aria-label="Select all orders on this page for printing" /></th>
                 <th>Order ID</th><th>Customer</th><th>Items</th><th>Source</th><th>Payment</th><th>Total</th><th>Status</th>

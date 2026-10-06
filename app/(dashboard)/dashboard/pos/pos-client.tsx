@@ -441,9 +441,11 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
       </div>}
       {groups.length > shown && <button className={`${s.button} ${s.loadMore}`} onClick={() => setShown(n => n + 32)}>Show more products ({groups.length - shown} remaining)</button>}
       <p className={s.footnote}>Stock checked again on sale. Favorites are saved on this browser. Newest products are shown first.</p>
+      {/* Phones stack the order below the catalog; this bar sticks until the order panel is reached. */}
+      {count > 0 && <button type="button" className={s.cartBar} onClick={() => document.getElementById('pos-current-order')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><ShoppingCart size={18}/><span>View order · {count} {count === 1 ? 'item' : 'items'}</span><strong>{cash(values.total)}</strong></button>}
     </div>
 
-    <aside className={s.orderPanel} aria-label="Current order">
+    <aside id="pos-current-order" className={s.orderPanel} aria-label="Current order">
       <header className={s.orderHeader}><ShoppingCart size={29}/><div><h2>Current Order</h2><p>{count} {count === 1 ? 'item' : 'items'}{hold ? ` · ${hold.label}` : ''}</p></div><div className={s.orderDate}><span>{dateLabel}</span><strong>{timeLabel}</strong></div></header>
       <fieldset disabled={frozen} className={s.orderFieldset}>
         <div className={s.customerBlock}><div className={s.between}><label>Type</label><button className={s.dangerText} onClick={() => open('clear')} disabled={!lines.length}><Trash2 size={14}/> Clear All</button></div><button className={s.customerButton} onClick={() => open('customer')}><UserRound size={20}/><span>{shipping.method === 'pickup' ? 'Pickup' : shipping.method === 'delivery' ? 'Delivery' : 'Walk-in customer'}</span><ChevronDown size={15}/></button>

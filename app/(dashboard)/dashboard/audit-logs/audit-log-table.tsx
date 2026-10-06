@@ -565,7 +565,7 @@ export default function AuditLogsTable({
       </section>
 
       <section className="rounded-2xl border border-blue-100 bg-white px-5 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="grid gap-5 lg:grid-cols-[1.15fr_repeat(4,minmax(0,1fr))] lg:items-center">
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-[1.15fr_repeat(4,minmax(0,1fr))] xl:items-center">
           <div className="flex items-start gap-3 lg:border-r lg:border-slate-100 lg:pr-5 dark:lg:border-slate-800">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
               <Info className="h-4 w-4" />

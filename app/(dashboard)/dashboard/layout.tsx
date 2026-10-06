@@ -9,6 +9,7 @@ import { getBranchContext } from "@/lib/branches/context";
 import { getEffectivePermissions } from "@/lib/auth/effective-permissions";
 import PermissionRefresh from '@/components/permission-refresh';
 import WorkspaceActivity from '@/components/ui/workspace-activity';
+import PhoneTableLabels from '@/components/ui/phone-table-labels';
 import WorkspaceBranchProvider from "./workspace-branch-provider";
 import SidebarClient from "./sidebar-client";
 import PosLockProvider from './pos-lock-provider';
@@ -114,8 +115,8 @@ export default async function DashboardLayout({
       <PermissionRefresh businessId={business.id} userId={branchContext.userId} role={business.role} />
       {effectivePermissions.includes("orders.view") && <OnlineOrderListener businessId={business.id} branchId={branchContext.branchId} receiveAll={onlineScope?.data === true} />}
 
-      <div className="xl:pl-16">
-        <main className="workspace-content min-w-0 max-w-full p-4 sm:p-6"><UpdateAlertBanner /><div className="min-w-0" key={branchContext.branchId}>{children}</div></main>
+      <div className="md:pl-16">
+        <main className="workspace-content min-w-0 max-w-full p-4 sm:p-6"><UpdateAlertBanner /><div className="min-w-0" key={branchContext.branchId}>{children}</div><PhoneTableLabels /></main>
       </div>
       </WorkspaceBranchProvider>
       </PosLockProvider>

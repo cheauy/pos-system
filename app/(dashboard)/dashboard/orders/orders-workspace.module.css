@@ -326,3 +326,21 @@
 :global(.dark) .odCustomer>div:last-child,:global(.dark) .odCustomer a,:global(.dark) .odCustomer span,:global(.dark) .odNote,:global(.dark) .odMethod{color:#cbd5e1}
 :global(.dark) .odTimeline:before{background:#2c3b53}
 :global(.dark) .odTimeline li:before{box-shadow:0 0 0 3px #1b3459}
+/* Phones: each order row becomes a card; every column stays visible. */
+@media screen and (max-width:640px){
+.tableScroll{overflow-x:visible}
+.table{min-width:0;font-size:0.8125rem}
+.table thead{display:none}
+.table,.table tbody{display:block;width:100%}
+.table tbody tr{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"chk id act" "cust cust total";align-items:center;gap:6px 10px;padding:12px;border-bottom:1px solid var(--line)}
+.table tbody tr:last-child{border-bottom:0}
+.table td{display:block;height:auto;padding:0;border:0!important;white-space:normal;min-width:0;max-width:none}
+.table td:nth-child(1){grid-area:chk}
+.table td:nth-child(2){grid-area:id}
+.table td:nth-child(3){grid-area:cust}
+.table td:nth-child(7){grid-area:total;text-align:right;font-size:0.9375rem}
+.table td:nth-child(11){grid-area:act}
+.table td:is(:nth-child(4),:nth-child(5),:nth-child(6),:nth-child(8),:nth-child(9),:nth-child(10)){grid-column:span 1;font-size:0.75rem;color:#596e92}
+.table input[type=checkbox]{width:20px;height:20px}
+}
+@media screen and (max-width:1100px){.header{flex-wrap:wrap}.header>div:first-child{flex:1 1 100%;min-width:0}.headerActions{flex-wrap:wrap}}

@@ -191,7 +191,7 @@ export default function SidebarClient({ businessId, branchId, effectivePermissio
     const previous = document.activeElement as HTMLElement | null;
     const overflow = document.body.style.overflow;
     dialog?.showModal(); document.body.style.overflow = 'hidden';
-    const desktop = window.matchMedia('(min-width: 1280px)');
+    const desktop = window.matchMedia('(min-width: 768px)');
     const resize = () => { if (desktop.matches) setIsMobileOpen(false); };
     desktop.addEventListener('change', resize);
     return () => { desktop.removeEventListener('change', resize); dialog?.close(); document.body.style.overflow = overflow; previous?.focus(); };
@@ -222,17 +222,12 @@ export default function SidebarClient({ businessId, branchId, effectivePermissio
               <X size={20} />
             </button>
 
-            <SidebarShell
-              pathname={pathname}
-              businessId={businessId} branchId={branchId} groups={groups}
-              onNavigate={() => setIsMobileOpen(false)}
-              mobile
-            />
+            <MobileDrawerNav pathname={pathname} groups={groups} onNavigate={() => setIsMobileOpen(false)} />
           </aside>
         </dialog>
       )}
 
-      <div className="fixed inset-y-0 left-0 z-50 hidden xl:block">
+      <div className="fixed inset-y-0 left-0 z-50 hidden md:block">
         <SidebarShell key={branchId} pathname={pathname} businessId={businessId} branchId={branchId} groups={groups} />
       </div>
     </>
@@ -724,9 +719,11 @@ function PaymentNotificationToast({
 function RailSignOutButton({
   mobile,
   onNavigate,
+  withLabel = false,
 }: {
   mobile: boolean;
   onNavigate?: () => void;
+  withLabel?: boolean;
 }) {
   const [pending, setPending] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -753,13 +750,14 @@ function RailSignOutButton({
           onClick={() => setConfirmOpen(true)}
           disabled={pending}
           aria-label="Sign out"
-          className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-4 focus:ring-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
+          className={`${withLabel ? "min-h-12 w-full justify-start gap-3 px-3 text-sm font-semibold" : "h-11 w-11 justify-center"} flex items-center rounded-xl text-slate-500 transition hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-4 focus:ring-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-red-950/40 dark:hover:text-red-300`}
         >
           {pending ? (
             <Loader2 size={20} className="animate-spin" />
           ) : (
             <LogOut size={20} strokeWidth={2} />
           )}
+          {withLabel ? <span>{pending ? "Signing out..." : "Sign out"}</span> : null}
         </button>
         {!mobile ? <RailTooltip label={pending ? "Signing out..." : "Sign out"} /> : null}
       </div>
@@ -1082,6 +1080,54 @@ function NotificationPanel({
       >
         View all notifications
       </Link>
+    </div>
+  );
+}
+
+/** Phones/tablets: one labeled list with expandable groups instead of the icon rail. */
+function MobileDrawerNav({ pathname, groups, onNavigate }: { pathname: string; groups: MenuGroup[]; onNavigate: () => void }) {
+  const { locked } = usePosNavigationLock();
+  const routeGroup = getActiveGroup(pathname, groups);
+  const [openTitle, setOpenTitle] = useState<string | null>(isDirectRailRoute(pathname) ? null : routeGroup.title);
+  const listRef = useRef<HTMLElement>(null);
+  // Keep the current page visible when the drawer opens on a long menu.
+  useEffect(() => { listRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest" }); }, []);
+  const row = "flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold transition";
+  const idle = "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800";
+  const current = "bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300";
+  const direct = (href: string, label: string, Icon: ElementType, active: boolean) => locked && !posLockAllows(href)
+    ? <span key={href} role="link" aria-disabled="true" className={`${row} cursor-not-allowed text-slate-400 opacity-60`}><Icon size={20} /><span className="flex-1">{label}</span><LockKeyhole size={14} /></span>
+    : <Link key={href} href={href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={`${row} ${active ? current : idle}`}><Icon size={20} className="shrink-0" /><span className="min-w-0 flex-1 break-words">{label}</span></Link>;
+  return (
+    <div className="sidebar-surface flex h-full min-h-0 flex-col">
+      <div className="flex items-center gap-3 border-b border-slate-100 p-4 pr-14 dark:border-slate-800">
+        <Image src="/tenh-pos-logo.png" alt="" width={36} height={36} className="h-9 w-9 rounded-lg object-contain" />
+        <div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-600">TENH POS</p><h2 className="text-base font-bold">Menu</h2></div>
+      </div>
+      <nav ref={listRef} aria-label="Workspace pages" className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-3">
+        {direct("/dashboard/search", "Global Search", Search, isSearchRoute(pathname))}
+        {direct("/dashboard", "Dashboard", LayoutDashboard, pathname === "/dashboard")}
+        {groups.map(group => {
+          const Icon = group.icon;
+          if (group.href) return direct(group.href, group.title, Icon, isSubscriptionRoute(pathname));
+          const expanded = openTitle === group.title;
+          const hasActive = group.items.some(item => isItemActive(pathname, item.href));
+          return <div key={group.title}>
+            <button type="button" aria-expanded={expanded} onClick={() => setOpenTitle(expanded ? null : group.title)} className={`${row} ${hasActive && !expanded ? current : idle}`}>
+              <Icon size={20} className="shrink-0" /><span className="flex-1 text-left">{group.title}</span>
+              <ChevronRight size={18} className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
+            </button>
+            {expanded && <div className="ml-5 space-y-1 border-l border-slate-200 py-1 pl-3 dark:border-slate-700">
+              {group.items.map(item => <NavigationLink key={item.name} item={item} pathname={pathname} onNavigate={onNavigate} />)}
+            </div>}
+          </div>;
+        })}
+      </nav>
+      <div className="space-y-1 border-t border-slate-100 p-3 dark:border-slate-800">
+        {direct("/dashboard/notifications", "Notifications", Bell, isNotificationsRoute(pathname))}
+        {direct("/dashboard/settings/profile", "Profile", UserRound, pathname.startsWith("/dashboard/settings/profile"))}
+        <RailSignOutButton mobile withLabel onNavigate={onNavigate} />
+      </div>
     </div>
   );
 }

@@ -40,6 +40,30 @@
   .workspace-theme dialog:not(.workspace-mobile-navigation) { overscroll-behavior: contain; }
   .workspace-theme :is(input,select,textarea):not([type="checkbox"],[type="radio"],[type="range"],[type="color"]) { font-size: max(1rem, 1em); }
   .workspace-mobile-navigation :is(button,a) { min-height: 44px; }
+  /* Grid items default to min-width:auto; long truncated text then widens the page. */
+  .workspace-content :is(.grid, [class*="grid-cols"]) > * { min-width: 0; }
+}
+/* Phones: complex dialogs (forms, tables, tabs) open as full-screen sheets; short confirmations stay compact. */
+@media screen and (max-width: 640px) {
+  .workspace-theme dialog:not(.workspace-mobile-navigation):has(form, textarea, table, [role="tablist"]) { width: 100vw; max-width: 100vw !important; height: 100dvh; max-height: 100dvh !important; margin: 0; border-radius: 0; overscroll-behavior: contain; }
+  .workspace-theme .fixed:has(> [role="dialog"][aria-modal="true"]:is(:has(form), :has(textarea), :has(table), :has([role="tablist"]))) { padding: 0 !important; align-items: stretch; }
+  .workspace-theme .fixed[role="dialog"][aria-modal="true"]:is(:has(form), :has(textarea), :has(table), :has([role="tablist"])) { padding: 0 !important; align-items: stretch; }
+  .workspace-theme .fixed[role="dialog"][aria-modal="true"]:is(:has(form), :has(textarea), :has(table), :has([role="tablist"])) > *,
+  .workspace-theme .fixed > [role="dialog"][aria-modal="true"]:is(:has(form), :has(textarea), :has(table), :has([role="tablist"])) { width: 100%; max-width: none !important; min-height: 100dvh; max-height: 100dvh; border-radius: 0 !important; overflow-y: auto; overscroll-behavior: contain; padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+}
+/* Phones: keep a form's final action row (with its submit button) reachable inside dialogs. */
+@media screen and (max-width: 640px) {
+  .workspace-theme :is(dialog, [role="dialog"][aria-modal="true"]) form > :last-child:has(button[type="submit"]):not(:has(input, textarea, select)) { position: sticky; bottom: 0; z-index: 5; margin-top: .75rem; padding-top: .75rem; padding-bottom: max(.75rem, env(safe-area-inset-bottom)); background: var(--workspace-panel, #fff); border-top: 1px solid rgb(226 232 240); }
+}
+/* Phones: workspace tables become labeled cards (labels from components/ui/phone-table-labels). */
+@media screen and (max-width: 640px) {
+  .workspace-content table:not([data-phone-layout]):not(:is(.receipt, [id$="print-area"]) table) { display: block; width: 100%; min-width: 0 !important; }
+  .workspace-content table:not([data-phone-layout]):not(:is(.receipt, [id$="print-area"]) table) thead { display: none; }
+  .workspace-content table:not([data-phone-layout]):not(:is(.receipt, [id$="print-area"]) table) :is(tbody, tfoot) { display: block; }
+  .workspace-content table:not([data-phone-layout]):not(:is(.receipt, [id$="print-area"]) table) tr { display: block; padding: .75rem; border-bottom: 1px solid rgb(226 232 240); }
+  .workspace-content table:not([data-phone-layout]):not(:is(.receipt, [id$="print-area"]) table) td { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .3rem 0 !important; border: 0 !important; min-width: 0 !important; width: auto !important; max-width: none !important; white-space: normal !important; text-align: right; overflow-wrap: anywhere; }
+  .workspace-content table:not([data-phone-layout]):not(:is(.receipt, [id$="print-area"]) table) td[data-label]:not([data-label=""])::before { content: attr(data-label); flex-shrink: 0; max-width: 45%; text-align: left; font-size: .75rem; font-weight: 600; color: rgb(100 116 139); }
+  .workspace-content table:not([data-phone-layout]):not(:is(.receipt, [id$="print-area"]) table) td:is([data-label=""], :not([data-label])) { justify-content: flex-start; text-align: left; }
 }
 @media screen and (max-width: 639px) {
   .workspace-header { gap: .5rem; padding-inline: max(.75rem, env(safe-area-inset-left)); }
