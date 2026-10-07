@@ -208,23 +208,22 @@ export default async function SubscriptionSettingsPage({
     );
   }
 
-  const branchEntitlement = await getBranchEntitlement(business.id);
-
   // Keep the Payment requests list truthful. Expired manual requests are closed
   // immediately; expired PayWay requests are verified/closed safely first.
-  try {
-    await expireStaleSubscriptionPaymentRequestsForBusiness(business.id);
-  } catch {
-    // If external payment verification is temporarily unavailable, leave the
-    // request locked instead of risking a duplicate payment.
-  }
+  // Expiry only touches payment orders, so it runs alongside the branch read.
+  const [branchEntitlement] = await Promise.all([
+    getBranchEntitlement(business.id),
+    expireStaleSubscriptionPaymentRequestsForBusiness(business.id).catch(() => {
+      // If external payment verification is temporarily unavailable, leave the
+      // request locked instead of risking a duplicate payment.
+    }),
+  ]);
 
   const [
     { data: subscription, error: subscriptionError },
     { data: history, error: historyError },
     { data: orders, error: ordersError },
     { count: activeMemberCount },
-    { count: activeLocationCount },
   ] = await Promise.all([
     supabaseAdmin
       .from("businesses")
@@ -251,11 +250,6 @@ export default async function SubscriptionSettingsPage({
       .select("id", { count: "exact", head: true })
       .eq("business_id", business.id)
       .eq("is_active", true),
-    supabaseAdmin
-      .from("business_locations")
-      .select("id", { count: "exact", head: true })
-      .eq("business_id", business.id)
-      .eq("is_active", true),
   ]);
 
   if (subscriptionError) {
@@ -277,7 +271,7 @@ export default async function SubscriptionSettingsPage({
   const planKey = current?.subscription_plan_key ?? (status === "trialing" ? "trial" : "legacy");
   const plan = isSubscriptionPlanKey(planKey) ? subscriptionPlans[planKey] : null;
   const activeMembers = activeMemberCount ?? 0;
-  const activeLocations = activeLocationCount ?? 0;
+  const activeLocations = branchEntitlement.activeUsed;
   const branchLimit =
     status === "expired"
       ? branchEntitlement.configuredLimit

@@ -1,4 +1,5 @@
 import PaymentSuccessRedirect from "@/components/payment-success-redirect";
+import PendingSubmitButton from "@/components/pending-submit-button";
 import CheckoutDuration from './checkout-duration';
 import PaywayCheckoutButton from './payway-checkout-button';
 import PaymentMethodSelector from './payment-method-selector';
@@ -309,13 +310,13 @@ export default async function SubscriptionPaymentPage({
           {pending ? (
             <form action={cancelPendingSubscriptionPayment}>
               <input type="hidden" name="orderId" value={order.id} />
-              <button
-                type="submit"
+              <PendingSubmitButton
+                pendingLabel="Cancelling…"
                 className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-extrabold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-red-900 dark:hover:bg-red-950/30 dark:hover:text-red-300"
               >
                 <XCircle size={14} />
                 Cancel transaction
-              </button>
+              </PendingSubmitButton>
             </form>
           ) : null}
           <span
@@ -603,25 +604,25 @@ export default async function SubscriptionPaymentPage({
                       <form action={selectSubscriptionPaymentMethod}>
                         <input type="hidden" name="orderId" value={order.id} />
                         <input type="hidden" name="paymentMethod" value="manual" />
-                        <button
-                          type="submit"
+                        <PendingSubmitButton
+                          pendingLabel="Switching…"
                           className="flex min-h-11 w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                         >
                           <Building2 size={18} className="shrink-0 text-slate-500" />
                           Use manual payment
                           <ArrowRight size={16} className="ml-auto shrink-0 text-slate-400" />
-                        </button>
+                        </PendingSubmitButton>
                       </form>
                     ) : null}
                     <form action={cancelPendingSubscriptionPayment}>
                       <input type="hidden" name="orderId" value={order.id} />
-                      <button
-                        type="submit"
+                      <PendingSubmitButton
+                        pendingLabel="Cancelling…"
                         className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 dark:text-red-400 dark:hover:bg-red-950/30"
                       >
                         <XCircle size={17} className="shrink-0" />
                         Cancel payment
-                      </button>
+                      </PendingSubmitButton>
                     </form>
                   </div>
                 </div>
@@ -819,8 +820,8 @@ function PaymentMethodButton({
     <form action={selectSubscriptionPaymentMethod} className="h-full">
       <input type="hidden" name="orderId" value={orderId} />
       <input type="hidden" name="paymentMethod" value={method} />
-      <button
-        type="submit"
+      <PendingSubmitButton
+        pendingLabel="Opening…"
         disabled={disabled}
         className={`flex min-h-[72px] w-full items-center rounded-2xl border p-3.5 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
           active
@@ -840,7 +841,7 @@ function PaymentMethodButton({
             <span className="mt-0.5 block text-xs font-medium opacity-75">{description}</span>
           </span>
         </span>
-      </button>
+      </PendingSubmitButton>
     </form>
   );
 }

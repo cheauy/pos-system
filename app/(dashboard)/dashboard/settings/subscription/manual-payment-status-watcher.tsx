@@ -18,13 +18,25 @@ export default function ManualPaymentStatusWatcher({
   useEffect(() => {
     const supabase = createClient();
 
+    let live = false;
+    let lastRefresh = Date.now();
     const refresh = () => {
+      lastRefresh = Date.now();
       router.refresh();
     };
 
     // Realtime gives the payment page an immediate update when TENH approves
-    // or rejects a submitted manual payment. The polling fallback keeps this
-    // safe when Realtime is temporarily unavailable or disabled for the table.
+    // or rejects a submitted manual payment. Each refresh re-renders the whole
+    // payment page, so poll every 4s only while Realtime is not subscribed and
+    // fall back to a 30s safety net once it is. Hidden tabs skip ticks and
+    // reconcile once when the owner comes back (payment app return/resume).
+    const tick = () => {
+      if (document.hidden) return;
+      if (Date.now() - lastRefresh >= (live ? 30000 : 4000) - 100) refresh();
+    };
+    const onVisible = () => {
+      if (!document.hidden) refresh();
+    };
     const channel = supabase
       .channel(realtimeTopic(`subscription-payment:${orderId}`))
       .on(
@@ -37,12 +49,16 @@ export default function ManualPaymentStatusWatcher({
         },
         refresh,
       )
-      .subscribe();
+      .subscribe((status) => {
+        live = status === "SUBSCRIBED";
+      });
 
-    const timer = window.setInterval(refresh, 4000);
+    const timer = window.setInterval(tick, 4000);
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
       void supabase.removeChannel(channel);
     };
   }, [orderId, router, kind]);

@@ -49,6 +49,8 @@ export default async function SubscriptionPlanPickerPage({
     { data: subscription, error: subscriptionError },
     { data: members, error: membersError },
     { data: activeBranches, error: branchesError },
+    branches,
+    promotionPreview,
   ] = await Promise.all([
     supabaseAdmin
       .from("businesses")
@@ -70,6 +72,8 @@ export default async function SubscriptionPlanPickerPage({
       .eq("plan_disable_pending", false)
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: true }),
+    getBranchEntitlement(business.id),
+    loadEligiblePromotions(business.subscriptionStatus === 'active' || business.subscriptionStatus === 'expired'),
   ]);
 
   if (subscriptionError) throw new Error(`Unable to load subscription: ${subscriptionError.message}`);
@@ -115,7 +119,6 @@ export default async function SubscriptionPlanPickerPage({
     createdAt: branch.created_at,
   }));
 
-  const branches = await getBranchEntitlement(business.id);
   const current = (subscription ?? null) as SubscriptionRow | null;
   const status = business.subscriptionStatus;
   const onboarding = requestedOnboarding || status === "trial_pending" || status === "trial_blocked";
@@ -130,7 +133,6 @@ export default async function SubscriptionPlanPickerPage({
     status === "trialing"
       ? current?.trial_expires_at ?? null
       : current?.subscription_expires_at ?? null;
-  const promotionPreview=await loadEligiblePromotions(status === 'active' || status === 'expired');
   const remainingAccessDays = accessExpiresAt
     ? Math.max(0, Math.ceil((new Date(accessExpiresAt).getTime() - promotionPreview.checkedAt) / 86_400_000))
     : 0;

@@ -473,6 +473,14 @@ function toAccess(
 export async function getCurrentBusinessForSubscription(
   options: { startTrial?: boolean } = {},
 ): Promise<CurrentBusinessAccess> {
+  return loadSubscriptionAccess(Boolean(options.startTrial));
+}
+
+// The dashboard layout, getCurrentBusiness and billing pages each need this in
+// one render. Render-only cache() (not requestScoped): server actions run
+// outside render, so they still read fresh state before and after mutating.
+const loadSubscriptionAccess = cache(async (startTrial: boolean): Promise<CurrentBusinessAccess> => {
+  const options = { startTrial };
   const { member, business, user } = await loadContext();
 
   const legacySubscriptionExpiry =
@@ -489,7 +497,7 @@ export async function getCurrentBusinessForSubscription(
   );
 
   return Object.defineProperty(toAccess(current, member.role), "userId", { value: user.id, enumerable: false });
-}
+});
 
 // Deduplicate layout/page/permission reads within this request only. Every new
 // request still checks current membership and subscription access.

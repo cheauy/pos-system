@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileCheck2, UploadCloud } from "lucide-react";
+import { FileCheck2, Loader2, UploadCloud } from "lucide-react";
 import { useFormStatus } from "react-dom";
 
 import { submitSubscriptionPayment } from "../../actions";
@@ -91,9 +91,10 @@ function SubmitButton({ enabled }: { enabled: boolean }) {
     <button
       type="submit"
       disabled={disabled}
+      aria-busy={pending}
       className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
     >
-      <FileCheck2 size={17} />
+      {pending ? <Loader2 size={17} className="animate-spin" /> : <FileCheck2 size={17} />}
       {pending ? "Submitting..." : enabled ? "Submit payment proof" : "Upload receipt to continue"}
     </button>
   );

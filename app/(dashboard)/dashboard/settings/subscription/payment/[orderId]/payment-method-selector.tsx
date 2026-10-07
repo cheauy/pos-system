@@ -3,7 +3,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import { useFormStatus } from 'react-dom';
-import { Building2, ShieldCheck } from 'lucide-react';
+import { Building2, Loader2, ShieldCheck } from 'lucide-react';
 import { selectSubscriptionPaymentMethod } from '../../actions';
 import PaywayCheckoutButton from './payway-checkout-button';
 
@@ -26,5 +26,5 @@ export default function PaymentMethodSelector({orderId,manualAvailable,initialMe
 }
 function ManualContinue(){
   const {pending}=useFormStatus();
-  return <button disabled={pending} className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{pending?'Opening bank details…':'Continue with manual payment'}</button>;
+  return <button disabled={pending} aria-busy={pending} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{pending&&<Loader2 size={16} className="animate-spin"/>}{pending?'Opening bank details…':'Continue with manual payment'}</button>;
 }

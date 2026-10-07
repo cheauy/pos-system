@@ -8,7 +8,7 @@ export function ButtonSpinner() {
 }
 
 /** Submit button for server-action forms: disabled with a spinner until the action finishes. */
-export default function PendingSubmitButton({ children, pendingLabel, className }: { children: ReactNode; pendingLabel: string; className?: string }) {
+export default function PendingSubmitButton({ children, pendingLabel, className, disabled = false }: { children: ReactNode; pendingLabel: string; className?: string; disabled?: boolean }) {
   const { pending } = useFormStatus();
-  return <button type="submit" disabled={pending} aria-busy={pending} className={`${className ?? ""} disabled:cursor-wait disabled:opacity-70`}>{pending ? <><ButtonSpinner />{pendingLabel}</> : children}</button>;
+  return <button type="submit" disabled={pending || disabled} aria-busy={pending} className={`${className ?? ""} disabled:cursor-wait disabled:opacity-70`}>{pending ? <><ButtonSpinner />{pendingLabel}</> : children}</button>;
 }

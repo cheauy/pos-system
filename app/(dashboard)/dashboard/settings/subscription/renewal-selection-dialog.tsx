@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Building2, Check, ShieldCheck, UsersRound, X } from "lucide-react";
+import { Building2, Check, Loader2, ShieldCheck, UsersRound, X } from "lucide-react";
 
 export type RenewalMemberOption = {
   id: string;
@@ -27,6 +27,7 @@ type Props = {
   initialBranchIds?: string[];
   onClose: () => void;
   onApply: (memberIds: string[], branchIds: string[]) => void;
+  pending?: boolean;
 };
 
 function oldestFirst<T extends { createdAt: string; id: string }>(items: T[]) {
@@ -211,11 +212,13 @@ export default function RenewalSelectionDialog(props: Props) {
             </button>
             <button
               type="button"
-              disabled={!valid}
+              disabled={!valid || props.pending}
+              aria-busy={props.pending}
               onClick={() => props.onApply(memberIds, branchIds)}
-              className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-extrabold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-extrabold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Save selection
+              {props.pending ? <Loader2 size={16} className="animate-spin" /> : null}
+              {props.pending ? "Saving…" : "Save selection"}
             </button>
           </div>
         </div>

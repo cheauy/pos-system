@@ -461,15 +461,7 @@ export default function SubscriptionPlansClient({
                 <ArrowRight size={18} />
               </Link>
             ) : (
-              <button
-                type="submit"
-                formAction={continueFreeTrial}
-                disabled={!canPurchase || trialUnavailable}
-                className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-300 bg-white px-5 py-3 text-sm font-extrabold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-300"
-              >
-                Continue with 7-day free trial
-                <ArrowRight size={18} />
-              </button>
+              <TrialButton disabled={!canPurchase || trialUnavailable} />
             )}
           </div>
         ) : null}
@@ -995,6 +987,25 @@ function DowngradeNoticeDialog({
         </div>
       </section>
     </div>
+  );
+}
+
+function TrialButton({ disabled }: { disabled: boolean }) {
+  const { pending, action } = useFormStatus();
+  const starting = pending && action === continueFreeTrial;
+
+  return (
+    <button
+      type="submit"
+      formAction={continueFreeTrial}
+      disabled={disabled || pending}
+      aria-busy={starting}
+      className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-300 bg-white px-5 py-3 text-sm font-extrabold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-300"
+    >
+      {starting ? <Loader2 size={18} className="animate-spin" /> : null}
+      {starting ? "Starting trial…" : "Continue with 7-day free trial"}
+      {!starting ? <ArrowRight size={18} /> : null}
+    </button>
   );
 }
 

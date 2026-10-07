@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Loader2, Settings2 } from "lucide-react";
 
 import { saveScheduledRenewalSelection } from "./actions";
@@ -21,7 +20,6 @@ type Props = {
 };
 
 export default function ScheduledRenewalSelection(props: Props) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -44,8 +42,9 @@ export default function ScheduledRenewalSelection(props: Props) {
         await saveScheduledRenewalSelection(data);
         setMemberIds(nextMemberIds);
         setBranchIds(nextBranchIds);
+        // The action's revalidatePath already refreshes this page; a second
+        // router.refresh() re-rendered the whole subscription page again.
         setOpen(false);
-        router.refresh();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "Unable to save the selection.");
       }
@@ -78,6 +77,7 @@ export default function ScheduledRenewalSelection(props: Props) {
           initialBranchIds={branchIds ?? undefined}
           onClose={() => setOpen(false)}
           onApply={save}
+          pending={pending}
         />
       ) : null}
     </div>
