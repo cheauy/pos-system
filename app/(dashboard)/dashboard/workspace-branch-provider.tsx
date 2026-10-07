@@ -55,10 +55,11 @@ export default function WorkspaceBranchProvider(p:Props) {
     if(stale && dlg && !dlg.open){modal.current?.close();dlg.showModal();} else if(!stale)dlg?.close();
   },[stale]);
   useEffect(()=>{
-    let live=true,checking=false;
+    let live=true,checking=false,last=0;
     async function check(){
-      if(!live||saving.current||checking||document.visibilityState!=='visible')return;
-      checking=true;
+      // focus and visibilitychange fire together on return; one check covers both.
+      if(!live||saving.current||checking||document.visibilityState!=='visible'||Date.now()-last<5000)return;
+      checking=true;last=Date.now();
       try {
         const result=await getOperatingBranchStatus(p.businessId,p.userId);
         if(!live)return;
@@ -72,7 +73,10 @@ export default function WorkspaceBranchProvider(p:Props) {
     try {if(typeof BroadcastChannel!=='undefined'){channel.current=new BroadcastChannel(key);channel.current.onmessage=signal;}} catch { /* Focus/storage fallback. */ }
     window.addEventListener('storage',storage);window.addEventListener('focus',signal);
     document.addEventListener('visibilitychange',signal);
-    const timer=setInterval(signal,30000);
+    // Each check is a server action that reloads the business/branch context.
+    // Same-browser tabs are covered by BroadcastChannel/storage and every write
+    // re-verifies the branch, so the background sweep only catches remote changes.
+    const timer=setInterval(signal,120000);
     return()=>{live=false;clearInterval(timer);channel.current?.close();channel.current=null;window.removeEventListener('storage',storage);window.removeEventListener('focus',signal);document.removeEventListener('visibilitychange',signal);};
   },[p.businessId,p.userId,p.branchId,key]);
   const requestSwitch=useCallback(async(id:string)=>{

@@ -13,7 +13,7 @@ function harness(){
     useEffect(fn){effects.push(fn);},useCallback:fn=>fn,
   };
   const channel={on(){return this;},subscribe(){return this;}};
-  const client={auth:{getUser:async()=>({data:{user:{id:'user'}}})},
+  const client={auth:{getUser:async()=>({data:{user:{id:'user'}}}),getSession:async()=>({data:{session:{user:{id:'user'}}}})},
     rpc:async name=>({data:name==='tenh_branch_notifications'?rows:null}),
     from(table){const q={select(){return q;},eq(...args){filters.push(args);return q;},in(...args){filters.push(args);return q;},maybeSingle(){return q;},then(resolve){return Promise.resolve(table==='business_notification_reads'?{data:[...reads].map(notification_id=>({notification_id})),error:failReads?{}:null}:{data:{sound_enabled:true,browser_enabled:false}}).then(resolve);}};return q;},
     channel:()=>channel,removeChannel(){},

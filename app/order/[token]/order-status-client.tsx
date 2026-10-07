@@ -72,10 +72,17 @@ export default function OrderStatusClient({
     }
   }, [token]);
 
+  // Each tick is a serverless call plus two DB reads. Customers often leave this
+  // tab open, so poll only while it is visible and stop once nothing can change.
+  const settled = order.online_status === "cancelled" || order.online_status === "rejected" ||
+    (order.online_status === "completed" && (order.payment_method !== "khqr" || order.payment_status === "paid"));
   useEffect(() => {
-    const id = window.setInterval(refresh, 5000);
-    return () => window.clearInterval(id);
-  }, [refresh]);
+    if (settled) return;
+    const tick = () => { if (!document.hidden) void refresh(); };
+    const id = window.setInterval(tick, 5000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { window.clearInterval(id); document.removeEventListener("visibilitychange", tick); };
+  }, [refresh, settled]);
 
   const status = order.online_status ?? "new";
   const appearance = getStatusAppearance(status, order.fulfillment_type);

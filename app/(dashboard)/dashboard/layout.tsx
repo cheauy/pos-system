@@ -31,16 +31,8 @@ export default async function DashboardLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
+  // getCurrentBusinessForSubscription verifies the user with Supabase Auth and
+  // redirects to login; a second getUser() here cost one more Auth round trip.
   // Subscription routes must be reachable before a new owner chooses between
   // paid checkout and the explicit 7-day free trial. Do not auto-start trial
   // merely because the dashboard layout rendered.
@@ -99,12 +91,15 @@ export default async function DashboardLayout({
     );
   }
 
-  const [branchContext, effectivePermissions] = await Promise.all([
+  const supabase = await createClient();
+  const permissionsRead = getEffectivePermissions(business.id, business.role);
+  const [branchContext, effectivePermissions, onlineScope] = await Promise.all([
     getBranchContext(),
-    getEffectivePermissions(business.id, business.role),
+    permissionsRead,
+    // Still gated on orders.view, but no longer waits for the branch read.
+    permissionsRead.then((permissions) => permissions.includes("orders.view")
+      ? supabase.rpc("tenh_receive_all_online_orders", { p_business: business.id }) : null),
   ]);
-  const onlineScope = effectivePermissions.includes("orders.view")
-    ? await supabase.rpc("tenh_receive_all_online_orders", { p_business: business.id }) : null;
   const posLocked=effectivePermissions.includes('pos.access')&&(await cookies()).get(posLockCookie(business.id,branchContext.userId))?.value==='1';
   if(posLocked&&!posLockAllows(pathname))redirect('/dashboard/pos');
   // Phones hide page titles/summary cards on list pages; these overview pages keep them.

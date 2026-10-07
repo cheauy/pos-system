@@ -160,13 +160,18 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     setNotice({kind:'info',text:'Currency settings changed. The current order display has updated; product prices and saved orders are unchanged. Review payment again.'});
   },[data.settings.dualCurrencyEnabled,data.settings.usdKhrRate,data.settings.currency]);
   useEffect(() => {
-    const reload=()=>{if(!inFlight.current && !recoveryRef.current && document.visibilityState === 'visible') void refresh(true);};
+    let last=Date.now();
+    const reload=()=>{if(!inFlight.current && !recoveryRef.current && document.visibilityState === 'visible'){last=Date.now();void refresh(true);}};
+    // A reload is the full catalog, settings, coupons, customers and receipt
+    // context. Closing a print dialog or switching windows refocuses the POS, so
+    // focus reloads at most once a minute; checkout re-validates prices and stock.
+    const onFocus=()=>{if(Date.now()-last>=60000)reload();};
     let channel:BroadcastChannel|null=null;
     try {if(typeof BroadcastChannel !== 'undefined')channel=new BroadcastChannel(`tenh-pos-currency:${initialData.businessId}`);} catch { /* Restricted browser: refresh on focus still works. */ }
     if(channel) channel.onmessage=reload;
     const storage=(event:StorageEvent)=>{if(event.key===`tenh-pos-currency:${initialData.businessId}`)reload();};
-    window.addEventListener('focus',reload);window.addEventListener('storage',storage);
-    return ()=>{channel?.close();window.removeEventListener('focus',reload);window.removeEventListener('storage',storage);};
+    window.addEventListener('focus',onFocus);window.addEventListener('storage',storage);
+    return ()=>{channel?.close();window.removeEventListener('focus',onFocus);window.removeEventListener('storage',storage);};
   },[initialData.businessId]);
   function setEntryError(key:string,error:string|null) { setEntryErrors(old=>old[key]===error?old:{...old,[key]:error}); }
 

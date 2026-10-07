@@ -1271,9 +1271,12 @@ function useBusinessNotifications(businessId: string, branchId: string) {
   }, [prefs]);
 
   const load = useCallback(
-    async (announce = false) => {
+    async (announce = false, regenerate = true) => {
       const version = ++loadVersion.current;
-      const { data: { user } } = await supabase.auth.getUser();
+      // Only the user id is needed to filter reads (RLS still applies), so the
+      // local session avoids an Auth API round trip on every 30s tick.
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
       if (version !== loadVersion.current) return;
       if (seenIds.current === null) {
@@ -1282,7 +1285,10 @@ function useBusinessNotifications(businessId: string, branchId: string) {
         setReadError("");
         setToast(null);
       }
-      await supabase.rpc("refresh_business_notifications", {
+      // The refresh RPC rewrites every active notification row, which emits
+      // business_notifications realtime events. Loads caused by those events
+      // only re-read, so a refresh can never trigger another refresh.
+      if (regenerate) await supabase.rpc("refresh_business_notifications", {
         p_business_id: businessId,
       });
 
@@ -1364,10 +1370,21 @@ function useBusinessNotifications(businessId: string, branchId: string) {
     const versionRef = loadVersion;
     seenIds.current = null;
     void load(false);
-    const onRead = () => void load(false);
+    const onRead = () => void load(false, false);
     window.addEventListener("notifications-read", onRead);
     window.addEventListener("notification-preferences-changed", onRead);
-    const timer = window.setInterval(() => void load(true), 30000);
+    const hidden = () => typeof document !== "undefined" && document.hidden;
+    // Realtime can deliver a burst (one event per rewritten row or order
+    // update); coalesce it into one load.
+    let burst: number | undefined;
+    const soon = (regenerate: boolean) => {
+      window.clearTimeout(burst);
+      burst = window.setTimeout(() => void load(true, regenerate), 1000);
+    };
+    const changed = () => soon(true);
+    const timer = window.setInterval(() => { if (!hidden()) void load(true); }, 30000);
+    const onVisible = () => { if (!hidden()) void load(true); };
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
     const channel = supabase
       .channel(realtimeTopic(`sidebar-notifications:${businessId}`))
       .on("postgres_changes", { event: "*", schema: "public", table: "business_notification_reads" }, onRead)
@@ -1379,7 +1396,7 @@ function useBusinessNotifications(businessId: string, branchId: string) {
           table: "business_notifications",
           filter: `business_id=eq.${businessId}`,
         },
-        () => void load(true),
+        () => soon(false),
       )
       .on(
         "postgres_changes",
@@ -1389,7 +1406,7 @@ function useBusinessNotifications(businessId: string, branchId: string) {
           table: "subscription_orders",
           filter: `business_id=eq.${businessId}`,
         },
-        () => void load(true),
+        changed,
       )
       .on(
         "postgres_changes",
@@ -1399,7 +1416,7 @@ function useBusinessNotifications(businessId: string, branchId: string) {
           table: "orders",
           filter: `business_id=eq.${businessId}`,
         },
-        () => void load(true),
+        changed,
       )
       .on(
         "postgres_changes",
@@ -1409,7 +1426,7 @@ function useBusinessNotifications(businessId: string, branchId: string) {
           table: "products",
           filter: `business_id=eq.${businessId}`,
         },
-        () => void load(true),
+        changed,
       )
       .on(
         "postgres_changes",
@@ -1419,7 +1436,7 @@ function useBusinessNotifications(businessId: string, branchId: string) {
           table: "purchase_orders",
           filter: `business_id=eq.${businessId}`,
         },
-        () => void load(true),
+        changed,
       )
       .on(
         "postgres_changes",
@@ -1429,7 +1446,7 @@ function useBusinessNotifications(businessId: string, branchId: string) {
           table: "stock_transfers",
           filter: `business_id=eq.${businessId}`,
         },
-        () => void load(true),
+        changed,
       )
       .on(
         "postgres_changes",
@@ -1439,7 +1456,7 @@ function useBusinessNotifications(businessId: string, branchId: string) {
           table: "cash_register_shifts",
           filter: `business_id=eq.${businessId}`,
         },
-        () => void load(true),
+        changed,
       )
       .subscribe();
 
@@ -1448,6 +1465,8 @@ function useBusinessNotifications(businessId: string, branchId: string) {
       window.removeEventListener("notifications-read", onRead);
       window.removeEventListener("notification-preferences-changed", onRead);
       window.clearInterval(timer);
+      window.clearTimeout(burst);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
       void supabase.removeChannel(channel);
     };
   }, [businessId, load, supabase]);

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Check, ChevronDown, CircleDollarSign, CircleHelp, Coins, CreditCard, FileText, Info, Loader2, Minus, Package, Plus, RotateCcw, Tag, X } from "lucide-react";
+import ProductPhoto from "@/components/product-photo";
 
 import { createOrderReturn, type CreateReturnState } from "./return-actions";
 
@@ -156,7 +157,7 @@ export default function ReturnItemsForm({ orderId, orderNumber, items, triggerCl
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-3">
                               {item.image_url
-                                ? <img src={item.image_url} alt="" className="h-16 w-16 shrink-0 rounded-lg bg-slate-100 object-cover" />
+                                ? <ProductPhoto src={item.image_url} alt="" width={128} height={128} sizes="64px" className="h-16 w-16 shrink-0 rounded-lg bg-slate-100 object-cover" />
                                 : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400"><Package size={22} /></span>}
                               <div className="min-w-0">
                                 <p className="font-semibold">{item.product_name}</p>

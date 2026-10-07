@@ -4,6 +4,7 @@ import Link from "next/link";
 import ReturnItemsForm from "./[id]/return-items-form";
 import { CancelOrderItem } from "./[id]/order-detail-controls";
 import OrderPrintMenu from "@/components/order-print-menu";
+import ProductPhoto from "@/components/product-photo";
 import OrderPrintPreview, {type OrderPrintKind} from "@/components/order-print-preview";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, useSyncExternalStore, useTransition, type FormEvent, type ReactNode } from "react";
@@ -424,7 +425,7 @@ function DetailPanel({ detail, loading, error, currency, currencyFormat, timezon
 
     <OdCard icon={<ShoppingBag size={17} />} title={`Items (${order.items.length})`}>
       <div className={styles.odItems}>{order.items.map((item) => <div key={item.id} className={styles.odItem}>
-        <div className={styles.odItemImage}>{item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <Package size={19} />}</div>
+        <div className={styles.odItemImage}>{item.imageUrl ? <ProductPhoto src={item.imageUrl} alt="" width={104} height={104} sizes="52px" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <Package size={19} />}</div>
         <div className={styles.odItemText}><strong>{item.name}</strong>{item.variant && <small>{item.variant}</small>}{item.options.length > 0 && <small>{item.options.join(", ")}</small>}<small>{money(item.unitPrice, currency, currencyFormat)} × {item.quantity}</small>{item.returnedQuantity > 0 && <small className={styles.odReturned}>Returned: {item.returnedQuantity}</small>}{canCancelItem && <CancelOrderItem orderId={order.id} itemId={item.id} name={item.name} updatedAt={order.updatedAt} businessId={businessId} onCancelled={onReturned}/>}</div>
         <span className={styles.odItemTotal}>{money(item.subtotal, currency, currencyFormat)}</span>
       </div>)}</div>
