@@ -109,3 +109,41 @@ export async function deleteOrderWorkspaceOrders(items: { id: string; updatedAt:
   }
   return { success: true, data: result };
 }
+export type BulkStatusResult = { updated: string[]; failed: { id: string; message: string }[] };
+// Cancellation is excluded: it needs orders.cancel, a reason and stock restoration.
+const bulkStatuses = ["pending", "in_progress", "accepted", "preparing", "completed"];
+// Each order walks its normal steps (e.g. Confirmed -> In Progress -> Completed)
+// through the same per-order RPC as the single status change, so every step gets
+// its own authorization, version and allowed-transition check; failures stay isolated.
+export async function changeOrderWorkspaceStatuses(items: { id: string; updatedAt: string | null; steps: string[] }[], expectedBusinessId: string): Promise<ActionResult<BulkStatusResult>> {
+  const business = await requirePermission("orders.update");
+  if (business.id !== expectedBusinessId) return { success: false, message: "Your selected business changed. Reload this page." };
+  if (!Array.isArray(items) || !items.length || items.length > 50) return { success: false, message: "Select between 1 and 50 orders." };
+  const result: BulkStatusResult = { updated: [], failed: [] };
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (!item || seen.has(item.id)) continue;
+    seen.add(item.id);
+    const steps = Array.isArray(item.steps) ? item.steps : [];
+    if (!steps.length || steps.length > 3 || !steps.every((step) => bulkStatuses.includes(step))) { result.failed.push({ id: item.id, message: "This status cannot be applied in bulk." }); continue; }
+    if (!item.updatedAt) { result.failed.push({ id: item.id, message: "Refresh the order before changing its status." }); continue; }
+    let version: string | null = item.updatedAt;
+    let done = 0;
+    try {
+      for (const step of steps) {
+        // Later steps use the version written by this action's previous step.
+        if (done) {
+          const supabase = await createClient();
+          const { data } = await supabase.from("orders").select("updated_at").eq("id", item.id).eq("business_id", business.id).maybeSingle();
+          version = data?.updated_at ?? null;
+          if (!version) throw new Error("version");
+        }
+        const outcome = await manageOrder(business.id, item.id, version, "status", { status: step, reason: "" });
+        if (!outcome.success) { result.failed.push({ id: item.id, message: done ? `Moved ${done} of ${steps.length} steps, then stopped: ${outcome.message}` : outcome.message }); break; }
+        done++;
+      }
+      if (done === steps.length) result.updated.push(item.id);
+    } catch { result.failed.push({ id: item.id, message: `The result could not be confirmed${done ? ` after ${done} of ${steps.length} steps` : ""}. Refresh before retrying this order.` }); }
+  }
+  return { success: true, data: result };
+}

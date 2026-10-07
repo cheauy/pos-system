@@ -18,6 +18,9 @@ export default function PrinterSettings({ businessId, context, settings, storeUr
   businessId: string; storeUrl?: string; context: ReceiptContext; settings: Record<string, unknown>;
 }) {
   const [tab, setTab] = useState<string>("receipt");
+  // Mount a tab's editor and preview on first visit only; keep it mounted afterwards so drafts survive tab switches.
+  const [visited, setVisited] = useState<string[]>(["receipt"]);
+  const open = (id: string) => { setTab(id); setVisited(list => list.includes(id) ? list : [...list, id]); };
   return (
     <main className="mx-auto max-w-[1400px] space-y-6 pb-8">
       <header className="flex flex-wrap items-start justify-between gap-4 max-sm:hidden">
@@ -32,17 +35,17 @@ export default function PrinterSettings({ businessId, context, settings, storeUr
       <div className="max-sm:hidden"><PrinterConnection /></div>
       <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 max-sm:grid max-sm:grid-cols-3 max-sm:gap-1 dark:border-slate-700 dark:bg-slate-900" aria-label="Printer settings sections">
         {tabs.map(({ id, title, icon: Icon }) => (
-          <button type="button" key={id} aria-pressed={tab === id} aria-controls={`printer-${id}`} onClick={() => setTab(id)} className={`flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold max-sm:flex-col max-sm:justify-center max-sm:gap-1 max-sm:px-1 max-sm:py-2 max-sm:text-center max-sm:text-[11px] max-sm:leading-tight ${tab === id ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"}`}><Icon size={18} />{title}</button>
+          <button type="button" key={id} aria-pressed={tab === id} aria-controls={`printer-${id}`} onClick={() => open(id)} className={`flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold max-sm:flex-col max-sm:justify-center max-sm:gap-1 max-sm:px-1 max-sm:py-2 max-sm:text-center max-sm:text-[11px] max-sm:leading-tight ${tab === id ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"}`}><Icon size={18} />{title}</button>
         ))}
       </div>
       <section id="printer-receipt" hidden={tab !== "receipt"} aria-label="Receipt settings">
         <ReceiptSettingsEditor businessId={businessId} key={context.branchId} initial={context} />
       </section>
       <section id="printer-barcode" hidden={tab !== "barcode"} aria-label="Barcode label settings">
-        <LabelSettings key={context.branchId} branchId={context.branchId} kind="barcode" settings={settings} store={context.store} />
+        {visited.includes("barcode") && <LabelSettings key={context.branchId} branchId={context.branchId} kind="barcode" settings={settings} store={context.store} />}
       </section>
       <section id="printer-shipping" hidden={tab !== "shipping"} aria-label="Shipping label settings">
-        <LabelSettings key={context.branchId} branchId={context.branchId} kind="shipping" settings={settings} store={{ ...context.store, logoUrl: context.appearance.logoUrl, websiteUrl: storeUrl }} />
+        {visited.includes("shipping") && <LabelSettings key={context.branchId} branchId={context.branchId} kind="shipping" settings={settings} store={{ ...context.store, logoUrl: context.appearance.logoUrl, websiteUrl: storeUrl }} />}
       </section>
     </main>
   );

@@ -85,9 +85,8 @@ export async function businessHasPermission(
 }
 
 export async function getPermissionMatrix(businessId: string) {
-  const result = {} as Record<BusinessRole, Permission[]>;
-  for (const role of ["owner", "admin", "manager", "staff", "cashier"] as BusinessRole[]) {
-    result[role] = await getRolePermissions(businessId, role);
-  }
-  return result;
+  // Independent per-role reads: run them together instead of one round trip each.
+  const roles = ["owner", "admin", "manager", "staff", "cashier"] as BusinessRole[];
+  const loaded = await Promise.all(roles.map((role) => getRolePermissions(businessId, role)));
+  return Object.fromEntries(roles.map((role, i) => [role, loaded[i]])) as Record<BusinessRole, Permission[]>;
 }

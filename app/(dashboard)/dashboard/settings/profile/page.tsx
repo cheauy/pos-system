@@ -26,12 +26,11 @@ type ProfileRow = {
 
 export default async function ProfilePage() {
   const supabase = await createClient();
-  const business = await getCurrentBusiness();
-
-  const {
+  // The business check is an access guard only; it does not feed the user lookup.
+  const [, {
     data: { user },
     error: userError,
-  } = await supabase.auth.getUser();
+  }] = await Promise.all([getCurrentBusiness(), supabase.auth.getUser()]);
 
   if (userError || !user) {
     redirect("/login");

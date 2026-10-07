@@ -214,7 +214,7 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
               <Building2 size={42} className="mx-auto text-slate-300" />
               <p className="mt-3 font-semibold text-slate-700">No suppliers yet</p>
               <p className="mt-1 text-sm text-slate-500">
-                Add your first supplier from the form on the left.
+                Use Add Supplier to create your first supplier.
               </p>
             </div>
           ) : filteredSuppliers.length === 0 ? (

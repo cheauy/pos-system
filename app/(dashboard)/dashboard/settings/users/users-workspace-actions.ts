@@ -79,17 +79,18 @@ export async function loadUsersWorkspace(businessId:string):Promise<TeamActionRe
  try {
   if(!isId(businessId))throw new Error('Invalid business.');
   const {user,business}=await actor(businessId);
-  const {data,error}=await supabaseAdmin.rpc('tenh_users_workspace',{p_business:businessId,p_actor:user.id});
-  if(error)throw error;
-  if(!data || data.businessId!==businessId || data.actorId!==user.id || !Array.isArray(data.rows)||!Array.isArray(data.branches))throw new Error('Incomplete user workspace response. Reload this screen.');
-  const [effectiveRolePermissions,canCreateFull,canCreateLimited,canEditUsers,canDisableUsers]=await Promise.all([
+  // Independent reads for the same verified actor: one round trip instead of three in sequence.
+  const [{data,error},effectiveRolePermissions,canCreateFull,canCreateLimited,canEditUsers,canDisableUsers,actorBranch]=await Promise.all([
+   supabaseAdmin.rpc('tenh_users_workspace',{p_business:businessId,p_actor:user.id}),
    getPermissionMatrix(businessId),
    businessHasPermission(business,'users.create'),
    businessHasPermission(business,'users.create_limited'),
    businessHasPermission(business,'users.update_role'),
    businessHasPermission(business,'users.delete'),
+   actorBranchScope(businessId,user.id,business.role),
   ]);
-  const actorBranch=await actorBranchScope(businessId,user.id,business.role);
+  if(error)throw error;
+  if(!data || data.businessId!==businessId || data.actorId!==user.id || !Array.isArray(data.rows)||!Array.isArray(data.branches))throw new Error('Incomplete user workspace response. Reload this screen.');
   const workspace=data as TeamWorkspace;
   const visibleBranches=business.role==='owner'?[...workspace.branches].sort((a,b)=>Number(b.id===actorBranch)-Number(a.id===actorBranch)):workspace.branches.filter(branch=>branch.id===actorBranch);
   const visibleRows=actorBranch?workspace.rows.filter(row=>row.role==='owner'||row.userId===user.id||row.branchId===actorBranch):workspace.rows;

@@ -278,7 +278,7 @@ export default async function ReportsPage({
 
       {/* Phones/tablets: both KPI rows sit in one card, four compact tiles per row. */}
       <div className="max-lg:rounded-2xl max-lg:border max-lg:border-slate-200 max-lg:bg-white max-lg:p-2 max-lg:shadow-sm">
-      <div className="mt-6 grid gap-4 max-lg:mt-0 max-lg:grid-cols-4 max-lg:gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-6 grid gap-4 max-lg:mt-0 max-lg:grid-cols-4 max-[39.99rem]:grid-cols-2 max-lg:gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           title="Revenue"
           value={formatCurrency(totalRevenue)}
@@ -312,7 +312,7 @@ export default async function ReportsPage({
         />
       </div>
 
-      <div className="mt-4 grid gap-4 max-lg:mt-2 max-lg:grid-cols-4 max-lg:gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-4 max-lg:mt-2 max-lg:grid-cols-4 max-[39.99rem]:grid-cols-2 max-lg:gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           title="Net Profit"
           value={formatCurrency(netProfit)}

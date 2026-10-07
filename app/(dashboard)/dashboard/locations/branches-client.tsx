@@ -21,7 +21,6 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 
 import {
   BRANCH_WEEK_DAYS,
@@ -107,7 +106,6 @@ export default function BranchesClient({
   managerOptions,
   branchCapacity,
 }: Props) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
@@ -188,7 +186,8 @@ export default function BranchesClient({
       setModal(null);
       setMenuId(null);
       setCreateOpen(false);
-      router.refresh();
+      // Each successful action calls revalidatePath for this route, and Next re-renders it
+      // in the action response. A router.refresh() here rendered the whole page a second time.
     }
   }
 

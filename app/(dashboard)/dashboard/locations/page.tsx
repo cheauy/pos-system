@@ -49,13 +49,26 @@ type StockRow = {
 
 export default async function LocationsPage() {
   const business = await requirePermission("locations.manage");
-  const entitlement = await getBranchEntitlement(business.id);
 
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
-  const [locationsResult, membersResult, ordersResult, stockResult] =
+  // Members -> profiles is the only dependent pair; it overlaps the other reads.
+  const membersWithProfiles = supabaseAdmin
+    .from("business_members")
+    .select("user_id,role,is_active,default_location_id")
+    .eq("business_id", business.id)
+    .then(async (membersResult) => {
+      const userIds = Array.from(new Set(((membersResult.data ?? []) as MemberRow[]).map((member) => member.user_id).filter(Boolean)));
+      const profilesResult = membersResult.error || userIds.length === 0
+        ? { data: [] as ProfileRow[], error: null }
+        : await supabaseAdmin.from("profiles").select("id,full_name,email").in("id", userIds);
+      return { membersResult, profilesResult };
+    });
+
+  const [entitlement, locationsResult, { membersResult, profilesResult }, ordersResult, stockResult] =
     await Promise.all([
+      getBranchEntitlement(business.id),
       supabaseAdmin
         .from("business_locations")
         .select(`
@@ -77,10 +90,7 @@ export default async function LocationsPage() {
         .eq("business_id", business.id)
         .order("is_default", { ascending: false })
         .order("name"),
-      supabaseAdmin
-        .from("business_members")
-        .select("user_id,role,is_active,default_location_id")
-        .eq("business_id", business.id),
+      membersWithProfiles,
       supabaseAdmin
         .from("orders")
         .select("location_id,total")
@@ -107,23 +117,8 @@ export default async function LocationsPage() {
   const orders = (ordersResult.data ?? []) as OrderRow[];
   const stocks = (stockResult.data ?? []) as StockRow[];
 
-  const userIds = Array.from(
-    new Set(
-      members
-        .map((member) => member.user_id)
-        .filter(Boolean),
-    ),
-  );
-
-  let profiles: ProfileRow[] = [];
-  if (userIds.length > 0) {
-    const { data, error } = await supabaseAdmin
-      .from("profiles")
-      .select("id,full_name,email")
-      .in("id", userIds);
-    if (error) throw new Error(error.message);
-    profiles = (data ?? []) as ProfileRow[];
-  }
+  if (profilesResult.error) throw new Error(profilesResult.error.message);
+  const profiles = (profilesResult.data ?? []) as ProfileRow[];
 
   const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
 

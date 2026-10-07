@@ -226,7 +226,7 @@ export default function PurchaseOrdersClient({
           {filtersOpen && (
             <div className="border-b border-slate-200 bg-white p-3">
               <div className="grid grid-cols-6 gap-2 sm:grid-cols-2 2xl:grid-cols-[minmax(160px,1.5fr)_minmax(110px,.8fr)_minmax(110px,.8fr)_minmax(220px,1.3fr)_minmax(110px,.8fr)]">
-                <label className="relative col-span-2 block max-sm:order-4 sm:col-span-1">
+                <label className="relative col-span-2 block max-sm:order-4 max-[39.99rem]:col-span-6 sm:col-span-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input
                     value={search}
@@ -239,7 +239,7 @@ export default function PurchaseOrdersClient({
                 <select
                   value={supplierFilter}
                   onChange={(event) => { setSupplierFilter(event.target.value); setPage(1); }}
-                  className={`${selectClass} col-span-2 min-w-0 max-sm:text-xs sm:col-span-1`}
+                  className={`${selectClass} col-span-2 min-w-0 max-[39.99rem]:col-span-6 max-sm:text-xs sm:col-span-1`}
                 >
                   <option value="all">All Suppliers</option>
                   {suppliers.map((supplier) => (
@@ -252,7 +252,7 @@ export default function PurchaseOrdersClient({
                 <select
                   value={statusFilter}
                   onChange={(event) => { setStatusFilter(event.target.value as StatusFilter); setPage(1); }}
-                  className={`${selectClass} col-span-2 min-w-0 max-sm:text-xs sm:col-span-1`}
+                  className={`${selectClass} col-span-2 min-w-0 max-[39.99rem]:col-span-3 max-sm:text-xs sm:col-span-1`}
                 >
                   <option value="all">All Statuses</option>
                   <option value="draft">Draft</option>
@@ -262,7 +262,7 @@ export default function PurchaseOrdersClient({
                   <option value="cancelled">Cancelled</option>
                 </select>
 
-                <div className="col-span-4 grid grid-cols-2 gap-2 max-sm:order-5 sm:col-span-1">
+                <div className="col-span-4 grid grid-cols-2 gap-2 max-sm:order-5 max-[39.99rem]:col-span-6 sm:col-span-1">
                   <label className="relative">
                     <CalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                     <input
@@ -285,7 +285,7 @@ export default function PurchaseOrdersClient({
                 <select
                   value={sortMode}
                   onChange={(event) => { setSortMode(event.target.value as SortMode); setPage(1); }}
-                  className={`${selectClass} col-span-2 min-w-0 max-sm:text-xs sm:col-span-1`}
+                  className={`${selectClass} col-span-2 min-w-0 max-[39.99rem]:col-span-3 max-sm:text-xs sm:col-span-1`}
                 >
                   <option value="newest">Newest first</option>
                   <option value="oldest">Oldest first</option>

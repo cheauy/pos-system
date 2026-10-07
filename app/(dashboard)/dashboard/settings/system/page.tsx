@@ -14,8 +14,11 @@ export default async function SystemDisplaySettingsPage() {
   const business = await getCurrentBusiness();
   const canManageFields = await businessHasPermission(business,"business.update");
   const context = business.role === "owner" || canManageFields ? await getBranchContext() : null;
-  const customerFields = canManageFields ? await getCustomerFieldSettings(business.id) : null;
-  const registerResult = business.role === "owner" && context?.branchId ? await (await createClient()).from("branch_pos_settings").select("require_open_register").eq("business_id", business.id).eq("location_id", context.branchId).maybeSingle() : null;
+  // Independent reads: fetch customer fields and the register flag together.
+  const [customerFields, registerResult] = await Promise.all([
+    canManageFields ? getCustomerFieldSettings(business.id) : null,
+    business.role === "owner" && context?.branchId ? createClient().then(db => db.from("branch_pos_settings").select("require_open_register").eq("business_id", business.id).eq("location_id", context.branchId).maybeSingle()) : null,
+  ]);
   return (
     <main className="mx-auto w-full max-w-[1600px] space-y-5 pb-8">
       <section>

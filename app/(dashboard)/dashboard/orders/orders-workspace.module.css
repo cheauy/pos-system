@@ -366,7 +366,10 @@
 @media(max-width:520px){.odToolbar{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:4px}.odTool{min-height:52px;padding:6px 2px;font-size:.625rem}.odToolbar>*>button{width:100%;height:100%}}
 /* Bulk selection action. */
 .selectionBar button+button{margin-left:0}
-.selectionBar .selectionDelete{display:inline-flex;align-items:center;gap:4px;color:#b6364b;font-weight:700}
+.selectionBar .selectionActions{display:inline-flex;align-items:center;gap:4px;min-height:30px;padding:4px 10px;border:1px solid currentColor;border-radius:6px;font-weight:700}
+.bulkStatusOptions{display:flex;flex-wrap:wrap;gap:8px 16px;border:0;padding:0;margin:0 0 12px}
+.bulkStatusOptions legend{width:100%;margin-bottom:6px;font-weight:700}
+.bulkStatusOptions label{display:inline-flex;align-items:center;gap:6px;min-height:32px}
 /* Phone/tablet order details: right-side drawer. Repeated class raises specificity
    above the global phone rule that turns form/table dialogs into full-screen sheets. */
 dialog.drawer.drawer.drawer.drawer{position:fixed;inset:0 0 0 auto;margin:0 0 0 auto!important;width:min(560px,calc(100vw - 40px))!important;max-width:calc(100vw - 40px)!important;height:100dvh!important;max-height:100dvh!important;border-radius:0!important;border-width:0 0 0 1px;overflow-y:auto;overscroll-behavior:contain}

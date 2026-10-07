@@ -7,10 +7,10 @@ import OrderPrintMenu from "@/components/order-print-menu";
 import ProductPhoto from "@/components/product-photo";
 import OrderPrintPreview, {type OrderPrintKind} from "@/components/order-print-preview";
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState, useSyncExternalStore, useTransition, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, useTransition, type FormEvent, type ReactNode, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import {
-  AlertCircle, ArrowUpDown, Check, ChevronLeft, ChevronRight,
+  AlertCircle, ArrowUpDown, Check, ChevronDown, ChevronLeft, ChevronRight,
   Clock3, CreditCard, Ellipsis, Eye, FileText, Loader2, Mail, MapPin,
   Package, Pencil, Phone, Plus, Printer, QrCode, RefreshCw,
   Search, ShieldCheck, ShoppingBag, Store, Trash2, X,
@@ -18,7 +18,7 @@ import {
   CalendarDays, CheckCircle2, Coins, ReceiptText, RotateCcw, Truck, UserRound, Wallet,
 } from "lucide-react";
 import {
-  changeOrderWorkspaceStatus, deleteOrderWorkspaceOrder, deleteOrderWorkspaceOrders, getOrderWorkspaceDetail, saveOrderWorkspaceDetails,
+  changeOrderWorkspaceStatus, changeOrderWorkspaceStatuses, deleteOrderWorkspaceOrder, deleteOrderWorkspaceOrders, getOrderWorkspaceDetail, saveOrderWorkspaceDetails,
 } from "./order-workspace-actions";
 import {
   dateText, deleteReason, fulfillmentLabels, methodLabel, money as plainMoney, nextStatuses,
@@ -59,6 +59,24 @@ type ActionDialog = { type: "edit" | "status" | "delete"; order: OrderRow };
 // The row snapshot lets bulk delete reuse per-order eligibility and version checks.
 type QueueItem = { id: string; number: string; row: OrderRow };
 const statusTabs = ["all", "new", "pending", "in_progress", "completed", "cancelled", "refunded"];
+// Bulk targets use the existing next-step rules: POS and online orders reach the
+// same visible status through different stored values. An order walks each
+// normal step up to the target; it never skips a step or moves backwards.
+const bulkTargets = [
+  { key: "confirmed", label: "Confirmed", values: ["pending", "accepted"] },
+  { key: "in_progress", label: "In Progress", values: ["in_progress", "preparing"] },
+  { key: "completed", label: "Completed", values: ["completed"] },
+];
+function bulkSteps(row: OrderRow, values: string[], canCancel: boolean) {
+  const steps: { value: string; label: string }[] = [];
+  let current = row;
+  for (let next = nextStatuses(current, canCancel)[0]; next && steps.length < 3; next = nextStatuses(current, canCancel)[0]) {
+    steps.push(next);
+    if (values.includes(next.value)) return steps;
+    current = ["online", "qr"].includes(row.source) ? { ...current, onlineStatus: next.value } : { ...current, status: next.value as OrderRow["status"] };
+  }
+  return null;
+}
 
 const orderHref = (id: string) => `/dashboard/orders/${encodeURIComponent(id)}`;
 
@@ -76,6 +94,8 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
   const [selected, setSelected] = useState<QueueItem[]>([]);
   const [queueOpen, setQueueOpen] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
+  const [bulkMenu, setBulkMenu] = useState<HTMLButtonElement | null>(null);
   const [printPreview,setPrintPreview]=useState<{id:string;kind:OrderPrintKind}|null>(null);
   const [menu, setMenu] = useState<{ row: OrderRow; rect: DOMRect; trigger: HTMLButtonElement } | null>(null);
   const [dialog, setDialog] = useState<ActionDialog | null>(null);
@@ -232,6 +252,13 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
     if (visibleId && deleted.includes(visibleId)) { setSelectedId(data.rows.find((row) => !deleted.includes(row.id))?.id ?? null); setMobileOpen(false); }
     setNotice(`${deleted.length} ${deleted.length === 1 ? "order" : "orders"} deleted.${failed ? ` ${failed} could not be deleted and remain selected.` : ""}`);
   }
+  // Successful orders leave the selection; failed and skipped ones stay for review.
+  // The action's revalidatePath already returns the fresh list and tab counts.
+  function bulkStatusUpdated(updated: string[], failed: number, skipped: number) {
+    setSelected((items) => items.filter((item) => !updated.includes(item.id)));
+    setNotice(`${updated.length} ${updated.length === 1 ? "order" : "orders"} updated.${failed ? ` ${failed} failed.` : ""}${skipped ? ` ${skipped} skipped.` : ""}${failed + skipped ? " Those remain selected." : ""}`);
+  }
+  const selectedItems = () => selected.map((item) => ({ ...item, row: data.rows.find((row) => row.id === item.id) ?? item.row }));
   const firstShown = data.total === 0 ? 0 : (data.page - 1) * filters.limit + 1;
   const lastShown = Math.min(data.page * filters.limit, data.total);
   const activeFilters = !!(filters.search || filters.from || filters.to || [filters.branch, filters.source, filters.fulfillment, filters.payment, filters.status].some((value) => value !== "all"));
@@ -277,7 +304,7 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
           {activeFilters && <button className={styles.textButton} type="button" onClick={() => navigate({ search: "", branch: "all", source: "all", fulfillment: "all", payment: "all", status: "all", from: "", to: "", page: 1 })}>Clear filters</button>}
         </div>
         <section className={styles.tableCard} aria-label="Orders list" aria-busy={pending}>
-          {selected.length > 0 && <div className={styles.selectionBar} role="toolbar" aria-label="Selected orders"><Check size={14} /><span>{selected.length} selected <small>(up to 50)</small></span><button type="button" onClick={() => setSelected([])}>Clear selection</button>{permissions.delete && <button type="button" className={styles.selectionDelete} onClick={() => setBulkDeleteOpen(true)}><Trash2 size={13} />Delete ({selected.length})</button>}</div>}
+          {selected.length > 0 && <div className={styles.selectionBar} role="toolbar" aria-label="Selected orders"><Check size={14} /><span>{selected.length} selected <small>(up to 50)</small></span><button type="button" onClick={() => setSelected([])}>Clear selection</button>{(permissions.edit || permissions.delete) && <button type="button" className={styles.selectionActions} aria-haspopup="menu" aria-expanded={!!bulkMenu} onClick={(event) => { const trigger = event.currentTarget; setBulkMenu((open) => open ? null : trigger); }}>Actions<ChevronDown size={13} /></button>}</div>}
           <div className={styles.tableScroll}>
             <table className={styles.table} data-phone-layout="custom">
               <thead><tr>
@@ -319,7 +346,9 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
     {narrow && mobileOpen && !panelClosed && visibleId && <Modal title="Order details" onClose={() => setMobileOpen(false)} wide drawer>{detailContent}</Modal>}
     {printPreview&&<OrderPrintPreview orderId={printPreview.id} kind={printPreview.kind} onClose={()=>setPrintPreview(null)}/>}
     {menu && <RowMenu onPrint={kind=>{setPrintPreview({id:menu.row.id,kind});setMenu(null);}} menu={menu} permissions={permissions} onClose={() => setMenu(null)} onAction={openAction} onView={() => { selectRow(menu.row); setMenu(null); }} />}
-    {bulkDeleteOpen && selected.length > 0 && <BulkDeleteDialog items={selected.map((item) => ({ ...item, row: data.rows.find((row) => row.id === item.id) ?? item.row }))} businessId={businessId} onClose={() => setBulkDeleteOpen(false)} onDeleted={bulkDeleted} />}
+    {bulkMenu && selected.length > 0 && <BulkActionsMenu trigger={bulkMenu} count={selected.length} permissions={permissions} onClose={() => setBulkMenu(null)} onStatus={() => { setBulkMenu(null); setBulkStatusOpen(true); }} onDelete={() => { setBulkMenu(null); setBulkDeleteOpen(true); }} />}
+    {bulkStatusOpen && selected.length > 0 && <BulkStatusDialog items={selectedItems()} businessId={businessId} canCancel={permissions.cancel} onClose={() => setBulkStatusOpen(false)} onUpdated={bulkStatusUpdated} onUncertain={refresh} />}
+    {bulkDeleteOpen && selected.length > 0 && <BulkDeleteDialog items={selectedItems()} businessId={businessId} onClose={() => setBulkDeleteOpen(false)} onDeleted={bulkDeleted} />}
     {dialog && <ManageOrderDialog action={dialog} businessId={businessId} permissions={permissions} onClose={() => setDialog(null)} onSuccess={actionSuccess} />}
     {queueOpen && <Modal title={`Print Queue (${selected.length})`} onClose={() => setQueueOpen(false)}>
       <p className={styles.modalHelp}>Choose a receipt or shipping label for each order, review the preview, then print using your saved settings.</p>
@@ -505,26 +534,7 @@ function RowMenu({ menu, permissions, onClose, onAction, onView, onPrint }: {
   onClose: () => void; onAction: (type: ActionDialog["type"], row: OrderRow) => void; onView: () => void;
 }) {
   const element = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const root = element.current;
-    root?.querySelector<HTMLElement>("button:not(:disabled),a")?.focus();
-    const outside = (event: PointerEvent) => { if (!root?.contains(event.target as Node)) onClose(); };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); onClose(); menu.trigger.focus(); }
-      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-        event.preventDefault(); const items = Array.from(root?.querySelectorAll<HTMLElement>("button:not(:disabled),a") ?? []);
-        const index = items.indexOf(document.activeElement as HTMLElement);
-        const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
-        items[next]?.focus();
-      }
-      if (event.key === "Tab") onClose();
-    };
-    const scroll = () => onClose();
-    document.addEventListener("pointerdown", outside); document.addEventListener("keydown", escape); window.addEventListener("resize", scroll); window.addEventListener("scroll", scroll, true);
-    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); window.removeEventListener("resize", scroll); window.removeEventListener("scroll", scroll, true); };
-    // Menu lifetime is tied to its trigger; callbacks operate on that row snapshot.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useMenuDismiss(element, menu.trigger, onClose);
   const top = Math.max(8, menu.rect.bottom + 6 + 232 < window.innerHeight ? menu.rect.bottom + 6 : menu.rect.top - 238);
   const left = Math.max(8, Math.min(menu.rect.right - 214, window.innerWidth - 222));
   const blocked = deleteReason(menu.row);
@@ -538,6 +548,47 @@ function RowMenu({ menu, permissions, onClose, onAction, onView, onPrint }: {
     <div className={styles.menuDivider} />
     <button role="menuitem" type="button" className={styles.dangerText} disabled={!permissions.delete || !!blocked} title={blocked || (!permissions.delete ? "Delete permission required." : "Delete order")} onClick={() => onAction("delete", menu.row)}><Trash2 size={15} />Delete</button>
   </div>, document.body);
+}
+
+function BulkActionsMenu({ trigger, count, permissions, onClose, onStatus, onDelete }: { trigger: HTMLButtonElement; count: number; permissions: WorkspacePermissions; onClose: () => void; onStatus: () => void; onDelete: () => void }) {
+  const element = useRef<HTMLDivElement>(null);
+  useMenuDismiss(element, trigger, onClose, true);
+  const rect = trigger.getBoundingClientRect();
+  // Open below the trigger, or above it when the viewport bottom is too close.
+  const top = Math.max(8, rect.bottom + 6 + 110 < window.innerHeight ? rect.bottom + 6 : rect.top - 116);
+  const left = Math.max(8, Math.min(rect.right - 214, window.innerWidth - 222));
+  return createPortal(<div ref={element} role="menu" aria-label={`Actions for ${count} selected orders`} className={styles.rowMenu} style={{ top, left }}>
+    <div className={styles.menuLabel}>{count} selected</div>
+    <button role="menuitem" type="button" disabled={!permissions.edit} title={!permissions.edit ? "Order update permission is required." : undefined} onClick={onStatus}><ArrowUpDown size={15} />Change status</button>
+    <div className={styles.menuDivider} />
+    <button role="menuitem" type="button" className={styles.dangerText} disabled={!permissions.delete} title={!permissions.delete ? "Delete permission required." : undefined} onClick={onDelete}><Trash2 size={15} />Delete ({count})</button>
+  </div>, document.body);
+}
+
+// Shared menu behavior: focus first item, arrow keys, close on outside click,
+// Escape, Tab, resize or scroll. Lifetime is tied to the trigger.
+function useMenuDismiss(element: RefObject<HTMLDivElement | null>, trigger: HTMLButtonElement, onClose: () => void, ignoreTrigger = false) {
+  useEffect(() => {
+    const root = element.current;
+    root?.querySelector<HTMLElement>("button:not(:disabled),a")?.focus();
+    // The bulk trigger toggles itself, so its own pointerdown must not close first.
+    const outside = (event: PointerEvent) => { if (!root?.contains(event.target as Node) && !(ignoreTrigger && trigger.contains(event.target as Node))) onClose(); };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onClose(); trigger.focus(); }
+      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+        event.preventDefault(); const items = Array.from(root?.querySelectorAll<HTMLElement>("button:not(:disabled),a") ?? []);
+        const index = items.indexOf(document.activeElement as HTMLElement);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+        items[next]?.focus();
+      }
+      if (event.key === "Tab") onClose();
+    };
+    const scroll = () => onClose();
+    document.addEventListener("pointerdown", outside); document.addEventListener("keydown", escape); window.addEventListener("resize", scroll); window.addEventListener("scroll", scroll, true);
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); window.removeEventListener("resize", scroll); window.removeEventListener("scroll", scroll, true); };
+    // Menu lifetime is tied to its trigger; callbacks operate on that snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 }
 
 function Modal({ title, onClose, children, busy = false, wide = false, drawer = false }: { title: string; onClose: () => void; children: ReactNode; busy?: boolean; wide?: boolean; drawer?: boolean }) {
@@ -593,6 +644,61 @@ function BulkDeleteDialog({ items, businessId, onClose, onDeleted }: { items: Qu
         <label className={styles.fieldLabel}>Type <strong>{phrase}</strong> to confirm<input required value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="off" disabled={saving} /></label>
       </>}
       <div className={styles.modalFooter}><button type="button" className={styles.button} onClick={onClose} disabled={saving}>{eligible.length ? "Cancel" : "Close"}</button>{eligible.length > 0 && <button type="submit" className={`${styles.button} ${styles.dangerButton}`} disabled={saving || confirm.trim() !== phrase || !reason.trim()}>{saving ? <Loader2 size={16} className={styles.spin} /> : <Trash2 size={15} />}{saving ? "Deleting…" : `Delete ${eligible.length}`}</button>}</div>
+    </form>
+  </Modal>;
+}
+
+function BulkStatusDialog({ items, businessId, canCancel, onClose, onUpdated, onUncertain }: { items: QueueItem[]; businessId: string; canCancel: boolean; onClose: () => void; onUpdated: (updated: string[], failed: number, skipped: number) => void; onUncertain: () => void }) {
+  const [target, setTarget] = useState(bulkTargets[0].key);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  // After a run the dialog only reports; failed orders are reviewed, not resubmitted blindly.
+  const [report, setReport] = useState<{ updated: number; failed: { number: string; message: string }[]; skipped: number } | null>(null);
+  const lock = useRef(false);
+  const choice = bulkTargets.find((option) => option.key === target) ?? bulkTargets[0];
+  const plan = items.map((item) => {
+    const next = nextStatuses(item.row, canCancel)[0];
+    const steps = bulkSteps(item.row, choice.values, canCancel);
+    const reason = !next ? "No further status change is available (completed, cancelled or returned)."
+      : !steps ? `Already past ${choice.label}; statuses cannot move backwards.`
+      : !item.row.updatedAt ? "Refresh the order before changing its status." : "";
+    return { item, steps: steps ?? [], reason };
+  });
+  const eligible = plan.filter((entry) => !entry.reason);
+  const skipped = plan.filter((entry) => entry.reason);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (lock.current || report || !eligible.length) return;
+    lock.current = true; setSaving(true); setError("");
+    const numbers = new Map(items.map((item) => [item.id, item.number]));
+    const skippedCount = skipped.length;
+    try {
+      const result = await changeOrderWorkspaceStatuses(eligible.map(({ item, steps }) => ({ id: item.id, updatedAt: item.row.updatedAt, steps: steps.map((step) => step.value) })), businessId);
+      if (!result.success) { setError(result.message); return; }
+      const failed = result.data.failed.map((failure) => ({ number: numbers.get(failure.id) ?? failure.id, message: failure.message }));
+      onUpdated(result.data.updated, failed.length, skippedCount);
+      if (!failed.length && !skippedCount) { onClose(); return; }
+      setReport({ updated: result.data.updated.length, failed, skipped: skippedCount });
+    } catch {
+      setError("The result could not be confirmed. Some orders may already be updated. The list is refreshing; review it before trying again.");
+      setReport({ updated: 0, failed: [], skipped: skippedCount });
+      onUncertain();
+    } finally { lock.current = false; setSaving(false); }
+  }
+  return <Modal title={`Change status · ${items.length} selected`} onClose={onClose} busy={saving}>
+    <form onSubmit={submit}>
+      {error && <div role="alert" className={styles.error}><AlertCircle size={18} /><div>{error}</div></div>}
+      {report ? <>
+        <div role="status" className={styles.modalOrder}><strong>Result</strong><span>{report.updated} updated · {report.failed.length} failed · {report.skipped} skipped</span></div>
+        {report.failed.length > 0 && <div role="alert" className={styles.error}><AlertCircle size={18} /><div><strong>{report.failed.length} not updated (still selected):</strong><ul>{report.failed.map((failure) => <li key={failure.number}>{failure.number}: {failure.message}</li>)}</ul></div></div>}
+        {report.skipped > 0 && <p className={styles.modalHelp}>Skipped orders were not submitted and remain selected.</p>}
+      </> : <>
+        <p className={styles.modalHelp}>Each order moves through its normal steps to the chosen status, using the same rules as a single status change. Payment, stock and fulfillment are not changed. To cancel, use Cancel Order on each order.</p>
+        <fieldset className={styles.bulkStatusOptions} disabled={saving}><legend>New status</legend>{bulkTargets.map((option) => <label key={option.key}><input type="radio" name="bulk-status" value={option.key} checked={target === option.key} onChange={() => setTarget(option.key)} />{option.label}</label>)}</fieldset>
+        {eligible.length > 0 && <div className={styles.modalOrder}><strong>Will update ({eligible.length})</strong><span>{eligible.map(({ item, steps }) => steps.length > 1 ? `${item.number} (${steps.map((step) => step.label).join(" → ")})` : item.number).join(", ")}</span></div>}
+        {skipped.length > 0 && <div className={styles.warning}><ShieldCheck size={18} /><div><strong>Skipped ({skipped.length}), not eligible:</strong><ul>{skipped.map(({ item, reason }) => <li key={item.id}>{item.number}: {reason}</li>)}</ul></div></div>}
+      </>}
+      <div className={styles.modalFooter}><button type="button" className={styles.button} onClick={onClose} disabled={saving}>{report || !eligible.length ? "Close" : "Cancel"}</button>{!report && eligible.length > 0 && <button type="submit" className={`${styles.button} ${styles.primary}`} disabled={saving}>{saving ? <Loader2 size={16} className={styles.spin} /> : <Check size={16} />}{saving ? `Updating ${eligible.length}…` : `Update ${eligible.length} to ${choice.label}`}</button>}</div>
     </form>
   </Modal>;
 }
