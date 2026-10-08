@@ -113,7 +113,8 @@ test('a refresh failure after commit reports saved rather than prompting a dupli
 test('General Settings contains business/online cards, not branch/user management metrics', async () => {
   const Page = uiLoader({ ...services, '@/lib/business/get-current-business': { getCurrentBusiness: async () => ({ id:'shop', role:'owner' }) }, '@/lib/auth/effective-permissions': { businessHasPermission: async () => true } })('app/(dashboard)/dashboard/settings/page.tsx').default;
   const html = renderToStaticMarkup(await Page());
-  for (const name of ['Business Settings','Online Store Settings','Appearance &amp; Language','Security']) assert.ok(html.includes(name));
+  for (const name of ['Business Settings','Appearance &amp; Language','Security']) assert.ok(html.includes(name));
+  assert.doesNotMatch(html, /Online Store Settings/);
   assert.doesNotMatch(html, /User &amp; Manage User|href="\/dashboard\/locations"/);
 });
 test('settings navigation is hidden when its matching view permission is missing', async () => {

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { getAccountDestination } from "@/lib/auth/get-account-destination";
 import { createClient } from "@/lib/supabase/server";
-import { getRootUrl } from "@/lib/tenancy/domain";
+import { getAppUrl } from "@/lib/tenancy/domain";
 
 export default async function ContinueAfterLoginPage() {
   const supabase = await createClient();
@@ -12,7 +12,7 @@ export default async function ContinueAfterLoginPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect(getRootUrl("/login"));
+    redirect(getAppUrl("/login"));
   }
 
   const destination =

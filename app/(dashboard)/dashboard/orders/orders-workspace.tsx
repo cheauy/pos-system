@@ -425,7 +425,7 @@ function DetailPanel({ detail, loading, error, currency, currencyFormat, timezon
         : <button type="button" className={styles.odTool} disabled title="Returns are not available for this order."><RotateCcw size={17} />Return Items</button>}
       <button type="button" className={styles.odTool} disabled={!permissions.edit} title={!permissions.edit ? "Order update permission is required." : "Edit order details"} onClick={() => onAction("edit", order)}><Pencil size={17} />Edit</button>
       {canCancelOrder
-        ? <CancelOrderForm orderId={order.id} orderNumber={order.orderNumber} businessId={businessId} online={online} className={`${styles.odTool} ${styles.odToolDanger}`} onCancelled={() => onReturned()} />
+        ? <CancelOrderForm orderId={order.id} orderNumber={order.orderNumber} businessId={businessId} updatedAt={order.updatedAt} online={online} className={`${styles.odTool} ${styles.odToolDanger}`} onCancelled={() => onReturned()} />
         : <button type="button" className={`${styles.odTool} ${styles.odToolDanger}`} disabled title={cancelBlockedReason}><Ban size={17} />Cancel Order</button>}
     </div>
 
@@ -518,8 +518,8 @@ function OnlineOrderActions({ order, permissions, onChanged }: { order: OrderDet
       <span>KHQR payment: <Badge value={paymentStatus === "pending_verification" ? "pending_verification" : paymentStatus === "paid" ? "paid" : "unpaid"} payment /></span>
       {hasProof && <button type="button" className={styles.miniButton} onClick={() => setShowProof(true)}><ExternalLink size={13} />View payment proof</button>}
       {permissions.edit && <div className={styles.onlineButtons}>
-        {paymentStatus !== "paid" && <button type="button" className={styles.miniButton} disabled={busy} onClick={() => void run(() => updateOnlinePaymentStatus(order.id, "paid"))}><Check size={13} />Mark paid</button>}
-        {paymentStatus !== "unpaid" && <button type="button" className={styles.miniButton} disabled={busy} onClick={() => void run(() => updateOnlinePaymentStatus(order.id, "unpaid"))}><X size={13} />Mark unpaid</button>}
+        {paymentStatus !== "paid" && <button type="button" className={styles.miniButton} disabled={busy} onClick={() => void run(() => updateOnlinePaymentStatus(order.id, "paid", order.updatedAt))}><Check size={13} />Mark paid</button>}
+        {paymentStatus !== "unpaid" && <button type="button" className={styles.miniButton} disabled={busy} onClick={() => void run(() => updateOnlinePaymentStatus(order.id, "unpaid", order.updatedAt))}><X size={13} />Mark unpaid</button>}
       </div>}
     </div>}
     {!khqr && hasProof && <button type="button" className={styles.miniButton} onClick={() => setShowProof(true)}><ExternalLink size={13} />View payment proof</button>}

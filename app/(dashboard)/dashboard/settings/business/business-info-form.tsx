@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
-import { Clock3, Contact, Info, Loader2, Save } from "lucide-react";
+import { Clock3, Contact, ImageIcon, Info, Loader2, Save } from "lucide-react";
 import type { StoreProfile } from "@/lib/storefront/profile";
 import { businessInfoSnapshot, businessInfoValues } from "@/lib/business/business-info";
 import { storefrontFormSnapshot } from "@/lib/storefront/form-snapshot";
@@ -68,6 +68,7 @@ export default function BusinessInfoForm({ businessId, businessName, canEditBusi
       <form
         id="business-info"
         ref={form}
+        data-dirty={dirty ? "true" : "false"}
         className="scroll-mt-6 space-y-4"
         onChangeCapture={scheduleCheck}
         onClickCapture={scheduleCheck}
@@ -103,6 +104,7 @@ export default function BusinessInfoForm({ businessId, businessName, canEditBusi
       >
         {notice ? (
           <p
+            data-section="business-info branding store-hours"
             role={notice.success ? "status" : "alert"}
             className={`rounded-xl px-4 py-3 text-sm ${notice.success ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"}`}
           >
@@ -111,13 +113,13 @@ export default function BusinessInfoForm({ businessId, businessName, canEditBusi
         ) : null}
 
         {!canEdit ? (
-          <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900">
+          <p data-section="business-info branding store-hours" className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900">
             You can view these details. Business editing permission is required to save changes.
           </p>
         ) : null}
 
-        <fieldset disabled={busy || !canEdit} className="grid min-w-0 items-start gap-4 xl:grid-cols-2">
-          <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-700 dark:bg-slate-900">
+        <fieldset disabled={busy || !canEdit} className="grid min-w-0 items-start gap-4">
+          <section data-section="business-info" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-start gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-300">
                 <Contact size={19} />
@@ -144,42 +146,10 @@ export default function BusinessInfoForm({ businessId, businessName, canEditBusi
               />
               <span className="mt-2 block text-[11px] font-normal leading-4 text-slate-500">
                 {canEditBusinessName
-                  ? "Only the Owner can change the workspace business name. Your store display name remains managed in Online Store settings."
+                  ? "Only the Owner can change the workspace business name. Your store display name remains managed in Business Settings."
                   : "Only the business Owner can change this name."}
               </span>
             </label>
-
-            <div className="mt-4 grid gap-3 lg:grid-cols-[140px_minmax(0,1fr)]">
-              <ImageField
-                label="Store logo"
-                name="logo"
-                preview={logoUrl}
-                disabled={busy || !canEdit}
-                imageClass="h-24 w-full rounded-lg"
-              />
-              <ImageField
-                label="Store banner"
-                name="banner"
-                preview={bannerUrl}
-                disabled={busy || !canEdit}
-                imageClass="h-24 w-full rounded-lg"
-              />
-            </div>
-
-            <label className="mt-3 block text-xs font-semibold text-slate-700 dark:text-slate-200" htmlFor="description">
-              Store description
-              <textarea
-                id="description"
-                name="description"
-                defaultValue={description ?? ""}
-                rows={2}
-                maxLength={500}
-                disabled={busy || !canEdit}
-                placeholder="Tell customers what you sell and what makes your shop special."
-                className={`${inputClass} min-h-[72px] resize-none py-2`}
-              />
-            </label>
-
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-200" htmlFor="business-phone">
@@ -210,7 +180,49 @@ export default function BusinessInfoForm({ businessId, businessName, canEditBusi
             </div>
           </section>
 
-          <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-700 dark:bg-slate-900">
+          <section data-section="branding" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-300">
+                <ImageIcon size={19} />
+              </span>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-950 dark:text-white">Store images &amp; description</h3>
+                <p className="mt-1 text-xs leading-4 text-slate-500">Shown on your storefront, receipts and business printouts.</p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 lg:grid-cols-[140px_minmax(0,1fr)]">
+              <ImageField
+                label="Store logo"
+                name="logo"
+                preview={logoUrl}
+                disabled={busy || !canEdit}
+                imageClass="h-24 w-full rounded-lg"
+              />
+              <ImageField
+                label="Store banner"
+                name="banner"
+                preview={bannerUrl}
+                disabled={busy || !canEdit}
+                imageClass="h-24 w-full rounded-lg"
+              />
+            </div>
+
+            <label className="mt-3 block text-xs font-semibold text-slate-700 dark:text-slate-200" htmlFor="description">
+              Store description
+              <textarea
+                id="description"
+                name="description"
+                defaultValue={description ?? ""}
+                rows={2}
+                maxLength={500}
+                disabled={busy || !canEdit}
+                placeholder="Tell customers what you sell and what makes your shop special."
+                className={`${inputClass} min-h-[72px] resize-none py-2`}
+              />
+            </label>
+          </section>
+
+          <section data-section="store-hours" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-start gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300">
@@ -237,7 +249,7 @@ export default function BusinessInfoForm({ businessId, businessName, canEditBusi
           className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-200 disabled:text-white/90 dark:disabled:bg-blue-950"
         >
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-          {busy ? "Saving…" : "Save changes"}
+          {busy ? "Saving…" : "Save business details"}
         </button>,
         saveTarget,
       ) : null}

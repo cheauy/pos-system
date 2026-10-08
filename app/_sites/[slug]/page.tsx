@@ -405,7 +405,7 @@ export default async function StorefrontPage({
     storefront.primary_color || "#2563EB";
 
   return (
-    <StorefrontLanguage key={`${business.id}:${storefront.social_links?.profile?.defaultLanguage ?? "en"}`} storeId={business.id} initialLanguage={storefront.social_links?.profile?.defaultLanguage}><main className="public-store" id="store-home" style={storefrontTheme(primaryColor)}>
+    <StorefrontLanguage key={`${business.id}:${storefront.social_links?.profile?.defaultLanguage ?? "en"}`} storeId={business.id} initialLanguage={storefront.social_links?.profile?.defaultLanguage}><main className={`public-store${storefront.social_links?.profile?.storefrontStyle === "simple" ? " store-style-simple" : ""}`} id="store-home" style={storefrontTheme(primaryColor)}>
       <div className="store-shell">
         <StorefrontShop productKey={typeof productKey === "string" ? productKey : undefined}
           brand={{

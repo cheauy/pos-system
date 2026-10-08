@@ -62,7 +62,7 @@ export function OrderSheet({ id, scope, online, onClose, canUpdate, canReturn, c
         {incoming && data.paymentMethod === 'khqr' && data.paymentState === 'pending_verification' && canUpdate && <Button title="Confirm payment received" disabled={!online || busy} onPress={() => theme.alert('Verify your bank account', 'A screenshot does not confirm payment. Only continue after checking that the money arrived in the store bank account.', [
           { text: 'Cancel', style: 'cancel' }, { text: 'Payment received', onPress: () => {
             if (inFlight.current) return; inFlight.current = true; setBusy(true);
-            api('payment', scope, { id, status: 'paid' }).then(() => { invalidateCache(scope,['order?id=','orders?','incoming?','incoming-detail?id=','reports?']); refresh(); }).catch(error => { theme.alert('Check payment status', error.message); refresh(); }).finally(() => { inFlight.current = false; setBusy(false); });
+            api('payment', scope, { id, status: 'paid', updatedAt: data.updatedAt }).then(() => { invalidateCache(scope,['order?id=','orders?','incoming?','incoming-detail?id=','reports?']); refresh(); }).catch(error => { theme.alert('Check payment status', error.message); refresh(); }).finally(() => { inFlight.current = false; setBusy(false); });
           } },
         ])} />}
         <Card><SectionTitle title="Order items" icon="bag-handle-outline"/>{(data.items ?? []).map(item => <View key={item.id} style={{paddingVertical:12,borderTopWidth:1,borderColor:theme.border}}><View style={styles.row}><Pressable disabled={!item.imageUrl} accessibilityRole="button" onPress={() => setPhoto(item.imageUrl)} accessibilityLabel="View product image"><ProductPhoto uri={item.imageUrl} size={76}/></Pressable>

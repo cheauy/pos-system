@@ -54,7 +54,7 @@ import {
 
 import { createClient } from "@/lib/supabase/client";
 import { markNotificationsRead } from "./notifications/read-actions";
-import { getRootUrl } from "@/lib/tenancy/domain";
+import { getAppUrl } from "@/lib/tenancy/domain";
 import type { Permission } from "@/lib/auth/permissions";
 import { usePosNavigationLock } from './pos-lock-provider';
 import { posLockAllows } from '@/lib/pos/navigation-lock';
@@ -253,7 +253,7 @@ function SidebarShell({
   const notificationsRoute = isNotificationsRoute(pathname);
   const shellRef = useRef<HTMLDivElement>(null);
   const [openGroupTitle, setOpenGroupTitle] = useState<string | null>(
-    mobile && !isDirectRailRoute(pathname) ? routeGroup.title : null,
+    mobile && !isDirectRailRoute(pathname) ? routeGroup?.title ?? null : null,
   );
   const [selectedPanel, setSpecialPanel] = useState<SpecialPanel>(
     mobile && searchRoute
@@ -299,8 +299,8 @@ function SidebarShell({
     }
 
     setSpecialPanel(null);
-    setOpenGroupTitle(isDirectRailRoute(pathname) ? null : routeGroup.title);
-  }, [mobile, pathname, routeGroup.title]);
+    setOpenGroupTitle(isDirectRailRoute(pathname) ? null : routeGroup?.title ?? null);
+  }, [mobile, pathname, routeGroup?.title]);
 
   useEffect(() => {
     setQuery("");
@@ -475,6 +475,8 @@ function IconRail({
   const routeGroup = getActiveGroup(pathname, groups);
   const {locked:posLocked}=usePosNavigationLock();
   const directRailRoute = isDirectRailRoute(pathname);
+  // An open panel owns the highlight; otherwise the current route does. Only one rail item is ever active.
+  const panelShown = Boolean(openGroupTitle || specialPanel);
 
   return (
     <aside data-sidebar="true"
@@ -504,7 +506,7 @@ function IconRail({
         <RailActionButton
           label="Global Search"
           icon={Search}
-          active={specialPanel === "search" || isSearchRoute(pathname)}
+          active={specialPanel === "search" || (!panelShown && isSearchRoute(pathname))}
           mobile={mobile}
           onClick={onSearch}
         />
@@ -513,7 +515,7 @@ function IconRail({
           href="/dashboard"
           label="Dashboard"
           icon={LayoutDashboard}
-          active={pathname === "/dashboard"}
+          active={!panelShown && pathname === "/dashboard"}
           mobile={mobile}
           onNavigate={onDirectNavigate}
         />
@@ -526,7 +528,7 @@ function IconRail({
                 href={group.href}
                 label={group.title}
                 icon={group.icon}
-                active={isSubscriptionRoute(pathname)}
+                active={!panelShown && isSubscriptionRoute(pathname)}
                 mobile={mobile}
                 onNavigate={onDirectNavigate}
                 badge={group.title === "Subscription" ? subscriptionUnreadCount : 0}
@@ -538,8 +540,8 @@ function IconRail({
           const blocked=posLocked&&group.items.every(item=>!posLockAllows(item.href));
           const panelOpen = openGroupTitle === group.title;
           const routeActive =
-            !directRailRoute && routeGroup.title === group.title;
-          const active = panelOpen || routeActive;
+            !directRailRoute && routeGroup?.title === group.title;
+          const active = panelShown ? panelOpen : routeActive;
 
           return (
             <div key={group.title} className="group relative flex w-full justify-center">
@@ -575,7 +577,7 @@ function IconRail({
         <RailActionButton
           label="Notifications"
           icon={Bell}
-          active={specialPanel === "notifications" || isNotificationsRoute(pathname)}
+          active={specialPanel === "notifications" || (!panelShown && isNotificationsRoute(pathname))}
           mobile={mobile}
           onClick={onNotifications}
           badge={unreadCount}
@@ -585,8 +587,9 @@ function IconRail({
           label="Profile"
           icon={UserRound}
           active={
-            pathname === "/dashboard/settings/profile" ||
-            pathname.startsWith("/dashboard/settings/profile/")
+            !panelShown &&
+            (pathname === "/dashboard/settings/profile" ||
+              pathname.startsWith("/dashboard/settings/profile/"))
           }
           mobile={mobile}
           onNavigate={onDirectNavigate}
@@ -736,7 +739,7 @@ function RailSignOutButton({
       const supabase = createClient();
       await supabase.auth.signOut();
       onNavigate?.();
-      window.location.assign(getRootUrl("/login"));
+      window.location.assign(getAppUrl("/login"));
     } finally {
       setPending(false);
     }
@@ -1088,7 +1091,7 @@ function NotificationPanel({
 function MobileDrawerNav({ pathname, groups, onNavigate }: { pathname: string; groups: MenuGroup[]; onNavigate: () => void }) {
   const { locked } = usePosNavigationLock();
   const routeGroup = getActiveGroup(pathname, groups);
-  const [openTitle, setOpenTitle] = useState<string | null>(isDirectRailRoute(pathname) ? null : routeGroup.title);
+  const [openTitle, setOpenTitle] = useState<string | null>(isDirectRailRoute(pathname) ? null : routeGroup?.title ?? null);
   const listRef = useRef<HTMLElement>(null);
   // Keep the current page visible when the drawer opens on a long menu.
   useEffect(() => { listRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest" }); }, []);
@@ -1589,12 +1592,11 @@ function filterMenuGroups(effectivePermissions: Permission[]): MenuGroup[] {
     );
 }
 
-function getActiveGroup(pathname: string, groups: MenuGroup[]): MenuGroup {
-  const match = groups.find((group) =>
+// No fallback group: an unmatched route must not highlight Sales/POS.
+function getActiveGroup(pathname: string, groups: MenuGroup[]): MenuGroup | null {
+  return groups.find((group) =>
     group.items.some((item) => isItemActive(pathname, item.href)),
-  );
-
-  return match ?? groups[0] ?? menuGroups[0];
+  ) ?? null;
 }
 
 function isSearchRoute(pathname: string) {
@@ -1636,11 +1638,14 @@ function isItemActive(pathname: string, href: string) {
     return pathname.startsWith("/dashboard/settings/printers") || pathname.startsWith("/dashboard/settings/receipts");
   }
 
+  // General owns every settings page (Business Settings and its sections included)
+  // except those with their own menu entry or rail link.
   if (href === "/dashboard/settings") {
     return (
-      pathname === href ||
-      pathname.startsWith("/dashboard/settings/system") ||
-      pathname.startsWith("/dashboard/settings/security")
+      (pathname === href || pathname.startsWith(`${href}/`)) &&
+      !["users", "printers", "receipts", "subscription", "profile"].some(
+        (own) => pathname === `${href}/${own}` || pathname.startsWith(`${href}/${own}/`),
+      )
     );
   }
 

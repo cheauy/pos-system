@@ -67,3 +67,34 @@ export async function updateCatalogProducts(ids: string[], field: "visibility" |
   revalidatePath(`/storefront/${business.slug}`);
   return { success: true, message: "Storefront products updated." };
 }
+
+// Read-only: the catalog dialog loads this when opened instead of the settings page fetching it up front.
+export async function loadOnlineCatalog() {
+  const business = await requirePermission("storefront.view");
+  const [productResult, categoryResult, storeResult] = await Promise.all([
+    supabaseAdmin
+      .from("products")
+      .select("id, name, sku, size, color, image_url, variant_image_url, selling_price, stock_quantity, is_online, category_id")
+      .eq("business_id", business.id)
+      .eq("is_active", true)
+      .order("online_sort_order")
+      .order("name"),
+    supabaseAdmin
+      .from("categories")
+      .select("id, name, is_online")
+      .eq("business_id", business.id)
+      .order("online_sort_order")
+      .order("name"),
+    supabaseAdmin.from("business_storefronts").select("social_links").eq("business_id", business.id).maybeSingle(),
+  ]);
+  if (productResult.error || categoryResult.error || storeResult.error) {
+    return { success: false as const, message: "Unable to load the store catalog. Please try again." };
+  }
+  const featured = storeResult.data?.social_links?.profile?.featuredProductIds;
+  return {
+    success: true as const,
+    products: productResult.data ?? [],
+    categories: categoryResult.data ?? [],
+    featuredIds: Array.isArray(featured) ? featured.filter((id: unknown): id is string => typeof id === "string") : [],
+  };
+}

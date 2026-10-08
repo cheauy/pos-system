@@ -9,8 +9,8 @@ import { loadMemberPermissions,saveMemberPermissions } from './member-permission
 
 type Snapshot=Awaited<ReturnType<typeof loadMemberPermissions>>;
 const groupIcons = [Settings, ShoppingCart, Users, Box, ReceiptText, UserRound, Truck, ChartNoAxesColumnIncreasing];
-type Props={businessId:string;actorRole:BusinessRole;matrix:Record<BusinessRole,Permission[]>;users:TeamRow[];onChange:(role:EditablePermissionRole,permissions:Permission[])=>void;onMemberChange:(memberId:string,revision:number)=>void};
-export default function RolePermissionsEditor({businessId,actorRole,matrix,users,onChange,onMemberChange}:Props){
+type Props={businessId:string;branchId:string|null;actorRole:BusinessRole;matrix:Record<BusinessRole,Permission[]>;users:TeamRow[];onChange:(role:EditablePermissionRole,permissions:Permission[])=>void;onMemberChange:(memberId:string,revision:number)=>void};
+export default function RolePermissionsEditor({businessId,branchId,actorRole,matrix,users,onChange,onMemberChange}:Props){
  const first=users.find(u=>u.role!=='owner')??users[0];
  const [mode,setMode]=useState<'user'|'role'>(actorRole==='owner'&&first?'user':'role');
  const [memberId,setMemberId]=useState(first?.id??'');
@@ -48,7 +48,7 @@ export default function RolePermissionsEditor({businessId,actorRole,matrix,users
     const next=await saveMemberPermissions(businessId,memberId,snapshot.revision,reset?null:selected);
     setSnapshot(next);setSelected(next.selected);onMemberChange(memberId,next.revision);
    }else{
-    const result=reset?await resetRolePermissions(businessId,role):await saveRolePermissions(businessId,role,selected);
+    const result=reset?await resetRolePermissions(businessId,role,branchId):await saveRolePermissions(businessId,role,selected,branchId);
     if(!result.success)throw new Error(result.message);
     setSelected(result.data.permissions);onChange(role,result.data.permissions);
    }

@@ -42,7 +42,7 @@ export type WorkspaceData = {
 export type WorkspacePermissions = { edit: boolean; cancel: boolean; delete: boolean; refund: boolean; create: boolean };
 export type ActionResult<T = undefined> =
   | { success: true; data: T; message?: string }
-  | { success: false; message: string };
+  | { success: false; message: string; status?: 400 | 401 | 403 | 404 | 409 | 503 };
 export type EditOrderInput = {
   note: string; guestName?: string; guestPhone?: string; guestAddress?: string;
 };

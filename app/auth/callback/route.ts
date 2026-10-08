@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getRootUrl } from "@/lib/tenancy/domain";
+import { getAppUrl } from "@/lib/tenancy/domain";
 
 const PENDING_EMAIL_COOKIE = "tenh_pending_signup_email";
 
@@ -14,8 +14,8 @@ export async function GET(request: NextRequest) {
   if (authError || !code) {
     return NextResponse.redirect(
       isEmailConfirmation
-        ? getRootUrl("/register/check-email?error=invalid")
-        : getRootUrl("/login?error=oauth_failed"),
+        ? getAppUrl("/register/check-email?error=invalid")
+        : getAppUrl("/login?error=oauth_failed"),
     );
   }
 
@@ -26,8 +26,8 @@ export async function GET(request: NextRequest) {
     console.error("[auth/callback] code exchange failed:", exchangeError.message);
     return NextResponse.redirect(
       isEmailConfirmation
-        ? getRootUrl("/register/check-email?error=invalid")
-        : getRootUrl("/login?error=oauth_failed"),
+        ? getAppUrl("/register/check-email?error=invalid")
+        : getAppUrl("/login?error=oauth_failed"),
     );
   }
 
@@ -36,18 +36,18 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.redirect(getRootUrl("/login?error=oauth_failed"));
+    return NextResponse.redirect(getAppUrl("/login?error=oauth_failed"));
   }
 
   if (!user.email) {
     await supabase.auth.signOut();
-    return NextResponse.redirect(getRootUrl("/login?error=oauth_email_required"));
+    return NextResponse.redirect(getAppUrl("/login?error=oauth_email_required"));
   }
 
   // /auth/continue creates/repairs the lightweight TENH profile and then
   // sends a first-time user to /get-started or an existing member to their
   // business subdomain dashboard.
-  const response = NextResponse.redirect(getRootUrl("/auth/continue"));
+  const response = NextResponse.redirect(getAppUrl("/auth/continue"));
 
   if (isEmailConfirmation) {
     response.cookies.delete(PENDING_EMAIL_COOKIE);

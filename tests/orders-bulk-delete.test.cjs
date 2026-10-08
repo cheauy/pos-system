@@ -5,14 +5,14 @@ const assert = require('node:assert/strict');
 const {loadTs} = require('./helpers/load-ts.cjs');
 
 const A = '00000000-0000-4000-8000-00000000000a', B = '00000000-0000-4000-8000-00000000000b', C = '00000000-0000-4000-8000-00000000000c';
-function load({business = 'biz', failId = B} = {}) {
+function load({business = 'biz', failId = B, failRefresh = false, rpcError = {code: 'P0001', message: 'This order has payment history.'}} = {}) {
   const calls = [], permissions = [];
   const db = {from: () => ({select: () => ({eq: () => ({eq: () => ({maybeSingle: async () => ({data: {updated_at: '2026-10-02T00:00:00Z'}})})})})}), rpc: async (name, args) => {
     calls.push({name, args});
-    return args.p_order_id === failId ? {error: {code: 'P0001', message: 'This order has payment history.'}} : {error: null};
+    return args.p_order_id === failId ? {error: rpcError} : {error: null};
   }};
   const api = loadTs('app/(dashboard)/dashboard/orders/order-workspace-actions.ts', {
-    'next/cache': {revalidatePath() {}},
+    'next/cache': {revalidatePath() {if (failRefresh) throw new Error('Cache unavailable');}},
     '@/lib/auth/require-permission': {requirePermission: async key => {permissions.push(key); return {id: business};}},
     '@/lib/supabase/branch-server': {createClient: async () => db},
     '@/lib/audit/create-audit-log': {createAuditLog: async () => {}},
@@ -20,6 +20,46 @@ function load({business = 'biz', failId = B} = {}) {
   });
   return {api, calls, permissions};
 }
+
+test('committed order edit, status, delete and bulk actions stay successful when cache refresh fails', async () => {
+  const version = '2026-10-01T00:00:00Z';
+  for (const [action, run] of [
+    ['edit', api => api.saveOrderWorkspaceDetails(A, version, {note: 'Saved'}, 'biz')],
+    ['status', api => api.changeOrderWorkspaceStatus(A, version, 'completed', '', 'biz')],
+    ['delete', api => api.deleteOrderWorkspaceOrder(A, version, 'Duplicate', 'biz')],
+    ['delete', api => api.deleteOrderWorkspaceOrders([{id: A, updatedAt: version}], 'Duplicate', 'biz')],
+    ['status', api => api.changeOrderWorkspaceStatuses([{id: A, updatedAt: version, steps: ['completed']}], 'biz')],
+  ]) {
+    const h = load({failId: null, failRefresh: true});
+    const result = await run(h.api);
+    assert.equal(result.success, true, action);
+    if (result.data) {
+      assert.deepEqual(result.data.failed, []);
+      assert.deepEqual(result.data[action === 'delete' ? 'deleted' : 'updated'], [A]);
+    }
+    assert.equal(h.calls.length, 1, 'a committed action is never retried');
+    assert.equal(h.calls[0].args.p_action, action);
+  }
+});
+
+test('unconfirmed order RPC errors require checking current state before retrying', async () => {
+  const h = load({failId: A, rpcError: {message: 'Failed to fetch'}});
+  const result = await h.api.saveOrderWorkspaceDetails(A, '2026-10-01T00:00:00Z', {note: 'Saved'}, 'biz');
+  assert.equal(result.success, false);
+  assert.match(result.message, /could not be confirmed/);
+  assert.match(result.message, /Refresh.*before retrying/);
+  assert.doesNotMatch(result.message, /no changes|nothing.*changed|not.*committed/);
+  assert.equal(h.calls.length, 1, 'an unconfirmed action is never retried');
+});
+
+test('order conflicts retain their explicit messages without refresh or retry', async () => {
+  for (const code of ['PT409', '40001', 'P0001', '42501']) {
+    const h = load({failId: A, failRefresh: true, rpcError: {code, message: 'This order changed. Refresh.'}});
+    const result = await h.api.changeOrderWorkspaceStatus(A, '2026-10-01T00:00:00Z', 'completed', '', 'biz');
+    assert.deepEqual(result, {success: false, message: 'This order changed. Refresh.'});
+    assert.equal(h.calls.length, 1, code);
+  }
+});
 
 test('bulk delete runs the single-order delete RPC per selected order and reports partial failures', async () => {
   const h = load();

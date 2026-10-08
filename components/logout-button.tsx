@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, Loader2, LogOut, X } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
-import { getRootUrl } from "@/lib/tenancy/domain";
+import { getAppUrl } from "@/lib/tenancy/domain";
 
 export default function LogoutButton() {
   const [pending, setPending] = useState(false);
@@ -20,7 +20,7 @@ export default function LogoutButton() {
       await supabase.auth.signOut();
 
       window.location.assign(
-        getRootUrl("/login"),
+        getAppUrl("/login"),
       );
     } finally {
       setPending(false);

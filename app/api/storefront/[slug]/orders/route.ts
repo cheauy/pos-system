@@ -3,6 +3,7 @@ import { PAYMENT_PROOF_BUCKET, validateCheckoutEmail, validateCheckoutContact } 
 import { NextRequest, NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { isConfirmedRollback } from "@/lib/operations/rpc-outcome";
 import {
   getSubdomainUrl,
   getTenantSlugFromHost,
@@ -49,6 +50,7 @@ export async function POST(
   { params }: RouteProps,
 ) {
   let uploadedPath: string | null = null;
+  let orderDispatched = false;
   try {
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug);
@@ -172,9 +174,9 @@ export async function POST(
         if (bucketError && !/already exists/i.test(bucketError.message)) throw new Error("Unable to prepare payment-proof storage.");
       } else if (bucket.public) throw new Error("Payment-proof storage must be private.");
       const path = `${business.id}/${crypto.randomUUID()}.${mime === "image/jpeg" ? "jpg" : mime === "image/png" ? "png" : "webp"}`;
+      uploadedPath = path;
       const { error: uploadError } = await supabaseAdmin.storage.from(PAYMENT_PROOF_BUCKET).upload(path, bytes, { contentType: mime, upsert: false });
       if (uploadError) throw new Error("Unable to upload payment proof. Please try again.");
-      uploadedPath = path;
       paymentReference = `proof:${path}`;
     }
 
@@ -193,21 +195,9 @@ export async function POST(
         p_requested_for: requestedFor || null,
         p_coupon_code: couponCode ? couponCode.toUpperCase() : null,
     };
+    orderDispatched = true;
     const { data, error } = await supabaseAdmin.rpc("place_branch_online_order", { p_business_slug: slug, p_checkout: branchCheckout });
-
-
-    if (error) {
-      if (uploadedPath) { await supabaseAdmin.storage.from(PAYMENT_PROOF_BUCKET).remove([uploadedPath]); uploadedPath = null; }
-      console.error("place_online_order error", error);
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: error.message,
-        },
-        { status: 400 },
-      );
-    }
+    if (error) throw error;
 
     uploadedPath = null;
     let emailStatus: "sent" | "unavailable" = "unavailable";
@@ -218,18 +208,24 @@ export async function POST(
       order: data,
     });
   } catch (error) {
-    if (uploadedPath) await supabaseAdmin.storage.from(PAYMENT_PROOF_BUCKET).remove([uploadedPath]);
+    const rolledBack = isConfirmedRollback(error);
+    const uncertain = orderDispatched && !rolledBack;
+    // A lost RPC response may belong to a committed order that still needs its proof.
+    if (uploadedPath && !uncertain) await supabaseAdmin.storage.from(PAYMENT_PROOF_BUCKET).remove([uploadedPath]);
     console.error("Online checkout failed", error);
+    const message = (error as { message?: unknown } | null)?.message;
 
     return NextResponse.json(
       {
         success: false,
-        message:
-          error instanceof Error
-            ? error.message
+        uncertain,
+        message: uncertain
+          ? "Your order may have been placed. Check order tracking or contact the store before submitting again."
+          : typeof message === "string"
+            ? message
             : "Unable to place your order.",
       },
-      { status: 500 },
+      { status: uncertain ? 503 : rolledBack ? 400 : 500 },
     );
   }
 }

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   Building2,
-  Store,
   Banknote,
   Bell,
   Headphones,
@@ -26,6 +25,18 @@ type SettingItem = {
   visible?: boolean;
 };
 
+const profileSetting: SettingItem = {
+  title: "Profile",
+  description: "Manage your personal account and profile information.",
+  href: "/dashboard/settings/profile",
+  icon: UserRound,
+  details: [
+    "Personal profile",
+    "Contact information",
+    "Account preferences",
+  ],
+};
+
 const baseSettings: SettingItem[] = [
   {
     title: "System & Display",
@@ -36,17 +47,6 @@ const baseSettings: SettingItem[] = [
       "Language preference",
       "Light / Dark theme",
       "Interface settings",
-    ],
-  },
-  {
-    title: "Profile",
-    description: "Manage your personal account and profile information.",
-    href: "/dashboard/settings/profile",
-    icon: UserRound,
-    details: [
-      "Personal profile",
-      "Contact information",
-      "Account preferences",
     ],
   },
   {
@@ -70,8 +70,7 @@ export default async function SettingsPage() {
     businessHasPermission(business, "storefront.view"),
   ]);
   const businessSettings: SettingItem[] = [
-    { title: "Business Settings", description: "Manage your business details and shared shop information.", href: "/dashboard/settings/business", icon: Building2, visible: canViewBusiness, details: ["Business details and Store URL", "Shop phone, email and address", "Store hours and time zone"] },
-    { title: "Online Store Settings", description: "Manage your public storefront and online shopping experience.", href: "/dashboard/settings/online-store", icon: Store, visible: canViewStorefront, details: ["Branding and default language", "Storefront products and visibility", "Online payments and fulfillment"] },
+    { title: "Business Settings", description: "Manage your business details, online store and store hours.", href: "/dashboard/settings/business", icon: Building2, visible: canViewBusiness || canViewStorefront, details: ["Business details and Store URL", "Online store, branding and fulfillment", "Store hours and online payments"] },
   ].filter(item => item.visible !== false);
 
   const settingsItems: SettingItem[] = [
@@ -100,12 +99,9 @@ export default async function SettingsPage() {
         </p>
       </section>
 
-      {businessSettings.length > 0 && <section className="grid gap-4 md:grid-cols-2" aria-label="Business and online store settings">
-        {businessSettings.map(item => <SettingsCard key={item.href} item={item} />)}
-      </section>}
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {settingsItems.map((item) => (
+      {/* One two-column grid: Business Settings and Profile share the top row; an odd last card spans both columns so no gap is left. */}
+      <section className="grid gap-4 md:grid-cols-2" aria-label="Settings">
+        {[...businessSettings, profileSetting, ...settingsItems].map((item) => (
           <SettingsCard key={item.href} item={item} />
         ))}
       </section>
@@ -120,7 +116,7 @@ function SettingsCard({ item }: { item: SettingItem }) {
   return (
     <Link
       href={item.href}
-      className="group relative min-h-[210px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900"
+      className="group relative min-h-[210px] min-w-0 overflow-hidden md:last:odd:col-span-2 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900"
     >
       <div className="pointer-events-none absolute -bottom-10 -right-10 h-36 w-36 rounded-full bg-gradient-to-br from-blue-50 to-slate-50 opacity-90 transition group-hover:scale-110 dark:from-blue-950/30 dark:to-slate-900" />
 
@@ -130,7 +126,7 @@ function SettingsCard({ item }: { item: SettingItem }) {
             <Icon size={21} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h2 className="font-bold text-slate-950 dark:text-white">
+            <h2 className="break-words font-bold text-slate-950 dark:text-white">
               {item.title}
             </h2>
             <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
@@ -151,7 +147,7 @@ function SettingsCard({ item }: { item: SettingItem }) {
             className="flex items-center gap-2.5 text-xs text-slate-600 dark:text-slate-300"
           >
             <DetailIcon index={index} />
-            <span>{detail}</span>
+            <span className="min-w-0 break-words">{detail}</span>
           </div>
         ))}
       </div>

@@ -29,6 +29,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const url = getSubdomainUrl(slug);
   const image = store.banner_url || store.logo_url;
   return { title: { absolute: title }, description, alternates: { canonical: url },
+    ...(store.logo_url ? { icons: { icon: store.logo_url, apple: store.logo_url } } : {}),
     openGraph: { title, description, url, siteName: name, type: "website", ...(image ? { images: [image] } : {}) },
     twitter: { card: image ? "summary_large_image" : "summary", title, description, ...(image ? { images: [image] } : {}) },
   };

@@ -1,5 +1,5 @@
-import type { Metadata } from "next";
-import { cookies } from "next/headers";
+import type { Metadata, Viewport } from "next";
+import { cookies, headers } from "next/headers";
 import { Hanuman, Inter } from "next/font/google";
 import { Toaster } from "sonner";
 
@@ -10,6 +10,11 @@ import {
   LANGUAGE_COOKIE,
   normalizeLanguage,
 } from "@/lib/i18n/translations";
+import {
+  APP_SUBDOMAIN,
+  getSubdomainFromHost,
+  isLocalRootDomain,
+} from "@/lib/tenancy/domain";
 
 import "./globals.css";
 
@@ -43,7 +48,7 @@ const THEME_BOOTSTRAP = `(() => {
   } catch {}
 })();`;
 
-export const metadata: Metadata = {
+const baseMetadata: Metadata = {
   title: {
     default: "Tenh POS | Manage your Business",
     template: "%s | Tenh POS",
@@ -60,6 +65,37 @@ export const metadata: Metadata = {
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
+
+// Only the app host (or the single local dev host) installs as a Home Screen
+// app; storefront and marketing hosts stay ordinary Safari pages.
+async function isInstallableHost() {
+  const requestHeaders = await headers();
+  const subdomain = getSubdomainFromHost(
+    requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host"),
+  );
+  return subdomain === APP_SUBDOMAIN || (isLocalRootDomain() && !subdomain);
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  if (!(await isInstallableHost())) return baseMetadata;
+  return {
+    ...baseMetadata,
+    manifest: "/manifest.webmanifest",
+    appleWebApp: { capable: true, title: "Tenh POS", statusBarStyle: "default" },
+    // Next emits only mobile-web-app-capable; older iOS needs the apple- prefix.
+    other: { "apple-mobile-web-app-capable": "yes" },
+  };
+}
+
+export async function generateViewport(): Promise<Viewport> {
+  if (!(await isInstallableHost())) return {};
+  return {
+    themeColor: [
+      { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+      { media: "(prefers-color-scheme: dark)", color: "#020617" },
+    ],
+  };
+}
 
 export default async function RootLayout({
   children,

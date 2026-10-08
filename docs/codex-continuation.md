@@ -68,6 +68,16 @@ npm run test:sql
 
 On other systems, set `TENH_PGLITE_PATH` to the equivalent package folder or install PGlite in a disposable test checkout. It is not added as an application runtime dependency. A missing SQL test dependency is a failure, not a skipped/pass result.
 
+### Test files `npm test` does not run
+
+`npm test` runs only `tests/*.test.mjs`. `npm run test:sql` runs only `tests/*.integration.cjs`. The CommonJS unit tests in `tests/*.test.cjs` are not picked up by either script. Run them explicitly from the project root:
+
+```powershell
+node --experimental-strip-types --test tests/*.test.cjs
+```
+
+A single file can be run with `node --test tests/<name>.test.cjs`. A single SQL fixture test runs as a plain script and exits non-zero on failure: `node tests/<name>.integration.cjs`. Count these results separately; a green `npm test` says nothing about them.
+
 ## Verification in this environment
 
 - `npm run test:continuation`: 78 passed, zero failed. Includes 70 new regression tests and the existing 8 register tests. The tender test includes 1,000 valid cash/non-cash allocations.
@@ -92,3 +102,7 @@ Use test businesses, staff, inventory and payments only.
 ## Remaining boundaries
 
 This is a targeted continuation of the latest branch/register work, not a blanket production-readiness claim for every POS module. Full original schema and installed framework dependencies are needed to finish build/database/browser validation. Tax-aware legacy refunds, prior historical unlinked refunds/drawers, external payment/Resend configuration and ambiguous legacy return responses need separate real-environment verification. Do not enable or change tax/payment/business policies merely to make these tests pass. No historical balance repair is performed automatically.
+
+## October 8, 2026 recovery verification
+
+The archive-era verification above is retained as historical evidence. Current expected-version caller coverage, disposable PostgreSQL concurrency/RLS/foreign-key/trigger results, the unchanged 108-failure baseline, 15 blocked SQL programs, separate source-lint findings, exact changed files, migration dependency order and deployment/recovery instructions are in [Order cancellation review](order-cancellation-review-20261008.md). App/mobile TypeScript and an isolated local production build passed. No production migrations, pushes or deployment were performed during this recovery; the already recorded PT409 fix remains intact.

@@ -1,0 +1,335 @@
+{
+  "provenance": "Read-only pg_get_functiondef snapshot on 2026-10-08; dependency closure of audited functions; no business/user data.",
+  "functions": [
+    {
+      "schema": "auth",
+      "proname": "jwt",
+      "signature": "auth.jwt()",
+      "definition": "CREATE OR REPLACE FUNCTION auth.jwt()\n RETURNS jsonb\n LANGUAGE sql\n STABLE\nAS $function$\n  select \n    coalesce(\n        nullif(current_setting('request.jwt.claim', true), ''),\n        nullif(current_setting('request.jwt.claims', true), '')\n    )::jsonb\n$function$\n",
+      "prosecdef": false,
+      "proconfig": null,
+      "acl": "{=X/supabase_auth_admin,postgres=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "proname": "role",
+      "signature": "auth.role()",
+      "definition": "CREATE OR REPLACE FUNCTION auth.role()\n RETURNS text\n LANGUAGE sql\n STABLE\nAS $function$\n  select \n  coalesce(\n    nullif(current_setting('request.jwt.claim.role', true), ''),\n    (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role')\n  )::text\n$function$\n",
+      "prosecdef": false,
+      "proconfig": null,
+      "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "proname": "uid",
+      "signature": "auth.uid()",
+      "definition": "CREATE OR REPLACE FUNCTION auth.uid()\n RETURNS uuid\n LANGUAGE sql\n STABLE\nAS $function$\n  select \n  coalesce(\n    nullif(current_setting('request.jwt.claim.sub', true), ''),\n    (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')\n  )::uuid\n$function$\n",
+      "prosecdef": false,
+      "proconfig": null,
+      "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "public",
+      "proname": "assign_pos_order_to_location",
+      "signature": "assign_pos_order_to_location(uuid,uuid,uuid,uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION public.assign_pos_order_to_location(p_business_id uuid, p_order_id uuid, p_location_id uuid, p_shift_id uuid DEFAULT NULL::uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\ndeclare v_item record; v_role text; v_shift public.cash_register_shifts%rowtype;\r\nbegin\r\n  if auth.uid() is null then raise exception 'Authentication required.'; end if;\r\n  select bm.role::text into v_role from public.business_members bm where bm.business_id=p_business_id and bm.user_id=auth.uid() and bm.is_active=true limit 1;\r\n  if v_role is null then raise exception 'Not authorized for this business.'; end if;\r\n  if not exists(select 1 from public.business_locations where id=p_location_id and business_id=p_business_id and is_active=true) then raise exception 'Branch not found.'; end if;\r\n  if not exists(select 1 from public.orders where id=p_order_id and business_id=p_business_id) then raise exception 'Order not found.'; end if;\r\n  if p_shift_id is not null then\r\n    select * into v_shift from public.cash_register_shifts where id=p_shift_id and business_id=p_business_id and location_id=p_location_id and status='open';\r\n    if not found then raise exception 'Open register shift does not match this branch.'; end if;\r\n    if v_role='cashier' and v_shift.opened_by<>auth.uid() then raise exception 'Cashier shift mismatch.'; end if;\r\n  end if;\r\n  update public.orders set location_id=p_location_id,register_shift_id=p_shift_id where id=p_order_id and business_id=p_business_id;\r\n  for v_item in select oi.product_id,sum(oi.quantity)::integer qty from public.order_items oi join public.products p on p.id=oi.product_id and p.business_id=p_business_id where oi.order_id=p_order_id and oi.product_id is not null group by oi.product_id loop\r\n    insert into public.product_location_stock(business_id,location_id,product_id,quantity) values(p_business_id,p_location_id,v_item.product_id,0) on conflict(location_id,product_id) do nothing;\r\n    update public.product_location_stock set quantity=greatest(0,quantity-v_item.qty),updated_at=now() where business_id=p_business_id and location_id=p_location_id and product_id=v_item.product_id;\r\n  end loop;\r\nend;\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public"
+      ],
+      "acl": "{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "checkout_order_with_options",
+      "signature": "checkout_order_with_options(uuid,jsonb,text,numeric,uuid,numeric,numeric)",
+      "definition": "CREATE OR REPLACE FUNCTION public.checkout_order_with_options(p_business_id uuid, p_items jsonb, p_payment_method text, p_amount_paid numeric, p_customer_id uuid DEFAULT NULL::uuid, p_discount numeric DEFAULT 0, p_delivery_fee numeric DEFAULT 0)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\n-- TENH_PROMOTIONS_V1\ndeclare\n  v_user_id uuid := auth.uid();\n  v_business public.businesses%rowtype;\n  v_member public.business_members%rowtype;\n  v_item jsonb;\n  v_product public.products%rowtype;\n  v_product_id uuid;\n  v_quantity integer;\n  v_option_ids uuid[];\n  v_selected_options jsonb;\n  v_option_total numeric(12,2);\n  v_unit_price numeric(12,2);\n  v_line_subtotal numeric(12,2);\n  v_subtotal numeric(12,2) := 0;\n  v_discount numeric(12,2) := greatest(0, coalesce(p_discount, 0));\n  v_delivery_fee numeric(12,2) := greatest(0, coalesce(p_delivery_fee, 0));\n  v_total numeric(12,2);\n  v_amount_paid numeric(12,2) := coalesce(p_amount_paid, 0);\n  v_change numeric(12,2) := 0;\n  v_remaining numeric(12,2) := 0;\n  v_payment_status text;\n  v_payment_method text := lower(coalesce(nullif(btrim(p_payment_method), ''), 'cod'));\n  v_group record;\n  v_group_selection_count integer;\n  v_invalid_option_count integer;\n  v_variant_label text;\n  v_computed_items jsonb := '[]'::jsonb;\n  v_computed jsonb;\n  v_requested_by_product jsonb := '{}'::jsonb;\n  v_requested_quantity integer;\n  v_order_id uuid;\n  v_order_number text;\nbegin\n  if v_user_id is null then\n    raise exception 'Your login session has expired.';\n  end if;\n\n  select * into v_business\n  from public.businesses\n  where id = p_business_id\n  limit 1;\n\n  if not found or not v_business.is_active then\n    raise exception 'Business not found or inactive.';\n  end if;\n\n  select * into v_member\n  from public.business_members\n  where business_id = v_business.id\n    and user_id = v_user_id\n    and is_active = true\n  limit 1;\n\n  if not found then\n    raise exception 'You no longer have access to this business.';\n  end if;\n\n  if v_business.subscription_expires_at is not null\n     and v_business.subscription_expires_at <= now() then\n    raise exception 'This business subscription has expired.';\n  end if;\n\n  if p_items is null\n     or jsonb_typeof(p_items) <> 'array'\n     or jsonb_array_length(p_items) = 0 then\n    raise exception 'Your cart is empty.';\n  end if;\n\n  if jsonb_array_length(p_items) > 100 then\n    raise exception 'Too many items in one order.';\n  end if;\n\n  if v_payment_method not in ('cod', 'deposit', 'bank_transfer', 'other') then\n    raise exception 'Invalid payment method.';\n  end if;\n\n  if v_amount_paid < 0 then\n    raise exception 'Invalid payment amount.';\n  end if;\n\n  if p_discount is null or p_delivery_fee is null or p_discount < 0 or p_delivery_fee < 0 then\n    raise exception 'Discount and delivery fee cannot be negative.';\n  end if;\n\n  if p_customer_id is not null and not exists (\n    select 1\n    from public.customers\n    where id = p_customer_id\n      and business_id = v_business.id\n  ) then\n    raise exception 'Customer not found for this business.';\n  end if;\n\n  for v_item in\n    select value from jsonb_array_elements(p_items)\n  loop\n    begin\n      v_product_id := (v_item ->> 'productId')::uuid;\n      v_quantity := (v_item ->> 'quantity')::integer;\n    exception when others then\n      raise exception 'The cart contains invalid product data.';\n    end;\n\n    if v_quantity is null or v_quantity < 1 or v_quantity > 999 then\n      raise exception 'Invalid product quantity.';\n    end if;\n\n    select * into v_product\n    from public.products\n    where id = v_product_id\n      and business_id = v_business.id\n      and is_active = true\n    for update;\n\n    if not found then\n      raise exception 'A product in your cart is no longer available.';\n    end if;\n\n    v_product:=public.tenh_pos_priced_product(v_product); v_requested_quantity :=\n      coalesce((v_requested_by_product ->> v_product.id::text)::integer, 0)\n      + v_quantity;\n\n    if coalesce(v_product.stock_quantity, 0) < v_requested_quantity then\n      raise exception 'Not enough stock for %.', v_product.name;\n    end if;\n\n    v_requested_by_product := jsonb_set(\n      v_requested_by_product,\n      array[v_product.id::text],\n      to_jsonb(v_requested_quantity),\n      true\n    );\n\n    begin\n      select coalesce(array_agg(distinct value::uuid), array[]::uuid[])\n      into v_option_ids\n      from jsonb_array_elements_text(\n        coalesce(v_item -> 'optionIds', '[]'::jsonb)\n      );\n    exception when others then\n      raise exception 'The cart contains invalid product option data.';\n    end;\n\n    select count(*) into v_invalid_option_count\n    from unnest(v_option_ids) option_id\n    left join public.product_options po\n      on po.id = option_id\n      and po.business_id = v_business.id\n      and po.product_id = v_product.id\n      and po.is_active = true\n    where po.id is null;\n\n    if v_invalid_option_count > 0 then\n      raise exception 'A selected product option is no longer available.';\n    end if;\n\n    if coalesce(v_product.product_type, 'standard') = 'configurable' then\n      for v_group in\n        select *\n        from public.product_option_groups\n        where business_id = v_business.id\n          and product_id = v_product.id\n        order by sort_order, created_at\n      loop\n        select count(*) into v_group_selection_count\n        from public.product_options po\n        where po.group_id = v_group.id\n          and po.id = any(v_option_ids)\n          and po.is_active = true;\n\n        if v_group.is_required and v_group_selection_count = 0 then\n          raise exception 'Please choose an option for %.', v_group.name;\n        end if;\n\n        if v_group_selection_count < v_group.min_selections\n           or v_group_selection_count > v_group.max_selections then\n          raise exception 'Invalid selection count for %.', v_group.name;\n        end if;\n      end loop;\n    elsif cardinality(v_option_ids) > 0 then\n      raise exception 'This product does not support configurable options.';\n    end if;\n\n    select\n      coalesce(sum(po.price_adjustment), 0),\n      coalesce(\n        jsonb_agg(\n          jsonb_build_object(\n            'id', po.id,\n            'name', po.name,\n            'priceAdjustment', po.price_adjustment,\n            'groupId', po.group_id,\n            'groupName', pog.name\n          ) order by pog.sort_order, po.sort_order, po.created_at\n        ) filter (where po.id is not null),\n        '[]'::jsonb\n      )\n    into v_option_total, v_selected_options\n    from public.product_options po\n    left join public.product_option_groups pog\n      on pog.id = po.group_id\n    where po.id = any(v_option_ids)\n      and po.business_id = v_business.id\n      and po.product_id = v_product.id\n      and po.is_active = true;\n\n    v_unit_price := round(\n      (coalesce(v_product.selling_price, 0) + coalesce(v_option_total, 0))::numeric,\n      2\n    );\n    v_line_subtotal := round((v_unit_price * v_quantity)::numeric, 2);\n    v_subtotal := v_subtotal + v_line_subtotal;\n\n    v_variant_label := nullif(\n      concat_ws(\n        ' / ',\n        nullif(btrim(coalesce(v_product.color, '')), ''),\n        nullif(btrim(coalesce(v_product.size, '')), '')\n      ),\n      ''\n    );\n\n    v_computed_items := v_computed_items || jsonb_build_array(\n      jsonb_build_object(\n        'productId', v_product.id,\n        'productName', v_product.name,\n        'quantity', v_quantity,\n        'unitPrice', v_unit_price,\n        'subtotal', v_line_subtotal,\n        'variantLabel', v_variant_label,\n        'selectedOptions', v_selected_options\n      )\n    );\n  end loop;\n\n  v_subtotal := round(v_subtotal::numeric, 2);\n  v_total := round((v_subtotal + v_delivery_fee - v_discount)::numeric, 2);\n\n  if v_discount > v_subtotal + v_delivery_fee then\n    raise exception 'Discount cannot be greater than the order amount.';\n  end if;\n\n  if v_total < 0 then\n    raise exception 'Invalid order total.';\n  end if;\n\n  if v_payment_method = 'bank_transfer' then\n    v_amount_paid := v_total;\n    v_remaining := 0;\n    v_change := 0;\n    v_payment_status := 'paid';\n  elsif v_payment_method = 'deposit' then\n    if v_amount_paid <= 0 or v_amount_paid >= v_total then\n      raise exception 'Deposit must be greater than zero and less than the total.';\n    end if;\n    v_remaining := round((v_total - v_amount_paid)::numeric, 2);\n    v_change := 0;\n    v_payment_status := 'unpaid';\n  elsif v_payment_method = 'cod' then\n    if v_amount_paid > v_total then\n      raise exception 'COD amount paid cannot be greater than the total.';\n    end if;\n    v_remaining := round(greatest(0, v_total - v_amount_paid)::numeric, 2);\n    v_change := 0;\n    v_payment_status := case when v_remaining <= 0 then 'paid' else 'unpaid' end;\n  else\n    if v_amount_paid < v_total then\n      raise exception 'Amount paid must be equal to or greater than the total.';\n    end if;\n    v_remaining := 0;\n    v_change := round(greatest(0, v_amount_paid - v_total)::numeric, 2);\n    v_payment_status := 'paid';\n  end if;\n\n  v_order_number := 'POS-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10));\n\n  insert into public.orders (\n    owner_id,\n    business_id,\n    customer_id,\n    order_number,\n    subtotal,\n    discount,\n    delivery_fee,\n    total,\n    payment_method,\n    payment_status,\n    amount_paid,\n    change_amount,\n    remaining_balance,\n    status,\n    order_source,\n    created_at,\n    updated_at\n  ) values (\n    v_business.owner_id,\n    v_business.id,\n    p_customer_id,\n    v_order_number,\n    v_subtotal,\n    v_discount,\n    v_delivery_fee,\n    v_total,\n    v_payment_method,\n    v_payment_status,\n    v_amount_paid,\n    v_change,\n    v_remaining,\n    'completed',\n    'pos',\n    now(),\n    now()\n  )\n  returning id into v_order_id;\n\n  for v_computed in\n    select value from jsonb_array_elements(v_computed_items)\n  loop\n    insert into public.order_items (\n      order_id,\n      product_id,\n      product_name,\n      quantity,\n      unit_price,\n      subtotal,\n      variant_label,\n      selected_options\n    ) values (\n      v_order_id,\n      (v_computed ->> 'productId')::uuid,\n      v_computed ->> 'productName',\n      (v_computed ->> 'quantity')::integer,\n      (v_computed ->> 'unitPrice')::numeric,\n      (v_computed ->> 'subtotal')::numeric,\n      nullif(v_computed ->> 'variantLabel', ''),\n      coalesce(v_computed -> 'selectedOptions', '[]'::jsonb)\n    );\n\n    update public.products\n    set stock_quantity = stock_quantity - (v_computed ->> 'quantity')::integer,\n        updated_at = now()\n    where id = (v_computed ->> 'productId')::uuid\n      and business_id = v_business.id;\n  end loop;\n\n  return jsonb_build_object(\n    'order_id', v_order_id,\n    'id', v_order_id,\n    'order_number', v_order_number,\n    'subtotal', v_subtotal,\n    'discount', v_discount,\n    'delivery_fee', v_delivery_fee,\n    'total', v_total,\n    'amount_paid', v_amount_paid,\n    'remaining_balance', v_remaining,\n    'change_amount', v_change,\n    'payment_status', v_payment_status\n  );\nend;\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public"
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "create_order_return",
+      "signature": "create_order_return(uuid,text,jsonb)",
+      "definition": "CREATE OR REPLACE FUNCTION public.create_order_return(p_order_id uuid, p_reason text, p_items jsonb)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\ndeclare\r\n  v_user_id uuid;\r\n  v_business_id uuid;\r\n  v_order_status text;\r\n\r\n  v_return_id uuid;\r\n  v_return_number text;\r\n\r\n  v_item jsonb;\r\n  v_order_item_id uuid;\r\n  v_return_quantity integer;\r\n\r\n  v_product_id uuid;\r\n  v_product_name text;\r\n  v_sold_quantity integer;\r\n  v_unit_price numeric(12, 2);\r\n\r\n  v_already_returned integer;\r\n  v_remaining_quantity integer;\r\n\r\n  v_stock_before integer;\r\n  v_stock_after integer;\r\n\r\n  v_item_subtotal numeric(12, 2);\r\n  v_refund_total numeric(12, 2) := 0;\r\n\r\n  v_new_subtotal numeric(12, 2) := 0;\r\n  v_discount numeric(12, 2) := 0;\r\n  v_delivery_fee numeric(12, 2) := 0;\r\n  v_amount_paid numeric(12, 2) := 0;\r\n  v_new_total numeric(12, 2) := 0;\r\n  v_new_remaining_balance numeric(12, 2) := 0;\r\n  v_new_change_amount numeric(12, 2) := 0;\r\nbegin\r\n  v_user_id := auth.uid();\r\n\r\n  if v_user_id is null then\r\n    raise exception 'You must be logged in.';\r\n  end if;\r\n\r\n  if p_reason is null\r\n    or length(trim(p_reason)) < 3\r\n  then\r\n    raise exception\r\n      'Return reason must contain at least 3 characters.';\r\n  end if;\r\n\r\n  if p_items is null\r\n    or jsonb_typeof(p_items) <> 'array'\r\n    or jsonb_array_length(p_items) = 0\r\n  then\r\n    raise exception\r\n      'Select at least one item to return.';\r\n  end if;\r\n\r\n  /*\r\n   * Load the order and current business.\r\n   */\r\n  select\r\n    o.business_id,\r\n    o.status\r\n  into\r\n    v_business_id,\r\n    v_order_status\r\n  from public.orders o\r\n  where o.id = p_order_id\r\n  for update;\r\n\r\n  if not found then\r\n    raise exception 'Order not found.';\r\n  end if;\r\n\r\n  /*\r\n   * Check active business membership.\r\n   */\r\n  if not exists (\r\n    select 1\r\n    from public.business_members bm\r\n    where bm.business_id = v_business_id\r\n      and bm.user_id = v_user_id\r\n      and bm.is_active = true\r\n  ) then\r\n    raise exception\r\n      'You do not have permission to return items from this order.';\r\n  end if;\r\n\r\n  if v_order_status = 'cancelled' then\r\n    raise exception\r\n      'A cancelled order cannot be returned.';\r\n  end if;\r\n\r\n  if v_order_status not in (\r\n    'new',\r\n    'pending',\r\n    'completed'\r\n  ) then\r\n    raise exception\r\n      'Only new, pending, or completed orders can be returned.';\r\n  end if;\r\n\r\n  v_return_number :=\r\n    'RET-' ||\r\n    to_char(\r\n      clock_timestamp(),\r\n      'YYYYMMDD-HH24MISS'\r\n    ) ||\r\n    '-' ||\r\n    upper(\r\n      substr(\r\n        replace(\r\n          gen_random_uuid()::text,\r\n          '-',\r\n          ''\r\n        ),\r\n        1,\r\n        4\r\n      )\r\n    );\r\n\r\n  /*\r\n   * Create return header.\r\n   */\r\n  insert into public.returns (\r\n    business_id,\r\n    owner_id,\r\n    order_id,\r\n    return_number,\r\n    reason,\r\n    refund_amount\r\n  )\r\n  values (\r\n    v_business_id,\r\n    v_user_id,\r\n    p_order_id,\r\n    v_return_number,\r\n    trim(p_reason),\r\n    0\r\n  )\r\n  returning id\r\n  into v_return_id;\r\n\r\n  /*\r\n   * Process returned items.\r\n   */\r\n  for v_item in\r\n    select value\r\n    from jsonb_array_elements(p_items)\r\n  loop\r\n    begin\r\n      v_order_item_id :=\r\n        nullif(\r\n          v_item ->> 'order_item_id',\r\n          ''\r\n        )::uuid;\r\n    exception\r\n      when others then\r\n        raise exception\r\n          'Invalid order item ID.';\r\n    end;\r\n\r\n    begin\r\n      v_return_quantity :=\r\n        coalesce(\r\n          (v_item ->> 'quantity')::integer,\r\n          0\r\n        );\r\n    exception\r\n      when others then\r\n        raise exception\r\n          'Invalid return quantity.';\r\n    end;\r\n\r\n    if v_order_item_id is null then\r\n      raise exception\r\n        'Order item ID is required.';\r\n    end if;\r\n\r\n    if v_return_quantity <= 0 then\r\n      raise exception\r\n        'Return quantity must be greater than zero.';\r\n    end if;\r\n\r\n    select\r\n      oi.product_id,\r\n      oi.product_name,\r\n      oi.quantity,\r\n      oi.unit_price\r\n    into\r\n      v_product_id,\r\n      v_product_name,\r\n      v_sold_quantity,\r\n      v_unit_price\r\n    from public.order_items oi\r\n    where oi.id = v_order_item_id\r\n      and oi.order_id = p_order_id;\r\n\r\n    if not found then\r\n      raise exception\r\n        'Order item was not found.';\r\n    end if;\r\n\r\n    select\r\n      coalesce(\r\n        sum(ri.quantity),\r\n        0\r\n      )\r\n    into v_already_returned\r\n    from public.return_items ri\r\n    inner join public.returns r\r\n      on r.id = ri.return_id\r\n    where ri.order_item_id = v_order_item_id\r\n      and r.business_id = v_business_id;\r\n\r\n    v_remaining_quantity :=\r\n      v_sold_quantity -\r\n      v_already_returned;\r\n\r\n    if v_remaining_quantity <= 0 then\r\n      raise exception\r\n        'Product \"%\" has already been fully returned.',\r\n        v_product_name;\r\n    end if;\r\n\r\n    if v_return_quantity >\r\n      v_remaining_quantity\r\n    then\r\n      raise exception\r\n        'Cannot return product \"%\". Sold: %, already returned: %, maximum remaining return: %.',\r\n        v_product_name,\r\n        v_sold_quantity,\r\n        v_already_returned,\r\n        v_remaining_quantity;\r\n    end if;\r\n\r\n    select p.stock_quantity\r\n    into v_stock_before\r\n    from public.products p\r\n    where p.id = v_product_id\r\n      and p.business_id = v_business_id\r\n    for update;\r\n\r\n    if not found then\r\n      raise exception\r\n        'Product \"%\" no longer exists.',\r\n        v_product_name;\r\n    end if;\r\n\r\n    v_stock_after :=\r\n      v_stock_before +\r\n      v_return_quantity;\r\n\r\n    v_item_subtotal :=\r\n      v_return_quantity *\r\n      v_unit_price;\r\n\r\n    v_refund_total :=\r\n      v_refund_total +\r\n      v_item_subtotal;\r\n\r\n    /*\r\n     * return_items currently uses owner_id.\r\n     * Add business_id here only if your table has it.\r\n     */\r\n    insert into public.return_items (\r\n      owner_id,\r\n      return_id,\r\n      order_item_id,\r\n      product_id,\r\n      product_name,\r\n      quantity,\r\n      unit_price,\r\n      subtotal\r\n    )\r\n    values (\r\n      v_user_id,\r\n      v_return_id,\r\n      v_order_item_id,\r\n      v_product_id,\r\n      v_product_name,\r\n      v_return_quantity,\r\n      v_unit_price,\r\n      v_item_subtotal\r\n    );\r\n\r\n    update public.products\r\n    set\r\n      stock_quantity = v_stock_after,\r\n      updated_at = now()\r\n    where id = v_product_id\r\n      and business_id = v_business_id;\r\n\r\n    if not found then\r\n      raise exception\r\n        'Unable to restore stock for \"%\".',\r\n        v_product_name;\r\n    end if;\r\n\r\n    insert into public.inventory_movements (\r\n      business_id,\r\n      owner_id,\r\n      product_id,\r\n      order_id,\r\n      return_id,\r\n      movement_type,\r\n      quantity,\r\n      stock_before,\r\n      stock_after,\r\n      note\r\n    )\r\n    values (\r\n      v_business_id,\r\n      v_user_id,\r\n      v_product_id,\r\n      p_order_id,\r\n      v_return_id,\r\n      'return',\r\n      v_return_quantity,\r\n      v_stock_before,\r\n      v_stock_after,\r\n      'Returned from order. Return number: ' ||\r\n      v_return_number ||\r\n      '. Reason: ' ||\r\n      trim(p_reason)\r\n    );\r\n  end loop;\r\n\r\n  update public.returns\r\n  set\r\n    refund_amount = v_refund_total\r\n  where id = v_return_id\r\n    and business_id = v_business_id;\r\n\r\n  /*\r\n   * Recalculate subtotal after returns.\r\n   */\r\n  select\r\n    coalesce(\r\n      sum(\r\n        greatest(\r\n          oi.quantity -\r\n          coalesce(\r\n            returned.total_returned,\r\n            0\r\n          ),\r\n          0\r\n        ) *\r\n        oi.unit_price\r\n      ),\r\n      0\r\n    )\r\n  into v_new_subtotal\r\n  from public.order_items oi\r\n  left join (\r\n    select\r\n      ri.order_item_id,\r\n      sum(ri.quantity)\r\n        as total_returned\r\n    from public.return_items ri\r\n    inner join public.returns r\r\n      on r.id = ri.return_id\r\n    where r.order_id = p_order_id\r\n      and r.business_id = v_business_id\r\n    group by ri.order_item_id\r\n  ) returned\r\n    on returned.order_item_id = oi.id\r\n  where oi.order_id = p_order_id;\r\n\r\n  select\r\n    coalesce(o.discount, 0),\r\n    coalesce(o.delivery_fee, 0),\r\n    coalesce(o.amount_paid, 0)\r\n  into\r\n    v_discount,\r\n    v_delivery_fee,\r\n    v_amount_paid\r\n  from public.orders o\r\n  where o.id = p_order_id\r\n    and o.business_id = v_business_id;\r\n\r\n  if not found then\r\n    raise exception\r\n      'Order was not found while recalculating totals.';\r\n  end if;\r\n\r\n  v_new_total :=\r\n    greatest(\r\n      0,\r\n      v_new_subtotal -\r\n      v_discount +\r\n      v_delivery_fee\r\n    );\r\n\r\n  v_new_remaining_balance :=\r\n    greatest(\r\n      0,\r\n      v_new_total -\r\n      v_amount_paid\r\n    );\r\n\r\n  v_new_change_amount :=\r\n    greatest(\r\n      0,\r\n      v_amount_paid -\r\n      v_new_total\r\n    );\r\n\r\n  update public.orders\r\n  set\r\n    subtotal =\r\n      v_new_subtotal,\r\n    total =\r\n      v_new_total,\r\n    remaining_balance =\r\n      v_new_remaining_balance,\r\n    change_amount =\r\n      v_new_change_amount,\r\n    updated_at = now()\r\n  where id = p_order_id\r\n    and business_id = v_business_id;\r\n\r\n  if not found then\r\n    raise exception\r\n      'Unable to update the order totals.';\r\n  end if;\r\n\r\n  return v_return_id;\r\nend;\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public"
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "post_customer_credit",
+      "signature": "post_customer_credit(uuid,uuid,text,numeric,text,text,uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION public.post_customer_credit(p_business_id uuid, p_customer_id uuid, p_type text, p_amount numeric, p_note text DEFAULT NULL::text, p_reference text DEFAULT NULL::text, p_order_id uuid DEFAULT NULL::uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\ndeclare\r\n  v_account public.customer_credit_accounts%rowtype;\r\n  v_new numeric(14,2);\r\n  v_limit numeric(14,2);\r\n  v_role text;\r\n  v_order_total numeric(14,2);\r\n  v_order_credit numeric(14,2);\r\nbegin\r\n  if auth.uid() is null then raise exception 'Authentication required.'; end if;\r\n  select bm.role::text into v_role from public.business_members bm where bm.business_id=p_business_id and bm.user_id=auth.uid() and bm.is_active=true limit 1;\r\n  if v_role is null then raise exception 'Not authorized for this business.'; end if;\r\n  if coalesce(p_amount,0)<=0 then raise exception 'Amount must be greater than zero.'; end if;\r\n  if p_type not in ('charge','payment','adjustment_credit','adjustment_debit') then raise exception 'Invalid credit entry type.'; end if;\r\n  if not exists(select 1 from public.customers where id=p_customer_id and business_id=p_business_id) then raise exception 'Customer not found.'; end if;\r\n\r\n  if v_role='cashier' then\r\n    if p_type<>'charge' or p_order_id is null then raise exception 'Cashiers can only post credit from a POS sale.'; end if;\r\n    select total,coalesce(credit_amount,0) into v_order_total,v_order_credit from public.orders where id=p_order_id and business_id=p_business_id and customer_id=p_customer_id for update;\r\n    if not found then raise exception 'Credit order not found.'; end if;\r\n    if v_order_credit<>0 then raise exception 'Credit was already posted for this order.'; end if;\r\n    if round(p_amount::numeric,2)<>round(v_order_total::numeric,2) then raise exception 'Credit amount must match the trusted order total.'; end if;\r\n  elsif v_role not in ('owner','admin','manager') then\r\n    raise exception 'You do not have permission to update customer credit.';\r\n  end if;\r\n\r\n  insert into public.customer_credit_accounts(business_id,customer_id) values(p_business_id,p_customer_id) on conflict(business_id,customer_id) do nothing;\r\n  select * into v_account from public.customer_credit_accounts where business_id=p_business_id and customer_id=p_customer_id for update;\r\n  v_limit:=coalesce(v_account.credit_limit,0);\r\n  if p_type in ('charge','adjustment_debit') then v_new:=v_account.balance+p_amount; else v_new:=greatest(0,v_account.balance-p_amount); end if;\r\n  if p_type='charge' and v_limit>0 and v_new>v_limit then raise exception 'Customer credit limit exceeded.'; end if;\r\n  update public.customer_credit_accounts set balance=round(v_new::numeric,2),updated_at=now() where business_id=p_business_id and customer_id=p_customer_id;\r\n  insert into public.customer_credit_ledger(business_id,customer_id,order_id,entry_type,amount,balance_after,note,reference,created_by)\r\n    values(p_business_id,p_customer_id,p_order_id,p_type,round(p_amount::numeric,2),round(v_new::numeric,2),nullif(btrim(coalesce(p_note,'')),''),nullif(btrim(coalesce(p_reference,'')),''),auth.uid());\r\n  if p_order_id is not null and p_type='charge' then update public.orders set credit_amount=credit_amount+round(p_amount::numeric,2) where id=p_order_id and business_id=p_business_id and customer_id=p_customer_id; end if;\r\n  return jsonb_build_object('balance',round(v_new::numeric,2),'creditLimit',v_limit);\r\nend;\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public"
+      ],
+      "acl": "{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "receive_purchase_order",
+      "signature": "receive_purchase_order(uuid,jsonb)",
+      "definition": "CREATE OR REPLACE FUNCTION public.receive_purchase_order(p_purchase_order_id uuid, p_receipts jsonb)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\ndeclare\n  v_user uuid := auth.uid();\n  v_po public.purchase_orders%rowtype;\n  v_item jsonb;\n  v_po_item public.purchase_order_items%rowtype;\n  v_product public.products%rowtype;\n  v_qty integer;\n  v_before integer; v_branch_before integer;\n  v_after integer;\n  v_remaining integer;\n  v_total_received integer := 0;\n  v_all_received boolean;\nbegin\n  if v_user is null then raise exception 'Authentication required.'; end if;\n  if p_receipts is null or jsonb_typeof(p_receipts) <> 'array' or jsonb_array_length(p_receipts) = 0 then\n    raise exception 'Add at least one received quantity.';\n  end if;\n\n  select * into v_po from public.purchase_orders where id = p_purchase_order_id for update;\n  if not found then raise exception 'Purchase order not found.'; end if;\n  if v_po.status in ('received','cancelled') then raise exception 'This purchase order cannot receive more stock.'; end if;\n\n  perform public.tenh_assert_effective_permission(v_po.business_id,'purchases.update');\n  if v_po.location_id is distinct from public.tenh_request_branch(v_po.business_id) then raise exception 'Purchase order belongs to another branch.';end if;\n\n  for v_item in select value from jsonb_array_elements(p_receipts)\n  loop\n    begin\n      v_qty := (v_item->>'quantity')::integer;\n    exception when others then\n      raise exception 'Invalid received quantity.';\n    end;\n    if v_qty is null or v_qty <= 0 then raise exception 'Received quantity must be greater than zero.'; end if;\n\n    select * into v_po_item\n    from public.purchase_order_items\n    where id = (v_item->>'itemId')::uuid\n      and purchase_order_id = v_po.id\n      and business_id = v_po.business_id\n    for update;\n    if not found then raise exception 'Purchase order line not found.'; end if;\n\n    v_remaining := v_po_item.ordered_quantity - v_po_item.received_quantity;\n    if v_qty > v_remaining then raise exception 'Received quantity exceeds remaining quantity for %.', v_po_item.product_name; end if;\n\n    select * into v_product from public.products\n    where id = v_po_item.product_id and business_id = v_po.business_id for update;\n    if not found then raise exception 'Product no longer exists.'; end if;\n\n    v_before := coalesce(v_product.stock_quantity,0);\n    v_after := v_before + v_qty;\n\n    update public.products\n      set stock_quantity = v_after,\n          updated_at = now()\n    where id = v_product.id;\n\n    select quantity into v_branch_before from public.product_location_stock where business_id=v_po.business_id and location_id=v_po.location_id and product_id=v_product.id for update;\n    if not found then raise exception 'Assign this product to the branch before receiving stock.';end if;\n    update public.product_location_stock set quantity=quantity+v_qty,updated_at=now() where business_id=v_po.business_id and location_id=v_po.location_id and product_id=v_product.id;\n    update public.branch_product_details set cost_price=v_po_item.unit_cost,updated_at=now() where business_id=v_po.business_id and location_id=v_po.location_id and id=v_product.id;\n    perform set_config('tenh.adjustment_branch',v_po.location_id::text,true);\n    update public.purchase_order_items\n      set received_quantity = received_quantity + v_qty, updated_at = now()\n    where id = v_po_item.id;\n\n    insert into public.stock_adjustments (\n      business_id, product_id, adjustment_type, quantity_delta,\n      stock_before, stock_after, reason, reference, created_by\n    ) values (\n      v_po.business_id, v_product.id, 'increase', v_qty,\n      v_branch_before, v_branch_before+v_qty, 'Purchase order receipt', v_po.po_number, v_user\n    );\n\n    v_total_received := v_total_received + v_qty;\n  end loop;\n\n  select bool_and(received_quantity >= ordered_quantity)\n    into v_all_received\n  from public.purchase_order_items\n  where purchase_order_id = v_po.id;\n\n  update public.purchase_orders\n    set status = case when coalesce(v_all_received,false) then 'received' else 'partial' end,\n        updated_at = now()\n  where id = v_po.id;\n\n  perform set_config('tenh.adjustment_branch','',true);\n  return jsonb_build_object('purchaseOrderId', v_po.id, 'receivedQuantity', v_total_received, 'status', case when coalesce(v_all_received,false) then 'received' else 'partial' end);\nend;\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public"
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_assert_effective_permission",
+      "signature": "tenh_assert_effective_permission(uuid,text)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_assert_effective_permission(p_business uuid, p_permission text)\n RETURNS void\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nBEGIN\r\n  IF auth.uid() IS NULL OR NOT public.tenh_user_permission_allowed(p_business,auth.uid(),p_permission) THEN\r\n    RAISE EXCEPTION 'This action is not allowed for your role.' USING ERRCODE='42501';\r\n  END IF;\r\nEND;\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_assert_plan_branch",
+      "signature": "tenh_assert_plan_branch(uuid,uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_assert_plan_branch(p_business_id uuid, p_location_id uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nbegin\r\n  perform 1 from public.businesses where id = p_business_id for update;\r\n\r\n  if public.tenh_subscription_is_expired_now(p_business_id) then\r\n    raise exception 'Subscription expired. Reactivate the subscription before using the workspace.';\r\n  end if;\r\n\r\n  if not exists(\r\n    select 1\r\n    from public.business_locations\r\n    where business_id = p_business_id\r\n      and id = p_location_id\r\n      and is_active\r\n  ) then\r\n    raise exception 'Choose an active branch in this business.';\r\n  end if;\r\n\r\n  if (\r\n    select count(*)\r\n    from public.business_locations\r\n    where business_id = p_business_id\r\n      and is_active\r\n  ) > public.tenh_branch_limit(p_business_id) then\r\n    raise exception 'Active branches exceed the subscription. Deactivate unused branches or upgrade.';\r\n  end if;\r\nend;\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public"
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_branch_limit",
+      "signature": "tenh_branch_limit(uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_branch_limit(p_business_id uuid)\n RETURNS integer\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nselect case when subscription_status='active' and subscription_plan_key='custom' then subscription_branch_limit else 1 end from businesses where id=p_business_id;\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public"
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_coupon_quote",
+      "signature": "tenh_coupon_quote(uuid,uuid,text,text,jsonb,uuid,boolean)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_coupon_quote(p_business uuid, p_branch uuid, p_channel text, p_code text, p_lines jsonb, p_customer uuid, p_check_customer boolean DEFAULT true)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare c public.business_coupons%rowtype; subtotal numeric; eligible numeric; discount numeric; enabled boolean;\r\nbegin\r\n if p_channel='pos' then\r\n   select enable_coupons into enabled from public.branch_pos_settings where business_id=p_business and location_id=p_branch for share;\r\n else\r\n   select enable_coupons into enabled from public.business_storefronts where business_id=p_business for share;\r\n end if;\r\n if not coalesce(enabled,false) then raise exception 'Coupon codes are disabled for this channel.';end if;\r\n select * into c from public.business_coupons where business_id=p_business and location_id=p_branch\r\n and upper(code)=upper(btrim(p_code)) and is_active and not is_automatic\r\n and ((p_channel='pos' and apply_pos) or (p_channel='online' and apply_online))\r\n and (starts_at is null or starts_at<=now()) and (ends_at is null or ends_at>=now()) for update;\r\n if not found then raise exception 'This coupon is invalid or expired.';end if;\r\n select coalesce(sum((l->>'subtotal')::numeric),0),coalesce(sum((l->>'subtotal')::numeric)\r\n filter(where c.product_ids is null or (l->>'productId')::uuid=any(c.product_ids)),0)\r\n into subtotal,eligible from jsonb_array_elements(p_lines) l;\r\n if subtotal<c.minimum_order then raise exception 'This coupon requires a minimum order of %.',c.minimum_order;end if;\r\n if eligible<=0 then raise exception 'Add an eligible product to use this coupon.';end if;\r\n if c.usage_limit is not null and c.usage_count>=c.usage_limit then raise exception 'This coupon has reached its usage limit.';end if;\r\n if c.per_customer_limit is not null and p_check_customer then\r\n  if p_customer is null then raise exception 'Select a customer to use this limited coupon.';end if;\r\n  if (select count(*) from public.coupon_redemptions where coupon_id=c.id and customer_id=p_customer)>=c.per_customer_limit\r\n   then raise exception 'This customer has reached the coupon usage limit.';end if;\r\n end if;\r\n discount:=least(eligible,coalesce(c.max_discount,eligible),case when c.discount_type='percentage' then round(eligible*c.discount_value/100,2) else c.discount_value end);\r\n return jsonb_build_object('id',c.id,'code',c.code,'discount',discount);\r\nend$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_create_order_return_accounted",
+      "signature": "tenh_create_order_return_accounted(uuid,text,jsonb,text)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_create_order_return_accounted(p_order_id uuid, p_reason text, p_items jsonb, p_refund_method text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\r\ndeclare result jsonb;\r\nbegin\r\n if p_refund_method not in ('cash','bank_transfer','other') or p_refund_method is null then raise exception 'Choose the refund payment method.'; end if;\r\n perform set_config('tenh.refund_method',p_refund_method,true);\r\n select to_jsonb(create_order_return(p_order_id,p_reason,p_items)) into result;\r\n perform set_config('tenh.refund_method','',true);\r\n return result;\r\nend; $function$\n",
+      "prosecdef": false,
+      "proconfig": [
+        "search_path=public"
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_default_role_permission",
+      "signature": "tenh_default_role_permission(text,text)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_default_role_permission(p_role text, p_permission text)\n RETURNS boolean\n LANGUAGE sql\n IMMUTABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  SELECT CASE\r\n    WHEN p_role='owner' THEN true\r\n    WHEN p_role='admin' THEN p_permission = ANY(ARRAY[\r\n      'users.delete','business.view','storefront.view','storefront.update','users.view','users.create_limited','users.update_role',\r\n      'products.view','products.create','products.update','products.disable','products.stock_adjust','orders.view','orders.create',\r\n      'orders.update','orders.cancel','orders.return','customers.view','customers.create','customers.update','reports.view',\r\n      'categories.manage','inventory.view','register.manage','locations.manage','transfers.manage','credit.manage'\r\n    ]::text[])\r\n    WHEN p_role='manager' THEN p_permission = ANY(ARRAY[\r\n      'users.view','users.create_limited','users.update_role','users.delete','customers.view','customers.create','customers.update',\r\n      'business.view','storefront.view','products.view','products.create','products.update','products.disable','products.stock_adjust',\r\n      'orders.view','orders.create','orders.update','orders.cancel','orders.return','reports.view','categories.manage','inventory.view',\r\n      'register.manage','transfers.manage','credit.manage'\r\n    ]::text[])\r\n    WHEN p_role='cashier' THEN p_permission = ANY(ARRAY[\r\n      'business.view','pos.access','products.view','orders.view','orders.create','orders.update','customers.view','customers.create',\r\n      'customers.update','register.manage'\r\n    ]::text[])\r\n    WHEN p_role='staff' THEN p_permission = ANY(ARRAY[\r\n      'business.view','products.view','orders.view','customers.view','inventory.view'\r\n    ]::text[])\r\n    ELSE false\r\n  END;\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_lock_checkout_branch",
+      "signature": "tenh_lock_checkout_branch(uuid,uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_lock_checkout_branch(p_business uuid, p_branch uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nbegin\r\n if not exists(select 1 from business_members where business_id=p_business and user_id=auth.uid() and is_active) then raise exception 'Active business membership required.'; end if;\r\n perform tenh_assert_plan_branch(p_business,p_branch);\r\nend; $function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public"
+      ],
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_operating_product",
+      "signature": "tenh_operating_product(products)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_operating_product(p_product products)\n RETURNS products\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare b uuid; details public.products;\nbegin\n b:=public.tenh_request_branch(p_product.business_id);\n if b is null then raise exception 'Choose an operating branch.';end if;\n select (jsonb_populate_record(null::public.products,to_jsonb(d)-'location_id')).* into details from public.branch_product_details d\n where d.business_id=p_product.business_id and d.id=p_product.id and d.location_id=b and not d.branch_archived;\n if not found or not details.is_active or not coalesce(details.is_pos,true) then raise exception 'Product is unavailable in this branch.';end if;\n details.stock_quantity:=p_product.stock_quantity;\n return details;\nend$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_pos_guard",
+      "signature": "tenh_pos_guard(uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_pos_guard(p_business_id uuid)\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_role text; v_b jsonb;\r\nBEGIN\r\n  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Please sign in again.' USING ERRCODE='42501'; END IF;\r\n  SELECT m.role::text INTO v_role\r\n  FROM public.business_members m\r\n  WHERE m.business_id=p_business_id AND m.user_id=auth.uid()\r\n    AND m.is_active=true AND coalesce(m.team_password_required,false)=false\r\n  FOR SHARE;\r\n  IF v_role IS NULL OR NOT public.tenh_user_permission_allowed(p_business_id,auth.uid(),'pos.access') THEN\r\n    RAISE EXCEPTION 'You do not have Point of Sale access.' USING ERRCODE='42501';\r\n  END IF;\r\n  IF EXISTS(\r\n    SELECT 1 FROM public.profiles p\r\n    WHERE p.id=auth.uid() AND coalesce((to_jsonb(p)->>'is_active')::boolean,true)=false\r\n  ) THEN RAISE EXCEPTION 'This account has been disabled.' USING ERRCODE='42501'; END IF;\r\n  SELECT to_jsonb(b) INTO v_b FROM public.businesses b WHERE b.id=p_business_id FOR SHARE;\r\n  IF v_b IS NULL OR coalesce((v_b->>'is_active')::boolean,false)=false\r\n    OR coalesce(v_b->>'subscription_status','') IN ('expired','trial_pending','trial_blocked')\r\n    OR (nullif(v_b->>'subscription_expires_at','') IS NOT NULL AND (v_b->>'subscription_expires_at')::timestamptz<=now())\r\n    OR (v_b->>'subscription_status'='trialing' AND nullif(v_b->>'trial_expires_at','') IS NOT NULL AND (v_b->>'trial_expires_at')::timestamptz<=now()) THEN\r\n    RAISE EXCEPTION 'The business subscription does not allow POS sales.' USING ERRCODE='42501';\r\n  END IF;\r\n  RETURN v_role;\r\nEND;\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_pos_priced_product",
+      "signature": "tenh_pos_priced_product(products)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_pos_priced_product(p_product products)\n RETURNS products\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare result public.products;\r\nbegin\r\n result:=public.tenh_operating_product(p_product);\r\n result.selling_price:=public.tenh_product_sale_price(result.business_id,public.tenh_request_branch(result.business_id),'pos',result.id,result.selling_price);\r\n return result;\r\nend$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_product_sale_price",
+      "signature": "tenh_product_sale_price(uuid,uuid,text,uuid,numeric)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_product_sale_price(p_business uuid, p_branch uuid, p_channel text, p_product uuid, p_price numeric)\n RETURNS numeric\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n select round(greatest(0,p_price-coalesce(max(least(p_price,\r\n   case when c.discount_type='percentage' then round(p_price*c.discount_value/100,2) else c.discount_value end,\r\n   coalesce(c.max_discount,p_price))),0)),2)\r\n from public.business_coupons c where c.business_id=p_business and c.is_active and c.is_automatic\r\n and ((p_channel='pos' and c.apply_pos and c.location_id=p_branch) or (p_channel='online' and c.apply_online))\r\n and (c.starts_at is null or c.starts_at<=now()) and (c.ends_at is null or c.ends_at>=now())\r\n and (c.product_ids is null or p_product=any(c.product_ids));\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_receive_all_online_orders",
+      "signature": "tenh_receive_all_online_orders(uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_receive_all_online_orders(p_business uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select public.tenh_user_permission_allowed(p_business,auth.uid(),'orders.view') and coalesce((select receive_all_branches from public.online_order_preferences where business_id=p_business and user_id=auth.uid()),false)\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_request_branch",
+      "signature": "tenh_request_branch(uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_request_branch(p_business uuid)\n RETURNS uuid\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nDECLARE\n  h jsonb:=coalesce(nullif(current_setting('request.headers',true),''),'{}')::jsonb;\n  requested uuid;\n  membership_role text;\n  assigned uuid;\n  header_business uuid;\nBEGIN\n  IF auth.uid() IS NULL THEN\n    RAISE EXCEPTION 'Sign in again.' USING ERRCODE='42501';\n  END IF;\n\n  SELECT m.role::text,m.default_location_id\n    INTO membership_role,assigned\n  FROM public.business_members m\n  WHERE m.business_id=p_business\n    AND m.user_id=auth.uid()\n    AND m.is_active=true\n    AND coalesce(m.team_password_required,false)=false\n  LIMIT 1;\n\n  IF membership_role IS NULL THEN\n    RAISE EXCEPTION 'Business access is unavailable.' USING ERRCODE='42501';\n  END IF;\n\n  IF nullif(h->>'x-tenh-business-id','') IS NOT NULL THEN\n    BEGIN\n      header_business:=(h->>'x-tenh-business-id')::uuid;\n    EXCEPTION WHEN invalid_text_representation THEN\n      RAISE EXCEPTION 'Invalid business context.' USING ERRCODE='42501';\n    END;\n    IF header_business IS DISTINCT FROM p_business THEN\n      RAISE EXCEPTION 'Invalid business context.' USING ERRCODE='42501';\n    END IF;\n  END IF;\n\n  IF nullif(h->>'x-tenh-branch-id','') IS NOT NULL THEN\n    BEGIN\n      requested:=(h->>'x-tenh-branch-id')::uuid;\n    EXCEPTION WHEN invalid_text_representation THEN\n      RAISE EXCEPTION 'Invalid operating branch.' USING ERRCODE='42501';\n    END;\n  END IF;\n\n  -- Set only inside the checked online-order action; never accepted from HTTP headers.\n  IF nullif(current_setting('tenh.online_order_scope',true),'') IS NOT NULL THEN\n    SELECT o.location_id INTO requested FROM public.orders o\n    JOIN public.business_locations l ON l.id=o.location_id AND l.business_id=o.business_id AND l.is_active AND NOT l.plan_disable_pending\n    WHERE o.id=current_setting('tenh.online_order_scope')::uuid AND o.business_id=p_business AND o.order_source='online'\n      AND public.tenh_receive_all_online_orders(p_business)\n      AND public.tenh_user_permission_allowed(p_business,auth.uid(),'orders.view');\n    IF requested IS NULL THEN RAISE EXCEPTION 'Online order access is unavailable.' USING ERRCODE='42501'; END IF;\n    RETURN requested;\n  END IF;\n\n  IF membership_role='owner' THEN\n    IF requested IS NULL THEN RETURN NULL; END IF;\n    IF NOT EXISTS(\n      SELECT 1 FROM public.business_locations l\n      WHERE l.id=requested AND l.business_id=p_business AND l.is_active=true\n    ) THEN\n      RAISE EXCEPTION 'Invalid operating branch.' USING ERRCODE='42501';\n    END IF;\n    RETURN requested;\n  END IF;\n\n  IF assigned IS NULL OR NOT EXISTS(\n    SELECT 1 FROM public.business_locations l\n    WHERE l.id=assigned AND l.business_id=p_business AND l.is_active=true\n  ) THEN\n    RAISE EXCEPTION 'Your assigned branch is unavailable. Ask the Owner to assign an active branch.' USING ERRCODE='42501';\n  END IF;\n\n  IF requested IS NOT NULL AND requested IS DISTINCT FROM assigned THEN\n    RAISE EXCEPTION 'This branch is not assigned to your account.' USING ERRCODE='42501';\n  END IF;\n  RETURN assigned;\nEND;\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_subscription_is_expired_now",
+      "signature": "tenh_subscription_is_expired_now(uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_subscription_is_expired_now(p_business_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\n  select coalesce(\r\n    (\r\n      select\r\n        b.subscription_status = 'expired'\r\n        or (\r\n          case\r\n            when b.subscription_status = 'trialing'\r\n              then coalesce(b.trial_expires_at, b.subscription_expires_at)\r\n            else b.subscription_expires_at\r\n          end\r\n        ) is not null\r\n        and (\r\n          case\r\n            when b.subscription_status = 'trialing'\r\n              then coalesce(b.trial_expires_at, b.subscription_expires_at)\r\n            else b.subscription_expires_at\r\n          end\r\n        ) <= now()\r\n      from public.businesses b\r\n      where b.id = p_business_id\r\n    ),\r\n    true\r\n  );\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=public"
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_user_permission_allowed",
+      "signature": "tenh_user_permission_allowed(uuid,uuid,text)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_user_permission_allowed(p_business uuid, p_user uuid, p_permission text)\n RETURNS boolean\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare r text; member uuid; override_value boolean;\r\nbegin\r\n select m.role::text,m.id into r,member from public.business_members m\r\n where m.business_id=p_business and m.user_id=p_user and m.is_active and not coalesce(m.team_password_required,false);\r\n if r is null then return false; end if;\r\n if r='owner' then return true; end if;\r\n select enabled into override_value from public.business_member_permissions where member_id=member and permission=p_permission;\r\n if found then return override_value; end if;\r\n if r in ('manager','staff','cashier') then\r\n  select enabled into override_value from public.branch_role_permissions where business_id=p_business and location_id=(select default_location_id from public.business_members where id=member) and role=r and permission=p_permission;\r\n  if found then return override_value; end if;\r\n end if;\r\n return public.tenh_default_role_permission(r,p_permission);\r\nend; $function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_users_actor_branch",
+      "signature": "tenh_users_actor_branch(uuid,uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_users_actor_branch(p_business uuid, p_actor uuid)\n RETURNS uuid\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE r text; b uuid;\r\nBEGIN\r\n SELECT role::text,default_location_id INTO r,b FROM public.business_members\r\n WHERE business_id=p_business AND user_id=p_actor AND is_active AND NOT team_password_required LIMIT 1;\r\n IF r IS NULL THEN RAISE EXCEPTION 'Business access is unavailable.' USING ERRCODE='42501'; END IF;\r\n IF r='owner' THEN RETURN NULL; END IF;\r\n IF b IS NULL OR NOT EXISTS(SELECT 1 FROM public.business_locations WHERE id=b AND business_id=p_business AND is_active) THEN\r\n  RAISE EXCEPTION 'Your assigned branch is unavailable. Ask the Owner to assign an active branch.' USING ERRCODE='42501';\r\n END IF;\r\n RETURN b;\r\nEND;\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_users_guard",
+      "signature": "tenh_users_guard(uuid,uuid,boolean)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_users_guard(p_business uuid, p_actor uuid, p_write boolean DEFAULT false)\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE b public.businesses%rowtype; r text; allowed boolean;\r\nBEGIN\r\n IF p_actor IS NULL THEN RAISE EXCEPTION 'Sign in again.' USING ERRCODE='42501'; END IF;\r\n IF p_write THEN SELECT * INTO b FROM public.businesses WHERE id=p_business FOR UPDATE;\r\n ELSE SELECT * INTO b FROM public.businesses WHERE id=p_business; END IF;\r\n IF NOT FOUND OR b.is_active IS DISTINCT FROM true THEN RAISE EXCEPTION 'Business access is unavailable.' USING ERRCODE='42501'; END IF;\r\n SELECT role::text INTO r FROM public.business_members\r\n  WHERE business_id=p_business AND user_id=p_actor AND is_active AND NOT team_password_required;\r\n IF r IS NULL THEN RAISE EXCEPTION 'User management permission required.' USING ERRCODE='42501'; END IF;\r\n IF p_write THEN\r\n  allowed:=public.tenh_user_permission_allowed(p_business,p_actor,'users.create')\r\n    OR public.tenh_user_permission_allowed(p_business,p_actor,'users.create_limited')\r\n    OR public.tenh_user_permission_allowed(p_business,p_actor,'users.update_role')\r\n    OR public.tenh_user_permission_allowed(p_business,p_actor,'users.delete');\r\n ELSE\r\n  allowed:=public.tenh_user_permission_allowed(p_business,p_actor,'users.view');\r\n END IF;\r\n IF NOT allowed THEN RAISE EXCEPTION 'User management permission required.' USING ERRCODE='42501'; END IF;\r\n IF p_write AND (coalesce(b.subscription_status,'active')<>'active' OR (b.subscription_expires_at IS NOT NULL AND b.subscription_expires_at<=now())) THEN\r\n  RAISE EXCEPTION 'An active paid subscription is required to manage team access.' USING ERRCODE='42501';\r\n END IF;\r\n RETURN r;\r\nEND;\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_users_seat_limit",
+      "signature": "tenh_users_seat_limit(uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_users_seat_limit(p_business uuid)\n RETURNS integer\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n SELECT CASE WHEN coalesce(subscription_status,'active')<>'active' OR subscription_team_enabled=false THEN 1\r\n ELSE greatest(1,coalesce(subscription_user_limit,max_staff+1,1)) END FROM public.businesses WHERE id=p_business;\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_users_seats",
+      "signature": "tenh_users_seats(uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_users_seats(p_business uuid)\n RETURNS integer\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n SELECT ((SELECT count(*) FROM public.business_members WHERE business_id=p_business AND (is_active OR (team_password_required AND disabled_reason='password_setup')))\r\n +(SELECT count(*) FROM public.tenh_team_requests WHERE business_id=p_business AND state='reserved' AND expires_at>now()))::integer;\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "proname": "tenh_users_validate_branch",
+      "signature": "tenh_users_validate_branch(uuid,uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION public.tenh_users_validate_branch(p_business uuid, p_branch uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE b public.businesses%rowtype; n integer; lim integer;\r\nBEGIN\r\n SELECT * INTO b FROM public.businesses WHERE id=p_business;\r\n IF NOT EXISTS(SELECT 1 FROM public.business_locations WHERE business_id=p_business AND id=p_branch AND is_active) THEN RAISE EXCEPTION 'Choose an active starting branch in this business.'; END IF;\r\n lim:=CASE WHEN b.subscription_plan_key='custom' AND b.subscription_status='active' THEN greatest(1,coalesce((to_jsonb(b)->>'subscription_branch_limit')::integer,1)) ELSE 1 END;\r\n SELECT count(*) INTO n FROM public.business_locations WHERE business_id=p_business AND is_active;\r\n IF n>lim THEN RAISE EXCEPTION 'Active branches exceed your plan. Review branch subscription limits first.'; END IF;\r\nEND;\r\n$function$\n",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres,service_role=X/postgres}",
+      "owner": "postgres"
+    }
+  ]
+}

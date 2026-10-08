@@ -3,6 +3,8 @@ export type WeekDay = (typeof weekDays)[number];
 export type OpeningDay = { closed: boolean; open: string; close: string };
 export type StoreProfile = {
   defaultLanguage?: "en" | "km";
+  // Opt-in public layout; missing means "classic" so existing stores keep their look.
+  storefrontStyle?: "classic" | "simple";
   contactEmail?: string;
   locationUrl?: string;
   socialNames?: Record<string, string>;
@@ -30,6 +32,10 @@ export function parseStoreProfile(form: FormData): StoreProfile {
   const defaultLanguage = text("defaultLanguage");
   if (form.has("defaultLanguage") && defaultLanguage !== "en" && defaultLanguage !== "km") {
     throw new Error("Choose English or Khmer for the default storefront language.");
+  }
+  const storefrontStyle = text("storefrontStyle");
+  if (form.has("storefrontStyle") && storefrontStyle !== "classic" && storefrontStyle !== "simple") {
+    throw new Error("Choose Classic or Simple for the storefront style.");
   }
   const contactEmail = text("contactEmail");
   const locationUrl = text("locationUrl");
@@ -67,6 +73,7 @@ export function parseStoreProfile(form: FormData): StoreProfile {
   return {
     // Older clients omit this field; keep their existing saved preference.
     ...(form.has("defaultLanguage") ? { defaultLanguage: defaultLanguage as "en" | "km" } : {}),
+    ...(form.has("storefrontStyle") ? { storefrontStyle: storefrontStyle as "classic" | "simple" } : {}),
     contactEmail, locationUrl, socialNames, seoTitle, seoDescription, openingHours: hours,
     newArrivals: { enabled: form.get("newArrivalsEnabled") === "on", days } };
 }

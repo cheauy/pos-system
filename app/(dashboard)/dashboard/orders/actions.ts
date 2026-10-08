@@ -36,6 +36,9 @@ export async function cancelOrder(
     "orderId",
   );
 
+  const updatedAt = getRequiredString(formData, "updatedAt");
+  if (!Number.isFinite(Date.parse(updatedAt))) throw new Error("Refresh the order before cancelling it.");
+
   const reasonValue =
     formData.get("reason");
 
@@ -67,6 +70,7 @@ export async function cancelOrder(
     "tenh_run_branch_stock",
     {p_business: business.id, p_operation: "cancel_order", p_payload: {
       p_order_id: orderId,
+      p_expected_updated_at: updatedAt,
       p_reason: reason || null,
     }},
   );

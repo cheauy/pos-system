@@ -12,13 +12,14 @@ type CancelOrderFormProps = {
   orderId: string;
   orderNumber: string;
   businessId: string;
+  updatedAt: string | null;
   /** Online/QR orders are cancelled through the online "reject" flow. */
   online?: boolean;
   className?: string;
   onCancelled?: (message: string) => void;
 };
 
-export default function CancelOrderForm({ orderId, orderNumber, businessId, online = false, className, onCancelled }: CancelOrderFormProps) {
+export default function CancelOrderForm({ orderId, orderNumber, businessId, updatedAt, online = false, className, onCancelled }: CancelOrderFormProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -26,10 +27,10 @@ export default function CancelOrderForm({ orderId, orderNumber, businessId, onli
   const [error, setError] = useState("");
 
   async function submit() {
-    if (busy || !reason.trim()) return;
+    if (busy || !reason.trim() || !updatedAt) return;
     setBusy(true); setError("");
     try {
-      const result = online ? await updateOnlineOrderStatus(orderId, "rejected") : await cancelOrderWorkspaceOrder(orderId, reason, businessId);
+      const result = online ? await updateOnlineOrderStatus(orderId, "rejected", updatedAt) : await cancelOrderWorkspaceOrder(orderId, updatedAt, reason, businessId);
       if (!result.success) { setError(result.message); return; }
       setOpen(false); setReason("");
       onCancelled?.(result.message || `Order ${orderNumber} cancelled.`);
@@ -64,7 +65,7 @@ export default function CancelOrderForm({ orderId, orderNumber, businessId, onli
           {error && <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
           <div className="mt-5 flex justify-end gap-3">
             <button type="button" disabled={busy} onClick={() => setOpen(false)} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Keep Order</button>
-            <button type="button" disabled={busy || !reason.trim()} onClick={() => void submit()} className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50">
+            <button type="button" disabled={busy || !reason.trim() || !updatedAt} onClick={() => void submit()} className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50">
               {busy && <Loader2 size={16} className="animate-spin" />}Confirm Cancellation
             </button>
           </div>

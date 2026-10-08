@@ -24,11 +24,21 @@ import { createPortal } from "react-dom";
 import { storefrontFormSnapshot } from "@/lib/storefront/form-snapshot";
 import { useRouter } from "next/navigation";
 
-import Link from "next/link";
 import type { StorefrontSettings } from "@/lib/storefront/types";
 import { formatBusinessType } from "@/lib/storefront/types";
 import { supportsDineIn } from "@/lib/storefront/profile";
 import { updateStorefrontSettings, type UpdateStorefrontState } from "./actions";
+
+// Mid-to-dark tones: storefrontTheme keeps button text at 4.5:1 or better for each.
+const COLOR_PRESETS = [
+  { label: "Blue", value: "#2563EB" },
+  { label: "Teal", value: "#0F766E" },
+  { label: "Green", value: "#15803D" },
+  { label: "Red", value: "#B91C1C" },
+  { label: "Purple", value: "#7C3AED" },
+  { label: "Navy", value: "#1E3A8A" },
+  { label: "Charcoal", value: "#334155" },
+];
 
 const initialState: UpdateStorefrontState = {
   success: false,
@@ -63,6 +73,10 @@ export default function StorefrontSettingsForm({
   const displayName = settings.display_name ?? businessName;
   const description = settings.description ?? "";
   const [currency, setCurrency] = useState(settings.currency || "USD");
+  // Missing value = Classic, so stores that never chose keep their current look.
+  const [storefrontStyle, setStorefrontStyle] = useState<"classic" | "simple">(
+    settings.social_links?.profile?.storefrontStyle === "simple" ? "simple" : "classic",
+  );
   const [defaultLanguage, setDefaultLanguage] = useState<"en" | "km">(
     settings.social_links?.profile?.defaultLanguage === "km" ? "km" : "en",
   );
@@ -113,7 +127,7 @@ export default function StorefrontSettingsForm({
 
   return (
     <>
-    <form ref={formRef} id="store-settings-form"
+    <form ref={formRef} id="store-settings-form" data-dirty={dirty ? "true" : "false"}
       onChangeCapture={scheduleDirtyCheck} onClickCapture={scheduleDirtyCheck} onInputCapture={scheduleDirtyCheck}
       onSubmit={event => {
         event.preventDefault();
@@ -124,16 +138,14 @@ export default function StorefrontSettingsForm({
         startTransition(() => formAction(data));
       }} className="space-y-3">
       <input type="hidden" name="businessId" value={settings.business_id} />
-      <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">Business information, store images, description, and hours are managed in <Link href="/dashboard/settings/business#business-info" className="font-semibold text-blue-600 underline underline-offset-2">Business Settings</Link>.</p>
       <fieldset disabled={pending} className="min-w-0 space-y-3">
-      <div className="grid items-start gap-3 xl:grid-cols-2">
-        <div className="min-w-0 space-y-3">
           <Card
-            id="branding"
-            icon={<Palette size={17} />}
-            iconClass="bg-violet-50 text-violet-600"
-            title="Branding"
-            description="Customize your store's color, currency, language, and fulfillment options."
+            id="store-language-currency"
+            section="storefront"
+            icon={<Store size={17} />}
+            iconClass="bg-emerald-50 text-emerald-600"
+            title="Language & Currency"
+            description="What customers see first when they open your store."
           >
             <div className="grid gap-3 md:grid-cols-2">
               <div>
@@ -165,6 +177,33 @@ export default function StorefrontSettingsForm({
                 <p className="mt-1.5 text-[11px] text-slate-500">The language customers see when they first open your store. Customers can still switch languages.</p>
               </div>
             </div>
+          </Card>
+
+          <Card
+            id="branding"
+            section="branding"
+            icon={<Palette size={17} />}
+            iconClass="bg-violet-50 text-violet-600"
+            title="Branding"
+            description="Customize your store's color and style."
+          >
+            <div>
+              <p id="store-style-label" className="mb-1.5 text-xs font-medium text-slate-700">Storefront style</p>
+              <input type="hidden" name="storefrontStyle" value={storefrontStyle} />
+              <div role="group" aria-labelledby="store-style-label" className="grid gap-2 sm:grid-cols-2">
+                {([
+                  { value: "classic", label: "Classic", hint: "Your current layout: large banner with text over the image." },
+                  { value: "simple", label: "Simple", hint: "Like the live preview: compact header, clean banner, square product cards." },
+                ] as const).map(option => (
+                  <button key={option.value} type="button" aria-pressed={storefrontStyle === option.value} disabled={!canEdit}
+                    onClick={() => setStorefrontStyle(option.value)}
+                    className={`min-h-11 rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${storefrontStyle === option.value ? "border-blue-500 bg-blue-50/60" : "border-slate-200 hover:bg-slate-50"}`}>
+                    <span className="block text-xs font-semibold text-slate-900">{option.label}</span>
+                    <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{option.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <div className="mt-3 max-w-md">
               <CompactField label="Primary color" htmlFor="primaryColor">
@@ -189,12 +228,26 @@ export default function StorefrontSettingsForm({
                     className={inputClass}
                   />
                 </div>
+                <div role="group" aria-label="Color presets" className="mt-2 flex flex-wrap gap-2">
+                  {COLOR_PRESETS.map(preset => (
+                    <button key={preset.value} type="button" disabled={!canEdit} title={preset.label} aria-label={`Use ${preset.label}`}
+                      onClick={() => {
+                        const text = document.getElementById("primaryColor") as HTMLInputElement | null;
+                        const picker = document.getElementById("primaryColorPicker") as HTMLInputElement | null;
+                        if (picker) picker.value = preset.value.toLowerCase();
+                        if (text) { text.value = preset.value; text.dispatchEvent(new Event("input", { bubbles: true })); }
+                      }}
+                      className="h-8 w-8 rounded-full border-2 border-white shadow ring-1 ring-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
+                      style={{ backgroundColor: preset.value }} />
+                  ))}
+                </div>
               </CompactField>
             </div>
 
-            <div className="mt-4 border-t border-slate-100 pt-4">
-              <p className="text-xs font-semibold text-slate-900">Fulfillment</p>
-              <p className="mt-0.5 text-[11px] leading-4 text-slate-500">Choose how customers can receive orders from your storefront.</p>
+          </Card>
+
+          <Card id="fulfillment" section="storefront" icon={<Truck size={17} />} iconClass="bg-blue-50 text-blue-600" title="Pickup & Delivery" description="Choose how customers can receive orders from your storefront.">
+            <div>
               <div className={`mt-3 grid gap-2 ${supportsDineIn(businessType) ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
                 <FulfillmentOption
                   name="allowPickup"
@@ -226,16 +279,13 @@ export default function StorefrontSettingsForm({
             </div>
           </Card>
 
-
-        </div>
-
-        <div className="min-w-0 space-y-3">
-          <Card icon={<Store size={17} />} iconClass="bg-emerald-50 text-emerald-600" title="New Arrivals" description="Highlight recently added products in your shop, banner links, and footer.">
+          <Card section="storefront" icon={<Store size={17} />} iconClass="bg-emerald-50 text-emerald-600" title="New Arrivals" description="Highlight recently added products in your shop, banner links, and footer.">
             <ToggleRow name="newArrivalsEnabled" label="Show new arrivals" defaultChecked={settings.social_links?.profile?.newArrivals?.enabled !== false} disabled={!canEdit} />
             <div className="mt-3"><CompactField label="Keep products new for (days)" htmlFor="newArrivalDays"><input id="newArrivalDays" name="newArrivalDays" type="number" min="1" max="365" required defaultValue={settings.social_links?.profile?.newArrivals?.days ?? 30} disabled={!canEdit} className={inputClass} /></CompactField><p className="mt-2 text-xs text-slate-500">Uses the date the product was first created. Choose between 1 and 365 days.</p></div>
           </Card>
 
           <Card
+            section="seo"
             icon={<Search size={17} />}
             iconClass="bg-blue-50 text-blue-600"
             title="SEO / Meta Preview"
@@ -267,10 +317,8 @@ export default function StorefrontSettingsForm({
               </div>
             </div>
           </Card>
-        </div>
-      </div>
 
-          <Card icon={<Share2 size={17} />} iconClass="bg-blue-50 text-blue-600" title="Social" description="Add your social account name and its direct link.">
+          <Card section="social" icon={<Share2 size={17} />} iconClass="bg-blue-50 text-blue-600" title="Social" description="Add your social account name and its direct link.">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <SocialLinkField
                 label="Facebook"
@@ -380,7 +428,7 @@ export default function StorefrontSettingsForm({
         <button type="submit" form="store-settings-form" disabled={pending} aria-busy={pending}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
           {pending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-          {pending ? "Saving..." : "Save Changes"}
+          {pending ? "Saving..." : "Save storefront"}
         </button>, saveTarget)}
     </>
   );
@@ -388,6 +436,7 @@ export default function StorefrontSettingsForm({
 
 function Card({
   id,
+  section,
   icon,
   iconClass,
   title,
@@ -396,6 +445,7 @@ function Card({
   children,
 }: {
   id?: string;
+  section: string;
   icon: React.ReactNode;
   iconClass: string;
   title: string;
@@ -404,7 +454,7 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="scroll-mt-5 mb-3 break-inside-avoid rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section id={id} data-section={section} className="scroll-mt-5 mb-3 break-inside-avoid rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-2.5">
           <div className={`rounded-lg p-2 ${iconClass}`}>{icon}</div>

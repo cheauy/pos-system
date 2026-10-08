@@ -85,7 +85,19 @@ export async function changePassword(
   }
 
   // A password change is a good time to revoke refresh tokens on other devices.
-  await supabase.auth.signOut({ scope: "others" });
+  let revocationFailed = false;
+  try {
+    const { error } = await supabase.auth.signOut({ scope: "others" });
+    revocationFailed = Boolean(error);
+  } catch {
+    revocationFailed = true;
+  }
+  if (revocationFailed) {
+    return {
+      success: true,
+      message: "Your password was saved, but other device sessions could not be signed out. Use Sign out other devices in Security settings to retry.",
+    };
+  }
 
   return {
     success: true,

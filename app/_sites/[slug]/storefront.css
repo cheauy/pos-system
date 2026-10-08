@@ -13,6 +13,7 @@
 .store-hero-blank{background:#f1f5f9;color:#13223d}
 .store-hero-blank .hero-shade,.store-hero-blank .hero-editorial{display:none}
 .store-hero-blank .hero-content,.store-hero-blank .hero-content h1,.store-hero-blank .hero-description{color:#13223d}
+.store-hero-blank .hero-browse-link{background:#fff;color:#13223d;border-color:#dbe3ee}
 .store-product-detail{padding-bottom:90px;min-width:0}
 .product-detail-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);grid-template-rows:max-content 1fr;column-gap:40px;row-gap:24px;padding:24px 0}
 .product-gallery-empty{display:flex;aspect-ratio:20/17;width:100%;align-items:center;justify-content:center;flex-direction:column;gap:12px;border-radius:16px;background:#f1f5f9;color:#64748b;font-size:14px}
@@ -127,3 +128,22 @@
 .public-store .store-contact-footer{grid-template-columns:minmax(0,1fr);gap:20px}
 .footer-social-links{flex-direction:row;flex-wrap:wrap}
 .footer-shop-profile .footer-shop-logo{margin-bottom:8px}
+/* Opt-in "Simple" style (Branding > Storefront style). Scoped to .store-style-simple, so Classic stores are unchanged. */
+.store-style-simple .store-header{height:auto;min-height:64px;gap:16px;border-bottom:1px solid #edf0f6}
+.store-style-simple .shop-brand>img,.store-style-simple .shop-logo-fallback{width:36px;height:36px;border:1px solid #e2e8f0;border-radius:8px;background:#fff}
+.store-style-simple .shop-brand p{font-size:16px;font-weight:700}
+.store-style-simple .shop-brand span{display:none}
+.store-style-simple .store-hero{display:flex;flex-direction:column;min-height:0;margin-top:16px;border:1px solid #edf0f6;border-radius:12px;background:#fff;color:var(--store-navy)}
+.store-style-simple .hero-image{position:static;display:block;width:100%;height:clamp(140px,22vw,300px);object-fit:cover;object-position:center}
+.store-style-simple .store-hero-blank::before{content:"";display:block;height:8px;background:linear-gradient(135deg,var(--store-primary),var(--store-primary-surface))}
+.store-style-simple .hero-shade,.store-style-simple .hero-editorial{display:none}
+.store-style-simple .hero-content{max-width:none;padding:16px 20px 20px}
+.store-style-simple .hero-content h1{max-width:none;margin:0 0 4px;font-size:clamp(22px,2.4vw,32px);letter-spacing:-.5px;color:var(--store-navy)}
+.store-style-simple .hero-description{max-width:720px;font-size:14px;color:#475569}
+.store-style-simple .hero-shop-link{margin-top:12px}
+.store-style-simple .hero-browse-link{background:#fff;color:var(--store-navy);border-color:#dbe3ee}
+.store-style-simple .store-product-grid:not(.list-view){grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.store-style-simple .store-product-card{border:1px solid #e2e8f0;border-radius:10px;box-shadow:none;padding:8px}
+.store-style-simple .store-product-card:hover{transform:none;box-shadow:0 4px 14px #0f172a12}
+.store-style-simple .store-product-grid:not(.list-view) .product-photo{aspect-ratio:1/1;border-radius:8px}
+@media(max-width:640px){.store-style-simple .store-product-grid:not(.list-view){grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.store-style-simple .store-header{min-height:58px}.store-style-simple .shop-brand p{font-size:13px}.store-style-simple .hero-content{padding:12px 14px 16px}.store-style-simple .hero-description{font-size:12px}}

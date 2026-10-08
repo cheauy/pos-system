@@ -45,7 +45,7 @@ import {
 } from "@/lib/business/business-mode-presets";
 import { createClient } from "@/lib/supabase/client";
 import {
-  getRootUrl,
+  getAppUrl,
   normalizeTenantSlug,
 } from "@/lib/tenancy/domain";
 
@@ -138,7 +138,7 @@ export default function GetStartedForm({ accountEmail }: { accountEmail: string 
         console.error("[get-started] sign out failed:", error.message);
       }
     } finally {
-      window.location.assign(getRootUrl("/login"));
+      window.location.assign(getAppUrl("/login"));
     }
   }
 

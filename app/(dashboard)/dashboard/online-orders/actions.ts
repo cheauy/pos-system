@@ -27,6 +27,7 @@ export type UpdateOnlineOrderResult = {
 export async function updateOnlineOrderStatus(
   orderId: string,
   nextStatus: OnlineOrderStatus,
+  updatedAt: string | null,
 ): Promise<UpdateOnlineOrderResult> {
   try {
     const business = await requirePermission(
@@ -34,10 +35,10 @@ export async function updateOnlineOrderStatus(
     );
     const scopedDb = await createClient();
 
-    if (!allowedStatuses.includes(nextStatus)) {
+    if (!allowedStatuses.includes(nextStatus) || typeof updatedAt !== "string" || !Number.isFinite(Date.parse(updatedAt))) {
       return {
         success: false,
-        message: "Invalid online order status.",
+        message: "Refresh the online order before changing its status.",
       };
     }
 
@@ -54,12 +55,13 @@ export async function updateOnlineOrderStatus(
         p_order: orderId,
         p_status: nextStatus,
         p_expected: order.online_status ?? "new",
+        p_expected_updated_at: updatedAt,
         p_action: "status",
       },
     );
     if (updateError) {
       throw new Error(updateError.code === "PGRST202" || updateError.code === "42883"
-        ? "Apply 20260921110000_operating_branch_completion.sql before updating online orders."
+        ? "Install the reviewed 20261008043516_online_order_opened_version.sql migration and refresh the API schema before changing online orders."
         : updateError.message);
     }
     if (!updated || updated.orderId !== orderId || updated.onlineStatus !== nextStatus) {
@@ -113,15 +115,16 @@ type OnlinePaymentStatus =
 export async function updateOnlinePaymentStatus(
   orderId: string,
   nextStatus: OnlinePaymentStatus,
+  updatedAt: string | null,
 ): Promise<UpdateOnlineOrderResult> {
   try {
     const business = await requirePermission("orders.update");
     const scopedDb = await createClient();
 
-    if (!allowedPaymentStatuses.includes(nextStatus)) {
+    if (!allowedPaymentStatuses.includes(nextStatus) || typeof updatedAt !== "string" || !Number.isFinite(Date.parse(updatedAt))) {
       return {
         success: false,
-        message: "Invalid payment status.",
+        message: "Refresh the online order before changing its payment status.",
       };
     }
 
@@ -132,10 +135,10 @@ export async function updateOnlinePaymentStatus(
     }
 
     const { data: updated, error: updateError } = await scopedDb.rpc("tenh_incoming_order_action", {
-      p_business: business.id, p_order: orderId, p_action: "payment", p_status: nextStatus, p_expected: order.payment_status,
+      p_business: business.id, p_order: orderId, p_action: "payment", p_status: nextStatus, p_expected: order.payment_status, p_expected_updated_at: updatedAt,
     });
 
-    if (updateError) throw new Error(updateError.message);
+    if (updateError) throw new Error(updateError.code === "PGRST202" || updateError.code === "42883" ? "Install the reviewed 20261008043516_online_order_opened_version.sql migration and refresh the API schema before changing online orders." : updateError.message);
     if (!updated) throw new Error("Unable to update payment status.");
 
     await createAuditLog({

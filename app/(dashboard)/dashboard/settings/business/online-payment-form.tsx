@@ -59,6 +59,7 @@ export default function OnlinePaymentForm({
     <form
       id="online-payment-settings"
       ref={formRef}
+      data-dirty={dirty ? "true" : "false"}
       onChangeCapture={scheduleCheck}
       onClickCapture={scheduleCheck}
       onInputCapture={scheduleCheck}

@@ -1,1 +1,37 @@
 .general-settings-layout{min-width:0}.general-settings-layout>main{width:100%;max-width:1600px;margin-left:auto;margin-right:auto;padding:0 0 2rem}.settings-save-bar{position:sticky;bottom:0;z-index:20;display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:20px;padding:12px 16px max(12px,env(safe-area-inset-bottom));border:1px solid #e2e8f0;border-radius:0 0 12px 12px;background:#fff;box-shadow:0 -4px 16px #0f172a06}.settings-save-bar:empty{display:none}.settings-save-bar button,.settings-save-bar>a{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;width:auto;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600}.settings-save-bar button[type=submit],.settings-save-primary{background:#2563eb!important;color:#fff!important}.settings-save-bar>p{margin-right:auto}.dark .settings-save-bar{background:#0f172a;border-color:#334155}.settings-save-bar button:disabled{opacity:.5}.settings-save-bar button:focus-visible,.settings-save-bar>a:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}@media(max-width:640px), screen and (orientation: portrait) and (max-width: 1024px){.settings-save-bar{padding-left:10px;padding-right:10px;gap:8px}.settings-save-bar button,.settings-save-bar>a{padding-left:12px;padding-right:12px}}
+/* Business Settings: in-page section navigation. Sections stay mounted and are only hidden, so drafts survive switching. */
+.settings-save-bar:not(:has(button)){display:none}
+.bs-layout{display:grid;grid-template-columns:232px minmax(0,1fr);gap:20px;align-items:start}
+.bs-nav{position:sticky;top:12px;border:1px solid #e2e8f0;border-radius:16px;background:#fff;padding:8px;box-shadow:0 1px 2px #0f172a0d}
+.bs-nav ul{display:grid;gap:2px;margin:0;padding:0;list-style:none}
+.bs-group+.bs-group{margin-top:6px;padding-top:6px;border-top:1px solid #f1f5f9}
+.bs-group-title{margin:4px 12px 4px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;cursor:default;user-select:none}
+.dark .bs-group+.bs-group{border-color:#1e293b}
+.dark .bs-group-title{color:#64748b}
+.bs-nav a{display:flex;align-items:center;gap:10px;min-height:40px;border-radius:10px;padding:8px 12px;font-size:14px;font-weight:600;color:#475569;text-decoration:none;transition:background-color .15s,color .15s}
+.bs-nav a:hover{background:#f1f5f9;color:#0f172a}
+.bs-nav a[aria-current=page]{background:#eff6ff;color:#1d4ed8;box-shadow:inset 3px 0 0 #2563eb}
+.bs-nav a:focus-visible,.bs-picker select:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.bs-unsaved{margin-left:auto;width:8px;height:8px;flex:none;border-radius:999px;background:#f59e0b}
+.bs-picker{display:none}
+.bs-panel{min-width:0;display:grid;gap:16px;align-content:start;scroll-margin-top:16px}
+.bs-panel>form{display:contents}
+.dark .bs-nav{background:#0f172a;border-color:#334155}
+.dark .bs-nav a{color:#cbd5e1}
+.dark .bs-nav a:hover{background:#1e293b;color:#fff}
+.dark .bs-nav a[aria-current=page]{background:#172554;color:#bfdbfe;box-shadow:inset 3px 0 0 #3b82f6}
+.dark .bs-picker select{background-color:#0f172a;border-color:#334155;color:#f1f5f9}
+.bs-panel[data-active=overview] [data-section]:not([data-section~=overview]),
+.bs-panel[data-active=business-info] [data-section]:not([data-section~=business-info]),
+.bs-panel[data-active=storefront] [data-section]:not([data-section~=storefront]),
+.bs-panel[data-active=store-hours] [data-section]:not([data-section~=store-hours]),
+.bs-panel[data-active=branding] [data-section]:not([data-section~=branding]),
+.bs-panel[data-active=product] [data-section]:not([data-section~=product]),
+.bs-panel[data-active=seo] [data-section]:not([data-section~=seo]),
+.bs-panel[data-active=social] [data-section]:not([data-section~=social]){display:none}
+@media (max-width:1024px){
+.bs-layout{grid-template-columns:minmax(0,1fr);gap:12px}
+.bs-nav{display:none}
+.bs-picker{display:block}
+.bs-picker select{width:100%;min-height:44px;border:1px solid #cbd5e1;border-radius:12px;background-color:#fff;padding:8px 12px;font-size:16px;font-weight:600;color:#0f172a}
+}

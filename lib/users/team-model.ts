@@ -10,7 +10,7 @@ export type TeamRow = {
 };
 export type TeamActivity = { id: string; description: string; createdAt: string; action: string; actor: string };
 export type TeamWorkspace = {
-  businessId: string; businessName: string; actorId: string; actorRole: BusinessRole;
+  businessId: string; businessName: string; actorId: string; actorRole: BusinessRole; branchId: string | null;
   rows: TeamRow[]; branches: {id:string;name:string}[]; activities: TeamActivity[];
   seatLimit: number; seatsUsed: number; reservedSeats: number; canCreate: boolean; lockReason: string | null;
   effectiveRolePermissions: Record<BusinessRole, Permission[]>;

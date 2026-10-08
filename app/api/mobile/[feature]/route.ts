@@ -414,7 +414,7 @@ async function handle(request: Request, feature: string) {
           const itemId = mobileSelection(typeof body.itemId === 'string' ? body.itemId : null);
           if (!id || !itemId || typeof body.updatedAt !== 'string' || typeof body.reason !== 'string') throw new RequestError('Review the item and reason.');
           const result = await cancelOrderWorkspaceItem(id, itemId, body.updatedAt, body.reason, business.id);
-          return response(result, result.success ? 200 : 409);
+          return response(result, result.success ? 200 : result.status ?? 503);
         }
         if (feature === 'account-categories') {
           if (!permissions.includes('categories.manage')) throw new RequestError('You cannot manage categories.', 403);
@@ -491,7 +491,10 @@ async function handle(request: Request, feature: string) {
           if (!id) throw new RequestError('Choose an order.');
           if (feature === 'payment' && body.status !== 'paid') throw new RequestError('Invalid payment update.');
           if (feature === 'incoming-status' && !['accepted', 'preparing', 'ready', 'completed'].includes(body.status)) throw new RequestError('Invalid order status.');
-          const result = feature === 'payment' ? await updateOnlinePaymentStatus(id, 'paid') : await updateOnlineOrderStatus(id, body.status);
+          // Builds before the order-version guard never send updatedAt; refreshing cannot fix them.
+          if (body.updatedAt === undefined) throw new RequestError('Update the TENH POS app to change online orders.', 426);
+          if (typeof body.updatedAt !== 'string' || !Number.isFinite(Date.parse(body.updatedAt))) throw new RequestError('Refresh the online order before changing it.');
+          const result = feature === 'payment' ? await updateOnlinePaymentStatus(id, 'paid', body.updatedAt) : await updateOnlineOrderStatus(id, body.status, body.updatedAt);
           return response(result, result.success ? 200 : 409);
         }
         if (feature === 'adjustment') {

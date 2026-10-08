@@ -161,7 +161,7 @@ export default async function MarketingPage() {
         : "Publish your storefront so customers can discover your products.",
       ready: settings.is_published,
       status: settings.is_published ? "Published" : "Not published",
-      href: "/dashboard/settings/online-store",
+      href: "/dashboard/settings/business?section=storefront",
       icon: Globe2,
     },
     {
@@ -234,7 +234,7 @@ export default async function MarketingPage() {
         <NavPill href="/dashboard/marketing" label="Overview" active />
         <NavPill href="/dashboard/promotions" label="Promotions & Loyalty" />
         <NavPill href="/dashboard/customers" label="Audience" />
-        <NavPill href="/dashboard/settings/online-store" label="Online Store" />
+        <NavPill href="/dashboard/settings/business?section=storefront" label="Online Store" />
         <NavPill href="/dashboard/reports" label="Reports" />
       </nav>
 
@@ -512,7 +512,7 @@ export default async function MarketingPage() {
               description="Review customer activity and purchase history."
             />
             <ActionCard
-              href="/dashboard/settings/online-store"
+              href="/dashboard/settings/business?section=storefront"
               icon={ShoppingBag}
               title="Update storefront"
               description="Branding, ordering, checkout and public-store settings."

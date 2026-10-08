@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getAccountDestination } from "@/lib/auth/get-account-destination";
 import { createClient } from "@/lib/supabase/server";
-import { getRootUrl } from "@/lib/tenancy/domain";
+import { getAppUrl } from "@/lib/tenancy/domain";
 
 const allowedProviders = new Set(["google", "facebook"]);
 
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 
   if (!code) {
     return NextResponse.redirect(
-      getRootUrl("/dashboard/settings/security?link_error=missing_code"),
+      getAppUrl("/dashboard/settings/security?link_error=missing_code"),
     );
   }
 
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     return NextResponse.redirect(
-      getRootUrl("/dashboard/settings/security?link_error=oauth_failed"),
+      getAppUrl("/dashboard/settings/security?link_error=oauth_failed"),
     );
   }
 
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.redirect(getRootUrl("/login"));
+    return NextResponse.redirect(getAppUrl("/login"));
   }
 
   const destination = await getAccountDestination(user.id);
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const url = new URL(destination, getRootUrl("/"));
+    const url = new URL(destination, getAppUrl("/"));
     if (url.pathname.startsWith("/dashboard")) {
       url.pathname = "/dashboard/settings/security";
       if (allowedProviders.has(provider)) {

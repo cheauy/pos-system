@@ -6,7 +6,7 @@ import { businessHasPermission, getPermissionMatrix } from '@/lib/auth/effective
 import { permissions, editablePermissionRoles, normalizePermissionSelection, rolePermissions, type EditablePermissionRole, type Permission } from '@/lib/auth/permissions';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createBranchClient } from '@/lib/supabase/branch-server';
-import { getBranchContext } from '@/lib/branches/context';
+import { getBranchContext, assertOperatingBranch } from '@/lib/branches/context';
 import { assertSubscriptionCapacityChangeAllowed } from '@/lib/subscriptions/access-safety';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createIssue, editIssue, isId, NEW_USER_ROLES } from '@/lib/users/team-model';
@@ -101,6 +101,7 @@ export async function loadUsersWorkspace(businessId:string):Promise<TeamActionRe
    success:true,
    data:{
     ...workspace,
+    branchId:actorBranch,
     branches:visibleBranches,
     rows:visibleRows,
     effectiveRolePermissions,
@@ -238,7 +239,8 @@ function validRole(role:string):role is EditablePermissionRole{
 export async function saveRolePermissions(
  businessId:string,
  role:string,
- selected:Permission[],
+  selected:Permission[],
+  expectedBranchId:string|null,
 ):Promise<TeamActionResult<{role:EditablePermissionRole;permissions:Permission[]}>>{
  try{
   const {business,user}=await actor(businessId);
@@ -256,7 +258,8 @@ export async function saveRolePermissions(
    updated_by:user.id,
    updated_at:now,
   }));
-  const branchId=(await getBranchContext()).branchId;
+  if(!expectedBranchId)throw new Error('Reload this screen before changing role permissions.');
+  const {branchId}=await assertOperatingBranch(expectedBranchId);
   const db=await createBranchClient();
   const {error}=await db.from('branch_role_permissions').upsert(rows.map(row=>({...row,location_id:branchId})),{onConflict:'business_id,location_id,role,permission'});
   if(error)throw error;
@@ -271,14 +274,16 @@ export async function saveRolePermissions(
 }
 
 export async function resetRolePermissions(
- businessId:string,
- role:string,
+  businessId:string,
+  role:string,
+  expectedBranchId:string|null,
 ):Promise<TeamActionResult<{role:EditablePermissionRole;permissions:Permission[]}>>{
  try{
   const {business,user}=await actor(businessId);
   if(business.role!=='owner')return {success:false,message:'Only the business owner can reset role permissions.'};
   if(!validRole(role))return {success:false,message:'Choose Manager, Staff, or Cashier.'};
-  const branchId=(await getBranchContext()).branchId;
+  if(!expectedBranchId)throw new Error('Reload this screen before changing role permissions.');
+  const {branchId}=await assertOperatingBranch(expectedBranchId);
   const db=await createBranchClient();
   const {error}=await db.from('branch_role_permissions').delete().eq('business_id',business.id).eq('location_id',branchId).eq('role',role);
   if(error)throw error;

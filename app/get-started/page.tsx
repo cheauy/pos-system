@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { getRootUrl } from "@/lib/tenancy/domain";
+import { getAppUrl } from "@/lib/tenancy/domain";
 
 import GetStartedForm from "./get-started-form";
 
@@ -12,7 +12,7 @@ export default async function GetStartedPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect(getRootUrl("/login"));
+    redirect(getAppUrl("/login"));
   }
 
   const { data: profile } = await supabase
@@ -22,11 +22,11 @@ export default async function GetStartedPage() {
     .maybeSingle();
 
   if (!profile || profile.is_active !== true) {
-    redirect(getRootUrl("/login"));
+    redirect(getAppUrl("/login"));
   }
 
   if (profile.role === "super_admin") {
-    redirect(getRootUrl("/auth/continue"));
+    redirect(getAppUrl("/auth/continue"));
   }
 
   const { data: membership } = await supabase
@@ -38,7 +38,7 @@ export default async function GetStartedPage() {
     .maybeSingle();
 
   if (membership) {
-    redirect(getRootUrl("/auth/continue"));
+    redirect(getAppUrl("/auth/continue"));
   }
 
   return <GetStartedForm accountEmail={user.email ?? ""} />;

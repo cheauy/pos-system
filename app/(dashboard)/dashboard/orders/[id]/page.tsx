@@ -72,7 +72,7 @@ export default async function OrderDetailsPage({params,searchParams}:{params:Pro
  <div className={s.phoneHide}><OrderPrintMenu orderId={id} className={s.button}/>
  <OrderMoreActions id={id} businessId={business.id} updatedAt={order.updated_at} canEdit={ownBranch && allowEdit} note={order.customer_note || ''}/></div>
  {canReturn && <ReturnItemsForm orderId={id} orderNumber={order.order_number} items={returnable} triggerClassName={`${s.button} ${s.buttonReturn}`}/>}
- {cancelNow && <CancelOrderForm orderId={id} orderNumber={order.order_number} businessId={business.id} online={online} className={`${s.button} ${s.buttonCancel}`}/>}
+ {cancelNow && <CancelOrderForm orderId={id} orderNumber={order.order_number} businessId={business.id} updatedAt={order.updated_at} online={online} className={`${s.button} ${s.buttonCancel}`}/>}
  </div></header>
  <section className={`${s.metrics} ${s.phoneHide}`}>
  <Metric tone="blue" icon={<ReceiptText/>} label="Order number"><strong>{order.order_number}</strong><CopyOrderNumber value={order.order_number}/></Metric>
