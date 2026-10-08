@@ -12,6 +12,7 @@ test('COD and KHQR reject closed stores before uploads, orders or email',async()
    '@/lib/storefront/checkout-validation':{PAYMENT_PROOF_BUCKET:'proofs',validateCheckoutEmail:()=>null,validateCheckoutContact:()=>null},
    'next/server':{NextResponse:{json:(body,options)=>({body,status:options?.status??200})}},
    '@/lib/supabase/admin':{supabaseAdmin:admin},
+   '@/lib/operations/rpc-outcome':loadTs('lib/operations/rpc-outcome.ts'),
    '@/lib/tenancy/domain':{normalizeTenantSlug:value=>value,getTenantSlugFromHost:()=>null,getSubdomainUrl:()=>''}
   });
   const response=await route.POST({headers:new Headers(),json:async()=>({items:[{productId:'product',quantity:1}],guestName:'Customer',guestPhone:'012345678',guestEmail:'test@example.com',fulfillmentType:'pickup',paymentMethod:method})},{params:Promise.resolve({slug:'shop'})});

@@ -1,0 +1,5036 @@
+{
+ "captured_at": "2026-10-08",
+ "source": "production brovmukjnushuzcalkwm, read-only pg_catalog; schema and function bodies only, no rows",
+ "functions": [
+  {
+   "schema": "auth",
+   "signature": "auth.role()",
+   "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}",
+   "definition": "CREATE OR REPLACE FUNCTION auth.role()\n RETURNS text\n LANGUAGE sql\n STABLE\nAS $function$\n  select \n  coalesce(\n    nullif(current_setting('request.jwt.claim.role', true), ''),\n    (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role')\n  )::text\n$function$\n"
+  },
+  {
+   "schema": "auth",
+   "signature": "auth.uid()",
+   "acl": "{=X/supabase_auth_admin,supabase_auth_admin=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}",
+   "definition": "CREATE OR REPLACE FUNCTION auth.uid()\n RETURNS uuid\n LANGUAGE sql\n STABLE\nAS $function$\n  select \n  coalesce(\n    nullif(current_setting('request.jwt.claim.sub', true), ''),\n    (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')\n  )::uuid\n$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_adjust_branch_stock(uuid,uuid,uuid,text,integer,text,text,uuid,integer)",
+   "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_adjust_branch_stock(p_business_id uuid, p_location_id uuid, p_product_id uuid, p_mode text, p_quantity integer, p_reason text, p_reference text, p_request_id uuid, p_expected_quantity integer)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\ndeclare\n  v_product public.products%rowtype;\n  v_before integer;\n  v_after integer;\n  v_delta integer;\n  v_payload jsonb;\n  v_saved public.stock_adjustment_requests%rowtype;\n  v_result jsonb;\nbegin\n  perform public.tenh_assert_effective_permission(p_business_id, 'products.stock_adjust');\n  if p_location_id is null or public.tenh_request_branch(p_business_id) is distinct from p_location_id then\n    raise exception 'This stock adjustment is outside your operating branch.' using errcode = '42501';\n  end if;\n  if p_request_id is null or p_mode is null or p_mode not in ('increase','decrease','set')\n    or p_quantity is null or p_quantity < 0 or (p_mode <> 'set' and p_quantity = 0)\n    or p_expected_quantity is null or p_expected_quantity < 0\n    or p_reason is null or length(btrim(p_reason)) < 2 or length(p_reason) > 650\n    or length(p_reference) > 200 then\n    raise exception 'Enter a valid quantity, reason and adjustment request.';\n  end if;\n  -- All branch stock operations acquire the business lock before product locks.\n  perform public.tenh_assert_plan_branch(p_business_id, p_location_id);\n  if exists(select 1 from public.business_locations where id = p_location_id and plan_disable_pending) then\n    raise exception 'This branch is closing after a plan change.';\n  end if;\n  v_payload := jsonb_build_object('product',p_product_id,'mode',p_mode,'quantity',p_quantity,\n    'reason',p_reason,'reference',p_reference,'expected',p_expected_quantity);\n  select * into v_saved from public.stock_adjustment_requests\n    where business_id = p_business_id and request_id = p_request_id;\n  if found then\n    if v_saved.created_by is distinct from auth.uid() or v_saved.location_id is distinct from p_location_id\n      or v_saved.payload is distinct from v_payload then\n      raise exception 'This adjustment request was already used with different details.';\n    end if;\n    return v_saved.result;\n  end if;\n  select * into v_product from public.products\n    where id = p_product_id and business_id = p_business_id for update;\n  if not found then raise exception 'This product is no longer available.'; end if;\n  if not exists(select 1 from public.branch_product_details where business_id=p_business_id and id=p_product_id and location_id=p_location_id and is_active and not branch_archived) then raise exception 'This product is unavailable in this branch.';end if; select quantity into v_before from public.product_location_stock\n    where business_id = p_business_id and location_id = p_location_id and product_id = p_product_id for update;\n  if not found then raise exception 'Assign this product to the branch before adjusting stock.'; end if;\n  if p_mode = 'set' and v_before <> p_expected_quantity then\n    raise exception 'Stock changed from % to %. Refresh and check the count before saving again.',p_expected_quantity,v_before;\n  end if;\n  v_after := case p_mode when 'increase' then v_before + p_quantity when 'decrease' then v_before - p_quantity else p_quantity end;\n  if v_after < 0 then raise exception 'Not enough stock in this branch. Available: %.',v_before; end if;\n  v_delta := v_after - v_before;\n  if coalesce(v_product.stock_quantity,0) + v_delta < 0 then raise exception 'Stock totals need reconciliation before this adjustment.'; end if;\n  if v_delta <> 0 then\n    update public.products set stock_quantity = stock_quantity + v_delta, updated_at = now() where id = p_product_id;\n    update public.product_location_stock set quantity = v_after, updated_at = now()\n      where business_id = p_business_id and location_id = p_location_id and product_id = p_product_id;\n    perform set_config('tenh.adjustment_branch',p_location_id::text,true);\n    insert into public.stock_adjustments(business_id,location_id,product_id,adjustment_type,quantity_delta,stock_before,stock_after,reason,reference,created_by)\n      values(p_business_id,p_location_id,p_product_id,p_mode,v_delta,v_before,v_after,p_reason,p_reference,auth.uid());\n    perform set_config('tenh.adjustment_branch','',true);\n  end if;\n  v_result := jsonb_build_object('productId',p_product_id,'stockBefore',v_before,'stockAfter',v_after,'delta',v_delta);\n  insert into public.stock_adjustment_requests(business_id,request_id,created_by,location_id,payload,result)\n    values(p_business_id,p_request_id,auth.uid(),p_location_id,v_payload,v_result);\n  return v_result;\nend;\n$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_assert_effective_permission(uuid,text)",
+   "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_assert_effective_permission(p_business uuid, p_permission text)\n RETURNS void\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nBEGIN\r\n  IF auth.uid() IS NULL OR NOT public.tenh_user_permission_allowed(p_business,auth.uid(),p_permission) THEN\r\n    RAISE EXCEPTION 'This action is not allowed for your role.' USING ERRCODE='42501';\r\n  END IF;\r\nEND;\r\n$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_assert_plan_branch(uuid,uuid)",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_assert_plan_branch(p_business_id uuid, p_location_id uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nbegin\r\n  perform 1 from public.businesses where id = p_business_id for update;\r\n\r\n  if public.tenh_subscription_is_expired_now(p_business_id) then\r\n    raise exception 'Subscription expired. Reactivate the subscription before using the workspace.';\r\n  end if;\r\n\r\n  if not exists(\r\n    select 1\r\n    from public.business_locations\r\n    where business_id = p_business_id\r\n      and id = p_location_id\r\n      and is_active\r\n  ) then\r\n    raise exception 'Choose an active branch in this business.';\r\n  end if;\r\n\r\n  if (\r\n    select count(*)\r\n    from public.business_locations\r\n    where business_id = p_business_id\r\n      and is_active\r\n  ) > public.tenh_branch_limit(p_business_id) then\r\n    raise exception 'Active branches exceed the subscription. Deactivate unused branches or upgrade.';\r\n  end if;\r\nend;\r\n$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_branch_limit(uuid)",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_branch_limit(p_business_id uuid)\n RETURNS integer\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nselect case when subscription_status='active' and subscription_plan_key='custom' then subscription_branch_limit else 1 end from businesses where id=p_business_id;\r\n$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_branch_setting_visible(uuid,uuid)",
+   "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_branch_setting_visible(p_business uuid, p_location uuid)\n RETURNS boolean\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n if not exists(select 1 from public.business_members where business_id=p_business and user_id=auth.uid() and is_active and not coalesce(team_password_required,false)) then return false;end if;\n return p_location=public.tenh_request_branch(p_business);\nend$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_default_role_permission(text,text)",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_default_role_permission(p_role text, p_permission text)\n RETURNS boolean\n LANGUAGE sql\n IMMUTABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  SELECT CASE\r\n    WHEN p_role='owner' THEN true\r\n    WHEN p_role='admin' THEN p_permission = ANY(ARRAY[\r\n      'users.delete','business.view','storefront.view','storefront.update','users.view','users.create_limited','users.update_role',\r\n      'products.view','products.create','products.update','products.disable','products.stock_adjust','orders.view','orders.create',\r\n      'orders.update','orders.cancel','orders.return','customers.view','customers.create','customers.update','reports.view',\r\n      'categories.manage','inventory.view','register.manage','locations.manage','transfers.manage','credit.manage'\r\n    ]::text[])\r\n    WHEN p_role='manager' THEN p_permission = ANY(ARRAY[\r\n      'users.view','users.create_limited','users.update_role','users.delete','customers.view','customers.create','customers.update',\r\n      'business.view','storefront.view','products.view','products.create','products.update','products.disable','products.stock_adjust',\r\n      'orders.view','orders.create','orders.update','orders.cancel','orders.return','reports.view','categories.manage','inventory.view',\r\n      'register.manage','transfers.manage','credit.manage'\r\n    ]::text[])\r\n    WHEN p_role='cashier' THEN p_permission = ANY(ARRAY[\r\n      'business.view','pos.access','products.view','orders.view','orders.create','orders.update','customers.view','customers.create',\r\n      'customers.update','register.manage'\r\n    ]::text[])\r\n    WHEN p_role='staff' THEN p_permission = ANY(ARRAY[\r\n      'business.view','products.view','orders.view','customers.view','inventory.view'\r\n    ]::text[])\r\n    ELSE false\r\n  END;\r\n$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_export_business(uuid,text[],boolean)",
+   "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_export_business(p_business_id uuid, p_tables text[], p_all_branches boolean DEFAULT false)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare t text; relation text; condition text; rows jsonb; output jsonb:='{}'; branch uuid;\nbegin\n perform public.tenh_assert_effective_permission(p_business_id,'exports.manage');\n -- The private implementation validates owner access and the complete allowlist.\n if p_all_branches then return public.tenh_export_business_all_branches(p_business_id,p_tables);end if;\n perform public.tenh_export_business_all_branches(p_business_id,array['businesses']);\n branch:=public.tenh_request_branch(p_business_id);\n if branch is null then raise exception 'Choose an operating branch.';end if;\n foreach t in array p_tables loop\n  if not t=any(array['businesses','business_locations','business_storefronts','business_receipt_settings','business_customer_settings','business_delivery_zones','business_tables','products','product_variants','categories','product_location_stock','product_option_groups','product_options','bundle_items','inventory_movements','stock_adjustments','stock_transfers','stock_transfer_items','orders','order_items','returns','return_items','tenh_pos_holds','tenh_pos_points_used','customers','customer_credit_accounts','customer_credit_ledger','customer_loyalty_transactions','business_coupons','coupon_redemptions','suppliers','purchases','purchase_items','purchase_orders','purchase_order_items','expenses','cash_register_shifts','cash_movements','business_members','profiles','business_member_permissions','business_role_permissions','business_notifications','business_notification_reads','business_notification_preferences','business_notification_role_settings','audit_logs','business_activity_history','data_transfer_jobs','business_slug_release_history','subscription_history','subscription_orders','business_change_orders','branch_product_details','branch_receipt_settings','branch_customer_settings','branch_pos_settings','branch_bundle_recipes','branch_role_permissions','branch_notification_role_settings']) then raise exception 'Select valid data to export.';end if;\n  relation:=case t when 'products' then 'branch_products' when 'bundle_items' then 'branch_bundle_items' when 'business_receipt_settings' then 'branch_receipt_settings' when 'business_customer_settings' then 'branch_customer_settings' else t end;\n  condition:=case\n   when t='businesses' then 'r.id=$1'\n   when t='business_locations' then 'r.business_id=$1 and r.id=$2'\n   when t='categories' then 'r.business_id=$1 and (r.branch_ids is null or $2=any(r.branch_ids))'\n   when t='stock_transfers' then 'r.business_id=$1 and (r.source_location_id=$2 or r.destination_location_id=$2)'\n   when t='stock_transfer_items' then 'r.business_id=$1 and r.transfer_id in (select id from public.stock_transfers where business_id=$1 and (source_location_id=$2 or destination_location_id=$2))'\n   when t in ('order_items','tenh_pos_points_used','coupon_redemptions') then 'r.order_id in (select id from public.orders where business_id=$1 and location_id=$2)'\n   when t='return_items' then 'r.return_id in (select id from public.returns where business_id=$1 and location_id=$2)'\n   when t='purchase_items' then 'r.purchase_id in (select id from public.purchases where business_id=$1 and location_id=$2)'\n   when t='purchase_order_items' then 'r.purchase_order_id in (select id from public.purchase_orders where business_id=$1 and location_id=$2)'\n   when t in ('customer_credit_accounts','customer_credit_ledger','customer_loyalty_transactions') then 'r.business_id=$1 and r.customer_id in (select id from public.customers where business_id=$1 and location_id=$2)'\n   when t in ('product_variants','product_options','product_option_groups') then 'r.product_id in (select id from public.branch_products where business_id=$1)'\n   when t='inventory_movements' then 'r.business_id=$1 and (r.order_id in (select id from public.orders where business_id=$1 and location_id=$2) or r.return_id in (select id from public.returns where business_id=$1 and location_id=$2))'\n   when t='business_members' then 'r.business_id=$1 and r.default_location_id=$2'\n   when t='profiles' then 'r.id in (select user_id from public.business_members where business_id=$1 and default_location_id=$2)'\n   when t='business_member_permissions' then 'r.member_id in (select id from public.business_members where business_id=$1 and default_location_id=$2)'\n   when t in ('audit_logs','business_activity_history','business_notifications') then 'r.business_id=$1 and coalesce(to_jsonb(r)->>''location_id'',r.metadata->>''branch_id'',r.metadata->>''branchId'')=$2::text'\n   when t='business_notification_reads' then 'r.notification_id in (select id from public.business_notifications where business_id=$1 and coalesce(metadata->>''branch_id'',metadata->>''branchId'')=$2::text)'\n   when exists(select 1 from information_schema.columns where table_schema='public' and table_name=relation and column_name='location_id') then 'r.business_id=$1 and r.location_id=$2'\n   else 'r.business_id=$1' end;\n  execute format('select coalesce(jsonb_agg(to_jsonb(r)),''[]''::jsonb) from public.%I r where %s',relation,condition) into rows using p_business_id,branch;\n  output:=output||jsonb_build_object(t,rows);\n end loop;\n return public.tenh_export_redact(output);\nend$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_export_business_all_branches(uuid,text[])",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_export_business_all_branches(p_business_id uuid, p_tables text[])\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare t text; condition text; rows jsonb; output jsonb:='{}';\n allowed text[]:=array['businesses','business_locations','business_storefronts','business_receipt_settings','business_customer_settings','business_delivery_zones','business_tables','products','product_variants','categories','product_location_stock','product_option_groups','product_options','bundle_items','inventory_movements','stock_adjustments','stock_transfers','stock_transfer_items','orders','order_items','returns','return_items','tenh_pos_holds','tenh_pos_points_used','customers','customer_credit_accounts','customer_credit_ledger','customer_loyalty_transactions','business_coupons','coupon_redemptions','suppliers','purchases','purchase_items','purchase_orders','purchase_order_items','expenses','cash_register_shifts','cash_movements','business_members','profiles','business_member_permissions','business_role_permissions','business_notifications','business_notification_reads','business_notification_preferences','business_notification_role_settings','audit_logs','business_activity_history','data_transfer_jobs','business_slug_release_history','subscription_history','subscription_orders','business_change_orders','branch_product_details','branch_receipt_settings','branch_customer_settings','branch_pos_settings','branch_bundle_recipes','branch_role_permissions','branch_notification_role_settings'];\nbegin\n if not exists(select 1 from public.business_members where business_id=p_business_id and user_id=auth.uid() and role::text='owner' and is_active) then raise exception 'Only the business owner can export the complete business.';end if;\n if p_tables is null or cardinality(p_tables)=0 or not p_tables<@allowed then raise exception 'Select valid data to export.';end if;\n foreach t in array p_tables loop\n  condition:=case t\n   when 'businesses' then 'r.id=$1'\n   when 'profiles' then 'r.id in (select user_id from public.business_members where business_id=$1)'\n   when 'order_items' then 'r.order_id in (select id from public.orders where business_id=$1)'\n   when 'product_variants' then 'r.product_id in (select id from public.products where business_id=$1)'\n   when 'purchase_items' then 'r.purchase_id in (select id from public.purchases where business_id=$1)'\n   when 'return_items' then 'r.return_id in (select id from public.returns where business_id=$1)'\n   when 'business_member_permissions' then 'r.member_id in (select id from public.business_members where business_id=$1)'\n   when 'business_notification_reads' then 'r.notification_id in (select id from public.business_notifications where business_id=$1)'\n   else 'r.business_id=$1' end;\n  execute format('select coalesce(jsonb_agg(to_jsonb(r)),''[]''::jsonb) from public.%I r where %s',t,condition) into rows using p_business_id;\n  output:=output||jsonb_build_object(t,rows);\n end loop;\n return public.tenh_export_redact(output);\nend;$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_export_redact(jsonb)",
+   "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_export_redact(v jsonb)\n RETURNS jsonb\n LANGUAGE plpgsql\n IMMUTABLE\n SET search_path TO ''\nAS $function$\r\ndeclare result jsonb;\r\nbegin\r\n if jsonb_typeof(v)='object' then\r\n  select coalesce(jsonb_object_agg(key,public.tenh_export_redact(value)),'{}') into result from jsonb_each(v) where key !~* '(password|secret|token|credential|api.?key|authorization|fingerprint|raw_payload|provider_response|payway_response)';\r\n elsif jsonb_typeof(v)='array' then\r\n  select coalesce(jsonb_agg(public.tenh_export_redact(value)),'[]') into result from jsonb_array_elements(v);\r\n else result:=v;end if;\r\n return result;\r\nend;$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_import_business_safe(uuid,text,text,jsonb,uuid,boolean,text,uuid,text)",
+   "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_import_business_safe(p_business_id uuid, p_kind text, p_mode text, p_payload jsonb, p_branch_id uuid DEFAULT NULL::uuid, p_commit boolean DEFAULT false, p_expected text DEFAULT NULL::text, p_request_id uuid DEFAULT NULL::uuid, p_filename text DEFAULT NULL::text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\n SET lock_timeout TO '5s'\n SET statement_timeout TO '30s'\nAS $function$\ndeclare\n t text; r jsonb; eligible jsonb:='[]'; inventory_exists boolean; old_row jsonb; full_row jsonb; patch jsonb; snap jsonb; report jsonb; prior record;\n tables text[]; fields text[]; keys text[]; pk text[]; condition text; cols text; vals text; write_table text;\n row_id uuid; matches uuid[]; n integer:=0; added integer:=0; changed integer:=0; unchanged integer:=0;\n fingerprint text; payload_hash text; safe_table boolean; seen text[]:=array[]::text[]; identity text;\n allowed text[]:=array['businesses','business_locations','business_storefronts','business_receipt_settings','business_customer_settings','business_delivery_zones','business_tables','products','product_variants','categories','product_location_stock','product_option_groups','product_options','bundle_items','inventory_movements','stock_adjustments','stock_transfers','stock_transfer_items','orders','order_items','returns','return_items','tenh_pos_holds','tenh_pos_points_used','customers','customer_credit_accounts','customer_credit_ledger','customer_loyalty_transactions','business_coupons','coupon_redemptions','suppliers','purchases','purchase_items','purchase_orders','purchase_order_items','expenses','cash_register_shifts','cash_movements','audit_logs','business_activity_history','branch_product_details','branch_receipt_settings','branch_customer_settings','branch_pos_settings','branch_bundle_recipes','branch_role_permissions','branch_notification_role_settings'];\nbegin\n p_branch_id:=coalesce(p_branch_id,public.tenh_request_branch(p_business_id));\n if p_branch_id is distinct from public.tenh_request_branch(p_business_id) or p_branch_id is null then raise exception 'The operating branch changed. Validate the file again.';end if;\n perform public.tenh_assert_effective_permission(p_business_id,'exports.manage');\n perform public.tenh_assert_plan_branch(p_business_id,p_branch_id);\n if exists(select 1 from public.business_locations where id=p_branch_id and plan_disable_pending) then raise exception 'This branch is closing after a plan change.';end if;\n if p_commit is null then raise exception 'Invalid confirmation.';end if;\n if auth.uid() is null or not exists(select 1 from public.business_members where business_id=p_business_id and user_id=auth.uid() and role::text='owner' and is_active) then raise exception 'Only the business owner can import data.';end if;\n if p_kind is null or p_kind not in ('backup','products','customers','suppliers','inventory') or p_mode is null or p_mode not in ('insert','merge','update') then raise exception 'Invalid import options.';end if;\n if p_payload is null or octet_length(p_payload::text)>10000000 then raise exception 'Import exceeds the 10 MB limit.';end if;\n if p_kind='backup' then\n  if p_mode='insert' then raise exception 'Use a CSV template to add new records. JSON templates restore existing records only.';end if;\n  if jsonb_typeof(p_payload)<>'object' then raise exception 'Invalid backup datasets.';end if;\n  select array_agg(key order by key) into tables from jsonb_each(p_payload);\n  if tables is null or not tables<@allowed then raise exception 'Backup contains an unsupported dataset.';end if;\n else\n  if jsonb_typeof(p_payload)<>'array' or jsonb_array_length(p_payload) not between 1 and 1000 then raise exception 'CSV imports require 1 to 1,000 rows.';end if;\n  if not exists(select 1 from public.business_locations where id=p_branch_id and business_id=p_business_id and is_active) then raise exception 'Choose an active branch in this business.';end if;\n  tables:=case when p_kind='inventory' then array['business_locations','product_location_stock','products','stock_adjustments'] else array['business_locations',p_kind] end;\n end if;\n perform pg_advisory_xact_lock(hashtextextended(p_business_id::text,9616));\n payload_hash:=md5(jsonb_build_array(p_kind,p_mode,p_payload,p_branch_id)::text);\n if p_commit then\n  if p_request_id is null or p_expected is null then raise exception 'Validate and confirm the file first.';end if;\n  select * into prior from public.business_import_requests where business_id=p_business_id and request_id=p_request_id;\n  if found then\n   if prior.payload_hash<>payload_hash or prior.user_id<>auth.uid() then raise exception 'This import reference belongs to another request.';end if;\n   return prior.result||jsonb_build_object('replayed',true);\n  end if;\n end if;\n -- Prevent a sale or edit between comparison and write. Locks end with this RPC.\n for t in select unnest(tables) order by 1 loop\n  execute format('lock table public.%I in share row exclusive mode',t);\n end loop;\n if p_kind<>'backup' and not exists(select 1 from public.business_locations where id=p_branch_id and business_id=p_business_id and is_active) then raise exception 'Choose an active branch in this business.';end if;\n lock table public.branch_product_details,public.branch_receipt_settings,public.branch_customer_settings,public.branch_pos_settings in share row exclusive mode;\n snap:=public.tenh_export_business(p_business_id,tables);\n select md5(coalesce(jsonb_object_agg(key,(select coalesce(jsonb_agg(value order by value::text),'[]') from jsonb_array_elements(e.value))),'{}')::text) into fingerprint from jsonb_each(snap) e;\n fingerprint:=md5(jsonb_build_array(fingerprint,payload_hash)::text);\n if p_commit and p_expected<>fingerprint then raise exception 'Data changed since validation. Validate again before importing.';end if;\n -- Preview executes real constraints and triggers in a rolled-back subtransaction.\n begin\n if p_kind='backup' then\n  foreach t in array tables loop\n   write_table:=case t when 'products' then 'branch_products' when 'business_receipt_settings' then 'branch_receipt_settings' when 'business_customer_settings' then 'branch_customer_settings' else t end;\n   if jsonb_typeof(p_payload->t)<>'array' then raise exception 'Dataset % must contain rows.',t;end if;\n   n:=n+jsonb_array_length(p_payload->t);\n   if n>20000 then raise exception 'Import at most 20,000 records at a time.';end if;\n   select array_agg(a.attname::text order by k.ordinality) into pk from pg_catalog.pg_constraint c cross join lateral unnest(c.conkey) with ordinality k(num,ordinality) join pg_catalog.pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.num where c.conrelid=format('public.%I',t)::regclass and c.contype='p';\n   if pk is null then raise exception 'Dataset % has no safe record identity.',t;end if;\n   fields:=case t\n    when 'products' then array['name','sku','barcode','description','cost_price','selling_price','low_stock_quantity','is_active','image_url','style_name','brand_name']\n    when 'customers' then array['name','phone','email','address','note','birthday']\n    when 'suppliers' then array['name','contact_person','phone','email','address','notes','is_active']\n    else array[]::text[] end;\n   safe_table:=t in ('branch_receipt_settings','branch_customer_settings','branch_pos_settings','business_storefronts','business_receipt_settings','business_customer_settings','business_delivery_zones','business_tables','categories');\n   for r in select value from jsonb_array_elements(p_payload->t) loop\n    if jsonb_typeof(r)<>'object' or exists(select 1 from unnest(pk) k where nullif(r->>k,'') is null) then raise exception 'Invalid record identity in %.',t;end if;\n    if public.tenh_export_redact(r) is distinct from r then raise exception 'Security credentials cannot be imported.';end if;\n    identity:=t||':'||(select jsonb_object_agg(k,r->k)::text from unnest(pk) k);\n    if identity=any(seen) then raise exception 'Duplicate record in %.',t;end if;\n    seen:=array_append(seen,identity);\n    select value into old_row from jsonb_array_elements(snap->t) where not exists(select 1 from unnest(pk) k where value->k is distinct from r->k);\n    if old_row is null then raise exception '% contains a missing or foreign record. Backup import only updates existing records; use CSV to add products, customers or suppliers.',t;end if;\n    if r=old_row then unchanged:=unchanged+1;continue;end if;\n    if safe_table then select array_agg(key) into fields from jsonb_each(old_row) where key<>all(pk) and key not in ('id','business_id','owner_id','location_id','created_at','updated_at') and key !~* '(password|secret|token|credential|api.?key|authorization|fingerprint|raw_payload|provider_response|payway_response)';end if;\n    fields:=coalesce(fields,array[]::text[]);\n    -- Full row comparison protects IDs, balances, inventory and security fields.\n    if (r-fields-array['updated_at']) is distinct from (old_row-fields-array['updated_at']) or cardinality(fields)=0 then raise exception '% contains changed protected data. Orders, balances, stock, branches and history cannot be restored over live records.',t;end if;\n    select coalesce(jsonb_object_agg(key,value),'{}') into patch from jsonb_each(r) where key=any(fields) and value is distinct from old_row->key;\n    if patch='{}' then unchanged:=unchanged+1;continue;end if;\n    select string_agg(format('%I=(jsonb_populate_record(null::public.%I,$1)).%I',key,write_table,key),',') into cols from jsonb_each(patch);\n    select string_agg(format('to_jsonb(target)->%L=$2->%L',k,k),' and ') into condition from unnest(pk) k;\n    if write_table in ('branch_receipt_settings','branch_customer_settings','branch_pos_settings') then condition:=condition||format(' and target.location_id=%L::uuid',p_branch_id);end if;\n    execute format('select to_jsonb(target) from public.%I target where %s',write_table,replace(condition,'$2','$1')) into full_row using r;\n    if exists(select 1 from jsonb_object_keys(patch) k where full_row->k is distinct from old_row->k) then raise exception 'Sensitive settings must be edited in Settings; import would remove hidden credentials.';end if;\n    execute format('update public.%I target set %s where %s',write_table,cols,condition) using patch,r;\n    changed:=changed+1;\n   end loop;\n  end loop;\n elsif p_kind='inventory' then\n  for r in select value from jsonb_array_elements(p_payload) loop\n   if not exists(select 1 from public.business_locations where id=p_branch_id and business_id=p_business_id and upper(code)=upper(r->>'branch_code')) then raise exception 'Inventory file contains a different branch. Switch branch before importing.';end if;\n   if upper(r->>'sku')=any(seen) then raise exception 'Duplicate inventory SKU.';end if;seen:=array_append(seen,upper(r->>'sku'));\n   select array_agg(id) into matches from public.branch_products where business_id=p_business_id and upper(sku)=upper(r->>'sku');\n   if coalesce(cardinality(matches),0)<>1 then raise exception 'Inventory SKU must match exactly one product in this business.';end if;\n   select exists(select 1 from public.product_location_stock where business_id=p_business_id and location_id=p_branch_id and product_id=matches[1]) into inventory_exists;\n   if (p_mode='insert' and inventory_exists) or (p_mode='update' and not inventory_exists) then unchanged:=unchanged+1;continue;end if;\n   if coalesce((r->>'quantity')::integer,-1)<0 or coalesce((r->>'low_stock_threshold')::integer,0)<0 then raise exception 'Inventory quantities must be zero or greater.';end if;\n   eligible:=eligible||jsonb_build_array(r);\n   if inventory_exists then changed:=changed+1;else added:=added+1;end if;\n  end loop;\n  if jsonb_array_length(eligible)>0 then\n   for r in select value from jsonb_array_elements(eligible) loop\n    select id into row_id from public.branch_products where business_id=p_business_id and upper(sku)=upper(r->>'sku');\n    select quantity into n from public.product_location_stock where business_id=p_business_id and location_id=p_branch_id and product_id=row_id;\n    perform public.tenh_adjust_branch_stock(p_business_id,p_branch_id,row_id,'set',(r->>'quantity')::integer,'Inventory import',p_filename,gen_random_uuid(),n);\n    update public.product_location_stock set low_stock_threshold=coalesce((r->>'low_stock_threshold')::integer,0) where business_id=p_business_id and location_id=p_branch_id and product_id=row_id;\n   end loop;\n  end if;\n  n:=jsonb_array_length(p_payload);\n else\n  \n  fields:=case p_kind when 'products' then array['name','sku','barcode','description','cost_price','selling_price','low_stock_quantity','is_active'] when 'customers' then array['name','phone','email','address','note'] else array['name','contact_person','phone','email','address','notes','is_active'] end;\n  for r in select value from jsonb_array_elements(p_payload) loop\n   n:=n+1;\n   if jsonb_typeof(r)<>'object' or length(trim(coalesce(r->>'name','')))<2 or exists(select 1 from jsonb_object_keys(r) k where not k=any(fields)) then raise exception 'Invalid or unsupported fields in row %.',n;end if;\n   if p_kind='products' then\n    if nullif(trim(r->>'sku'),'') is null or coalesce((r->>'cost_price')::numeric,-1)<0 or coalesce((r->>'selling_price')::numeric,-1)<0 or coalesce((r->>'low_stock_quantity')::integer,-1)<0 then raise exception 'Invalid product values in row %.',n;end if;\n    select array_agg(id) into matches from public.branch_products where business_id=p_business_id and upper(sku)=upper(r->>'sku');\n   elsif p_kind='customers' then\n    if nullif(r->>'email','') is null and nullif(r->>'phone','') is null then raise exception 'Customer row % needs email or phone to prevent duplicates.',n;end if;\n    select array_agg(id) into matches from public.customers where business_id=p_business_id and location_id=p_branch_id and ((nullif(r->>'email','') is not null and lower(email)=lower(r->>'email')) or (nullif(r->>'phone','') is not null and phone=r->>'phone'));\n   else\n    select array_agg(id) into matches from public.suppliers where business_id=p_business_id and location_id=p_branch_id and ((nullif(r->>'email','') is not null and lower(email)=lower(r->>'email')) or lower(name)=lower(r->>'name'));\n   end if;\n   if cardinality(matches)>1 then raise exception 'Row % matches multiple records. Resolve duplicates first.',n;end if;\n   row_id:=matches[1];\n   if row_id is not null and p_mode='insert' then unchanged:=unchanged+1;continue;end if;\n   if row_id is not null and row_id::text=any(seen) then raise exception 'Multiple rows match the same record.';end if;\n   if row_id is null and p_mode='update' then unchanged:=unchanged+1;continue;end if;\n   patch:=r;\n   if row_id is null then\n    row_id:=gen_random_uuid();\n    patch:=patch||jsonb_build_object('id',row_id,'business_id',p_business_id,'owner_id',auth.uid());\n    if p_kind<>'products' then patch:=patch||jsonb_build_object('location_id',p_branch_id);end if;\n    select string_agg(format('%I',key),','),string_agg(format('(jsonb_populate_record(null::public.%I,$1)).%I',p_kind,key),',') into cols,vals from jsonb_each(patch);\n    execute format('insert into public.%I (%s) select %s',p_kind,cols,vals) using patch;\n    if p_kind='products' then\n     insert into public.product_location_stock(business_id,location_id,product_id,quantity,low_stock_threshold) values(p_business_id,p_branch_id,row_id,0,coalesce((r->>'low_stock_quantity')::integer,0));\n    end if;\n    added:=added+1;\n   else\n    select value into old_row from jsonb_array_elements(snap->p_kind) where value->>'id'=row_id::text;\n    if old_row @> patch then unchanged:=unchanged+1;\n    else\n     select string_agg(format('%I=(jsonb_populate_record(null::public.%I,$1)).%I',key,p_kind,key),',') into cols from jsonb_each(patch);\n     execute format('update public.%I set %s,updated_at=now() where id=$2 and business_id=$3',case when p_kind='products' then 'branch_products' else p_kind end,cols) using patch,row_id,p_business_id;\n     changed:=changed+1;\n    end if;\n   end if;\n   seen:=array_append(seen,row_id::text);\n  end loop;\n end if;\n report:=jsonb_build_object('inserted',added,'updated',changed,'skipped',unchanged,'rowCount',n,'fingerprint',fingerprint,'datasets',tables);\n if not p_commit then raise exception using errcode='P0099',message='preview rollback';end if;\n exception when sqlstate 'P0099' then null;\n end;\n if p_commit then\n  insert into public.business_import_requests(business_id,request_id,user_id,payload_hash,result) values(p_business_id,p_request_id,auth.uid(),payload_hash,report);\n  insert into public.data_transfer_jobs(business_id,user_id,direction,entity,format,mode,filename,row_count,status,summary) values(p_business_id,auth.uid(),'import',case when p_kind='backup' then 'all' else p_kind end,case when p_kind='backup' then 'json' else 'csv' end,p_mode,left(p_filename,255),n,'completed',report);\n end if;\n return report;\nend;$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_import_csv_types(uuid,jsonb)",
+   "acl": "{postgres=X/postgres,service_role=X/postgres,authenticated=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_import_csv_types(p_business_id uuid, p_payload jsonb)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\n SET statement_timeout TO '15s'\nAS $function$\r\ndeclare\r\n t text; relation text;r jsonb;v jsonb;typed jsonb;col record; k text; output jsonb:='{}'; rows jsonb; n integer:=0;\r\n allowed text[]:=array['businesses','business_locations','business_storefronts','business_receipt_settings','business_customer_settings','business_delivery_zones','business_tables','products','product_variants','categories','product_location_stock','product_option_groups','product_options','bundle_items','inventory_movements','stock_adjustments','stock_transfers','stock_transfer_items','orders','order_items','returns','return_items','tenh_pos_holds','tenh_pos_points_used','customers','customer_credit_accounts','customer_credit_ledger','customer_loyalty_transactions','business_coupons','coupon_redemptions','suppliers','purchases','purchase_items','purchase_orders','purchase_order_items','expenses','cash_register_shifts','cash_movements','audit_logs','business_activity_history','branch_product_details','branch_receipt_settings','branch_customer_settings','branch_pos_settings','branch_bundle_recipes','branch_role_permissions','branch_notification_role_settings'];\r\nbegin\r\n if not exists(select 1 from public.business_members where business_id=p_business_id and user_id=auth.uid() and role::text='owner' and is_active) then raise exception 'Only the business owner can import data.';end if;\r\n if p_payload is null or jsonb_typeof(p_payload)<>'object' or octet_length(p_payload::text)>10000000 then raise exception 'Choose a valid file under 10 MB.';end if;\r\n for t,rows in select key,value from jsonb_each(p_payload) loop\r\n  if not t=any(allowed) or jsonb_typeof(rows)<>'array' then raise exception 'Invalid import feature.';end if;\r\n  relation:=case t when 'business_receipt_settings' then 'branch_receipt_settings' when 'business_customer_settings' then 'branch_customer_settings' else t end; output:=output||jsonb_build_object(t,'[]'::jsonb);\r\n  for r in select value from jsonb_array_elements(rows) loop\r\n   n:=n+1;\r\n   if n>20000 or jsonb_typeof(r)<>'object' then raise exception 'Include at most 20,000 valid records.';end if;\r\n   v:='{}';\r\n   for k in select jsonb_object_keys(r) loop\r\n    select a.attname,y.typcategory,y.typname into col from pg_catalog.pg_attribute a join pg_catalog.pg_type y on y.oid=a.atttypid where a.attrelid=format('public.%I',relation)::regclass and a.attname=k and a.attnum>0 and not a.attisdropped;\r\n    if not found then\r\n     -- A combined Export CSV has empty columns belonging to other datasets.\r\n     if coalesce(r->>k,'')<>'' then raise exception 'Unknown column % in %.',k,t;end if;\r\n     continue;\r\n    end if;\r\n    if k ~* '(password|secret|token|credential|api.?key|authorization|fingerprint|raw_payload|provider_response|payway_response)' then raise exception 'Security credentials cannot be imported.';end if;\r\n    if jsonb_typeof(r->k) not in ('string','null') then raise exception 'CSV values must be text.';end if;\r\n    if r->k='null'::jsonb then v:=v||jsonb_build_object(k,null);\r\n    elsif col.typname in ('json','jsonb') or col.typcategory='A' then\r\n     v:=v||jsonb_build_object(k,(r->>k)::jsonb);\r\n    else v:=v||jsonb_build_object(k,r->k);end if;\r\n   end loop;\r\n   if public.tenh_export_redact(v) is distinct from v then raise exception 'Security credentials cannot be imported.';end if;\r\n   execute format('select to_jsonb(jsonb_populate_record(null::public.%I,$1))',relation) into typed using v;\r\n   -- Do not introduce nulls for omitted fields or lose empty strings.\r\n   select coalesce(jsonb_object_agg(key,value),'{}') into typed from jsonb_each(typed) where v ? key;\r\n   output:=jsonb_set(output,array[t],(output->t)||jsonb_build_array(typed));\r\n  end loop;\r\n end loop;\r\n return output;\r\nend;$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_receive_all_online_orders(uuid)",
+   "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_receive_all_online_orders(p_business uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select public.tenh_user_permission_allowed(p_business,auth.uid(),'orders.view') and coalesce((select receive_all_branches from public.online_order_preferences where business_id=p_business and user_id=auth.uid()),false)\n$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_request_branch(uuid)",
+   "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_request_branch(p_business uuid)\n RETURNS uuid\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nDECLARE\n  h jsonb:=coalesce(nullif(current_setting('request.headers',true),''),'{}')::jsonb;\n  requested uuid;\n  membership_role text;\n  assigned uuid;\n  header_business uuid;\nBEGIN\n  IF auth.uid() IS NULL AND coalesce(auth.role(),'')='service_role'\n     AND nullif(current_setting('tenh.online_branch',true),'') IS NOT NULL THEN\n    RETURN current_setting('tenh.online_branch')::uuid;\n  END IF;\n\n  IF auth.uid() IS NULL THEN\n    RAISE EXCEPTION 'Sign in again.' USING ERRCODE='42501';\n  END IF;\n\n  SELECT m.role::text,m.default_location_id\n    INTO membership_role,assigned\n  FROM public.business_members m\n  WHERE m.business_id=p_business\n    AND m.user_id=auth.uid()\n    AND m.is_active=true\n    AND coalesce(m.team_password_required,false)=false\n  LIMIT 1;\n\n  IF membership_role IS NULL THEN\n    RAISE EXCEPTION 'Business access is unavailable.' USING ERRCODE='42501';\n  END IF;\n\n  IF nullif(h->>'x-tenh-business-id','') IS NOT NULL THEN\n    BEGIN\n      header_business:=(h->>'x-tenh-business-id')::uuid;\n    EXCEPTION WHEN invalid_text_representation THEN\n      RAISE EXCEPTION 'Invalid business context.' USING ERRCODE='42501';\n    END;\n    IF header_business IS DISTINCT FROM p_business THEN\n      RAISE EXCEPTION 'Invalid business context.' USING ERRCODE='42501';\n    END IF;\n  END IF;\n\n  IF nullif(h->>'x-tenh-branch-id','') IS NOT NULL THEN\n    BEGIN\n      requested:=(h->>'x-tenh-branch-id')::uuid;\n    EXCEPTION WHEN invalid_text_representation THEN\n      RAISE EXCEPTION 'Invalid operating branch.' USING ERRCODE='42501';\n    END;\n  END IF;\n\n  -- Set only inside the checked online-order action; never accepted from HTTP headers.\n  IF nullif(current_setting('tenh.online_order_scope',true),'') IS NOT NULL THEN\n    SELECT o.location_id INTO requested FROM public.orders o\n    JOIN public.business_locations l ON l.id=o.location_id AND l.business_id=o.business_id AND l.is_active AND NOT l.plan_disable_pending\n    WHERE o.id=current_setting('tenh.online_order_scope')::uuid AND o.business_id=p_business AND o.order_source='online'\n      AND public.tenh_receive_all_online_orders(p_business)\n      AND public.tenh_user_permission_allowed(p_business,auth.uid(),'orders.view');\n    IF requested IS NULL THEN RAISE EXCEPTION 'Online order access is unavailable.' USING ERRCODE='42501'; END IF;\n    RETURN requested;\n  END IF;\n\n  IF membership_role='owner' THEN\n    IF requested IS NULL THEN RETURN NULL; END IF;\n    IF NOT EXISTS(\n      SELECT 1 FROM public.business_locations l\n      WHERE l.id=requested AND l.business_id=p_business AND l.is_active=true\n    ) THEN\n      RAISE EXCEPTION 'Invalid operating branch.' USING ERRCODE='42501';\n    END IF;\n    RETURN requested;\n  END IF;\n\n  IF assigned IS NULL OR NOT EXISTS(\n    SELECT 1 FROM public.business_locations l\n    WHERE l.id=assigned AND l.business_id=p_business AND l.is_active=true\n  ) THEN\n    RAISE EXCEPTION 'Your assigned branch is unavailable. Ask the Owner to assign an active branch.' USING ERRCODE='42501';\n  END IF;\n\n  IF requested IS NOT NULL AND requested IS DISTINCT FROM assigned THEN\n    RAISE EXCEPTION 'This branch is not assigned to your account.' USING ERRCODE='42501';\n  END IF;\n  RETURN assigned;\nEND;\n$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_subscription_is_expired_now(uuid)",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_subscription_is_expired_now(p_business_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\n  select coalesce(\r\n    (\r\n      select\r\n        b.subscription_status = 'expired'\r\n        or (\r\n          case\r\n            when b.subscription_status = 'trialing'\r\n              then coalesce(b.trial_expires_at, b.subscription_expires_at)\r\n            else b.subscription_expires_at\r\n          end\r\n        ) is not null\r\n        and (\r\n          case\r\n            when b.subscription_status = 'trialing'\r\n              then coalesce(b.trial_expires_at, b.subscription_expires_at)\r\n            else b.subscription_expires_at\r\n          end\r\n        ) <= now()\r\n      from public.businesses b\r\n      where b.id = p_business_id\r\n    ),\r\n    true\r\n  );\r\n$function$\n"
+  },
+  {
+   "schema": "public",
+   "signature": "tenh_user_permission_allowed(uuid,uuid,text)",
+   "acl": "{postgres=X/postgres,service_role=X/postgres}",
+   "definition": "CREATE OR REPLACE FUNCTION public.tenh_user_permission_allowed(p_business uuid, p_user uuid, p_permission text)\n RETURNS boolean\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare r text; member uuid; override_value boolean;\r\nbegin\r\n select m.role::text,m.id into r,member from public.business_members m\r\n where m.business_id=p_business and m.user_id=p_user and m.is_active and not coalesce(m.team_password_required,false);\r\n if r is null then return false; end if;\r\n if r='owner' then return true; end if;\r\n select enabled into override_value from public.business_member_permissions where member_id=member and permission=p_permission;\r\n if found then return override_value; end if;\r\n if r in ('manager','staff','cashier') then\r\n  select enabled into override_value from public.branch_role_permissions where business_id=p_business and location_id=(select default_location_id from public.business_members where id=member) and role=r and permission=p_permission;\r\n  if found then return override_value; end if;\r\n end if;\r\n return public.tenh_default_role_permission(r,p_permission);\r\nend; $function$\n"
+  }
+ ],
+ "enums": [],
+ "relations": [
+  {
+   "name": "branch_customer_settings",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "email_enabled",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "birthday_enabled",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "location_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "gender_enabled",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "branch_customer_settings_location_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (location_id) REFERENCES business_locations(id) ON DELETE CASCADE",
+     "ref": "business_locations"
+    },
+    {
+     "name": "branch_customer_settings_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (business_id, location_id)",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "branch_read",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_branch_setting_visible(business_id, location_id)",
+     "check": null
+    },
+    {
+     "name": "branch_write",
+     "cmd": "*",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(tenh_branch_setting_visible(business_id, location_id) AND tenh_current_user_permission_allowed(business_id, 'business.update'::text))",
+     "check": "(tenh_branch_setting_visible(business_id, location_id) AND tenh_current_user_permission_allowed(business_id, 'business.update'::text))"
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "branch_pos_settings",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "location_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "currency",
+     "type": "text",
+     "notnull": true,
+     "default": "'USD'::text",
+     "generated": ""
+    },
+    {
+     "name": "currency_format",
+     "type": "jsonb",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "pos_tax_rate",
+     "type": "numeric",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "pos_point_value",
+     "type": "numeric",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "pos_dual_currency_enabled",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "pos_usd_khr_rate",
+     "type": "numeric",
+     "notnull": true,
+     "default": "4000",
+     "generated": ""
+    },
+    {
+     "name": "loyalty_enabled",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "loyalty_spend_per_point",
+     "type": "numeric",
+     "notnull": true,
+     "default": "1",
+     "generated": ""
+    },
+    {
+     "name": "loyalty_minimum_order",
+     "type": "numeric",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "enable_coupons",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "require_open_register",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "split_payment_enabled",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "customer_credit_enabled",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "branch_pos_settings_business_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE",
+     "ref": "businesses"
+    },
+    {
+     "name": "branch_pos_settings_location_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (location_id) REFERENCES business_locations(id) ON DELETE CASCADE",
+     "ref": "business_locations"
+    },
+    {
+     "name": "branch_pos_settings_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (business_id, location_id)",
+     "ref": "-"
+    },
+    {
+     "name": "branch_pos_settings_pos_point_value_check",
+     "type": "c",
+     "definition": "CHECK ((pos_point_value >= (0)::numeric))",
+     "ref": "-"
+    },
+    {
+     "name": "branch_pos_settings_pos_tax_rate_check",
+     "type": "c",
+     "definition": "CHECK (((pos_tax_rate >= (0)::numeric) AND (pos_tax_rate <= (100)::numeric)))",
+     "ref": "-"
+    },
+    {
+     "name": "branch_pos_settings_pos_usd_khr_rate_check",
+     "type": "c",
+     "definition": "CHECK (((pos_usd_khr_rate >= (1)::numeric) AND (pos_usd_khr_rate <= (1000000)::numeric)))",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "branch_read",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_branch_setting_visible(business_id, location_id)",
+     "check": null
+    },
+    {
+     "name": "branch_write",
+     "cmd": "*",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(tenh_branch_setting_visible(business_id, location_id) AND tenh_current_user_permission_allowed(business_id, 'business.update'::text))",
+     "check": "(tenh_branch_setting_visible(business_id, location_id) AND tenh_current_user_permission_allowed(business_id, 'business.update'::text))"
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "branch_product_details",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": true,
+     "default": "gen_random_uuid()",
+     "generated": ""
+    },
+    {
+     "name": "owner_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "category_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "sku",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "description",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "image_url",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "cost_price",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "selling_price",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "stock_quantity",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "low_stock_quantity",
+     "type": "integer",
+     "notnull": true,
+     "default": "5",
+     "generated": ""
+    },
+    {
+     "name": "is_active",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "size",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "color",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "product_type",
+     "type": "text",
+     "notnull": true,
+     "default": "'standard'::text",
+     "generated": ""
+    },
+    {
+     "name": "is_online",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "online_sort_order",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "variant_group_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "barcode",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "style_name",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "brand_name",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "low_stock_threshold",
+     "type": "integer",
+     "notnull": true,
+     "default": "5",
+     "generated": ""
+    },
+    {
+     "name": "variant_image_url",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "bundle_stock_mode",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "is_pos",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "location_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "branch_archived",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "image_urls",
+     "type": "text[]",
+     "notnull": true,
+     "default": "'{}'::text[]",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "branch_product_details_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (id) REFERENCES products(id) ON DELETE CASCADE",
+     "ref": "products"
+    },
+    {
+     "name": "branch_product_details_location_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (location_id) REFERENCES business_locations(id) ON DELETE CASCADE",
+     "ref": "business_locations"
+    },
+    {
+     "name": "branch_product_details_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (location_id, id)",
+     "ref": "-"
+    },
+    {
+     "name": "branch_product_gallery_max_eight",
+     "type": "c",
+     "definition": "CHECK ((cardinality(image_urls) <= 8))",
+     "ref": "-"
+    },
+    {
+     "name": "products_bundle_stock_mode_check",
+     "type": "c",
+     "definition": "CHECK ((bundle_stock_mode = 'packed'::text))",
+     "ref": "-"
+    },
+    {
+     "name": "products_cost_price_check",
+     "type": "c",
+     "definition": "CHECK ((cost_price >= (0)::numeric))",
+     "ref": "-"
+    },
+    {
+     "name": "products_low_stock_quantity_check",
+     "type": "c",
+     "definition": "CHECK ((low_stock_quantity >= 0))",
+     "ref": "-"
+    },
+    {
+     "name": "products_product_type_check",
+     "type": "c",
+     "definition": "CHECK ((product_type = ANY (ARRAY['standard'::text, 'variant'::text, 'configurable'::text, 'bundle'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "products_selling_price_check",
+     "type": "c",
+     "definition": "CHECK ((selling_price >= (0)::numeric))",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "branch_product_read",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_branch_setting_visible(business_id, location_id)",
+     "check": null
+    }
+   ],
+   "grants": [
+    "anon:SELECT",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:SELECT",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "branch_products",
+   "kind": "v",
+   "rls": false,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "owner_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "category_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "sku",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "description",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "image_url",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "cost_price",
+     "type": "numeric(12,2)",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "selling_price",
+     "type": "numeric(12,2)",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "stock_quantity",
+     "type": "integer",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "low_stock_quantity",
+     "type": "integer",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "is_active",
+     "type": "boolean",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "size",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "color",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "product_type",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "is_online",
+     "type": "boolean",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "online_sort_order",
+     "type": "integer",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "variant_group_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "barcode",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "style_name",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "brand_name",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "low_stock_threshold",
+     "type": "integer",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "variant_image_url",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "bundle_stock_mode",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "is_pos",
+     "type": "boolean",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "image_urls",
+     "type": "text[]",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    }
+   ],
+   "constraints": null,
+   "view_definition": " SELECT d.id,\n    d.owner_id,\n    d.category_id,\n    d.name,\n    d.sku,\n    d.description,\n    d.image_url,\n    d.cost_price,\n    d.selling_price,\n    s.quantity AS stock_quantity,\n    d.low_stock_quantity,\n    d.is_active,\n    d.created_at,\n    d.updated_at,\n    d.size,\n    d.color,\n    d.business_id,\n    d.product_type,\n    d.is_online,\n    d.online_sort_order,\n    d.variant_group_id,\n    d.barcode,\n    d.style_name,\n    d.brand_name,\n    d.low_stock_threshold,\n    d.variant_image_url,\n    d.bundle_stock_mode,\n    d.is_pos,\n    d.image_urls\n   FROM (branch_product_details d\n     JOIN product_location_stock s ON (((s.product_id = d.id) AND (s.business_id = d.business_id) AND (s.location_id = d.location_id))))\n  WHERE ((NOT d.branch_archived) AND tenh_branch_setting_visible(d.business_id, d.location_id));",
+   "policies": null,
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "branch_receipt_settings",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "paper_size",
+     "type": "text",
+     "notnull": true,
+     "default": "'80mm'::text",
+     "generated": ""
+    },
+    {
+     "name": "header_text",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "footer_text",
+     "type": "text",
+     "notnull": false,
+     "default": "'Thank you for your purchase!'::text",
+     "generated": ""
+    },
+    {
+     "name": "logo_url",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "show_logo",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_phone",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_address",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_cashier",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_customer",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_discount",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_payment",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_loyalty",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_store_qr",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "store_qr_label",
+     "type": "text",
+     "notnull": false,
+     "default": "'Order online'::text",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "receipt_template",
+     "type": "text",
+     "notnull": true,
+     "default": "'classic'::text",
+     "generated": ""
+    },
+    {
+     "name": "return_policy",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "website_url",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "show_order_number",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_fulfillment",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_notes",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "show_invoice_barcode",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "font_size",
+     "type": "text",
+     "notnull": true,
+     "default": "'medium'::text",
+     "generated": ""
+    },
+    {
+     "name": "density",
+     "type": "text",
+     "notnull": true,
+     "default": "'comfortable'::text",
+     "generated": ""
+    },
+    {
+     "name": "receipt_alignment",
+     "type": "text",
+     "notnull": true,
+     "default": "'center'::text",
+     "generated": ""
+    },
+    {
+     "name": "receipt_copies",
+     "type": "integer",
+     "notnull": true,
+     "default": "1",
+     "generated": ""
+    },
+    {
+     "name": "shipping_label_size",
+     "type": "text",
+     "notnull": true,
+     "default": "'100x150'::text",
+     "generated": ""
+    },
+    {
+     "name": "shipping_show_sender",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "shipping_show_phone",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "shipping_show_order_number",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "shipping_show_cod",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "shipping_show_item_count",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "shipping_show_barcode",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "barcode_label_size",
+     "type": "text",
+     "notnull": true,
+     "default": "'50x30'::text",
+     "generated": ""
+    },
+    {
+     "name": "barcode_show_name",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "barcode_show_price",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "barcode_show_sku",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "barcode_show_variant",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "barcode_template",
+     "type": "text",
+     "notnull": true,
+     "default": "'product'::text",
+     "generated": ""
+    },
+    {
+     "name": "barcode_show_barcode",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "barcode_show_image",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "barcode_show_store_name",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "barcode_show_custom_text",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "barcode_custom_text",
+     "type": "text",
+     "notnull": true,
+     "default": "''::text",
+     "generated": ""
+    },
+    {
+     "name": "receipt_logo_url",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "receipt_qr_url",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "show_receipt_qr",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "location_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "show_business_name",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "receipt_wifi_password",
+     "type": "text",
+     "notnull": true,
+     "default": "''::text",
+     "generated": ""
+    },
+    {
+     "name": "show_receipt_wifi",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "branch_receipt_settings_location_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (location_id) REFERENCES business_locations(id) ON DELETE CASCADE",
+     "ref": "business_locations"
+    },
+    {
+     "name": "branch_receipt_settings_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (business_id, location_id)",
+     "ref": "-"
+    },
+    {
+     "name": "business_receipt_settings_alignment_check",
+     "type": "c",
+     "definition": "CHECK ((receipt_alignment = ANY (ARRAY['left'::text, 'center'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "business_receipt_settings_barcode_template_check",
+     "type": "c",
+     "definition": "CHECK ((barcode_template = ANY (ARRAY['product'::text, 'price'::text, 'shelf'::text, 'compact'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "business_receipt_settings_copies_check",
+     "type": "c",
+     "definition": "CHECK (((receipt_copies >= 1) AND (receipt_copies <= 5)))",
+     "ref": "-"
+    },
+    {
+     "name": "business_receipt_settings_density_check",
+     "type": "c",
+     "definition": "CHECK ((density = ANY (ARRAY['compact'::text, 'comfortable'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "business_receipt_settings_font_check",
+     "type": "c",
+     "definition": "CHECK ((font_size = ANY (ARRAY['small'::text, 'medium'::text, 'large'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "printer_barcode_size_check",
+     "type": "c",
+     "definition": "CHECK ((barcode_label_size = ANY (ARRAY['40x20'::text, '40x30'::text, '50x30'::text, '60x40'::text, '80x50'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "printer_receipt_paper_check",
+     "type": "c",
+     "definition": "CHECK ((paper_size = ANY (ARRAY['58mm'::text, '76mm'::text, '80mm'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "printer_receipt_template_check",
+     "type": "c",
+     "definition": "CHECK ((receipt_template = 'classic'::text))",
+     "ref": "-"
+    },
+    {
+     "name": "printer_shipping_size_check",
+     "type": "c",
+     "definition": "CHECK ((shipping_label_size = ANY (ARRAY['80x50'::text, '100x100'::text, '100x150'::text])))",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "branch_read",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_branch_setting_visible(business_id, location_id)",
+     "check": null
+    },
+    {
+     "name": "branch_write",
+     "cmd": "*",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(tenh_branch_setting_visible(business_id, location_id) AND tenh_current_user_permission_allowed(business_id, 'business.update'::text))",
+     "check": "(tenh_branch_setting_visible(business_id, location_id) AND tenh_current_user_permission_allowed(business_id, 'business.update'::text))"
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "branch_role_permissions",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "role",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "permission",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "enabled",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "updated_by",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "location_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "branch_role_permissions_location_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (location_id) REFERENCES business_locations(id)",
+     "ref": "business_locations"
+    },
+    {
+     "name": "branch_role_permissions_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (business_id, location_id, role, permission)",
+     "ref": "-"
+    },
+    {
+     "name": "business_role_permissions_role_check",
+     "type": "c",
+     "definition": "CHECK ((role = ANY (ARRAY['manager'::text, 'staff'::text, 'cashier'::text])))",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "branch_role_read",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_branch_setting_visible(business_id, location_id)",
+     "check": null
+    },
+    {
+     "name": "branch_role_write",
+     "cmd": "*",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(tenh_branch_setting_visible(business_id, location_id) AND (EXISTS ( SELECT 1\n   FROM business_members\n  WHERE ((business_members.business_id = branch_role_permissions.business_id) AND (business_members.user_id = auth.uid()) AND business_members.is_active AND (business_members.role = 'owner'::text)))))",
+     "check": "(tenh_branch_setting_visible(business_id, location_id) AND (EXISTS ( SELECT 1\n   FROM business_members\n  WHERE ((business_members.business_id = branch_role_permissions.business_id) AND (business_members.user_id = auth.uid()) AND business_members.is_active AND (business_members.role = 'owner'::text)))))"
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "business_import_requests",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "request_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "user_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "payload_hash",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "result",
+     "type": "jsonb",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "business_import_requests_business_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE",
+     "ref": "businesses"
+    },
+    {
+     "name": "business_import_requests_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (business_id, request_id)",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": null,
+   "grants": [
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "business_locations",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": true,
+     "default": "gen_random_uuid()",
+     "generated": ""
+    },
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "code",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "address",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "phone",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "is_default",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "is_active",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "city",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "state_region",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "timezone",
+     "type": "text",
+     "notnull": true,
+     "default": "'Asia/Phnom_Penh'::text",
+     "generated": ""
+    },
+    {
+     "name": "opening_hours",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "notes",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "manager_user_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "plan_disable_pending",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "plan_disabled_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "business_locations_business_id_code_key",
+     "type": "u",
+     "definition": "UNIQUE (business_id, code)",
+     "ref": "-"
+    },
+    {
+     "name": "business_locations_business_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE",
+     "ref": "businesses"
+    },
+    {
+     "name": "business_locations_manager_user_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (manager_user_id) REFERENCES auth.users(id) ON DELETE SET NULL",
+     "ref": "auth.users"
+    },
+    {
+     "name": "business_locations_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (id)",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "business_locations_manager_write",
+     "cmd": "*",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(EXISTS ( SELECT 1\n   FROM business_members bm\n  WHERE ((bm.business_id = business_locations.business_id) AND (bm.user_id = auth.uid()) AND (bm.is_active = true) AND (bm.role = ANY (ARRAY['owner'::text, 'admin'::text])))))",
+     "check": "(EXISTS ( SELECT 1\n   FROM business_members bm\n  WHERE ((bm.business_id = business_locations.business_id) AND (bm.user_id = auth.uid()) AND (bm.is_active = true) AND (bm.role = ANY (ARRAY['owner'::text, 'admin'::text])))))"
+    },
+    {
+     "name": "business_locations_member_select",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(EXISTS ( SELECT 1\n   FROM business_members bm\n  WHERE ((bm.business_id = business_locations.business_id) AND (bm.user_id = auth.uid()) AND (bm.is_active = true))))",
+     "check": null
+    },
+    {
+     "name": "tenh_assigned_branch_locations",
+     "cmd": "*",
+     "permissive": false,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_branch_visible(business_id, id)",
+     "check": "tenh_branch_visible(business_id, id)"
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "business_member_permissions",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "member_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "permission",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "enabled",
+     "type": "boolean",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "business_member_permissions_member_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (member_id) REFERENCES business_members(id) ON DELETE CASCADE",
+     "ref": "business_members"
+    },
+    {
+     "name": "business_member_permissions_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (member_id, permission)",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": null,
+   "grants": [
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "business_members",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": true,
+     "default": "gen_random_uuid()",
+     "generated": ""
+    },
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "user_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "role",
+     "type": "text",
+     "notnull": true,
+     "default": "'staff'::text",
+     "generated": ""
+    },
+    {
+     "name": "is_active",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "disabled_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "disabled_reason",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "default_location_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "team_name",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "team_phone",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "team_revision",
+     "type": "integer",
+     "notnull": true,
+     "default": "1",
+     "generated": ""
+    },
+    {
+     "name": "team_password_required",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "team_initial_password_hash",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "team_email_attempted_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "team_owner_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "team_created_by",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "business_members_business_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE",
+     "ref": "businesses"
+    },
+    {
+     "name": "business_members_business_id_user_id_key",
+     "type": "u",
+     "definition": "UNIQUE (business_id, user_id)",
+     "ref": "-"
+    },
+    {
+     "name": "business_members_default_location_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (default_location_id) REFERENCES business_locations(id) ON DELETE SET NULL",
+     "ref": "business_locations"
+    },
+    {
+     "name": "business_members_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (id)",
+     "ref": "-"
+    },
+    {
+     "name": "business_members_role_check",
+     "type": "c",
+     "definition": "CHECK (((role = ANY (ARRAY['owner'::text, 'admin'::text, 'manager'::text, 'cashier'::text])) OR (role = 'staff'::text)))",
+     "ref": "-"
+    },
+    {
+     "name": "business_members_user_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE",
+     "ref": "auth.users"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "Users can view their own business memberships",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(user_id = auth.uid())",
+     "check": null
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "business_role_permissions",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "role",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "permission",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "enabled",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "updated_by",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "business_role_permissions_business_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE",
+     "ref": "businesses"
+    },
+    {
+     "name": "business_role_permissions_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (business_id, role, permission)",
+     "ref": "-"
+    },
+    {
+     "name": "business_role_permissions_role_check",
+     "type": "c",
+     "definition": "CHECK ((role = ANY (ARRAY['manager'::text, 'staff'::text, 'cashier'::text])))",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": null,
+   "grants": [
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "businesses",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": true,
+     "default": "gen_random_uuid()",
+     "generated": ""
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "slug",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "owner_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "phone",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "email",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "address",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "logo_url",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "product_mode",
+     "type": "text",
+     "notnull": true,
+     "default": "'standard'::text",
+     "generated": ""
+    },
+    {
+     "name": "is_active",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "disabled_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "scheduled_deletion_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "max_staff",
+     "type": "integer",
+     "notnull": true,
+     "default": "3",
+     "generated": ""
+    },
+    {
+     "name": "subscription_started_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "subscription_expires_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "subscription_months",
+     "type": "integer",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "disabled_reason",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "business_code",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "last_extension_months",
+     "type": "integer",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "subscription_logs",
+     "type": "jsonb",
+     "notnull": true,
+     "default": "'[]'::jsonb",
+     "generated": ""
+    },
+    {
+     "name": "archived_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "released_slug",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "subscription_status",
+     "type": "text",
+     "notnull": true,
+     "default": "'active'::text",
+     "generated": ""
+    },
+    {
+     "name": "trial_started_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "trial_expires_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "expired_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "deletion_scheduled_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "trial_block_reason",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "trial_signup_fingerprint_hash",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "subscription_plan_key",
+     "type": "text",
+     "notnull": true,
+     "default": "'legacy'::text",
+     "generated": ""
+    },
+    {
+     "name": "subscription_user_limit",
+     "type": "integer",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "subscription_team_enabled",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "free_url_changes_per_month",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "free_business_mode_changes_per_month",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "subscription_monthly_price",
+     "type": "numeric(12,2)",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "subscription_discount_percent",
+     "type": "numeric(5,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "subscription_cycle_value",
+     "type": "numeric(12,2)",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "subscription_branch_limit",
+     "type": "integer",
+     "notnull": true,
+     "default": "1",
+     "generated": ""
+    },
+    {
+     "name": "subscription_base_plan_key",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "businesses_business_code_key",
+     "type": "u",
+     "definition": "UNIQUE (business_code)",
+     "ref": "-"
+    },
+    {
+     "name": "businesses_disabled_reason_check",
+     "type": "c",
+     "definition": "CHECK (((disabled_reason IS NULL) OR (disabled_reason = ANY (ARRAY['subscription_expired'::text, 'manually_suspended'::text]))))",
+     "ref": "-"
+    },
+    {
+     "name": "businesses_max_staff_check",
+     "type": "c",
+     "definition": "CHECK (((max_staff IS NULL) OR ((max_staff >= 0) AND (max_staff <= 499)))) NOT VALID",
+     "ref": "-"
+    },
+    {
+     "name": "businesses_owner_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (owner_id) REFERENCES auth.users(id) ON DELETE RESTRICT",
+     "ref": "auth.users"
+    },
+    {
+     "name": "businesses_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (id)",
+     "ref": "-"
+    },
+    {
+     "name": "businesses_product_mode_check",
+     "type": "c",
+     "definition": "CHECK ((product_mode = ANY (ARRAY['standard'::text, 'variant'::text, 'configurable'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "businesses_subscription_branch_limit_check",
+     "type": "c",
+     "definition": "CHECK (((subscription_branch_limit >= 1) AND (subscription_branch_limit <= 100)))",
+     "ref": "-"
+    },
+    {
+     "name": "businesses_subscription_months_check",
+     "type": "c",
+     "definition": "CHECK (((subscription_months IS NULL) OR (subscription_months = ANY (ARRAY[1, 3, 5, 12]))))",
+     "ref": "-"
+    },
+    {
+     "name": "businesses_subscription_plan_key_check",
+     "type": "c",
+     "definition": "CHECK ((subscription_plan_key = ANY (ARRAY['legacy'::text, 'trial'::text, 'solo'::text, 'small_team'::text, 'growth'::text, 'custom'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "businesses_subscription_status_check",
+     "type": "c",
+     "definition": "CHECK ((subscription_status = ANY (ARRAY['trial_pending'::text, 'trialing'::text, 'active'::text, 'expired'::text, 'trial_blocked'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "businesses_subscription_user_limit_check",
+     "type": "c",
+     "definition": "CHECK (((subscription_user_limit >= 1) AND (subscription_user_limit <= 500))) NOT VALID",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "Members can view their businesses",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(EXISTS ( SELECT 1\n   FROM business_members bm\n  WHERE ((bm.business_id = businesses.id) AND (bm.user_id = auth.uid()) AND (bm.is_active = true))))",
+     "check": null
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "categories",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": true,
+     "default": "gen_random_uuid()",
+     "generated": ""
+    },
+    {
+     "name": "owner_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "description",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "is_online",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "online_sort_order",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "branch_ids",
+     "type": "uuid[]",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "categories_business_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE",
+     "ref": "businesses"
+    },
+    {
+     "name": "categories_business_name_unique",
+     "type": "u",
+     "definition": "UNIQUE (business_id, name)",
+     "ref": "-"
+    },
+    {
+     "name": "categories_owner_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (owner_id) REFERENCES auth.users(id) ON DELETE CASCADE",
+     "ref": "auth.users"
+    },
+    {
+     "name": "categories_owner_name_unique",
+     "type": "u",
+     "definition": "UNIQUE (owner_id, name)",
+     "ref": "-"
+    },
+    {
+     "name": "categories_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (id)",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "categories_tenant_delete",
+     "cmd": "d",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_can_manage_products(business_id)",
+     "check": null
+    },
+    {
+     "name": "categories_tenant_insert",
+     "cmd": "a",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": null,
+     "check": "tenh_can_manage_products(business_id)"
+    },
+    {
+     "name": "categories_tenant_select",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_has_business_access(business_id)",
+     "check": null
+    },
+    {
+     "name": "categories_tenant_update",
+     "cmd": "w",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_can_manage_products(business_id)",
+     "check": "tenh_can_manage_products(business_id)"
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "data_transfer_jobs",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": true,
+     "default": "gen_random_uuid()",
+     "generated": ""
+    },
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "user_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "direction",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "entity",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "format",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "mode",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "filename",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "row_count",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "summary",
+     "type": "jsonb",
+     "notnull": true,
+     "default": "'{}'::jsonb",
+     "generated": ""
+    },
+    {
+     "name": "error_message",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "data_transfer_jobs_business_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE",
+     "ref": "businesses"
+    },
+    {
+     "name": "data_transfer_jobs_direction_check",
+     "type": "c",
+     "definition": "CHECK ((direction = ANY (ARRAY['export'::text, 'import'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "data_transfer_jobs_format_check",
+     "type": "c",
+     "definition": "CHECK ((format = ANY (ARRAY['csv'::text, 'json'::text, 'xlsx'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "data_transfer_jobs_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (id)",
+     "ref": "-"
+    },
+    {
+     "name": "data_transfer_jobs_row_count_check",
+     "type": "c",
+     "definition": "CHECK ((row_count >= 0))",
+     "ref": "-"
+    },
+    {
+     "name": "data_transfer_jobs_status_check",
+     "type": "c",
+     "definition": "CHECK ((status = ANY (ARRAY['completed'::text, 'failed'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "data_transfer_jobs_user_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE RESTRICT",
+     "ref": "auth.users"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "data_transfer_jobs_owner_insert",
+     "cmd": "a",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": null,
+     "check": "((user_id = auth.uid()) AND (EXISTS ( SELECT 1\n   FROM business_members bm\n  WHERE ((bm.business_id = data_transfer_jobs.business_id) AND (bm.user_id = auth.uid()) AND (bm.is_active = true) AND (bm.role = 'owner'::text)))))"
+    },
+    {
+     "name": "data_transfer_jobs_owner_select",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(EXISTS ( SELECT 1\n   FROM business_members bm\n  WHERE ((bm.business_id = data_transfer_jobs.business_id) AND (bm.user_id = auth.uid()) AND (bm.is_active = true) AND (bm.role = 'owner'::text))))",
+     "check": null
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "online_order_preferences",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "user_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "receive_all_branches",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "online_order_preferences_business_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE",
+     "ref": "businesses"
+    },
+    {
+     "name": "online_order_preferences_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (business_id, user_id)",
+     "ref": "-"
+    },
+    {
+     "name": "online_order_preferences_user_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE",
+     "ref": "auth.users"
+    }
+   ],
+   "view_definition": null,
+   "policies": null,
+   "grants": [
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "orders",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": true,
+     "default": "gen_random_uuid()",
+     "generated": ""
+    },
+    {
+     "name": "owner_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "order_number",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "subtotal",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "discount",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "total",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "payment_method",
+     "type": "text",
+     "notnull": true,
+     "default": "'cash'::text",
+     "generated": ""
+    },
+    {
+     "name": "amount_paid",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "change_amount",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "status",
+     "type": "text",
+     "notnull": true,
+     "default": "'new'::text",
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "customer_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "remaining_balance",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "delivery_fee",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "order_source",
+     "type": "text",
+     "notnull": true,
+     "default": "'pos'::text",
+     "generated": ""
+    },
+    {
+     "name": "fulfillment_type",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "online_status",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "guest_name",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "guest_phone",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "guest_address",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "customer_note",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "table_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "table_name",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "public_order_token",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "payment_status",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "payment_reference",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "delivery_zone_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "delivery_zone_name",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "requested_for",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "coupon_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "coupon_code",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "coupon_discount",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "loyalty_points_earned",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "location_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "register_shift_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "credit_amount",
+     "type": "numeric(14,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "archived_at",
+     "type": "timestamp with time zone",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "archived_by",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "pos_request_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "pos_request_hash",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "pos_checkout",
+     "type": "jsonb",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "staff_user_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "staff_name",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "order_code",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "orders_amount_paid_check",
+     "type": "c",
+     "definition": "CHECK ((amount_paid >= (0)::numeric))",
+     "ref": "-"
+    },
+    {
+     "name": "orders_business_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE",
+     "ref": "businesses"
+    },
+    {
+     "name": "orders_change_amount_check",
+     "type": "c",
+     "definition": "CHECK ((change_amount >= (0)::numeric))",
+     "ref": "-"
+    },
+    {
+     "name": "orders_coupon_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (coupon_id) REFERENCES business_coupons(id) ON DELETE SET NULL",
+     "ref": "business_coupons"
+    },
+    {
+     "name": "orders_customer_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL",
+     "ref": "customers"
+    },
+    {
+     "name": "orders_delivery_zone_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (delivery_zone_id) REFERENCES business_delivery_zones(id) ON DELETE SET NULL",
+     "ref": "business_delivery_zones"
+    },
+    {
+     "name": "orders_discount_check",
+     "type": "c",
+     "definition": "CHECK ((discount >= (0)::numeric))",
+     "ref": "-"
+    },
+    {
+     "name": "orders_location_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (location_id) REFERENCES business_locations(id) ON DELETE SET NULL",
+     "ref": "business_locations"
+    },
+    {
+     "name": "orders_order_code_format",
+     "type": "c",
+     "definition": "CHECK ((order_code ~ '^[1-9][0-9]{11}$'::text))",
+     "ref": "-"
+    },
+    {
+     "name": "orders_order_number_key",
+     "type": "u",
+     "definition": "UNIQUE (order_number)",
+     "ref": "-"
+    },
+    {
+     "name": "orders_owner_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (owner_id) REFERENCES auth.users(id) ON DELETE CASCADE",
+     "ref": "auth.users"
+    },
+    {
+     "name": "orders_payment_method_check",
+     "type": "c",
+     "definition": "CHECK ((payment_method = ANY (ARRAY['cod'::text, 'deposit'::text, 'bank_transfer'::text, 'other'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "orders_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (id)",
+     "ref": "-"
+    },
+    {
+     "name": "orders_status_check",
+     "type": "c",
+     "definition": "CHECK ((status = ANY (ARRAY['new'::text, 'pending'::text, 'in_progress'::text, 'completed'::text, 'cancelled'::text, 'refunded'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "orders_subtotal_check",
+     "type": "c",
+     "definition": "CHECK ((subtotal >= (0)::numeric))",
+     "ref": "-"
+    },
+    {
+     "name": "orders_table_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (table_id) REFERENCES business_tables(id) ON DELETE SET NULL",
+     "ref": "business_tables"
+    },
+    {
+     "name": "orders_total_check",
+     "type": "c",
+     "definition": "CHECK ((total >= (0)::numeric))",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "Business members can view orders",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "is_active_business_member(business_id)",
+     "check": null
+    },
+    {
+     "name": "Users can view their orders",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "public"
+     ],
+     "using": "(auth.uid() = owner_id)",
+     "check": null
+    },
+    {
+     "name": "tenh_operating_branch",
+     "cmd": "*",
+     "permissive": false,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_branch_visible(business_id, location_id)",
+     "check": "tenh_branch_visible(business_id, location_id)"
+    }
+   ],
+   "grants": [
+    "anon:SELECT",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:SELECT",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "product_location_stock",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "location_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "product_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "quantity",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "low_stock_threshold",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "product_location_stock_business_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE",
+     "ref": "businesses"
+    },
+    {
+     "name": "product_location_stock_location_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (location_id) REFERENCES business_locations(id) ON DELETE CASCADE",
+     "ref": "business_locations"
+    },
+    {
+     "name": "product_location_stock_low_stock_threshold_check",
+     "type": "c",
+     "definition": "CHECK ((low_stock_threshold >= 0))",
+     "ref": "-"
+    },
+    {
+     "name": "product_location_stock_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (location_id, product_id)",
+     "ref": "-"
+    },
+    {
+     "name": "product_location_stock_product_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE",
+     "ref": "products"
+    },
+    {
+     "name": "product_location_stock_quantity_check",
+     "type": "c",
+     "definition": "CHECK ((quantity >= 0))",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "product_location_stock_member_select",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(EXISTS ( SELECT 1\n   FROM business_members bm\n  WHERE ((bm.business_id = product_location_stock.business_id) AND (bm.user_id = auth.uid()) AND (bm.is_active = true))))",
+     "check": null
+    },
+    {
+     "name": "tenh_assigned_branch_stock",
+     "cmd": "*",
+     "permissive": false,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_branch_visible(business_id, location_id)",
+     "check": "tenh_branch_visible(business_id, location_id)"
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "product_option_groups",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": true,
+     "default": "gen_random_uuid()",
+     "generated": ""
+    },
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "product_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "selection_type",
+     "type": "text",
+     "notnull": true,
+     "default": "'single'::text",
+     "generated": ""
+    },
+    {
+     "name": "is_required",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "min_selections",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "max_selections",
+     "type": "integer",
+     "notnull": true,
+     "default": "1",
+     "generated": ""
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "product_option_groups_business_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE",
+     "ref": "businesses"
+    },
+    {
+     "name": "product_option_groups_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (id)",
+     "ref": "-"
+    },
+    {
+     "name": "product_option_groups_product_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE",
+     "ref": "products"
+    },
+    {
+     "name": "product_option_groups_product_same_business_fk",
+     "type": "f",
+     "definition": "FOREIGN KEY (product_id, business_id) REFERENCES products(id, business_id) NOT VALID",
+     "ref": "products"
+    },
+    {
+     "name": "product_option_groups_selection_count_check",
+     "type": "c",
+     "definition": "CHECK (((min_selections >= 0) AND (max_selections >= 1) AND (min_selections <= max_selections)))",
+     "ref": "-"
+    },
+    {
+     "name": "product_option_groups_selection_type_check",
+     "type": "c",
+     "definition": "CHECK ((selection_type = ANY (ARRAY['single'::text, 'multiple'::text])))",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "product_option_groups_tenant_delete",
+     "cmd": "d",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_can_manage_products(business_id)",
+     "check": null
+    },
+    {
+     "name": "product_option_groups_tenant_insert",
+     "cmd": "a",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": null,
+     "check": "tenh_can_manage_products(business_id)"
+    },
+    {
+     "name": "product_option_groups_tenant_select",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_has_business_access(business_id)",
+     "check": null
+    },
+    {
+     "name": "product_option_groups_tenant_update",
+     "cmd": "w",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_can_manage_products(business_id)",
+     "check": "tenh_can_manage_products(business_id)"
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "product_options",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": true,
+     "default": "gen_random_uuid()",
+     "generated": ""
+    },
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "product_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "group_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "price_adjustment",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "is_default",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "is_active",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "sort_order",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "product_options_business_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE",
+     "ref": "businesses"
+    },
+    {
+     "name": "product_options_group_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (group_id) REFERENCES product_option_groups(id) ON DELETE CASCADE",
+     "ref": "product_option_groups"
+    },
+    {
+     "name": "product_options_group_same_business_fk",
+     "type": "f",
+     "definition": "FOREIGN KEY (group_id, business_id) REFERENCES product_option_groups(id, business_id) NOT VALID",
+     "ref": "product_option_groups"
+    },
+    {
+     "name": "product_options_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (id)",
+     "ref": "-"
+    },
+    {
+     "name": "product_options_price_adjustment_check",
+     "type": "c",
+     "definition": "CHECK ((price_adjustment >= (0)::numeric))",
+     "ref": "-"
+    },
+    {
+     "name": "product_options_product_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE",
+     "ref": "products"
+    },
+    {
+     "name": "product_options_product_same_business_fk",
+     "type": "f",
+     "definition": "FOREIGN KEY (product_id, business_id) REFERENCES products(id, business_id) NOT VALID",
+     "ref": "products"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "product_options_tenant_delete",
+     "cmd": "d",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_can_manage_products(business_id)",
+     "check": null
+    },
+    {
+     "name": "product_options_tenant_insert",
+     "cmd": "a",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": null,
+     "check": "tenh_can_manage_products(business_id)"
+    },
+    {
+     "name": "product_options_tenant_select",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_has_business_access(business_id)",
+     "check": null
+    },
+    {
+     "name": "product_options_tenant_update",
+     "cmd": "w",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_can_manage_products(business_id)",
+     "check": "tenh_can_manage_products(business_id)"
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "product_variants",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": true,
+     "default": "gen_random_uuid()",
+     "generated": ""
+    },
+    {
+     "name": "product_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "size",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "color",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "sku",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "barcode",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "price",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "stock_quantity",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "is_active",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "product_variants_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (id)",
+     "ref": "-"
+    },
+    {
+     "name": "product_variants_price_non_negative",
+     "type": "c",
+     "definition": "CHECK ((price >= (0)::numeric))",
+     "ref": "-"
+    },
+    {
+     "name": "product_variants_product_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE",
+     "ref": "products"
+    },
+    {
+     "name": "product_variants_stock_non_negative",
+     "type": "c",
+     "definition": "CHECK ((stock_quantity >= 0))",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "Authenticated users can delete product variants",
+     "cmd": "d",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "true",
+     "check": null
+    },
+    {
+     "name": "Authenticated users can insert product variants",
+     "cmd": "a",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": null,
+     "check": "true"
+    },
+    {
+     "name": "Authenticated users can update product variants",
+     "cmd": "w",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "true",
+     "check": "true"
+    },
+    {
+     "name": "Authenticated users can view product variants",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "true",
+     "check": null
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "products",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": true,
+     "default": "gen_random_uuid()",
+     "generated": ""
+    },
+    {
+     "name": "owner_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "category_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "sku",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "description",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "image_url",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "cost_price",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "selling_price",
+     "type": "numeric(12,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "stock_quantity",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "low_stock_quantity",
+     "type": "integer",
+     "notnull": true,
+     "default": "5",
+     "generated": ""
+    },
+    {
+     "name": "is_active",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "size",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "color",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "business_id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "product_type",
+     "type": "text",
+     "notnull": true,
+     "default": "'standard'::text",
+     "generated": ""
+    },
+    {
+     "name": "is_online",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "online_sort_order",
+     "type": "integer",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "variant_group_id",
+     "type": "uuid",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "barcode",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "style_name",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "brand_name",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "low_stock_threshold",
+     "type": "integer",
+     "notnull": true,
+     "default": "5",
+     "generated": ""
+    },
+    {
+     "name": "variant_image_url",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "bundle_stock_mode",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "is_pos",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "image_urls",
+     "type": "text[]",
+     "notnull": true,
+     "default": "'{}'::text[]",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "product_gallery_max_eight",
+     "type": "c",
+     "definition": "CHECK ((cardinality(image_urls) <= 8))",
+     "ref": "-"
+    },
+    {
+     "name": "products_bundle_stock_mode_check",
+     "type": "c",
+     "definition": "CHECK ((bundle_stock_mode = 'packed'::text))",
+     "ref": "-"
+    },
+    {
+     "name": "products_business_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE",
+     "ref": "businesses"
+    },
+    {
+     "name": "products_category_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL",
+     "ref": "categories"
+    },
+    {
+     "name": "products_category_same_business_fk",
+     "type": "f",
+     "definition": "FOREIGN KEY (category_id, business_id) REFERENCES categories(id, business_id) NOT VALID",
+     "ref": "categories"
+    },
+    {
+     "name": "products_cost_price_check",
+     "type": "c",
+     "definition": "CHECK ((cost_price >= (0)::numeric))",
+     "ref": "-"
+    },
+    {
+     "name": "products_low_stock_quantity_check",
+     "type": "c",
+     "definition": "CHECK ((low_stock_quantity >= 0))",
+     "ref": "-"
+    },
+    {
+     "name": "products_owner_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (owner_id) REFERENCES auth.users(id) ON DELETE CASCADE",
+     "ref": "auth.users"
+    },
+    {
+     "name": "products_owner_sku_unique",
+     "type": "u",
+     "definition": "UNIQUE (owner_id, sku)",
+     "ref": "-"
+    },
+    {
+     "name": "products_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (id)",
+     "ref": "-"
+    },
+    {
+     "name": "products_product_type_check",
+     "type": "c",
+     "definition": "CHECK ((product_type = ANY (ARRAY['standard'::text, 'variant'::text, 'configurable'::text, 'bundle'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "products_selling_price_check",
+     "type": "c",
+     "definition": "CHECK ((selling_price >= (0)::numeric))",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "products_tenant_delete",
+     "cmd": "d",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_can_manage_products(business_id)",
+     "check": null
+    },
+    {
+     "name": "products_tenant_insert",
+     "cmd": "a",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": null,
+     "check": "tenh_can_manage_products(business_id)"
+    },
+    {
+     "name": "products_tenant_select",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_has_business_access(business_id)",
+     "check": null
+    },
+    {
+     "name": "products_tenant_update",
+     "cmd": "w",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "tenh_can_manage_products(business_id)",
+     "check": "tenh_can_manage_products(business_id)"
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "profiles",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": true,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "full_name",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "role",
+     "type": "text",
+     "notnull": true,
+     "default": "'owner'::text",
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "is_active",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "email",
+     "type": "text",
+     "notnull": false,
+     "default": null,
+     "generated": ""
+    },
+    {
+     "name": "is_super_admin",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "profiles_id_fkey",
+     "type": "f",
+     "definition": "FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE",
+     "ref": "auth.users"
+    },
+    {
+     "name": "profiles_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (id)",
+     "ref": "-"
+    },
+    {
+     "name": "profiles_role_check",
+     "type": "c",
+     "definition": "CHECK (((role = ANY (ARRAY['super_admin'::text, 'owner'::text, 'admin'::text, 'manager'::text, 'cashier'::text])) OR (role = 'staff'::text)))",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "Users can read own profile",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(auth.uid() = id)",
+     "check": null
+    },
+    {
+     "name": "Users can update own profile",
+     "cmd": "w",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "(auth.uid() = id)",
+     "check": "(auth.uid() = id)"
+    },
+    {
+     "name": "Users can update their own profile",
+     "cmd": "w",
+     "permissive": true,
+     "roles": [
+      "public"
+     ],
+     "using": "(auth.uid() = id)",
+     "check": "(auth.uid() = id)"
+    },
+    {
+     "name": "Users can view their own profile",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "public"
+     ],
+     "using": "(auth.uid() = id)",
+     "check": null
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  },
+  {
+   "name": "system_settings",
+   "kind": "r",
+   "rls": true,
+   "columns": [
+    {
+     "name": "id",
+     "type": "uuid",
+     "notnull": true,
+     "default": "gen_random_uuid()",
+     "generated": ""
+    },
+    {
+     "name": "business_name",
+     "type": "text",
+     "notnull": true,
+     "default": "'POS System'::text",
+     "generated": ""
+    },
+    {
+     "name": "business_phone",
+     "type": "text",
+     "notnull": true,
+     "default": "''::text",
+     "generated": ""
+    },
+    {
+     "name": "business_address",
+     "type": "text",
+     "notnull": true,
+     "default": "''::text",
+     "generated": ""
+    },
+    {
+     "name": "currency_code",
+     "type": "text",
+     "notnull": true,
+     "default": "'USD'::text",
+     "generated": ""
+    },
+    {
+     "name": "currency_symbol",
+     "type": "text",
+     "notnull": true,
+     "default": "'$'::text",
+     "generated": ""
+    },
+    {
+     "name": "tax_rate",
+     "type": "numeric(10,2)",
+     "notnull": true,
+     "default": "0",
+     "generated": ""
+    },
+    {
+     "name": "default_low_stock_quantity",
+     "type": "integer",
+     "notnull": true,
+     "default": "5",
+     "generated": ""
+    },
+    {
+     "name": "receipt_footer",
+     "type": "text",
+     "notnull": true,
+     "default": "'Thank you for your purchase!'::text",
+     "generated": ""
+    },
+    {
+     "name": "timezone",
+     "type": "text",
+     "notnull": true,
+     "default": "'Asia/Phnom_Penh'::text",
+     "generated": ""
+    },
+    {
+     "name": "date_format",
+     "type": "text",
+     "notnull": true,
+     "default": "'DD/MM/YYYY'::text",
+     "generated": ""
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp with time zone",
+     "notnull": true,
+     "default": "now()",
+     "generated": ""
+    },
+    {
+     "name": "receipt_header",
+     "type": "text",
+     "notnull": true,
+     "default": "''::text",
+     "generated": ""
+    },
+    {
+     "name": "receipt_paper_size",
+     "type": "text",
+     "notnull": true,
+     "default": "'80mm'::text",
+     "generated": ""
+    },
+    {
+     "name": "show_business_phone",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_business_address",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_cashier_name",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_customer_name",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "show_tax_on_receipt",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "order_prefix",
+     "type": "text",
+     "notnull": true,
+     "default": "'ORD'::text",
+     "generated": ""
+    },
+    {
+     "name": "starting_order_number",
+     "type": "integer",
+     "notnull": true,
+     "default": "1",
+     "generated": ""
+    },
+    {
+     "name": "allow_order_discount",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "require_customer",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "require_payment_before_complete",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "enable_returns",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "return_period_days",
+     "type": "integer",
+     "notnull": true,
+     "default": "7",
+     "generated": ""
+    },
+    {
+     "name": "require_return_reason",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    },
+    {
+     "name": "allow_return_without_receipt",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "default_theme",
+     "type": "text",
+     "notnull": true,
+     "default": "'system'::text",
+     "generated": ""
+    },
+    {
+     "name": "default_language",
+     "type": "text",
+     "notnull": true,
+     "default": "'en'::text",
+     "generated": ""
+    },
+    {
+     "name": "compact_sidebar",
+     "type": "boolean",
+     "notnull": true,
+     "default": "false",
+     "generated": ""
+    },
+    {
+     "name": "show_dashboard_charts",
+     "type": "boolean",
+     "notnull": true,
+     "default": "true",
+     "generated": ""
+    }
+   ],
+   "constraints": [
+    {
+     "name": "system_settings_date_format_check",
+     "type": "c",
+     "definition": "CHECK ((date_format = ANY (ARRAY['DD/MM/YYYY'::text, 'MM/DD/YYYY'::text, 'YYYY-MM-DD'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "system_settings_language_check",
+     "type": "c",
+     "definition": "CHECK ((default_language = ANY (ARRAY['en'::text, 'km'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "system_settings_low_stock_check",
+     "type": "c",
+     "definition": "CHECK ((default_low_stock_quantity >= 0))",
+     "ref": "-"
+    },
+    {
+     "name": "system_settings_order_number_check",
+     "type": "c",
+     "definition": "CHECK ((starting_order_number >= 1))",
+     "ref": "-"
+    },
+    {
+     "name": "system_settings_pkey",
+     "type": "p",
+     "definition": "PRIMARY KEY (id)",
+     "ref": "-"
+    },
+    {
+     "name": "system_settings_receipt_paper_size_check",
+     "type": "c",
+     "definition": "CHECK ((receipt_paper_size = ANY (ARRAY['58mm'::text, '80mm'::text, 'A4'::text])))",
+     "ref": "-"
+    },
+    {
+     "name": "system_settings_return_period_check",
+     "type": "c",
+     "definition": "CHECK ((return_period_days >= 0))",
+     "ref": "-"
+    },
+    {
+     "name": "system_settings_tax_rate_check",
+     "type": "c",
+     "definition": "CHECK (((tax_rate >= (0)::numeric) AND (tax_rate <= (100)::numeric)))",
+     "ref": "-"
+    },
+    {
+     "name": "system_settings_theme_check",
+     "type": "c",
+     "definition": "CHECK ((default_theme = ANY (ARRAY['system'::text, 'light'::text, 'dark'::text])))",
+     "ref": "-"
+    }
+   ],
+   "view_definition": null,
+   "policies": [
+    {
+     "name": "Authenticated users can read system settings",
+     "cmd": "r",
+     "permissive": true,
+     "roles": [
+      "authenticated"
+     ],
+     "using": "true",
+     "check": null
+    }
+   ],
+   "grants": [
+    "anon:INSERT",
+    "anon:SELECT",
+    "anon:UPDATE",
+    "anon:DELETE",
+    "anon:TRUNCATE",
+    "anon:REFERENCES",
+    "anon:TRIGGER",
+    "authenticated:INSERT",
+    "authenticated:SELECT",
+    "authenticated:UPDATE",
+    "authenticated:DELETE",
+    "authenticated:TRUNCATE",
+    "authenticated:REFERENCES",
+    "authenticated:TRIGGER",
+    "service_role:INSERT",
+    "service_role:SELECT",
+    "service_role:UPDATE",
+    "service_role:DELETE",
+    "service_role:TRUNCATE",
+    "service_role:REFERENCES",
+    "service_role:TRIGGER"
+   ]
+  }
+ ]
+}
