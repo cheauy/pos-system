@@ -6,17 +6,35 @@ const storage=()=>{const values=new Map();return{getItem:key=>values.get(key)??n
 
 test('Remember me controls auth cookie duration, preserves security options and deletion',()=>{
  const options={path:'/',secure:true,sameSite:'lax',domain:'.tenh-pos.com',maxAge:34560000,expires:new Date()};
+ const signIn=Date.UTC(2026,0,1),day=86400000,remembered=persistence.rememberMeValue(true,signIn),deadline=signIn+30*day;
  for(const name of ['sb-project-auth-token','sb-project-auth-token.0','sb-project-auth-token.1']){
   const session=persistence.sessionCookieOptions(name,'token',options,'0');assert.equal(session.maxAge,undefined);assert.equal(session.expires,undefined);assert.equal(session.secure,true);assert.equal(session.domain,options.domain);
-  assert.equal(persistence.sessionCookieOptions(name,'token',options,'1').maxAge,30*24*60*60);
-  assert.equal(persistence.sessionCookieOptions(name,'',{...options,maxAge:0},'1').maxAge,0);
+  // Every refresh writes the same absolute deadline: 30 days from sign-in, never extended.
+  for(const now of [signIn,signIn+day,signIn+29*day]){const kept=persistence.sessionCookieOptions(name,'token',options,remembered,now);assert.equal(kept.maxAge,undefined);assert.equal(kept.expires.getTime(),deadline);}
+  assert.equal(persistence.sessionCookieOptions(name,'token',options,remembered,deadline).expires,undefined);
+  // Legacy sliding "1" no longer extends anything; it becomes a browser-session login.
+  assert.equal(persistence.sessionCookieOptions(name,'token',options,'1').expires,undefined);assert.equal(persistence.sessionCookieOptions(name,'token',options,'1').maxAge,undefined);
+  assert.equal(persistence.sessionCookieOptions(name,'',{...options,maxAge:0},remembered).maxAge,0);
  }
  assert.deepEqual(persistence.sessionCookieOptions('sb-project-auth-token-code-verifier','verifier',options,'0'),options);
  assert.equal(persistence.sessionCookieOptions('sb-project-auth-token','token',options,undefined).maxAge,undefined);
+ assert.equal(persistence.isRemembered(remembered,deadline-1),true);assert.equal(persistence.isRemembered(remembered,deadline),false);
+ for(const value of [undefined,'','0','1','1:abc','2:1']) assert.equal(persistence.isRemembered(value,signIn),false);
+});
+
+test('session age comes from the token amr sign-in time and ends at 30 days',()=>{
+ const token=payload=>`h.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.s`;
+ const signedIn=Date.UTC(2026,0,1)/1000,day=86400000;
+ const access=token({sub:'user',iat:signedIn+29*86400,amr:[{method:'password',timestamp:signedIn},{method:'totp',timestamp:signedIn+60}]});
+ assert.equal(persistence.sessionStartedAt(access),signedIn*1000);
+ assert.equal(persistence.sessionExpired(access,signedIn*1000+30*day-1),false);
+ assert.equal(persistence.sessionExpired(access,signedIn*1000+30*day),true);
+ // Unreadable tokens are left to Supabase Auth, which already verified them.
+ for(const bad of ['garbage',token({sub:'user'}),token({amr:[{method:'password'}]})]) assert.equal(persistence.sessionExpired(bad,signedIn*1000+90*day),false);
 });
 
 test('server refresh preserves session-only and remembered cookies',async()=>{
- for(const preference of ['0','1']){
+ for(const preference of ['0',persistence.rememberMeValue(true)]){
   let config;const writes=[];
   const {createClient}=loadTs('lib/supabase/server.ts',{
    '@/lib/mobile/request-context':{mobileRequest:{getStore:()=>undefined}},
@@ -27,7 +45,7 @@ test('server refresh preserves session-only and remembered cookies',async()=>{
   });
   const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   process.env.NEXT_PUBLIC_SUPABASE_URL='https://example.supabase.co';process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY='test';
-  try{await createClient();config.cookies.setAll([{name:'sb-project-auth-token',value:'refreshed',options:{maxAge:34560000}}]);assert.equal(writes[0][2].maxAge,preference==='1'?2592000:undefined);}
+  try{await createClient();config.cookies.setAll([{name:'sb-project-auth-token',value:'refreshed',options:{maxAge:34560000}}]);assert.equal(writes[0][2].maxAge,undefined);assert.equal(writes[0][2].expires?.getTime(),preference==='0'?undefined:persistence.rememberedUntil(preference));}
   finally{if(url===undefined)delete process.env.NEXT_PUBLIC_SUPABASE_URL;else process.env.NEXT_PUBLIC_SUPABASE_URL=url;if(key===undefined)delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY=key;}
  }
 });
@@ -50,9 +68,11 @@ test('browser client reads Remember me on every write and records recovery befor
   api.createClient();api.setRememberMe(false);assert.equal(api.getRememberMe(),false);
   const write=()=>options.cookies.setAll([{name:'sb-project-auth-token.0',value:'token',options:{path:'/',maxAge:34560000}}]);
   write();assert.ok(!written.at(-1).includes('Max-Age'));
-  api.setRememberMe(true);assert.equal(api.getRememberMe(),true);write();assert.ok(written.at(-1).includes('Max-Age=2592000'));
+  api.setRememberMe(true);assert.equal(api.getRememberMe(),true);assert.ok(written.at(-1).includes('Max-Age=2592000'));write();assert.ok(written.at(-1).includes('Expires='));assert.ok(!written.at(-1).includes('Max-Age'));
   listener('PASSWORD_RECOVERY',{user:{id:'user'}});assert.equal(recovery.hasPasswordRecovery(sessionStorage,'user'),true);
   listener('SIGNED_OUT',null);assert.equal(recovery.hasPasswordRecovery(sessionStorage,'user'),false);
+  // Sign-out clears the preference, so the next sign-in starts unchecked.
+  assert.ok(written.at(-1).startsWith('tenh_remember_me=;'));assert.ok(written.at(-1).includes('Max-Age=0'));assert.equal(api.getRememberMe(),false);
  }finally{global.window=oldWindow;global.document=oldDocument;if(oldUrl===undefined)delete process.env.NEXT_PUBLIC_SUPABASE_URL;else process.env.NEXT_PUBLIC_SUPABASE_URL=oldUrl;if(oldKey===undefined)delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY=oldKey;}
 });
 
@@ -62,7 +82,7 @@ test('forgot-password reports delivery failures instead of falsely claiming succ
   for(const error of [null,{status:429},{status:500}]){
    const values=[],requests=[];let index=0;
    const react={useState(initial){const i=index++;if(!(i in values))values[i]=initial;return[values[i],v=>values[i]=v];}};
-   const Component=loadTs('app/forgot-password/page.tsx',{'react/jsx-runtime':require('react/jsx-runtime'),react,'lucide-react':require('lucide-react'),'next/navigation':{useRouter:()=>({})},'@/lib/supabase/client':{createClient:()=>({auth:{resetPasswordForEmail:async(...args)=>{requests.push(args);return{error};}}})}}).default;
+   const Component=loadTs('app/forgot-password/page.tsx',{'react/jsx-runtime':require('react/jsx-runtime'),react,'@/components/pending-submit-button':{ButtonSpinner:()=>null},'lucide-react':require('lucide-react'),'next/navigation':{useRouter:()=>({})},'@/lib/supabase/client':{createClient:()=>({auth:{resetPasswordForEmail:async(...args)=>{requests.push(args);return{error};}}})}}).default;
    const render=()=>{index=0;return Component();};const nodes=v=>Array.isArray(v)?v.flatMap(nodes):v?.props?[v,...nodes(v.props.children)]:[];
    nodes(render()).find(n=>n.type==='input').props.onChange({target:{value:' person@example.com '}});
    await nodes(render()).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});

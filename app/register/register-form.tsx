@@ -15,9 +15,10 @@ import { FaFacebookF } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 
 import { createClient } from "@/lib/supabase/client";
+import { ButtonSpinner } from "@/components/pending-submit-button";
 
 import { registerAccount } from "./actions";
-import { initialRegisterAccountState } from "./state";
+import { initialRegisterAccountState, type RegisterAccountState } from "./state";
 
 type OAuthProvider = "google" | "facebook";
 
@@ -57,12 +58,23 @@ export default function RegisterForm() {
   const [oauthLoading, setOauthLoading] =
     useState<OAuthProvider | null>(null);
   const [oauthError, setOauthError] = useState("");
+  const [restoredState, setRestoredState] = useState<RegisterAccountState | null>(null);
+  const leaving = Boolean(state.success && state.destination) && restoredState !== state;
 
   useEffect(() => {
     if (state.success && state.destination) {
       window.location.assign(state.destination);
     }
-  }, [state.success, state.destination]);
+    // Back/forward cache can restore this page while it was leaving; reopen the form.
+    const restore = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        setOauthLoading(null);
+        setRestoredState(state);
+      }
+    };
+    window.addEventListener("pageshow", restore);
+    return () => window.removeEventListener("pageshow", restore);
+  }, [state]);
 
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -103,7 +115,7 @@ export default function RegisterForm() {
   }
 
 
-  const busy = pending || oauthLoading !== null;
+  const busy = pending || leaving || oauthLoading !== null;
 
   return (
     <main className="min-h-screen bg-[#f6f8fc] px-4 py-8 sm:py-12">
@@ -145,7 +157,7 @@ export default function RegisterForm() {
               disabled={busy}
               className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <FcGoogle size={20} />
+              {oauthLoading === "google" ? <ButtonSpinner /> : <FcGoogle size={20} />}
               {oauthLoading === "google"
                 ? "Connecting..."
                 : "Continue with Google"}
@@ -157,9 +169,11 @@ export default function RegisterForm() {
               disabled={busy}
               className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#1877F2] text-white">
-                <FaFacebookF size={12} />
-              </span>
+              {oauthLoading === "facebook" ? <ButtonSpinner /> : (
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#1877F2] text-white">
+                  <FaFacebookF size={12} />
+                </span>
+              )}
               {oauthLoading === "facebook"
                 ? "Connecting..."
                 : "Continue with Facebook"}
@@ -273,10 +287,12 @@ export default function RegisterForm() {
             <button
               type="submit"
               disabled={busy}
+              aria-busy={pending || leaving}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 font-bold text-white shadow-lg shadow-blue-600/15 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {pending ? "Creating account..." : "Create account"}
-              {!pending && <ArrowRight size={18} />}
+              {(pending || leaving) && <ButtonSpinner />}
+              {pending ? "Creating account..." : leaving ? "Continuing..." : "Create account"}
+              {!pending && !leaving && <ArrowRight size={18} />}
             </button>
           </form>
 

@@ -3,6 +3,8 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { ArrowLeft, CheckCircle2, MailCheck, RefreshCw } from "lucide-react";
 
+import PendingSubmitButton from "@/components/pending-submit-button";
+
 import { resendConfirmationEmail } from "./actions";
 
 const PENDING_EMAIL_COOKIE = "tenh_pending_signup_email";
@@ -96,13 +98,13 @@ export default async function CheckEmailPage({ searchParams }: Props) {
 
           <div className="mt-7 grid gap-3 sm:grid-cols-2">
             <form action={resendConfirmationEmail}>
-              <button
-                type="submit"
+              <PendingSubmitButton
+                pendingLabel="Sending..."
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
               >
                 <RefreshCw size={17} />
                 Resend email
-              </button>
+              </PendingSubmitButton>
             </form>
             <Link
               href="/login"

@@ -32,7 +32,7 @@ function accountName(user: {
   return user.email?.split("@")[0]?.slice(0, 100) || "Tenh POS User";
 }
 
-async function ensureProfile(userId: string) {
+async function findProfile(userId: string) {
   const { data: existing, error: lookupError } = await supabaseAdmin
     .from("profiles")
     .select("id,role,is_active")
@@ -43,8 +43,10 @@ async function ensureProfile(userId: string) {
     throw new Error(`Unable to check account profile: ${lookupError.message}`);
   }
 
-  if (existing) return existing;
+  return existing;
+}
 
+async function createProfile(userId: string) {
   const { data: authRecord, error: authError } =
     await supabaseAdmin.auth.admin.getUserById(userId);
 
@@ -96,8 +98,23 @@ export async function getAccountDestination(
   userId: string,
 ): Promise<string> {
   const supabase = await createClient();
-  if (await needsTeamPasswordSetup(userId)) return getAppUrl("/team-setup");
-  const profile = await ensureProfile(userId);
+  // These reads are independent, so they share one round trip. Results are
+  // still checked in the original order, and a missing profile is created
+  // only after the team-setup check.
+  const [setupRequired, existingProfile, { data: membership, error: membershipError }] =
+    await Promise.all([
+      needsTeamPasswordSetup(userId),
+      findProfile(userId),
+      supabase
+        .from("business_members")
+        .select("business_id,role")
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle(),
+    ]);
+  if (setupRequired) return getAppUrl("/team-setup");
+  const profile = existingProfile ?? await createProfile(userId);
 
   if (profile.is_active !== true) {
     return getAppUrl("/login?error=account_inactive");
@@ -106,14 +123,6 @@ export async function getAccountDestination(
   if (profile.role === "super_admin") {
     return getAdminUrl("/super-admin");
   }
-
-  const { data: membership, error: membershipError } = await supabase
-    .from("business_members")
-    .select("business_id,role")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
 
   if (membershipError) {
     throw new Error(

@@ -34,17 +34,26 @@ function fixture({ cookie = '', signInError = null, profile = { role: 'owner', i
     'next/navigation': { useRouter: () => ({ replace: value => routes.push(['replace', value]), refresh: () => routes.push(['refresh']), push: value => routes.push(['push', value]) }), useSearchParams: () => new URLSearchParams() },
     'lucide-react': require('lucide-react'), 'react-icons/fa': require('react-icons/fa'), 'react-icons/fc': require('react-icons/fc'),
     '@supabase/ssr': { parseCookieHeader }, '@/lib/auth/session-persistence': persistence, '@/lib/supabase/client': authModule,
+    '@/components/pending-submit-button': { ButtonSpinner: () => null },
+    '@/components/providers/language-provider': { useLanguage: () => ({ language: 'en' }) },
   }).default;
   const render = () => { cursor = 0; return Component(); };
   const hydratePreference = () => { const previous = global.document; global.document = { cookie }; try { effects[0](); } finally { global.document = previous; } };
   const input = (id, value) => nodes(render()).find(node => node.props.id === id).props.onChange({ target: { value } });
   return { render, calls, routes, hydratePreference, input, get imports() { return imports; }, retryImport() { failImport = false; } };
 }
+// Successful sign-in leaves through a full navigation; record it with the router calls.
+async function withLocation(f, run) {
+  const previous = global.window; global.window = { location: { replace: value => f.routes.push(['location', value]) } };
+  try { await run(); } finally { global.window = previous; }
+}
 
 test('initial Login rendering and cookie preference restoration never initialize auth', () => {
-  for (const cookie of ['', 'tenh_remember_me=0', 'other=1; tenh_remember_me=1', 'tenh_remember_me=%31', 'tenh_remember_me=0; tenh_remember_me=1']) {
+  const live = `tenh_remember_me=1:${Date.now()}`, expired = `tenh_remember_me=1:${Date.now() - 31 * 86400000}`;
+  for (const cookie of ['', 'tenh_remember_me=0', 'other=1; tenh_remember_me=1', 'tenh_remember_me=%31', 'tenh_remember_me=0; tenh_remember_me=1', live, `other=1; ${live}`, expired]) {
     const f = fixture({ cookie }); f.render(); f.hydratePreference();
-    const expected = parseCookieHeader(cookie).find(row => row.name === persistence.REMEMBER_ME_COOKIE)?.value === '1';
+    const expected = cookie.includes(live);
+    assert.equal(persistence.isRemembered(parseCookieHeader(cookie).find(row => row.name === persistence.REMEMBER_ME_COOKIE)?.value), expected);
     assert.equal(nodes(f.render()).find(node => node.props.id === 'remember').props.checked, expected);
     assert.equal(f.imports, 0); assert.deepEqual(f.calls, []);
   }
@@ -66,16 +75,29 @@ test('password toggle retains input value, explicit accessible action and non-su
 
 test('email sign-in lazily initializes the existing client and preserves preference, profile gate and continuation', async () => {
   for (const remember of [false, true]) {
-    const f = fixture({ cookie: `tenh_remember_me=${remember ? 1 : 0}` }); f.render(); f.hydratePreference();
+    const f = fixture({ cookie: `tenh_remember_me=${remember ? `1:${Date.now()}` : 0}` }); f.render(); f.hydratePreference();
     f.input('email', ' fixture@example.com '); f.input('password', 'fixture secret');
-    const pending = nodes(f.render()).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
-    assert.ok(nodes(f.render()).filter(node => node.props.type === 'submit').every(node => node.props.disabled));
-    await pending;
+    await withLocation(f, async () => {
+      const pending = nodes(f.render()).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
+      assert.ok(nodes(f.render()).filter(node => node.props.type === 'submit').every(node => node.props.disabled));
+      await pending;
+    });
     assert.deepEqual(f.calls.slice(0, 3), [['remember', remember], ['createClient'], ['password', { email: 'fixture@example.com', password: 'fixture secret' }]]);
     assert.deepEqual(f.calls.slice(3), [['table', 'profiles'], ['select', 'role, is_active'], ['eq', 'id', 'fixture-user']]);
-    assert.deepEqual(f.routes, [['replace', '/auth/continue'], ['refresh']]);
+    // One full navigation, no extra router refresh, and the button stays busy until the page is replaced.
+    assert.deepEqual(f.routes, [['location', '/auth/continue']]);
+    assert.ok(nodes(f.render()).filter(node => node.props.type === 'submit').every(node => node.props.disabled));
     assert.equal(f.imports, 1);
   }
+});
+
+test('network failures say the connection failed instead of blaming credentials', async () => {
+  const offline = Object.assign(new Error('Failed to fetch'), { name: 'AuthRetryableFetchError', status: 0 });
+  const f = fixture({ signInError: offline }); f.render();
+  await nodes(f.render()).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.deepEqual(f.routes, []);
+  assert.ok(text(f.render()).includes('Unable to reach Tenh POS. Check your connection and try again.'));
+  assert.ok(nodes(f.render()).filter(node => node.props.type === 'submit').every(node => !node.props.disabled));
 });
 
 test('invalid credentials and inactive, missing or unreadable profiles never navigate into the app', async () => {
@@ -94,7 +116,7 @@ test('auth chunk failure restores the form and a retry keeps entered credentials
   await nodes(f.render()).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
   assert.ok(text(f.render()).includes('Something went wrong. Please try again.')); assert.deepEqual(f.calls, []); assert.deepEqual(f.routes, []);
   assert.equal(nodes(f.render()).find(node => node.props.id === 'password').props.value, 'fixture secret');
-  f.retryImport(); await nodes(f.render()).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} });
+  f.retryImport(); await withLocation(f, () => nodes(f.render()).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }));
   assert.equal(f.calls.find(row => row[0] === 'password')[1].password, 'fixture secret'); assert.equal(f.routes[0][1], '/auth/continue');
 });
 
@@ -102,7 +124,7 @@ test('Google and Facebook retain callback, preference and failure behavior when 
   const previous = global.window; global.window = { location: { origin: 'https://app.tenh-pos.com' } };
   try {
     for (const provider of ['google', 'facebook']) for (const failed of [false, true]) {
-      const f = fixture({ cookie: 'tenh_remember_me=1', oauthError: failed ? new Error('fixture') : null }); f.render(); f.hydratePreference();
+      const f = fixture({ cookie: `tenh_remember_me=1:${Date.now()}`, oauthError: failed ? new Error('fixture') : null }); f.render(); f.hydratePreference();
       const button = nodes(f.render()).find(node => node.type === 'button' && text(node).includes(`Continue with ${provider === 'google' ? 'Google' : 'Facebook'}`));
       await button.props.onClick();
       assert.deepEqual(f.calls, [['remember', true], ['createClient'], ['oauth', { provider, options: { redirectTo: 'https://app.tenh-pos.com/auth/callback' } }]]);

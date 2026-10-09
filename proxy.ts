@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
-import { REMEMBER_ME_COOKIE, sessionCookieOptions } from "@/lib/auth/session-persistence";
+import { REMEMBER_ME_COOKIE, sessionCookieOptions, sessionExpired } from "@/lib/auth/session-persistence";
 
 import {
   APP_SUBDOMAIN,
@@ -204,24 +204,27 @@ function createResponse(
   return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
-async function refreshAuthIfNeeded(
-  request: NextRequest,
-  response: NextResponse,
-) {
+type AuthCookie = { name: string; value: string; options: Parameters<NextResponse["cookies"]["set"]>[2] };
+
+// Refreshes the session before the route renders. Refreshed cookies are written
+// to the incoming request too, so the page sees the new tokens instead of
+// refreshing the old (already rotated) refresh token a second time.
+async function refreshAuthIfNeeded(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  const written: AuthCookie[] = [];
 
   const needsAuthRefresh =
     isAppOnlyPath(pathname) ||
     isCentralAuthPath(pathname);
 
-  if (!needsAuthRefresh) return response;
+  if (!needsAuthRefresh) return written;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || !supabaseKey) return response;
+  if (!supabaseUrl || !supabaseKey) return written;
 
   const host =
     request.headers.get("x-forwarded-host") ?? request.headers.get("host");
@@ -235,18 +238,29 @@ async function refreshAuthIfNeeded(
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value, options }) => {
-          request.cookies.set(name, value);
-          response.cookies.set(name, value, sessionCookieOptions(name, value, {
+          if (value) request.cookies.set(name, value);
+          else request.cookies.delete(name);
+          written.push({ name, value, options: sessionCookieOptions(name, value, {
             ...cookieOptions,
             ...options,
-          }, request.cookies.get(REMEMBER_ME_COOKIE)?.value));
+          }, request.cookies.get(REMEMBER_ME_COOKIE)?.value) });
         });
       },
     },
   });
 
-  await supabase.auth.getUser();
-  return response;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    // getUser() just verified this token with Supabase Auth. Sessions older
+    // than 30 days from sign-in end here, on every app route and server action,
+    // whatever the cookie lifetime. scope "local" revokes only this session's
+    // refresh token and clears its cookies.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session && sessionExpired(session.access_token)) {
+      await supabase.auth.signOut({ scope: "local" });
+    }
+  }
+  return written;
 }
 
 export async function proxy(request: NextRequest) {
@@ -255,6 +269,8 @@ export async function proxy(request: NextRequest) {
   const subdomain = getSubdomainFromHost(host);
   const tenantSlug = getTenantSlugFromHost(host);
 
+  const authCookies = await refreshAuthIfNeeded(request);
+  // Built after the refresh so downstream rendering reads the current cookies.
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-tenh-pathname", request.nextUrl.pathname);
 
@@ -271,7 +287,10 @@ export async function proxy(request: NextRequest) {
     tenantSlug,
   );
 
-  return refreshAuthIfNeeded(request, response);
+  for (const { name, value, options } of authCookies) {
+    response.cookies.set(name, value, options);
+  }
+  return response;
 }
 
 export const config = {

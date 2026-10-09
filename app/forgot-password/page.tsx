@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { ButtonSpinner } from "@/components/pending-submit-button";
 
 export default function ForgotPasswordPage() {
   const supabase = createClient();
@@ -81,9 +82,12 @@ export default function ForgotPasswordPage() {
           />
 
           <button
+            type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-blue-600 py-3 font-semibold text-white"
+            aria-busy={loading}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-3 font-semibold text-white disabled:cursor-wait disabled:opacity-70"
           >
+            {loading && <ButtonSpinner />}
             {loading ? "Sending..." : "Send Reset Link"}
           </button>
         </form>

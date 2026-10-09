@@ -18,10 +18,14 @@ import { FaFacebookF } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
 
 import { parseCookieHeader } from "@supabase/ssr";
-import { REMEMBER_ME_COOKIE } from "@/lib/auth/session-persistence";
+import { REMEMBER_ME_COOKIE, isRemembered } from "@/lib/auth/session-persistence";
+import { ButtonSpinner } from "@/components/pending-submit-button";
+import { useLanguage } from "@/components/providers/language-provider";
 
 const signInErrorMessage =
   "Unable to sign in. Check your credentials or account status.";
+const networkErrorMessage =
+  "Unable to reach Tenh POS. Check your connection and try again.";
 
 const oauthErrorMessages: Record<string, string> = {
   oauth_failed:
@@ -35,6 +39,7 @@ const oauthErrorMessages: Record<string, string> = {
 type OAuthProvider = "google" | "facebook";
 
 export default function LoginPage() {
+  const { language } = useLanguage();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -52,14 +57,28 @@ export default function LoginPage() {
   useEffect(() => {
     // Read the browser preference after hydration.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRememberMe(parseCookieHeader(document.cookie).find(cookie => cookie.name === REMEMBER_ME_COOKIE)?.value === "1");
+    setRememberMe(isRemembered(parseCookieHeader(document.cookie).find(cookie => cookie.name === REMEMBER_ME_COOKIE)?.value));
+  }, []);
+
+  useEffect(() => {
+    // Back/forward cache can restore this page while it was leaving; reopen the form.
+    const restore = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        setLoading(false);
+        setOauthLoading(null);
+      }
+    };
+    window.addEventListener("pageshow", restore);
+    return () => window.removeEventListener("pageshow", restore);
   }, []);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (anyLoading) return;
 
     setLoading(true);
     setErrorMessage("");
+    let leaving = false;
 
     try {
       const { createClient, setRememberMe: saveRememberMeChoice } = await import("@/lib/supabase/client");
@@ -71,7 +90,7 @@ export default function LoginPage() {
       });
 
       if (error || !data.user) {
-        setErrorMessage(signInErrorMessage);
+        setErrorMessage(error?.name === "AuthRetryableFetchError" ? networkErrorMessage : signInErrorMessage);
         return;
       }
 
@@ -87,12 +106,15 @@ export default function LoginPage() {
         return;
       }
 
-      router.replace("/auth/continue");
-      router.refresh();
+      // Full navigation: the browser follows /auth/continue's destination
+      // redirects natively, and the button stays busy until the destination
+      // page replaces this one. replace() keeps Login out of Back history.
+      leaving = true;
+      window.location.replace("/auth/continue");
     } catch {
       setErrorMessage("Something went wrong. Please try again.");
     } finally {
-      setLoading(false);
+      if (!leaving) setLoading(false);
     }
   }
 
@@ -134,7 +156,7 @@ export default function LoginPage() {
       <div className="pointer-events-none absolute -right-20 -top-28 h-96 w-96 rounded-full bg-blue-100/70 blur-3xl" />
 
       <div className="relative mx-auto grid min-h-[calc(100vh-40px)] w-full max-w-[1380px] overflow-hidden rounded-[30px] border border-white/80 bg-white shadow-[0_30px_90px_rgba(30,64,175,0.14)] lg:grid-cols-[0.92fr_1.08fr]">
-        <section className="flex items-center px-6 py-10 sm:px-10 md:px-14 lg:px-16 xl:px-20">
+        <section className="flex min-w-0 items-center px-6 py-10 sm:px-10 md:px-14 lg:px-16 xl:px-20">
           <div className="mx-auto w-full max-w-[510px]">
             <div className="mb-8 text-center">
               <div className="mb-5 flex items-center justify-center gap-3">
@@ -172,7 +194,7 @@ export default function LoginPage() {
                 disabled={anyLoading}
                 className="flex h-14 items-center justify-center gap-3 rounded-xl border border-slate-300 bg-white px-5 text-[15px] font-semibold text-[#111b43] transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <FcGoogle size={26} />
+                {oauthLoading === "google" ? <ButtonSpinner /> : <FcGoogle size={26} />}
                 {oauthLoading === "google"
                   ? "Connecting..."
                   : "Continue with Google"}
@@ -184,9 +206,11 @@ export default function LoginPage() {
                 disabled={anyLoading}
                 className="flex h-14 items-center justify-center gap-3 rounded-xl border border-slate-300 bg-white px-5 text-[15px] font-semibold text-[#111b43] transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#1877F2] text-white">
-                  <FaFacebookF size={16} />
-                </span>
+                {oauthLoading === "facebook" ? <ButtonSpinner /> : (
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#1877F2] text-white">
+                    <FaFacebookF size={16} />
+                  </span>
+                )}
                 {oauthLoading === "facebook"
                   ? "Connecting..."
                   : "Continue with Facebook"}
@@ -261,7 +285,7 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <label
                   htmlFor="remember"
                   className="flex cursor-pointer items-center gap-2.5 text-sm font-medium text-slate-600"
@@ -294,8 +318,10 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={anyLoading}
+                aria-busy={loading}
                 className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#0d5fff] to-[#2878ff] px-5 text-[16px] font-bold text-white shadow-[0_12px_24px_rgba(29,100,255,0.22)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
               >
+                {loading && <ButtonSpinner />}
                 {loading ? "Signing in..." : "Sign in"}
                 {!loading && <ArrowRight size={19} />}
               </button>
@@ -338,7 +364,7 @@ export default function LoginPage() {
           <div className="relative z-20 mt-7 flex flex-1 items-center justify-center py-2">
             <div className="pointer-events-none absolute left-1/2 top-1/2 h-[72%] w-[92%] -translate-x-1/2 -translate-y-1/2 rounded-[45%] bg-blue-300/15 blur-3xl" />
             <Image
-              src="/tenh-pos-login-dashboard.svg"
+              src={language === "km" ? "/tenh-pos-login-dashboard-km.svg" : "/tenh-pos-login-dashboard.svg"}
               alt="Tenh POS dashboard preview"
               width={850}
               height={570}
