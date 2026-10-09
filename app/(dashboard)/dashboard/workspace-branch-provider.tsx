@@ -1,4 +1,5 @@
 'use client';
+import { useLanguage } from "@/components/providers/language-provider";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
@@ -25,8 +26,9 @@ export function useBranchSwitchGuard(guard:Guard) {
   useEffect(()=>registerGuard(target=>latest.current(target)),[registerGuard]);
 }
 
-type Props={businessId:string;businessName:string;role:string;userId:string;branchId:string;branches:{id:string;name:string}[];children:ReactNode};
+type Props={superAdminHref?:string;businessId:string;businessName:string;role:string;userId:string;branchId:string;branches:{id:string;name:string}[];children:ReactNode};
 export default function WorkspaceBranchProvider(p:Props) {
+  const { t: translateText } = useLanguage();
   const {locked:posLocked}=usePosNavigationLock();
   const {setScope}=useTheme();
   useEffect(()=>{setScope(`${APPEARANCE_STORAGE_KEY}:${p.businessId}:${p.branchId}`);return()=>setScope(APPEARANCE_STORAGE_KEY);},[p.businessId,p.branchId,setScope]);
@@ -87,7 +89,7 @@ export default function WorkspaceBranchProvider(p:Props) {
     if(reason){setError(reason);setOpen(true);return;}
     if(!p.branches.some(b=>b.id===id)){setError('Choose an available branch.');return;}
     const name=p.branches.find(b=>b.id===id)?.name || 'the selected branch';
-    if(!window.confirm(`Switch the entire workspace to ${name}? ${dirty.current?'Unsaved changes on this page will be discarded. ':''}Save or hold unfinished work first. Open registers and saved orders remain in their original branch.`))return;
+    if(!window.confirm(translateText(`Switch the entire workspace to ${name}? ${dirty.current?translateText('Unsaved changes on this page will be discarded. '):''}Save or hold unfinished work first. Open registers and saved orders remain in their original branch.`)))return;
     saving.current=true;setBusy(true);setError('');
     try {
       const result=await switchOperatingBranch(id,{businessId:p.businessId,userId:p.userId,branchId:p.branchId});
@@ -100,23 +102,24 @@ export default function WorkspaceBranchProvider(p:Props) {
       window.location.assign(branchDestination(pathname));
     } catch {setStale('The switch result could not be confirmed. Reload the workspace to read the saved branch before continuing.');}
     finally{saving.current=false;setBusy(false);}
-  },[p.businessId,p.userId,p.branchId,p.branches,pathname,key,stale,guardReason,posLocked]);
+  },[p.businessId,p.userId,p.branchId,p.branches,pathname,key,stale,guardReason,posLocked,translateText]);
   function reload(){
     // Do not abandon a payment/save still running. POS registers this guard.
     const reason=guardReason();
     if(reason && /saving|in progress|working|processing/i.test(reason)){setStale(reason);return;}
-    if(!window.confirm('Reload the workspace? Unsaved page changes will be lost. Saved holds and pending sale request IDs are retained; never collect a payment twice.'))return;
+    if(!window.confirm(translateText('Reload the workspace? Unsaved page changes will be lost. Saved holds and pending sale request IDs are retained; never collect a payment twice.')))return;
     window.location.assign(branchDestination(pathname));
   }
   const page=workspacePage(pathname);
   return <Context.Provider value={{requestSwitch,registerGuard}}>
     <div ref={content} inert={busy || Boolean(stale)} onInputCapture={()=>{dirty.current=true;}} onChangeCapture={()=>{dirty.current=true;}}>
       <div className="workspace-header flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 md:ml-16 dark:border-slate-800 dark:bg-slate-900" data-workspace-branch-header>
-        <div className="flex min-w-0 flex-1 items-center gap-3"><button type="button" aria-label="Open dashboard navigation" aria-haspopup="dialog" onClick={()=>window.dispatchEvent(new Event('tenh:open-navigation'))} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-700 dark:border-slate-700 dark:text-slate-200 md:hidden"><Menu size={22}/></button><Store size={22} className="hidden shrink-0 text-blue-600 xl:block"/><div className="min-w-0"><p className="truncate text-[10px] font-bold uppercase tracking-widest text-blue-600"><span className="xl:hidden">{p.businessName}</span><span className="hidden xl:inline">TENH POS workspace</span></p><p className="truncate font-bold text-slate-900 dark:text-white"><span className="xl:hidden">{page.title}</span><span className="hidden xl:inline">{p.businessName}</span></p></div></div>
+        <div className="flex min-w-0 flex-1 items-center gap-3"><button type="button" aria-label="Open dashboard navigation" aria-haspopup="dialog" onClick={()=>window.dispatchEvent(new Event('tenh:open-navigation'))} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-700 dark:border-slate-700 dark:text-slate-200 md:hidden"><Menu size={22}/></button><Store size={22} className="hidden shrink-0 text-blue-600 xl:block"/><div className="min-w-0"><p className="truncate text-[10px] font-bold uppercase tracking-widest text-blue-600"><span className="xl:hidden" data-i18n-ignore="true">{p.businessName}</span><span className="hidden xl:inline">TENH POS workspace</span></p><p title={page.title} className="truncate font-bold text-slate-900 dark:text-white"><span className="xl:hidden">{page.title}</span><span className="hidden xl:inline" data-i18n-ignore="true">{p.businessName}</span></p></div></div>
         <div className="workspace-header-actions flex min-w-0 flex-wrap items-center gap-2">
-        {!sharedOnlineStore && <><span className="hidden text-sm text-slate-500 xl:inline">{currentName}</span><button type="button" aria-label="Switch Branches" aria-haspopup="dialog" disabled={busy||Boolean(stale)||posLocked||p.branches.length<2} onClick={()=>{setSelected(p.branchId);setOpen(true);setError('');}} className="inline-flex min-h-11 min-w-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
+        {!sharedOnlineStore && <><span className="hidden text-sm text-slate-500 xl:inline">{currentName}</span><button type="button" aria-label="Switch Branches" title={currentName} aria-haspopup="dialog" disabled={busy||Boolean(stale)||posLocked||p.branches.length<2} onClick={()=>{setSelected(p.branchId);setOpen(true);setError('');}} className="inline-flex min-h-11 min-w-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
           <ArrowRightLeft size={16} className="shrink-0"/><span className="max-w-36 truncate xl:hidden">{currentName}</span><span className="hidden xl:inline">Switch Branches</span><ChevronDown size={15} className="shrink-0"/>
         </button></>}
+        {p.superAdminHref&&<a href={p.superAdminHref} className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200">Super Admin</a>}
         <span className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700"><ShieldCheck size={16}/><span><span className="hidden sm:inline">Role: </span><span className="capitalize">{p.role}</span></span></span>
         </div>
       </div>
@@ -125,7 +128,7 @@ export default function WorkspaceBranchProvider(p:Props) {
     <dialog ref={modal} aria-label="Switch workspace branch" onCancel={e=>{if(busy)e.preventDefault();else setOpen(false);}} className="m-auto w-[min(94vw,520px)] rounded-2xl border-0 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/50 dark:bg-slate-900 dark:text-white">
       <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-700"><h2 className="text-lg font-bold">Switch Branches</h2><button type="button" aria-label="Close branch switcher" disabled={busy} onClick={()=>setOpen(false)}><X size={20}/></button></header>
       <div className="space-y-4 p-5"><p className="text-sm text-slate-500">Switch products, settings, POS, customers, orders and reports together. Online Store and subscription remain shared.</p>
-        <div role="radiogroup" aria-label="Workspace branch" className="max-h-72 space-y-2 overflow-auto">{p.branches.map(b=><label key={b.id} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 ${selected===b.id?'border-blue-500 bg-blue-50 dark:bg-blue-950':'border-slate-200 dark:border-slate-700'}`}><input type="radio" name="workspace-branch" disabled={busy} checked={selected===b.id} onChange={()=>setSelected(b.id)}/><span className="flex-1">{b.name}</span>{b.id===p.branchId&&<span className="flex items-center gap-1 text-xs text-blue-600"><Check size={13}/>Current</span>}</label>)}</div>
+        <div role="radiogroup" aria-label="Workspace branch" className="max-h-72 space-y-2 overflow-auto">{p.branches.map(b=><label key={b.id} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 ${selected===b.id?'border-blue-500 bg-blue-50 dark:bg-blue-950':'border-slate-200 dark:border-slate-700'}`}><input type="radio" name="workspace-branch" disabled={busy} checked={selected===b.id} onChange={()=>setSelected(b.id)}/><span className="flex-1" data-i18n-ignore="true">{b.name}</span>{b.id===p.branchId&&<span className="flex items-center gap-1 text-xs text-blue-600"><Check size={13}/>Current</span>}</label>)}</div>
         {error&&<p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{error}</p>}
         <div className="flex justify-end gap-2"><button type="button" disabled={busy} onClick={()=>setOpen(false)} className="rounded-xl border px-4 py-2">Cancel</button><button type="button" disabled={busy||selected===p.branchId} onClick={()=>void requestSwitch(selected)} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white disabled:opacity-50">{busy&&<Loader2 size={16} className="animate-spin"/>}Switch workspace</button></div>
       </div>

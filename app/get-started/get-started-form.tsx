@@ -1,6 +1,7 @@
 "use client";
 
 import { ButtonSpinner } from "@/components/pending-submit-button";
+import { useLanguage } from "@/components/providers/language-provider";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -84,7 +85,7 @@ const businessIllustrationByMode = {
   other: "/business-types/other-business.svg",
 } as const;
 
-export default function GetStartedForm({ accountEmail }: { accountEmail: string }) {
+export default function GetStartedForm({ accountEmail, superAdminHref }: { accountEmail: string; superAdminHref?: string }) {
   const [state, formAction, pending] = useActionState(
     createOwnerBusiness,
     initialGetStartedState,
@@ -172,6 +173,12 @@ export default function GetStartedForm({ accountEmail }: { accountEmail: string 
                 {accountEmail || "Tenh POS account"}
               </p>
             </div>
+
+            {superAdminHref ? (
+              <a href={superAdminHref} className="inline-flex min-h-11 shrink-0 items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm sm:px-3.5 sm:text-sm">
+                Super Admin
+              </a>
+            ) : null}
 
             <button
               type="button"
@@ -425,6 +432,7 @@ function SetupSummaryBar({
 }
 
 function SetupPreviewPanel({ preset }: { preset: BusinessModePreset | null }) {
+  const { language } = useLanguage();
   const current = preset ?? getBusinessModePreset("shoes");
   const Icon = current ? iconByMode[current.value] : ShoppingBag;
 
@@ -444,7 +452,7 @@ function SetupPreviewPanel({ preset }: { preset: BusinessModePreset | null }) {
 
         <div className="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] p-2 shadow-inner shadow-black/10">
           <Image
-            src="/tenh-pos-onboarding-preview.svg"
+            src={language === "km" ? "/tenh-pos-onboarding-preview-km.svg" : "/tenh-pos-onboarding-preview.svg"}
             alt="Tenh POS product and checkout preview"
             width={900}
             height={520}

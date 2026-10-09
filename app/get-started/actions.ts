@@ -280,13 +280,17 @@ export async function createOwnerBusiness(
       );
     }
 
-    const { error: ownerProfileError } = await supabaseAdmin
-      .from("profiles")
-      .update({
-        role: "owner",
-        is_active: true,
-      })
-      .eq("id", user.id);
+    // Business access comes from the Owner membership above. A Super Admin
+    // keeps the global role so they can still switch back to Super Admin.
+    const { error: ownerProfileError } = profile.role === "super_admin"
+      ? { error: null }
+      : await supabaseAdmin
+          .from("profiles")
+          .update({
+            role: "owner",
+            is_active: true,
+          })
+          .eq("id", user.id);
 
     if (ownerProfileError) {
       throw new Error(

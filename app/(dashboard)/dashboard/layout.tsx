@@ -5,6 +5,7 @@ import OnlineOrderListener from "@/components/online-order-listener";
 import UpdateAlertBanner from "@/components/update-alert-banner";
 import { getCurrentBusinessForSubscription } from "@/lib/business/get-current-business";
 import { createClient } from "@/lib/supabase/server";
+import { getAdminUrl } from "@/lib/tenancy/domain";
 import { getBranchContext } from "@/lib/branches/context";
 import { getEffectivePermissions } from "@/lib/auth/effective-permissions";
 import PermissionRefresh from '@/components/permission-refresh';
@@ -80,11 +81,17 @@ export default async function DashboardLayout({
   }
 
   if (business.subscriptionLocked) {
+    // A Super Admin who owns this business still needs a visible way back during plan/trial choice.
+    const userId = (business as { userId?: string }).userId;
+    const { data: lockedProfile } = userId
+      ? await (await createClient()).from("profiles").select("role").eq("id", userId).maybeSingle()
+      : { data: null };
     return (
       <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
         <WorkspaceActivity />
         <main className="mx-auto min-h-screen w-full max-w-[1600px] p-4 sm:p-6">
           <UpdateAlertBanner />
+          {lockedProfile?.role === "super_admin" && <div className="mb-3 flex justify-end"><a href={getAdminUrl("/super-admin")} className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700">Super Admin</a></div>}
           {children}
         </main>
       </div>
@@ -93,12 +100,15 @@ export default async function DashboardLayout({
 
   const supabase = await createClient();
   const permissionsRead = getEffectivePermissions(business.id, business.role);
-  const [branchContext, effectivePermissions, onlineScope] = await Promise.all([
-    getBranchContext(),
+  const branchRead = getBranchContext();
+  const [branchContext, effectivePermissions, onlineScope, superAdmin] = await Promise.all([
+    branchRead,
     permissionsRead,
     // Still gated on orders.view, but no longer waits for the branch read.
     permissionsRead.then((permissions) => permissions.includes("orders.view")
       ? supabase.rpc("tenh_receive_all_online_orders", { p_business: business.id }) : null),
+    branchRead.then(({ userId }) => supabase.from("profiles").select("role").eq("id", userId).maybeSingle())
+      .then(({ data }) => data?.role === "super_admin"),
   ]);
   const posLocked=effectivePermissions.includes('pos.access')&&(await cookies()).get(posLockCookie(business.id,branchContext.userId))?.value==='1';
   if(posLocked&&!posLockAllows(pathname))redirect('/dashboard/pos');
@@ -108,7 +118,7 @@ export default async function DashboardLayout({
     <div className="workspace-theme min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <WorkspaceActivity />
       <PosLockProvider key={`${business.id}:${branchContext.userId}`} businessId={business.id} userId={branchContext.userId} branchId={branchContext.branchId} initialLocked={posLocked}>
-      <WorkspaceBranchProvider businessId={business.id} businessName={business.name} role={business.role} userId={branchContext.userId} branchId={branchContext.branchId} branches={branchContext.branches}>
+      <WorkspaceBranchProvider businessId={business.id} businessName={business.name} role={business.role} userId={branchContext.userId} branchId={branchContext.branchId} branches={branchContext.branches} superAdminHref={superAdmin ? getAdminUrl("/super-admin") : undefined}>
       <SidebarClient businessId={business.id} branchId={branchContext.branchId} effectivePermissions={effectivePermissions} />
       <PermissionRefresh businessId={business.id} userId={branchContext.userId} role={business.role} />
       {effectivePermissions.includes("orders.view") && <OnlineOrderListener businessId={business.id} branchId={branchContext.branchId} receiveAll={onlineScope?.data === true} />}

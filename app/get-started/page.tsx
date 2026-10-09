@@ -25,10 +25,7 @@ export default async function GetStartedPage() {
     redirect(getAppUrl("/login"));
   }
 
-  if (profile.role === "super_admin") {
-    redirect(getAppUrl("/auth/continue"));
-  }
-
+  // Super Admins may also own one business of their own; the membership check below still applies.
   const { data: membership } = await supabase
     .from("business_members")
     .select("business_id")
@@ -41,5 +38,5 @@ export default async function GetStartedPage() {
     redirect(getAppUrl("/auth/continue"));
   }
 
-  return <GetStartedForm accountEmail={user.email ?? ""} />;
+  return <GetStartedForm accountEmail={user.email ?? ""} superAdminHref={profile.role === "super_admin" ? getAppUrl("/super-admin") : undefined} />;
 }
