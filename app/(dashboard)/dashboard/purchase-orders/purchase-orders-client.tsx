@@ -3,6 +3,7 @@
 import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import Link from "next/link";
 import { usePagedWorkspace } from "@/lib/use-paged-workspace";
+import { dateRangeError } from "@/lib/date-range";
 import { loadPurchaseOrders, type PurchaseWorkspace } from "./list-actions";
 import OrderWorkflow from "./order-workflow";
 import NewOrderDialog, { type ChoicesCache } from "./new-order-dialog";
@@ -133,6 +134,9 @@ export default function PurchaseOrdersClient({
   const [sortMode, setSortMode] = useState<SortMode>("newest");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  // Date edits stay a draft (null = showing the applied range) until Apply loads once.
+  const [dateDraft, setDateDraft] = useState<{ from: string; to: string } | null>(null);
+  const draftError = dateDraft ? dateRangeError(dateDraft.from, dateDraft.to) : "";
   const [filtersOpen, setFiltersOpen] = useState(true);
   // Phones: purchase order details open as a full-screen sheet.
   const [detailOpen, setDetailOpen] = useState(false);
@@ -174,12 +178,18 @@ export default function PurchaseOrdersClient({
     setStatusFilter("all");
     setFromDate("");
     setToDate("");
+    setDateDraft(null);
     setSortMode("newest");
+  }
+
+  function applyDates() {
+    if (!dateDraft || draftError) return;
+    setFromDate(dateDraft.from); setToDate(dateDraft.to); setPage(1); setDateDraft(null);
   }
 
   return (
     <main className="space-y-5" aria-busy={busy}>
-      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error} The list below still shows the previous filters.</p>}
       {creating && <NewOrderDialog cacheRef={choicesCache} close={() => setCreating(false)} created={id => { setCreating(false); setSearch(""); setSupplierFilter("all"); setStatusFilter("all"); setFromDate(""); setToDate(""); setSortMode("newest"); setPage(1); setSelectedId(id); setDetailTab("overview"); }} />}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
@@ -243,7 +253,7 @@ export default function PurchaseOrdersClient({
                 >
                   <option value="all">All Suppliers</option>
                   {suppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
+                    <option key={supplier.id} value={supplier.id} data-i18n-ignore="true">
                       {supplier.name}
                     </option>
                   ))}
@@ -267,19 +277,24 @@ export default function PurchaseOrdersClient({
                     <CalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                     <input
                       type="date"
-                      value={fromDate}
-                      onChange={(event) => { setFromDate(event.target.value); setPage(1); }}
+                      value={dateDraft?.from ?? fromDate}
+                      onChange={(event) => setDateDraft({ from: event.target.value, to: dateDraft?.to ?? toDate })}
                       className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-2 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                       aria-label="Order date from"
                     />
                   </label>
                   <input
                     type="date"
-                    value={toDate}
-                    onChange={(event) => { setToDate(event.target.value); setPage(1); }}
+                    value={dateDraft?.to ?? toDate}
+                    onChange={(event) => setDateDraft({ from: dateDraft?.from ?? fromDate, to: event.target.value })}
                     className="h-10 w-full rounded-xl border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                     aria-label="Order date to"
                   />
+                  {dateDraft && <div className="col-span-2 flex flex-wrap items-center justify-end gap-2">
+                    {draftError && <p role="alert" className="mr-auto text-xs font-semibold text-red-600">{draftError}</p>}
+                    <button type="button" onClick={() => setDateDraft(null)} className="h-9 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600">Cancel</button>
+                    <button type="button" onClick={applyDates} disabled={Boolean(draftError)} className="h-9 rounded-xl bg-blue-600 px-4 text-xs font-semibold text-white disabled:opacity-50">Apply dates</button>
+                  </div>}
                 </div>
 
                 <select
@@ -308,7 +323,7 @@ export default function PurchaseOrdersClient({
             </div>
           )}
 
-          <div className="overflow-x-auto">
+          <div className={`overflow-x-auto transition-opacity ${busy || error ? "opacity-60" : ""}`}>
             <MobileList>{visibleOrders.map((order) => <MobileListCard key={order.id} selected={order.id === selectedOrder?.id} onClick={() => { setSelectedId(order.id); setDetailTab("overview"); if (window.matchMedia("(max-width: 639px)").matches) setDetailOpen(true); }} media={<FileText size={24} />} title={order.po_number} date={formatDate(order.order_date)} primary={order.supplier_name || "No supplier"} secondary={`${order.item_count} items · Expected ${formatDate(order.expected_date)}`} amount={money(order.total)} status={{ label: statusLabel(order.status) }} />)}</MobileList>
             <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[760px] text-xs">
               <thead className="border-b border-slate-200 bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -555,8 +570,8 @@ function PurchaseOrderDetails({
               <div key={item.id} className="rounded-xl border border-slate-200 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">{item.product_name}</p>
-                    <p className="mt-0.5 text-xs text-slate-500">SKU {item.sku || "—"}</p>
+                    <p className="text-sm font-semibold text-slate-900" data-i18n-ignore="true">{item.product_name}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">SKU <span data-i18n-ignore={Boolean(item.sku)}>{item.sku || "—"}</span></p>
                   </div>
                   <p className="text-sm font-semibold text-slate-900">
                     {money(item.unit_cost * item.ordered_quantity)}
@@ -574,7 +589,7 @@ function PurchaseOrderDetails({
         )}
 
         {tab === "notes" && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600" data-i18n-ignore={Boolean(order.notes)}>
             {order.notes || "No notes for this purchase order."}
           </div>
         )}
@@ -611,8 +626,8 @@ function StatCard({
       <div className="flex items-center gap-3">
         {label === "Total Orders" || compact ? <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${toneClass}`}>{icon}</div> : <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${tone === "slate" ? "bg-slate-400" : tone === "amber" ? "bg-amber-400" : tone === "emerald" ? "bg-emerald-500" : "bg-blue-400"}`} />}
         <div className="min-w-0">
-          <p className="truncate text-xs font-medium text-slate-500">{label}</p>
-          <p className={`${compact ? "text-lg" : "text-lg"} mt-0.5 truncate font-bold text-slate-950`}>
+          <p className="break-words text-xs font-medium text-slate-500">{label}</p>
+          <p className={`${compact ? "text-lg" : "text-lg"} mt-0.5 break-words font-bold text-slate-950`}>
             {value}
           </p>
         </div>

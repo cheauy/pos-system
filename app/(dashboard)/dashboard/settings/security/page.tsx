@@ -104,10 +104,10 @@ export default async function SecurityPage() {
             <CircleUserRound className="h-9 w-9" />
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-lg font-bold text-slate-950 dark:text-white">
+            <h2 className="break-words text-lg font-bold text-slate-950 dark:text-white" data-i18n-ignore={Boolean(profile.full_name)}>
               {profile.full_name || "Unnamed User"}
             </h2>
-            <p className="truncate text-sm text-slate-500 dark:text-slate-400">
+            <p className="truncate text-sm text-slate-500 dark:text-slate-400" data-i18n-ignore={Boolean(user.email)}>
               {user.email ?? "No email"}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">

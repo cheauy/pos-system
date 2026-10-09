@@ -33,6 +33,7 @@ import {
 } from "react";
 
 import { runGlobalSearch } from "./search-actions";
+import { dateRangeError } from "@/lib/date-range";
 import type {
   GlobalSearchBranch,
   GlobalSearchKind,
@@ -158,6 +159,8 @@ function resultCount(results: GlobalSearchResult[], kinds: GlobalSearchKind[]) {
   return results.filter((result) => set.has(result.kind)).length;
 }
 
+type PanelFilters = { kinds: Set<GlobalSearchKind>; branch: string; status: string; dateFrom: string; dateTo: string; minPrice: string; maxPrice: string };
+
 function useDebouncedValue<T>(value: T, delay: number) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -185,11 +188,17 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sort, setSort] = useState("relevant");
+  // Filter Results edits are a draft (null = showing the applied filters) until Apply.
+  const [draft, setDraft] = useState<PanelFilters | null>(null);
+  const panel: PanelFilters = draft ?? { kinds: enabledKinds, branch, status, dateFrom, dateTo, minPrice, maxPrice };
+  const editPanel = (changes: Partial<PanelFilters>) => setDraft({ ...panel, ...changes });
+  const panelError = dateRangeError(panel.dateFrom, panel.dateTo)
+    || (panel.minPrice !== "" && panel.maxPrice !== "" && Number(panel.minPrice) > Number(panel.maxPrice) ? "Minimum price must not be above the maximum." : "");
   // Phones: Filter Results opens as a bottom sheet from the button beside the search bar.
   const [filtersOpen, setFiltersOpen] = useState(false);
   useEffect(() => {
     if (!filtersOpen) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setFiltersOpen(false); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { setDraft(null); setFiltersOpen(false); } };
     const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setFiltersOpen(false); };
     window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
     return () => { window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
@@ -307,26 +316,27 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
     void searchNow();
   }
 
+  // "Clear all" only resets the draft; Apply commits it.
   function clearFilters() {
-    setEnabledKinds(new Set(allKinds));
-    setActiveGroup("all");
-    setBranch("all");
-    setStatus("all");
-    setDateFrom("");
-    setDateTo("");
-    setMinPrice("");
-    setMaxPrice("");
-    setSort("relevant");
+    editPanel({ kinds: new Set(allKinds), branch: "all", status: "all", dateFrom: "", dateTo: "", minPrice: "", maxPrice: "" });
   }
+  function applyPanel() {
+    if (panelError) return;
+    if (draft) {
+      if (draft.kinds !== enabledKinds) setActiveGroup("all");
+      setEnabledKinds(draft.kinds); setBranch(draft.branch); setStatus(draft.status);
+      setDateFrom(draft.dateFrom); setDateTo(draft.dateTo); setMinPrice(draft.minPrice); setMaxPrice(draft.maxPrice);
+      setDraft(null);
+    }
+    setFiltersOpen(false);
+  }
+  function closePanel() { setDraft(null); setFiltersOpen(false); }
 
   function toggleKind(kind: GlobalSearchKind) {
-    setActiveGroup("all");
-    setEnabledKinds((current) => {
-      const next = new Set(current);
-      if (next.has(kind)) next.delete(kind);
-      else next.add(kind);
-      return next.size ? next : new Set(allKinds);
-    });
+    const next = new Set(panel.kinds);
+    if (next.has(kind)) next.delete(kind);
+    else next.add(kind);
+    editPanel({ kinds: next.size ? next : new Set(allKinds) });
   }
 
   const hasSearched = Boolean(response.query);
@@ -439,9 +449,9 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
       </section>
 
       <section className="grid min-h-[560px] gap-4 xl:grid-cols-[300px_minmax(0,1fr)_360px]">
-        {filtersOpen ? <button type="button" aria-label="Close filters" onClick={() => setFiltersOpen(false)} className="fixed inset-0 z-40 bg-slate-950/40 sm:hidden" /> : null}
+        {filtersOpen ? <button type="button" aria-label="Close filters" onClick={closePanel} className="fixed inset-0 z-40 bg-slate-950/40 sm:hidden" /> : null}
         <aside role={filtersOpen ? "dialog" : undefined} aria-modal={filtersOpen || undefined} aria-label="Filter results" data-sheet="bottom" className={`${filtersOpen ? "fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto rounded-t-3xl pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-14" : "max-sm:hidden"} rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:static sm:max-h-none sm:overflow-visible dark:border-slate-800 dark:bg-slate-900`}>
-          {filtersOpen ? <button type="button" aria-label="Close filter results" onClick={() => setFiltersOpen(false)} className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600 sm:hidden"><X size={20} /></button> : null}
+          {filtersOpen ? <button type="button" aria-label="Close filter results" onClick={closePanel} className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600 sm:hidden"><X size={20} /></button> : null}
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-slate-900 dark:text-white">Filter Results</h2>
             <button type="button" onClick={clearFilters} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Clear all</button>
@@ -454,7 +464,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
                   <label key={item.kind} className="flex cursor-pointer items-center gap-2.5 text-sm text-slate-700 dark:text-slate-300">
                     <input
                       type="checkbox"
-                      checked={enabledKinds.has(item.kind)}
+                      checked={panel.kinds.has(item.kind)}
                       onChange={() => toggleKind(item.kind)}
                       className="h-4 w-4 rounded border-slate-300 accent-blue-600"
                     />
@@ -468,21 +478,21 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
               <div className="grid grid-cols-2 gap-2">
                 <label className="relative">
                   <CalendarDays size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-8 pr-2 text-xs outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950" />
+                  <input type="date" value={panel.dateFrom} onChange={(event) => editPanel({ dateFrom: event.target.value })} className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-8 pr-2 text-xs outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950" />
                 </label>
-                <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950" />
+                <input type="date" value={panel.dateTo} onChange={(event) => editPanel({ dateTo: event.target.value })} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950" />
               </div>
             </FilterSection>
 
             <FilterSection title="Branch">
-              <select value={branch} onChange={(event) => setBranch(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950">
+              <select value={panel.branch} onChange={(event) => editPanel({ branch: event.target.value })} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950">
                 <option value="all">All branches</option>
-                {response.branches.map((item: GlobalSearchBranch) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                {response.branches.map((item: GlobalSearchBranch) => <option key={item.id} value={item.id} data-i18n-ignore="true">{item.name}</option>)}
               </select>
             </FilterSection>
 
             <FilterSection title="Status">
-              <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm capitalize outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950">
+              <select value={panel.status} onChange={(event) => editPanel({ status: event.target.value })} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm capitalize outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950">
                 <option value="all">All status</option>
                 {statuses.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}
               </select>
@@ -490,11 +500,16 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
 
             <FilterSection title="Price Range">
               <div className="grid grid-cols-2 gap-2">
-                <label className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500">$</span><input inputMode="decimal" value={minPrice} onChange={(event) => setMinPrice(event.target.value)} placeholder="Min" className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-7 pr-2 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950" /></label>
-                <label className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500">$</span><input inputMode="decimal" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder="Max" className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-7 pr-2 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950" /></label>
+                <label className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500">$</span><input inputMode="decimal" value={panel.minPrice} onChange={(event) => editPanel({ minPrice: event.target.value })} placeholder="Min" className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-7 pr-2 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950" /></label>
+                <label className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500">$</span><input inputMode="decimal" value={panel.maxPrice} onChange={(event) => editPanel({ maxPrice: event.target.value })} placeholder="Max" className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-7 pr-2 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950" /></label>
               </div>
             </FilterSection>
           </div>
+          {(draft || filtersOpen) && <div className="mt-5 grid gap-2">
+            {panelError && <p role="alert" className="text-xs font-semibold text-red-600">{panelError}</p>}
+            <button type="button" onClick={applyPanel} disabled={Boolean(panelError)} className="min-h-11 rounded-xl bg-blue-600 text-sm font-semibold text-white disabled:opacity-50">Apply filters</button>
+            {draft && <button type="button" onClick={closePanel} className="min-h-11 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">Cancel</button>}
+          </div>}
         </aside>
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -565,7 +580,7 @@ function SelectResultPanel() {
 function ResultDetail({ result }: { result: GlobalSearchResult }) {
   const meta = kindMeta[result.kind];
   const Icon = meta.Icon;
-  return <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-950/40"><div className="flex items-start gap-3"><span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${meta.iconClass}`}><Icon size={20} /></span><div className="min-w-0 flex-1"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${meta.badgeClass}`}>{result.badge || meta.label}</span><h3 className="mt-2 truncate text-lg font-bold text-slate-950 dark:text-white">{result.title}</h3><p className="mt-1 text-sm leading-6 text-slate-500">{result.subtitle}</p></div></div><dl className="mt-4 space-y-2.5">{result.details.map((detail) => <div key={`${detail.label}-${detail.value}`} className="flex items-start justify-between gap-4 text-sm"><dt className="text-slate-500">{detail.label}</dt><dd className="max-w-[60%] text-right font-medium text-slate-800 dark:text-slate-200">{detail.value}</dd></div>)}{result.branchName ? <div className="flex items-start justify-between gap-4 text-sm"><dt className="text-slate-500">Branch</dt><dd className="text-right font-medium text-slate-800 dark:text-slate-200">{result.branchName}</dd></div> : null}{result.createdAt ? <div className="flex items-start justify-between gap-4 text-sm"><dt className="text-slate-500">Created</dt><dd className="text-right font-medium text-slate-800 dark:text-slate-200">{formatDate(result.createdAt)}</dd></div> : null}</dl><Link href={result.href} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">Open result <ChevronRight size={16} /></Link></div>;
+  return <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-950/40"><div className="flex items-start gap-3"><span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${meta.iconClass}`}><Icon size={20} /></span><div className="min-w-0 flex-1"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${meta.badgeClass}`}>{result.badge || meta.label}</span><h3 className="mt-2 truncate text-lg font-bold text-slate-950 dark:text-white">{result.title}</h3><p className="mt-1 text-sm leading-6 text-slate-500">{result.subtitle}</p></div></div><dl className="mt-4 space-y-2.5">{result.details.map((detail) => <div key={`${detail.label}-${detail.value}`} className="flex items-start justify-between gap-4 text-sm"><dt className="text-slate-500">{detail.label}</dt><dd className="max-w-[60%] text-right font-medium text-slate-800 dark:text-slate-200">{detail.value}</dd></div>)}{result.branchName ? <div className="flex items-start justify-between gap-4 text-sm"><dt className="text-slate-500">Branch</dt><dd className="text-right font-medium text-slate-800 dark:text-slate-200" data-i18n-ignore="true">{result.branchName}</dd></div> : null}{result.createdAt ? <div className="flex items-start justify-between gap-4 text-sm"><dt className="text-slate-500">Created</dt><dd className="text-right font-medium text-slate-800 dark:text-slate-200">{formatDate(result.createdAt)}</dd></div> : null}</dl><Link href={result.href} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">Open result <ChevronRight size={16} /></Link></div>;
 }
 
 function SearchTips() {

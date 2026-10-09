@@ -4,6 +4,7 @@ import Link, { useActivity } from '@/components/ui/activity-link';
 import {useRouter} from "next/navigation";
 import { CalendarDays, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { dateRangeError } from "@/lib/date-range";
 
 type DashboardRange =
   | "today"
@@ -28,6 +29,7 @@ export default function DashboardPeriodFilter({
   const [pending, startTransition] = useTransition();
   useActivity(pending);
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -92,7 +94,7 @@ export default function DashboardPeriodFilter({
         <div ref={popoverRef} className="relative">
           <button
             type="button"
-            onClick={() => setOpen((current) => !current)}
+            onClick={() => { setError(""); setOpen((current) => !current); }}
             aria-expanded={open}
             className={
               activeRange === "custom"
@@ -124,7 +126,7 @@ export default function DashboardPeriodFilter({
                 </button>
               </div>
 
-                <form onSubmit={event => { event.preventDefault(); const query = new URLSearchParams(new FormData(event.currentTarget) as unknown as Record<string,string>); startTransition(() => router.push(`/dashboard?${query}`)); setOpen(false); }} className="space-y-3"><input type="hidden" name="branch" value={branchId || "all"}/>
+                <form onSubmit={event => { event.preventDefault(); const data = new FormData(event.currentTarget); const message = dateRangeError(String(data.get("from")), String(data.get("to")), 365); if (message) { setError(message); return; } const query = new URLSearchParams(data as unknown as Record<string,string>); startTransition(() => router.push(`/dashboard?${query}`)); setOpen(false); }} onChange={() => setError("")} className="space-y-3"><input type="hidden" name="branch" value={branchId || "all"}/>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
                     <span className="block text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
@@ -133,6 +135,7 @@ export default function DashboardPeriodFilter({
                     <input
                       type="date"
                       name="from"
+                      required
                       defaultValue={selectedFrom}
                       aria-label="Dashboard range start date"
                       className="mt-1 w-full bg-transparent text-sm font-bold text-slate-700 outline-none dark:text-slate-200"
@@ -145,6 +148,7 @@ export default function DashboardPeriodFilter({
                     <input
                       type="date"
                       name="to"
+                      required
                       defaultValue={selectedTo}
                       aria-label="Dashboard range end date"
                       className="mt-1 w-full bg-transparent text-sm font-bold text-slate-700 outline-none dark:text-slate-200"
@@ -152,8 +156,10 @@ export default function DashboardPeriodFilter({
                   </label>
                 </div>
 
+                {error && <p role="alert" className="text-xs font-semibold text-rose-600">{error}</p>}
                 <button
                   type="submit"
+                  disabled={pending}
                   className="inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
                 >
                   Apply date range

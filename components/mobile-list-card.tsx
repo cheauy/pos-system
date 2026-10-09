@@ -31,21 +31,22 @@ type Props = {
 export default function MobileListCard({ media, title, date, primary, secondary, amount, status, extra, href, onClick, selected = false }: Props) {
   const body = <>
     {media !== undefined && <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-50 text-slate-400">{media}</span>}
-    <span className="min-w-0 flex-1">
-      <span className="block truncate text-sm font-bold text-slate-900">{title}</span>
-      {date && <span className="block truncate text-xs text-slate-400">{date}</span>}
-      {primary && <span className="mt-1 block truncate text-sm font-semibold text-slate-800">{primary}</span>}
-      {secondary && <span className="block truncate text-xs text-slate-500">{secondary}</span>}
+    <span className="min-w-[7rem] flex-1">
+      <span className="block break-words text-sm font-bold text-slate-900">{title}</span>
+      {date && <span className="block break-words text-xs text-slate-400">{date}</span>}
+      {primary && <span className="mt-1 block break-words text-sm font-semibold text-slate-800">{primary}</span>}
+      {secondary && <span className="block break-words text-xs text-slate-500">{secondary}</span>}
       {extra}
     </span>
-    <span className="flex shrink-0 flex-col items-end gap-2">
+    <span className="ml-auto flex shrink-0 flex-col items-end gap-2">
       {amount !== undefined && <span className="text-base font-bold text-slate-900">{amount}</span>}
       {status && <span className={`rounded-full border px-3 py-1 text-xs font-semibold capitalize ${tones[status.tone ?? statusTone(status.label)]}`}>{status.label}</span>}
     </span>
     {(href || onClick) && amount === undefined && !status && <ChevronRight size={18} className="shrink-0 text-slate-300" />}
   </>;
-  const className = `flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left shadow-sm ${selected ? "border-blue-200 ring-1 ring-blue-100" : "border-slate-200"}`;
-  if (href) return <li><Link href={href} className={className}>{body}</Link></li>;
+  const className = `flex w-full flex-wrap items-center gap-3 rounded-2xl border bg-white p-3 text-left shadow-sm ${selected ? "border-blue-200 ring-1 ring-blue-100" : "border-slate-200"}`;
+  // A #hash href opens a CSS :target drawer, which needs a real hash navigation (not Link's pushState).
+  if (href) return <li>{href.startsWith("#") ? <a href={href} className={className}>{body}</a> : <Link href={href} className={className}>{body}</Link>}</li>;
   if (onClick) return <li><button type="button" onClick={onClick} className={className}>{body}</button></li>;
   return <li><div className={className}>{body}</div></li>;
 }

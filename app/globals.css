@@ -36,6 +36,10 @@
 }
 @media screen and (max-width: 1279px) {
   .workspace-header { position: sticky; top: 0; z-index: 40; padding-top: max(.75rem, env(safe-area-inset-top)); }
+  /* Header height: 44px controls + 12px bottom padding + 1px border + safe-area top padding. */
+  :root { --workspace-header-h: calc(57px + max(.75rem, env(safe-area-inset-top))); }
+  /* Keyboard focus and anchor jumps stop below the sticky header instead of under it. */
+  html:has(.workspace-header) { scroll-padding-top: calc(var(--workspace-header-h) + 8px); }
   .workspace-content { padding-inline: max(1rem, env(safe-area-inset-left)); }
   .workspace-theme dialog:not(.workspace-mobile-navigation) { overscroll-behavior: contain; }
   .workspace-theme :is(input,select,textarea):not([type="checkbox"],[type="radio"],[type="range"],[type="color"]) { font-size: max(1rem, 1em); }
@@ -238,6 +242,20 @@ body {
   .no-print {
     display: none !important;
   }
+}
+
+/* Super-admin phones/tablets: anchor jumps and focus stop below the sticky mobile header. */
+@media screen and (max-width: 1023px) {
+  html:has([data-super-admin-header]) { scroll-padding-top: calc(57px + max(.75rem, env(safe-area-inset-top)) + 8px); }
+  /* Page behind the open navigation drawer stays put; CSS so it can never stay locked after close. */
+  html:has(#super-admin-drawer[open]) { overflow: hidden; }
+}
+
+/* Touch phones and tablets: hide every scrollbar (page, tables, menus, dialogs) while touch, wheel and keyboard scrolling keep working.
+   Pointer-based so mouse desktops keep their scrollbars at any window width. */
+@media screen and (hover: none) and (pointer: coarse) {
+  html, body, * { scrollbar-width: none !important; -ms-overflow-style: none; }
+  ::-webkit-scrollbar { display: none !important; }
 }
 
 /* Phones and tablets (<=1024px): bottom sheets stay inside the viewport and scroll;

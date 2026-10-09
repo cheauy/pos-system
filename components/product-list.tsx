@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 
 import { toast } from "sonner";
 import { stockAdjustmentLink } from "@/lib/inventory/stock-adjustment";
@@ -180,6 +182,8 @@ export default function ProductList({
   businessId: string;
   productMode?: string; branches?:{id:string;name:string}[];branchId?:string; businessType?: string; canAdjustStock?: boolean;
 }) {
+  const { t: translateLabel } = useLanguage();
+
   const router = useRouter();
   const [selectedGroups, setSelectedGroups] = useState(new Set<string>());
   useEffect(() => { setSelectedGroups(new Set()); }, [branchId]);
@@ -401,7 +405,7 @@ export default function ProductList({
       <div className="flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 max-lg:border-0 max-lg:bg-transparent max-lg:pb-3 max-lg:pt-0 max-sm:px-0">
           <select value={category} onChange={(event) => { setCategory(event.target.value); resetPage(); }} className={filterInputClass + " !w-auto max-w-36 shrink-0 max-lg:hidden"}>
             <option value="all">All Categories</option>
-            {categories.map((name) => <option key={name} value={name}>{name}</option>)}
+            {categories.map((name) => <option key={name} value={name} data-i18n-ignore="true">{name}</option>)}
           </select>
         <div className="relative min-w-20 flex-1 max-sm:min-w-0">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -420,7 +424,7 @@ export default function ProductList({
           <SlidersHorizontal size={15} /><span className="max-w-24 truncate">{category === "all" ? "Filter" : category}</span><ChevronDown size={14} className="text-slate-400" />
           <select aria-label="Filter by category" value={category} onChange={(event) => { setCategory(event.target.value); resetPage(); }} className="absolute inset-0 cursor-pointer opacity-0">
             <option value="all">All Categories</option>
-            {categories.map((name) => <option key={name} value={name}>{name}</option>)}
+            {categories.map((name) => <option key={name} value={name} data-i18n-ignore="true">{name}</option>)}
           </select>
         </label>
         <label className="relative inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 lg:hidden">
@@ -481,24 +485,24 @@ export default function ProductList({
           {pageRows.map((group, index) => (
             <li key={group.key} onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input, a, label")) openDetails(group); }} className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
               <div className="flex items-start gap-3">
-                <input type="checkbox" aria-label={`Select ${group.name}`} disabled={actionPending} checked={selectedGroups.has(group.key)} onChange={() => toggleSelected(group.key)} className="mt-1 h-5 w-5 shrink-0" />
-                {group.imageUrl ? <ProductPhoto loading={index < 3 ? 'eager' : 'lazy'} src={group.imageUrl} alt={group.name} sizes="64px" className="h-16 w-16 shrink-0 rounded-xl border border-slate-200 object-cover" /> : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><Package size={22} /></div>}
+                <input type="checkbox" aria-label={formatUiText(translateLabel("Select {0}"), [group.name])} disabled={actionPending} checked={selectedGroups.has(group.key)} onChange={() => toggleSelected(group.key)} className="mt-1 h-5 w-5 shrink-0"  data-i18n-ignore-attributes="aria-label"/>
+                {group.imageUrl ? <ProductPhoto loading={index < 3 ? 'eager' : 'lazy'} src={group.imageUrl} alt={group.name} sizes="64px" className="h-16 w-16 shrink-0 rounded-xl border border-slate-200 object-cover"  data-i18n-ignore-attributes="alt"/> : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><Package size={22} /></div>}
                 <div className="min-w-0 flex-1">
-                  <button type="button" onClick={() => openDetails(group)} aria-label={`View ${group.name}`} className="block w-full truncate text-left text-[15px] font-bold text-slate-900">{group.name}</button>
-                  <p className="truncate text-[11px] text-slate-400">{group.sku || "No SKU"}</p>
-                  <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-600"><Tag size={13} className="shrink-0 text-slate-400" />{group.category}</p>
+                  <button type="button" onClick={() => openDetails(group)} aria-label={formatUiText(translateLabel("View {0}"), [group.name])} className="block w-full truncate text-left text-[15px] font-bold text-slate-900" data-i18n-ignore-attributes="aria-label"><span data-i18n-ignore="true">{group.name}</span></button>
+                  <p className="break-all text-[11px] text-slate-400" data-i18n-ignore={Boolean(group.sku)}>{group.sku || "No SKU"}</p>
+                  <p className="mt-0.5 flex items-center gap-1 break-words text-xs text-slate-600"><Tag size={13} className="shrink-0 text-slate-400" />{group.category}</p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
-                  <button type="button" onClick={(event) => openActionMenu(event, group)} aria-label={`Actions for ${group.name}`} aria-haspopup="menu" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500"><MoreHorizontal size={17} /></button>
+                  <button type="button" onClick={(event) => openActionMenu(event, group)} aria-label={formatUiText(translateLabel("Actions for {0}"), [group.name])} aria-haspopup="menu" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500" data-i18n-ignore-attributes="aria-label"><MoreHorizontal size={17} /></button>
                   <StatusBadge group={group} />
                   <span className="text-[11px] text-slate-500">{formatUpdated(group.updatedAt)}</span>
                 </div>
               </div>
               <dl className="mt-3 grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 pt-3 text-[11px]">
-                <div className="min-w-0 pr-2"><dt className="flex items-center gap-1 text-slate-500"><Layers size={12} />{isVariantMode ? "Variants" : "Options"}</dt><dd className="mt-0.5 truncate text-[13px] font-bold text-slate-900">{group.variants}</dd></div>
-                <div className="min-w-0 px-2"><dt className="flex items-center gap-1 text-slate-500"><Tag size={12} />Price</dt><dd className="mt-0.5 truncate text-[13px] font-bold text-slate-900">{formatMoney(group.minPrice)}</dd></div>
-                <div className="min-w-0 px-2"><dt className="flex items-center gap-1 text-slate-500"><Package size={12} />Stock</dt><dd className="mt-0.5 truncate text-[13px] font-bold text-slate-900">{group.totalStock}</dd></div>
-                <div className="min-w-0 pl-2"><dt className="flex items-center gap-1 text-slate-500"><Shirt size={12} />Sizes</dt><dd className="mt-0.5 truncate text-slate-600">{group.sizes.length ? group.sizes.join(" · ") : "—"}</dd></div>
+                <div className="min-w-0 pr-2"><dt className="flex items-center gap-1 text-slate-500"><Layers size={12} />{isVariantMode ? "Variants" : "Options"}</dt><dd className="mt-0.5 break-words text-[13px] font-bold text-slate-900">{group.variants}</dd></div>
+                <div className="min-w-0 px-2"><dt className="flex items-center gap-1 text-slate-500"><Tag size={12} />Price</dt><dd className="mt-0.5 break-words text-[13px] font-bold text-slate-900">{formatMoney(group.minPrice)}</dd></div>
+                <div className="min-w-0 px-2"><dt className="flex items-center gap-1 text-slate-500"><Package size={12} />Stock</dt><dd className="mt-0.5 break-words text-[13px] font-bold text-slate-900">{group.totalStock}</dd></div>
+                <div className="min-w-0 pl-2"><dt className="flex items-center gap-1 text-slate-500"><Shirt size={12} />Sizes</dt><dd className="mt-0.5 break-words text-slate-600">{group.sizes.length ? group.sizes.join(" · ") : "—"}</dd></div>
               </dl>
             </li>
           ))}
@@ -521,17 +525,17 @@ export default function ProductList({
             <tbody className="divide-y divide-slate-100">
               {pageRows.map((group, index) => (
                 <tr key={group.key} onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input, a, label")) openDetails(group); }} className="cursor-pointer transition hover:bg-slate-50/70">
-                  <td className="px-3 py-3"><input type="checkbox" aria-label={`Select ${group.name}`} disabled={actionPending} checked={selectedGroups.has(group.key)} onChange={() => toggleSelected(group.key)} /></td>
+                  <td className="px-3 py-3"><input type="checkbox" aria-label={formatUiText(translateLabel("Select {0}"), [group.name])} disabled={actionPending} checked={selectedGroups.has(group.key)} onChange={() => toggleSelected(group.key)}  data-i18n-ignore-attributes="aria-label"/></td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-3">
                       {group.imageUrl ? (
-                        <ProductPhoto loading={index < 3 ? 'eager' : 'lazy'} src={group.imageUrl} alt={group.name} sizes="56px" className="h-11 w-11 rounded-lg border border-slate-200 object-cover" />
+                        <ProductPhoto loading={index < 3 ? 'eager' : 'lazy'} src={group.imageUrl} alt={group.name} sizes="56px" className="h-11 w-11 rounded-lg border border-slate-200 object-cover"  data-i18n-ignore-attributes="alt"/>
                       ) : (
                         <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 text-slate-400"><Package size={18} /></div>
                       )}
                       <div className="min-w-0">
-                        <button type="button" onClick={() => openDetails(group)} aria-label={`View ${group.name}`} className="block max-w-52 truncate text-left font-semibold text-slate-900 hover:text-teal-700 focus-visible:outline-2 focus-visible:outline-teal-600">{group.name}</button>
-                        <p className="mt-0.5 truncate text-[11px] text-slate-400">{group.sku || "No SKU"}</p>
+                        <button type="button" onClick={() => openDetails(group)} aria-label={formatUiText(translateLabel("View {0}"), [group.name])} className="block max-w-52 truncate text-left font-semibold text-slate-900 hover:text-teal-700 focus-visible:outline-2 focus-visible:outline-teal-600" data-i18n-ignore-attributes="aria-label"><span data-i18n-ignore="true">{group.name}</span></button>
+                        <p className="mt-0.5 break-all text-[11px] text-slate-400" data-i18n-ignore={Boolean(group.sku)}>{group.sku || "No SKU"}</p>
                       </div>
                     </div>
                   </td>
@@ -548,17 +552,17 @@ export default function ProductList({
                       </>
                     ) : isGeneralShop ? (
                       <>
-                        <p className="max-w-36 truncate text-xs font-semibold text-slate-800">
+                        <p className="max-w-36 truncate text-xs font-semibold text-slate-800" data-i18n-ignore={!(group.variants > 1) && (Boolean(group.sku))}>
                           {group.variants > 1 ? `${group.variants} options` : group.sku || "No SKU"}
                         </p>
-                        <p className="mt-0.5 max-w-36 truncate text-[10px] text-slate-400">
+                        <p className="mt-0.5 max-w-36 truncate text-[10px] text-slate-400" data-i18n-ignore={!(group.variants > 1) && (Boolean(group.representative.barcode))}>
                           {group.variants > 1
                             ? "Separate SKU / stock per option"
                             : group.representative.barcode || "No barcode"}
                         </p>
                       </>
                     ) : (
-                      <p className="max-w-36 truncate text-xs font-semibold text-slate-800">
+                      <p className="max-w-36 truncate text-xs font-semibold text-slate-800" data-i18n-ignore={Boolean(group.sku)}>
                         {group.sku || "No SKU"}
                       </p>
                     )}
@@ -573,10 +577,10 @@ export default function ProductList({
                     <button
                       type="button"
                       onClick={(event) => openActionMenu(event, group)}
-                      aria-label={`Actions for ${group.name}`}
+                      aria-label={formatUiText(translateLabel("Actions for {0}"), [group.name])}
                       aria-haspopup="menu"
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
-                    >
+                     data-i18n-ignore-attributes="aria-label">
                       <MoreHorizontal size={17} />
                     </button>
                   </td>
@@ -666,14 +670,14 @@ export default function ProductList({
             <aside
               role="dialog"
               aria-modal="true"
-              aria-label={`${detailGroup.name} details`}
+              aria-label={formatUiText(translateLabel("{0} details"), [detailGroup.name])}
               className="absolute right-0 top-0 flex h-full w-full max-w-[520px] flex-col border-l border-slate-200 bg-white shadow-2xl"
               onMouseDown={(event) => event.stopPropagation()}
-            >
+             data-i18n-ignore-attributes="aria-label">
               <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-600">Product details</p>
-                  <h3 className="mt-1 text-lg font-bold text-slate-950">{detailGroup.name}</h3>
+                  <h3 className="mt-1 text-lg font-bold text-slate-950" data-i18n-ignore="true">{detailGroup.name}</h3>
                   <p className="mt-0.5 text-xs text-slate-500">
                     {detailDescription}
                   </p>
@@ -691,17 +695,17 @@ export default function ProductList({
               <div className="flex-1 overflow-y-auto px-5 py-5">
                 <div className="flex items-start gap-4">
                   {detailGroup.imageUrl ? (
-                    <button type="button" onClick={() => setPhotoPreview(detailGroup.imageUrl)} aria-label="View cover photo" className="shrink-0 rounded-2xl focus-visible:outline-2 focus-visible:outline-teal-600"><ProductPhoto src={detailGroup.imageUrl} alt={detailGroup.name} sizes="80px" className="h-20 w-20 rounded-2xl border border-slate-200 object-cover" /></button>
+                    <button type="button" onClick={() => setPhotoPreview(detailGroup.imageUrl)} aria-label="View cover photo" className="shrink-0 rounded-2xl focus-visible:outline-2 focus-visible:outline-teal-600"><ProductPhoto src={detailGroup.imageUrl} alt={detailGroup.name} sizes="80px" className="h-20 w-20 rounded-2xl border border-slate-200 object-cover"  data-i18n-ignore-attributes="alt"/></button>
                   ) : (
                     <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"><Package size={25} /></div>
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="truncate text-base font-bold text-slate-950">{detailGroup.name}</h4>
+                      <h4 className="truncate text-base font-bold text-slate-950" data-i18n-ignore="true">{detailGroup.name}</h4>
                       <StatusBadge group={detailGroup} />
                     </div>
                     <p className="mt-1 text-xs text-slate-500">{detailGroup.category}</p>
-                    <p className="mt-1 text-xs font-medium text-slate-400">{detailGroup.sku || "No SKU"}</p>
+                    <p className="mt-1 text-xs font-medium text-slate-400" data-i18n-ignore={Boolean(detailGroup.sku)}>{detailGroup.sku || "No SKU"}</p>
                   </div>
                 </div>
 
@@ -733,7 +737,7 @@ export default function ProductList({
                   />
                 </div>
 
-                {(detailGroup.representative.image_urls?.length ?? 0) > 0 && <div className="mt-4 flex gap-3 overflow-x-auto" aria-label="Product gallery">{detailGroup.representative.image_urls?.map((url, index) => <button type="button" key={url} onClick={() => setPhotoPreview(url)} aria-label={`View product photo ${index + 1}`} className="shrink-0 rounded-xl focus-visible:outline-2 focus-visible:outline-teal-600"><ProductPhoto src={url} alt={`${detailGroup.name} photo ${index + 1}`} sizes="120px" className="h-28 w-28 shrink-0 rounded-xl border border-slate-200 object-contain" loading="lazy" /></button>)}</div>}
+                {(detailGroup.representative.image_urls?.length ?? 0) > 0 && <div className="mt-4 flex gap-3 overflow-x-auto" aria-label="Product gallery">{detailGroup.representative.image_urls?.map((url, index) => <button type="button" key={url} onClick={() => setPhotoPreview(url)} aria-label={`View product photo ${index + 1}`} className="shrink-0 rounded-xl focus-visible:outline-2 focus-visible:outline-teal-600"><ProductPhoto src={url} alt={formatUiText(translateLabel("{0} photo {1}"), [detailGroup.name, index + 1])} sizes="120px" className="h-28 w-28 shrink-0 rounded-xl border border-slate-200 object-contain" loading="lazy"  data-i18n-ignore-attributes="alt"/></button>)}</div>}
 
                 {isVariantMode && (
                 <div className="mt-6">
@@ -772,7 +776,7 @@ export default function ProductList({
                                 style={{ backgroundColor: getColourSwatchValue(colourGroup.label) }}
                                 aria-hidden="true"
                               />
-                              <span className="truncate text-sm font-bold text-slate-900">
+                              <span className="truncate text-sm font-bold text-slate-900" data-i18n-ignore={colourGroup.rows.some(row => Boolean(row.color?.trim()))}>
                                 {colourGroup.label}
                               </span>
                               <span className="shrink-0 text-xs font-medium text-slate-400">
@@ -811,13 +815,13 @@ export default function ProductList({
                                         <tr key={row.id} className="bg-white hover:bg-slate-50/60">
                                           <td className="px-3 py-2">
                                             {rowImage ? (
-                                              <button type="button" onClick={() => setPhotoPreview(rowImage)} aria-label={`View ${colourGroup.label} ${row.size ?? ""} photo`} className="rounded-lg focus-visible:outline-2 focus-visible:outline-teal-600"><ProductPhoto sizes="36px"
+                                              <button type="button" onClick={() => setPhotoPreview(rowImage)} aria-label={formatUiText(translateLabel("View {0} {1} photo"), [colourGroup.rows.some(row => Boolean(row.color?.trim())) ? colourGroup.label : translateLabel("No colour"), row.size ?? ("")])} className="rounded-lg focus-visible:outline-2 focus-visible:outline-teal-600" data-i18n-ignore-attributes="aria-label"><ProductPhoto sizes="36px"
                                                 src={rowImage}
-                                                alt={`${detailGroup.name} ${colourGroup.label} ${row.size ?? ""}`}
+                                                alt={formatUiText(translateLabel("{0} {1} {2}"), [detailGroup.name, colourGroup.rows.some(row => Boolean(row.color?.trim())) ? colourGroup.label : translateLabel("No colour"), row.size ?? ("")])}
                                                 loading="lazy"
                                                 decoding="async"
                                                 className="h-9 w-9 rounded-lg border border-slate-200 object-cover"
-                                              />
+                                               data-i18n-ignore-attributes="alt"/>
                                               </button>
                                             ) : (
                                               <div className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-400">
@@ -825,7 +829,7 @@ export default function ProductList({
                                               </div>
                                             )}
                                           </td>
-                                          <td className="px-3 py-2 font-bold text-slate-800">{row.size || "—"}</td>
+                                          <td className="px-3 py-2 font-bold text-slate-800" data-i18n-ignore="true">{row.size || "—"}</td>
                                           <td className="px-3 py-2 text-slate-600">
                                             <span className="inline-flex items-center gap-1.5">
                                               <span
@@ -833,10 +837,10 @@ export default function ProductList({
                                                 style={{ backgroundColor: getColourSwatchValue(colourGroup.label) }}
                                                 aria-hidden="true"
                                               />
-                                              {colourGroup.label}
+                                              <span data-i18n-ignore={colourGroup.rows.some(row => Boolean(row.color?.trim()))}>{colourGroup.label}</span>
                                             </span>
                                           </td>
-                                          <td className="max-w-40 truncate px-3 py-2 font-mono text-[11px] text-slate-500">
+                                          <td className="max-w-40 truncate px-3 py-2 font-mono text-[11px] text-slate-500" data-i18n-ignore="true">
                                             {row.sku || "—"}
                                           </td>
                                           <td className="px-3 py-2 text-right text-slate-600">
@@ -909,9 +913,9 @@ export default function ProductList({
                             <tbody className="divide-y divide-slate-100">
                               {detailGroup.rows.map((row) => (
                                 <tr key={row.id}>
-                                  <td className="px-3 py-2 font-semibold text-slate-800">{row.size || "—"}</td>
-                                  <td className="px-3 py-2 text-slate-600">{row.color || "—"}</td>
-                                  <td className="px-3 py-2 font-mono text-[11px] text-slate-500">{row.sku || "—"}</td>
+                                  <td className="px-3 py-2 font-semibold text-slate-800" data-i18n-ignore="true">{row.size || "—"}</td>
+                                  <td className="px-3 py-2 text-slate-600" data-i18n-ignore="true">{row.color || "—"}</td>
+                                  <td className="px-3 py-2 font-mono text-[11px] text-slate-500" data-i18n-ignore="true">{row.sku || "—"}</td>
                                   <td className="px-3 py-2 text-right font-semibold text-slate-800">{formatMoney(Number(row.selling_price || 0))}</td>
                                   <td className="px-3 py-2 text-right font-semibold text-slate-700">{Number(row.stock_quantity || 0)}</td>
                                 </tr>
@@ -1035,14 +1039,16 @@ function ProductCard({
   isVariantMode?: boolean;
   selected?: boolean; onToggle?: () => void;
 }) {
+  const { t: translateLabel } = useLanguage();
+
   return (
     <div onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input, a, label")) onView(); }} className="cursor-pointer rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm">
-      {onToggle && <label className="mb-2 flex items-center gap-2 text-xs text-slate-500"><input type="checkbox" aria-label={`Select ${group.name}`} checked={selected} onChange={onToggle} /> Select product</label>}
+      {onToggle && <label className="mb-2 flex items-center gap-2 text-xs text-slate-500"><input type="checkbox" aria-label={formatUiText(translateLabel("Select {0}"), [group.name])} checked={selected} onChange={onToggle}  data-i18n-ignore-attributes="aria-label"/> Select product</label>}
       <div className="flex items-start gap-3">
-        <button type="button" onClick={onView} aria-label={`View ${group.name}`} className="flex min-w-0 flex-1 items-start gap-3 text-left focus-visible:outline-2 focus-visible:outline-teal-600">
-          {group.imageUrl ? <ProductPhoto loading={eager ? 'eager' : 'lazy'} src={group.imageUrl} alt={group.name} sizes="56px" className="h-14 w-14 rounded-xl border border-slate-200 object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><Package size={20} /></div>}
+        <button type="button" onClick={onView} aria-label={formatUiText(translateLabel("View {0}"), [group.name])} className="flex min-w-0 flex-1 items-start gap-3 text-left focus-visible:outline-2 focus-visible:outline-teal-600" data-i18n-ignore-attributes="aria-label">
+          {group.imageUrl ? <ProductPhoto loading={eager ? 'eager' : 'lazy'} src={group.imageUrl} alt={group.name} sizes="56px" className="h-14 w-14 rounded-xl border border-slate-200 object-cover"  data-i18n-ignore-attributes="alt"/> : <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><Package size={20} /></div>}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-slate-900">{group.name}</p>
+            <p className="truncate text-sm font-semibold text-slate-900" data-i18n-ignore="true">{group.name}</p>
             <p className="mt-0.5 text-xs text-slate-400">{group.category}</p>
             <div className="mt-2 flex flex-wrap gap-1.5"><StatusBadge group={group} /></div>
           </div>
@@ -1050,10 +1056,10 @@ function ProductCard({
         <button
           type="button"
           onClick={(event) => onMenu(event, group)}
-          aria-label={`Actions for ${group.name}`}
+          aria-label={formatUiText(translateLabel("Actions for {0}"), [group.name])}
           aria-haspopup="menu"
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
-        >
+         data-i18n-ignore-attributes="aria-label">
           <MoreHorizontal size={17} />
         </button>
       </div>
@@ -1062,7 +1068,7 @@ function ProductCard({
           <p className="text-[10px] text-slate-400">
             {isVariantMode ? "Variants" : isGeneralShop ? "Barcode" : "SKU"}
           </p>
-          <p className="truncate text-xs font-semibold text-slate-800">
+          <p className="truncate text-xs font-semibold text-slate-800" data-i18n-ignore={!(isVariantMode) && (((isGeneralShop) && (!(group.variants > 1) && (true))) || (!(isGeneralShop) && (true)))}>
             {isVariantMode
               ? group.variants
               : isGeneralShop

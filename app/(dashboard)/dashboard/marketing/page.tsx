@@ -208,7 +208,7 @@ export default async function MarketingPage() {
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Marketing</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Grow {business.name} with offers, customer segments, loyalty and your online storefront.
+            Grow <span data-i18n-ignore="true">{business.name}</span> with offers, customer segments, loyalty and your online storefront.
           </p>
         </div>
 
@@ -309,7 +309,7 @@ export default async function MarketingPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <MobileList>{coupons.slice(0, 8).map((coupon) => <MobileListCard key={coupon.id} media={<TicketPercent size={24} className="text-blue-600" />} title={coupon.name || coupon.code} date={formatCouponPeriod(coupon)} primary={formatCouponValue(coupon, branchCurrency.currency)} secondary={`Code: ${coupon.code} · Used ${coupon.usage_count.toLocaleString()}${coupon.usage_limit ? ` / ${coupon.usage_limit.toLocaleString()}` : ""}`} status={{ label: getCouponStatus(coupon, now) }} />)}</MobileList>
+              <MobileList>{coupons.slice(0, 8).map((coupon) => <MobileListCard key={coupon.id} media={<TicketPercent size={24} className="text-blue-600" />} title={<span data-i18n-ignore="true">{coupon.name || coupon.code}</span>} date={formatCouponPeriod(coupon)} primary={formatCouponValue(coupon, branchCurrency.currency)} secondary={<>{"Code"}{":"}{" "}<span data-i18n-ignore="true">{coupon.code}</span>{" "}{"·"}{" Used "}{coupon.usage_count.toLocaleString()}{coupon.usage_limit ? ` / ${coupon.usage_limit.toLocaleString()}` : ""}</>} status={{ label: getCouponStatus(coupon, now) }}  data-i18n-ignore-attributes="title"/>)}</MobileList>
               <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[760px] text-sm">
                 <thead className="bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
@@ -331,10 +331,10 @@ export default async function MarketingPage() {
                               <TicketPercent size={17} />
                             </div>
                             <div className="min-w-0">
-                              <p className="truncate font-semibold text-slate-900">
+                              <p className="truncate font-semibold text-slate-900" data-i18n-ignore="true">
                                 {coupon.name || coupon.code}
                               </p>
-                              <p className="mt-0.5 truncate font-mono text-[11px] text-slate-400">
+                              <p className="mt-0.5 truncate font-mono text-[11px] text-slate-400" data-i18n-ignore="true">
                                 {coupon.code}
                               </p>
                             </div>
@@ -613,7 +613,7 @@ function MetricCard({
         </div>
         <div className="min-w-0">
           <p className="text-xs font-medium text-slate-500">{label}</p>
-          <p className="mt-0.5 truncate text-2xl font-bold tracking-tight text-slate-950">{value}</p>
+          <p className="mt-0.5 break-words text-2xl font-bold tracking-tight text-slate-950">{value}</p>
         </div>
       </div>
       <p className="mt-3 text-xs text-slate-500">{helper}</p>

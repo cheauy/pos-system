@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 
 import { ButtonSpinner } from "@/components/pending-submit-button";
 import {
@@ -106,6 +108,8 @@ export default function BranchesClient({
   managerOptions,
   branchCapacity,
 }: Props) {
+  const { t: translateLabel } = useLanguage();
+
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
@@ -250,7 +254,7 @@ export default function BranchesClient({
           <div className="text-xs font-medium text-slate-500">Settings &gt; Branches</div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Branches</h1>
           <p className="text-sm text-slate-500">
-            Manage all your branches, staff assignment and branch settings for {businessName}.
+            Manage all your branches, staff assignment and branch settings for <span data-i18n-ignore="true">{businessName}</span>.
           </p>
         </header>
 
@@ -377,7 +381,7 @@ export default function BranchesClient({
             >
               <option value="all">All Cities</option>
               {cities.map((city) => (
-                <option key={city} value={city}>
+                <option key={city} value={city} data-i18n-ignore="true">
                   {city}
                 </option>
               ))}
@@ -393,7 +397,7 @@ export default function BranchesClient({
             >
               <option value="all">All Managers</option>
               {managerOptions.map((manager) => (
-                <option key={manager.id} value={manager.id}>
+                <option key={manager.id} value={manager.id} data-i18n-ignore="true">
                   {manager.name}
                 </option>
               ))}
@@ -439,7 +443,7 @@ export default function BranchesClient({
 
                       <div className="min-w-0 space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="truncate text-lg font-bold text-slate-950">
+                          <h3 className="break-words text-lg font-bold text-slate-950" data-i18n-ignore="true">
                             {branch.name}
                           </h3>
                           <Badge tone={branch.isActive ? "green" : "gray"}>
@@ -448,13 +452,13 @@ export default function BranchesClient({
                         </div>
 
                         <p className="text-xs font-medium text-slate-500">
-                          Code: {branch.code}
+                          Code: <span data-i18n-ignore="true">{branch.code}</span>
                         </p>
 
                         {locationLine(branch) ? (
                           <div className="flex items-start gap-1.5 text-sm text-slate-600 max-sm:hidden">
                             <MapPin size={15} className="mt-0.5 shrink-0" />
-                            <span>{locationLine(branch)}</span>
+                            <span data-i18n-ignore="true">{locationLine(branch)}</span>
                           </div>
                         ) : null}
 
@@ -494,9 +498,9 @@ export default function BranchesClient({
                       <button
                         type="button"
                         onClick={() => setMenuId(menuId === branch.id ? null : branch.id)}
-                        aria-label={`Actions for ${branch.name}`}
+                        aria-label={formatUiText(translateLabel("Actions for {0}"), [branch.name])}
                         className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50"
-                      >
+                       data-i18n-ignore-attributes="aria-label">
                         <Ellipsis size={18} />
                       </button>
 
@@ -695,8 +699,8 @@ export default function BranchesClient({
                 <select name="managerUserId" defaultValue="" className={inputClass}>
                   <option value="">No manager assigned</option>
                   {managerOptions.map((manager) => (
-                    <option key={manager.id} value={manager.id}>
-                      {manager.name} · {manager.role}
+                    <option key={manager.id} value={manager.id} data-i18n-ignore="true">
+                      {manager.name} · {translateLabel(manager.role)}
                     </option>
                   ))}
                 </select>
@@ -753,13 +757,13 @@ export default function BranchesClient({
       </Sheet>
 
       {modal?.type === "view" ? (
-        <Modal title={modal.branch.name} onClose={() => setModal(null)}>
+        <Modal title={modal.branch.name} onClose={() => setModal(null)} data-i18n-ignore-attributes="title">
           <BranchDetails branch={modal.branch} />
         </Modal>
       ) : null}
 
       {modal?.type === "edit" ? (
-        <Modal title={`Edit ${modal.branch.name}`} onClose={() => setModal(null)} wide>
+        <Modal title={formatUiText(translateLabel("Edit {0}"), [modal.branch.name])} onClose={() => setModal(null)} wide data-i18n-ignore-attributes="title">
           <form onSubmit={submitEdit} className="grid gap-4 sm:grid-cols-2">
             <input type="hidden" name="locationId" value={modal.branch.id} />
             <Field label="Branch name" required>
@@ -793,8 +797,8 @@ export default function BranchesClient({
               >
                 <option value="">No manager assigned</option>
                 {managerOptions.map((manager) => (
-                  <option key={manager.id} value={manager.id}>
-                    {manager.name} · {manager.role}
+                  <option key={manager.id} value={manager.id} data-i18n-ignore="true">
+                    {manager.name} · {translateLabel(manager.role)}
                   </option>
                 ))}
               </select>
@@ -906,7 +910,7 @@ export default function BranchesClient({
       {modal?.type === "delete" ? (
         <Modal title="Delete branch?" onClose={() => setModal(null)}>
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-            <p className="font-semibold">{modal.branch.name}</p>
+            <p className="font-semibold" data-i18n-ignore="true">{modal.branch.name}</p>
             <p className="mt-1">
               TENH will never delete the last active branch or the default branch.
               Stock must be zero and pending transfers/register shifts must be finished
@@ -1000,7 +1004,7 @@ function SummaryCard({
       <div className="min-w-0">
         <p className="text-xs font-medium text-slate-500 max-sm:text-[10px] max-sm:leading-tight">{label}</p>
         <p
-          className={`${compact ? "truncate text-xl" : "text-2xl"} mt-0.5 break-words font-bold text-slate-950 max-sm:text-xs`}
+          className={`${compact ? "text-xl" : "text-2xl"} mt-0.5 break-words font-bold text-slate-950 max-sm:text-xs`}
         >
           {value}
         </p>
@@ -1326,14 +1330,14 @@ function BranchDetails({ branch }: { branch: BranchViewModel }) {
         {branch.isDefault ? <Badge tone="blue">Default</Badge> : null}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Detail label="Code" value={branch.code} />
-        <Detail label="Manager" value={branch.managerName || "Not assigned"} />
-        <Detail label="Phone" value={branch.phone || "Not set"} />
+        <Detail label="Code" value={branch.code} preserveValue />
+        <Detail label="Manager" value={branch.managerName || "Not assigned"} preserveValue={Boolean(branch.managerName)} />
+        <Detail label="Phone" value={branch.phone || "Not set"} preserveValue={Boolean(branch.phone)} />
         <Detail label="Opening hours" value={formatBranchOpeningHoursSummary(branch.openingHours)} />
-        <Detail label="Timezone" value={branch.timezone || "Not set"} />
+        <Detail label="Timezone" value={branch.timezone || "Not set"} preserveValue={Boolean(branch.timezone)} />
         <Detail label="Created" value={new Date(branch.createdAt).toLocaleDateString()} />
       </div>
-      <Detail label="Address" value={locationLine(branch) || "Not set"} />
+      <Detail label="Address" value={locationLine(branch) || "Not set"} preserveValue={Boolean(locationLine(branch))} />
       <div className="grid grid-cols-3 gap-3">
         <MetricCard
           icon={<Store size={16} />}
@@ -1356,13 +1360,13 @@ function BranchDetails({ branch }: { branch: BranchViewModel }) {
   );
 }
 
-function Detail({ label, value }: { label: string; value: string }) {
+function Detail({ label, value, preserveValue = false }: { label: string; value: string; preserveValue?: boolean }) {
   return (
     <div className="rounded-xl bg-slate-50 p-3">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
         {label}
       </p>
-      <p className="mt-1 text-sm font-medium text-slate-800">{value}</p>
+      <p className="mt-1 text-sm font-medium text-slate-800" data-i18n-ignore={preserveValue || undefined}>{value}</p>
     </div>
   );
 }

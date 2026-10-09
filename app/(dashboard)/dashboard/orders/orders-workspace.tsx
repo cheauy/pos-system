@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 
 import Link from "next/link";
 import ReturnItemsForm from "./[id]/return-items-form";
@@ -81,6 +83,8 @@ function bulkSteps(row: OrderRow, values: string[], canCancel: boolean) {
 const orderHref = (id: string) => `/dashboard/orders/${encodeURIComponent(id)}`;
 
 export default function OrdersWorkspace({ businessId, branchId, businessName, showTableQr = false, data, filters, permissions }: Props) {
+  const { t: translateLabel } = useLanguage();
+
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [selectedId, setSelectedId] = useState<string | null>(data.rows[0]?.id ?? null);
@@ -102,6 +106,9 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
   const [notice, setNotice] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filterForm = useRef<HTMLFormElement>(null);
+  // Filter panel fields are an uncontrolled draft; bumping the key remounts them at the applied values.
+  const [draftKey, setDraftKey] = useState(0);
+  const [filterError, setFilterError] = useState("");
   const loadedId = useRef<string | null>(null);
   const allCheckbox = useRef<HTMLInputElement>(null);
   // New rows can push the selected order off this page. Keep its mounted
@@ -221,10 +228,17 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
     setMenu(null);
     startTransition(() => router.push(`/dashboard/orders${params.size ? `?${params}` : ""}`, { scroll: false }));
   }
+  function closeFilters() { setFiltersOpen(false); setFilterError(""); setDraftKey((key) => key + 1); }
+  function resetFilterDraft() {
+    document.getElementById("order-filter-panel")?.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select").forEach((field) => { field.value = field.tagName === "SELECT" ? "all" : ""; });
+    setFilterError("");
+  }
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const values = Object.fromEntries(form.entries()) as Record<string, string>;
+    if (values.from && values.to && values.from > values.to) { setFilterError("Start date must be on or before the end date."); setFiltersOpen(true); return; }
+    setFilterError(""); setFiltersOpen(false);
     // Status comes from the tabs, not this form, so keep the current tab when filtering.
     navigate({ search: values.search?.trim() ?? "", from: values.from ?? "", to: values.to ?? "", source: values.source || "all", fulfillment: values.fulfillment || "all", payment: values.payment || "all", page: 1 });
   }
@@ -285,18 +299,19 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
         <form ref={filterForm} key={JSON.stringify(filters)} onSubmit={applyFilters} className={styles.filters} aria-label="Filter orders">
           <div className={styles.filterTop}>
             <div className={styles.search}><Search size={16} /><input name="search" defaultValue={filters.search} maxLength={120} placeholder="Search by order number, customer name or phone…" aria-label="Search orders" /><button type="submit" aria-label="Apply search"><ChevronRight size={17} /></button></div>
-            <button type="button" className={`${styles.filterToggle} ${filterCount ? styles.filterToggleActive : ""}`} aria-expanded={filtersOpen} aria-controls="order-filter-panel" onClick={() => setFiltersOpen((open) => !open)}>
+            <button type="button" className={`${styles.filterToggle} ${filterCount ? styles.filterToggleActive : ""}`} aria-expanded={filtersOpen} aria-controls="order-filter-panel" onClick={() => filtersOpen ? closeFilters() : setFiltersOpen(true)}>
               <SlidersHorizontal size={15} />Filter{filterCount > 0 && <span className={styles.counter}>{filterCount}</span>}
             </button>
           </div>
-          {filtersOpen && <button type="button" aria-label="Close filters" className={styles.sheetBackdrop} onClick={() => setFiltersOpen(false)} />}
-          <div id="order-filter-panel" className={styles.filterPanel} hidden={!filtersOpen}>
-            <button type="button" className={styles.sheetClose} aria-label="Close order filters" onClick={() => setFiltersOpen(false)}><X size={20} /></button>
-            <div className={styles.dateRange}><label><span>From</span><input name="from" type="date" defaultValue={filters.from} aria-label="Start date" onChange={() => filterForm.current?.requestSubmit()} /></label><span className={styles.dateDash}>—</span><label><span>To</span><input name="to" type="date" defaultValue={filters.to} aria-label="End date" onChange={() => filterForm.current?.requestSubmit()} /></label></div>
-            <select name="source" defaultValue={filters.source} aria-label="Filter by source" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Sources</option>{Object.entries(sourceLabels).filter(([value]) => value !== 'qr' || showTableQr).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-            <select name="fulfillment" defaultValue={filters.fulfillment} aria-label="Filter by fulfillment" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Fulfillment Types</option>{Object.entries(fulfillmentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-            <select name="payment" defaultValue={filters.payment} aria-label="Filter by payment status" onChange={() => filterForm.current?.requestSubmit()}><option value="all">All Payment Statuses</option>{Object.entries(paymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-            {filterCount > 0 && <button type="button" className={styles.textButton} onClick={() => navigate({ source: "all", fulfillment: "all", payment: "all", from: "", to: "", branch: "all", page: 1 })}>Clear filters</button>}
+          {filtersOpen && <button type="button" aria-label="Close filters" className={styles.sheetBackdrop} onClick={closeFilters} />}
+          <div key={draftKey} id="order-filter-panel" className={styles.filterPanel} hidden={!filtersOpen}>
+            <button type="button" className={styles.sheetClose} aria-label="Close order filters" onClick={closeFilters}><X size={20} /></button>
+            <div className={styles.dateRange}><label><span>From</span><input name="from" type="date" defaultValue={filters.from} aria-label="Start date" /></label><span className={styles.dateDash}>—</span><label><span>To</span><input name="to" type="date" defaultValue={filters.to} aria-label="End date" /></label></div>
+            <select name="source" defaultValue={filters.source} aria-label="Filter by source"><option value="all">All Sources</option>{Object.entries(sourceLabels).filter(([value]) => value !== 'qr' || showTableQr).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+            <select name="fulfillment" defaultValue={filters.fulfillment} aria-label="Filter by fulfillment"><option value="all">All Fulfillment Types</option>{Object.entries(fulfillmentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+            <select name="payment" defaultValue={filters.payment} aria-label="Filter by payment status"><option value="all">All Payment Statuses</option>{Object.entries(paymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+            {filterError && <p role="alert" className={styles.filterError}>{filterError}</p>}
+            <div className={styles.filterActions}><button type="button" className={styles.button} onClick={resetFilterDraft}>Reset</button><button type="submit" className={`${styles.button} ${styles.primary}`} disabled={pending}>Apply</button></div>
           </div>
         </form>
         <div className={styles.tabsRow}>
@@ -314,17 +329,17 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
                 <th>Branch</th><th className={styles.actionColumn}>Actions</th>
               </tr></thead>
               <tbody>{data.rows.map((row) => <tr key={row.id} className={!panelClosed && visibleId === row.id ? styles.selectedRow : ""} onClick={() => selectRow(row)}>
-                <td className={styles.checkColumn}><input type="checkbox" checked={selected.some((item) => item.id === row.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleSelected(row)} aria-label={`Select order ${row.orderNumber}`} /></td>
-                <td><button className={styles.orderLink} type="button" onClick={(event) => { event.stopPropagation(); selectRow(row); }}>{row.orderNumber}</button></td>
-                <td className={styles.customerCell}><span title={row.customerName}>{row.customerName}</span><small>{row.customerPhone || "No phone"}</small></td>
+                <td className={styles.checkColumn}><input type="checkbox" checked={selected.some((item) => item.id === row.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleSelected(row)} aria-label={formatUiText(translateLabel("Select order {0}"), [row.orderNumber])}  data-i18n-ignore-attributes="aria-label"/></td>
+                <td><button className={styles.orderLink} type="button" onClick={(event) => { event.stopPropagation(); selectRow(row); }}><span data-i18n-ignore="true">{row.orderNumber}</span></button></td>
+                <td className={styles.customerCell}><span title={row.customerName} data-i18n-ignore="true">{row.customerName}</span><small data-i18n-ignore={Boolean(row.customerPhone)}>{row.customerPhone || "No phone"}</small></td>
                 <td><Package size={17} className={styles.phoneIcon} />{row.itemCount} {row.itemCount === 1 ? "item" : "items"}</td>
                 <td><span className={styles.source}><SourceIcon source={row.source} />{sourceLabels[row.source] || row.source}</span></td>
                 <td><Badge value={row.paymentState} payment /></td>
                 <td className={styles.total}>{money(row.total, data.currency, data.currencyFormat)}</td>
                 <td><Badge value={row.status} />{row.status === "pending" && row.onlineStatus && <small className={styles.subStatus}>{statusLabels[row.onlineStatus] || row.onlineStatus}</small>}</td>
                 <td className={styles.dateCell}><CalendarDays size={18} className={styles.phoneIcon} />{dateText(row.createdAt, data.timezone)}<small>{dateText(row.createdAt, data.timezone, true)}</small></td>
-                <td className={styles.branchCell} title={row.branchName}><MapPin size={18} className={styles.phoneIcon} />{row.branchName}</td>
-                <td className={styles.actionColumn}><button type="button" className={styles.iconButton} aria-label={`Actions for order ${row.orderNumber}`} aria-haspopup="menu" aria-expanded={menu?.row.id === row.id} onClick={(event) => { event.stopPropagation(); const trigger = event.currentTarget; setMenu({ row, rect: trigger.getBoundingClientRect(), trigger }); }}><Ellipsis size={17} /></button></td>
+                <td className={styles.branchCell} title={row.branchName} data-i18n-ignore-attributes="title"><MapPin size={18} className={styles.phoneIcon} /><span data-i18n-ignore="true">{row.branchName}</span></td>
+                <td className={styles.actionColumn}><button type="button" className={styles.iconButton} aria-label={formatUiText(translateLabel("Actions for order {0}"), [row.orderNumber])} aria-haspopup="menu" aria-expanded={menu?.row.id === row.id} onClick={(event) => { event.stopPropagation(); const trigger = event.currentTarget; setMenu({ row, rect: trigger.getBoundingClientRect(), trigger }); }} data-i18n-ignore-attributes="aria-label"><Ellipsis size={17} /></button></td>
               </tr>)}</tbody>
             </table>
           </div>
@@ -338,7 +353,7 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
             </div>
           </footer>
         </section>
-        <p className={styles.scopeNote}><ShieldCheck size={12} />{businessName} · Sales, pending amounts, refunds, and tab counts follow your filters. Today’s count covers the business day.</p>
+        <p className={styles.scopeNote}><ShieldCheck size={12} /><span data-i18n-ignore="true">{businessName}</span> · Sales, pending amounts, refunds, and tab counts follow your filters. Today’s count covers the business day.</p>
         {data.branches.length > 1 && <label className={styles.scopeToggle}><input type="checkbox" role="switch" checked={data.receiveAllOnline === true} disabled={scopeBusy} onChange={(event) => void toggleScope(event.target.checked)} />Receive online-order alerts from all branches<span>{data.receiveAllOnline ? "All branches" : "Current branch only"}</span></label>}
       </div>
       {!narrow && <aside className={styles.detailColumn}>{panelClosed || !visibleId ? <div className={styles.detailPlaceholder}><FileText size={32} /><h3>Select an order</h3><p>Review customer details, items, payments, and activity.</p>{panelClosed && visibleId && <button className={styles.button} type="button" onClick={() => setPanelClosed(false)}>Show details</button>}</div> : detailContent}</aside>}
@@ -376,6 +391,8 @@ function DetailPanel({ detail, loading, error, currency, currencyFormat, timezon
   detail: OrderDetail | null; loading: boolean; error: string; currency: string; currencyFormat?: CurrencyFormat; timezone: string; permissions: WorkspacePermissions; businessId: string;
   onClose: () => void; onRetry: () => void; onAction: (type: ActionDialog["type"], row: OrderRow) => void;
 }) {
+  const { t: translateLabel } = useLanguage();
+
   // Pending stays tied to the detail it was started from, so the button cannot be
   // clicked again with a stale version before the revalidated detail arrives.
   const [statusBusyFor,setStatusBusyFor]=useState<OrderDetail|null>(null);
@@ -409,10 +426,10 @@ function DetailPanel({ detail, loading, error, currency, currencyFormat, timezon
   // Paid or refunded POS sales are reversed with Return Items, not cancelled.
   const canCancelOrder = permissions.cancel && openOrder && (online || !order.deleteBlocked);
   const cancelBlockedReason = !permissions.cancel ? "Cancel permission is required." : !openOrder ? "Completed, cancelled and returned orders cannot be cancelled." : "This order has a payment or return. Use Return Items instead.";
-  return <section className={`${styles.detailCard} ${styles.od}`} aria-label={`Order ${order.orderNumber} details`}>
+  return <section className={`${styles.detailCard} ${styles.od}`} aria-label={formatUiText(translateLabel("Order {0} details"), [order.orderNumber])} data-i18n-ignore-attributes="aria-label">
     <header className={styles.odHead}>
       <div>
-        <h2>Order {order.orderNumber}</h2>
+        <h2>Order <span data-i18n-ignore="true">{order.orderNumber}</span></h2>
         <div className={styles.odMeta}><Badge value={order.status} />{returnedQuantity > 0 && <span className={`${styles.badge} ${styles.orange}`}>{allReturned ? "Items returned" : "Partially returned"}</span>}<span><CalendarDays size={14} />{dateText(order.createdAt, timezone)} at {dateText(order.createdAt, timezone, true)}</span></div>
       </div>
       <button type="button" className={styles.odClose} onClick={onClose} aria-label="Close order details"><X size={17} /></button>
@@ -436,16 +453,16 @@ function DetailPanel({ detail, loading, error, currency, currencyFormat, timezon
     <OdCard icon={<UserRound size={17} />} title="Customer" aside={<div className={styles.odPills}>
       <span data-tone="blue"><SourceIcon source={order.source} />{sourceLabels[order.source] || order.source}</span>
       {order.fulfillment && <span data-tone="green">{order.fulfillment === "delivery" ? <Truck size={13} /> : <Package size={13} />}{fulfillmentLabels[order.fulfillment] || order.fulfillment}</span>}
-      <span data-tone="violet"><Store size={13} />{order.branchName}</span>
+      <span data-tone="violet"><Store size={13} /><span data-i18n-ignore="true">{order.branchName}</span></span>
       {order.tableName && <span data-tone="blue"><QrCode size={13} />{order.tableName}</span>}
     </div>}>
       <div className={styles.odCustomer}>
         <div className={styles.odAvatar}>{initials}</div>
         <div>
-          <strong>{order.customerName}</strong>
-          {order.customerPhone && <a href={`tel:${order.customerPhone.replace(/[^\d+]/g, "")}`}><Phone size={13} />{order.customerPhone}</a>}
-          {order.customerEmail && <a href={`mailto:${order.customerEmail}`}><Mail size={13} />{order.customerEmail}</a>}
-          {order.customerAddress && <span><MapPin size={13} />{order.customerAddress}</span>}
+          <strong data-i18n-ignore="true">{order.customerName}</strong>
+          {order.customerPhone && <a href={`tel:${order.customerPhone.replace(/[^\d+]/g, "")}`}><Phone size={13} /><span data-i18n-ignore="true">{order.customerPhone}</span></a>}
+          {order.customerEmail && <a href={`mailto:${order.customerEmail}`}><Mail size={13} /><span data-i18n-ignore="true">{order.customerEmail}</span></a>}
+          {order.customerAddress && <span><MapPin size={13} /><span data-i18n-ignore="true">{order.customerAddress}</span></span>}
           {!order.customerPhone && !order.customerEmail && !order.customerAddress && <small>No contact information</small>}
         </div>
       </div>
@@ -455,7 +472,7 @@ function DetailPanel({ detail, loading, error, currency, currencyFormat, timezon
     <OdCard icon={<ShoppingBag size={17} />} title={`Items (${order.items.length})`}>
       <div className={styles.odItems}>{order.items.map((item) => <div key={item.id} className={styles.odItem}>
         <div className={styles.odItemImage}>{item.imageUrl ? <ProductPhoto src={item.imageUrl} alt="" width={104} height={104} sizes="52px" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <Package size={19} />}</div>
-        <div className={styles.odItemText}><strong>{item.name}</strong>{item.variant && <small>{item.variant}</small>}{item.options.length > 0 && <small>{item.options.join(", ")}</small>}<small>{money(item.unitPrice, currency, currencyFormat)} × {item.quantity}</small>{item.returnedQuantity > 0 && <small className={styles.odReturned}>Returned: {item.returnedQuantity}</small>}{canCancelItem && <CancelOrderItem orderId={order.id} itemId={item.id} name={item.name} updatedAt={order.updatedAt} businessId={businessId} onCancelled={onReturned}/>}</div>
+        <div className={styles.odItemText}><strong data-i18n-ignore="true">{item.name}</strong>{item.variant && <small data-i18n-ignore="true">{item.variant}</small>}{item.options.length > 0 && <small data-i18n-ignore="true">{item.options.join(", ")}</small>}<small>{money(item.unitPrice, currency, currencyFormat)} × {item.quantity}</small>{item.returnedQuantity > 0 && <small className={styles.odReturned}>Returned: {item.returnedQuantity}</small>}{canCancelItem && <CancelOrderItem orderId={order.id} itemId={item.id} name={item.name} updatedAt={order.updatedAt} businessId={businessId} onCancelled={onReturned}/>}</div>
         <span className={styles.odItemTotal}>{money(item.subtotal, currency, currencyFormat)}</span>
       </div>)}</div>
     </OdCard>
@@ -479,7 +496,7 @@ function DetailPanel({ detail, loading, error, currency, currencyFormat, timezon
     </OdCard>
 
     <OdCard icon={<FileText size={17} />} title="Notes" aside={permissions.edit ? <button className={styles.odLink} type="button" onClick={() => onAction("edit", order)}><Pencil size={13} />Edit</button> : null}>
-      <p className={styles.odNote}>{order.note || "No special notes for this order."}</p>
+      <p className={styles.odNote} data-i18n-ignore={Boolean(order.note)}>{order.note || "No special notes for this order."}</p>
     </OdCard>
 
     <OdCard icon={<Clock3 size={17} />} title="Order Timeline">
@@ -496,6 +513,8 @@ function OdCard({ icon, title, aside, children }: { icon: ReactNode; title: stri
 const ONLINE_OPEN = ["new", "accepted", "preparing", "ready"];
 
 function OnlineOrderActions({ order, permissions, onChanged }: { order: OrderDetail; permissions: WorkspacePermissions; onChanged: () => void }) {
+  const { t: translateLabel } = useLanguage();
+
   const [busy, setBusy] = useState(false);
   const [showProof, setShowProof] = useState(false);
   const [error, setError] = useState("");
@@ -523,7 +542,7 @@ function OnlineOrderActions({ order, permissions, onChanged }: { order: OrderDet
       </div>}
     </div>}
     {!khqr && hasProof && <button type="button" className={styles.miniButton} onClick={() => setShowProof(true)}><ExternalLink size={13} />View payment proof</button>}
-    {showProof && <Modal title={`Payment proof · ${order.orderNumber}`} onClose={() => setShowProof(false)} wide><img src={`/api/online-orders/${order.id}/proof`} alt={`Payment proof for order ${order.orderNumber}`} className={styles.proofImage} /></Modal>}
+    {showProof && <Modal title={formatUiText(translateLabel("Payment proof · {0}"), [order.orderNumber])} onClose={() => setShowProof(false)} wide data-i18n-ignore-attributes="title"><img src={`/api/online-orders/${order.id}/proof`} alt={formatUiText(translateLabel("Payment proof for order {0}"), [order.orderNumber])} className={styles.proofImage}  data-i18n-ignore-attributes="alt"/></Modal>}
     {error && <p role="alert" className={styles.error}>{error}</p>}
   </section>;
 }
@@ -533,13 +552,15 @@ function RowMenu({ menu, permissions, onClose, onAction, onView, onPrint }: {
   menu: { row: OrderRow; rect: DOMRect; trigger: HTMLButtonElement }; permissions: WorkspacePermissions;
   onClose: () => void; onAction: (type: ActionDialog["type"], row: OrderRow) => void; onView: () => void;
 }) {
+  const { t: translateLabel } = useLanguage();
+
   const element = useRef<HTMLDivElement>(null);
   useMenuDismiss(element, menu.trigger, onClose);
   const top = Math.max(8, menu.rect.bottom + 6 + 232 < window.innerHeight ? menu.rect.bottom + 6 : menu.rect.top - 238);
   const left = Math.max(8, Math.min(menu.rect.right - 214, window.innerWidth - 222));
   const blocked = deleteReason(menu.row);
-  return createPortal(<div ref={element} role="menu" aria-label={`Order ${menu.row.orderNumber} actions`} className={styles.rowMenu} style={{ top, left }}>
-    <div className={styles.menuLabel}>{menu.row.orderNumber}</div>
+  return createPortal(<div ref={element} role="menu" aria-label={formatUiText(translateLabel("Order {0} actions"), [menu.row.orderNumber])} className={styles.rowMenu} style={{ top, left }} data-i18n-ignore-attributes="aria-label">
+    <div className={styles.menuLabel} data-i18n-ignore="true">{menu.row.orderNumber}</div>
     <button role="menuitem" type="button" onClick={onView}><Eye size={15} />View details</button>
     <button role="menuitem" type="button" onClick={()=>onPrint("shipping-label")}><Printer size={15} />Print shipping label</button>
     <button role="menuitem" type="button" onClick={()=>onPrint("receipt")}><Printer size={15} />Print receipt</button>
@@ -752,7 +773,7 @@ function ManageOrderDialog({ action, businessId, permissions, onClose, onSuccess
   return <Modal title={title} onClose={onClose} busy={saving}>
     {loading ? <p className={styles.modalLoading}><Loader2 className={styles.spin} size={20} />Loading the latest order…</p> : <form onSubmit={submit}>
       {error && <div role="alert" className={styles.error}><AlertCircle size={18} /><div>{error}<button type="button" className={styles.textButton} onClick={() => setReload((value) => value + 1)} disabled={saving}>Reload latest order</button></div></div>}
-      {order && <><div className={styles.modalOrder}><strong>{order.orderNumber}</strong><span>{order.customerName}</span><Badge value={order.status} /></div>
+      {order && <><div className={styles.modalOrder}><strong data-i18n-ignore="true">{order.orderNumber}</strong><span data-i18n-ignore="true">{order.customerName}</span><Badge value={order.status} /></div>
         {action.type === "edit" && <>
           <p className={styles.modalHelp}>Edit the order note{contactEditable ? " and guest contact details" : ""}. Products, quantities, totals, payments, and stock are not changed here.</p>
           {contactEditable ? <div className={styles.formFields}>
@@ -772,7 +793,7 @@ function ManageOrderDialog({ action, businessId, permissions, onClose, onSuccess
           {blockedDelete ? <div className={styles.warning}><ShieldCheck size={18} />{blockedDelete}</div> : <>
             <div className={styles.warning}><AlertCircle size={20} /><div><strong>Delete this unpaid order from the Orders list?</strong><p>{order.status === "cancelled" ? "The order is already cancelled. Stock will not be restored twice." : "The order will first be cancelled using the existing stock-restoration procedure."} The transaction, items, and audit history remain stored; they are not permanently erased.</p></div></div>
             <label className={styles.fieldLabel}>Deletion reason<textarea required value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} rows={3} disabled={saving} placeholder="Why is this order being removed?" /></label>
-            <label className={styles.fieldLabel}>Type <strong>{order.orderNumber}</strong> to confirm<input required value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="off" disabled={saving} /></label>
+            <label className={styles.fieldLabel}>Type <strong data-i18n-ignore="true">{order.orderNumber}</strong> to confirm<input required value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="off" disabled={saving} /></label>
           </>}
         </>}
         <div className={styles.modalFooter}><button type="button" className={styles.button} onClick={onClose} disabled={saving}>Cancel</button><button type="submit" className={`${styles.button} ${action.type === "delete" ? styles.dangerButton : styles.primary}`} disabled={saving || (action.type === "delete" && (!!blockedDelete || confirm.trim() !== order.orderNumber || !reason.trim())) || (action.type === "status" && (!options.length || (status === "cancelled" && !reason.trim())))}>{saving ? <Loader2 size={16} className={styles.spin} /> : action.type === "delete" ? <Trash2 size={15} /> : <Check size={16} />}{action.type === "delete" ? "Delete Order" : action.type === "edit" ? "Save Changes" : "Update Status"}</button></div>

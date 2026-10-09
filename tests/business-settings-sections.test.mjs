@@ -77,7 +77,10 @@ test('section nav follows ?section=, falls back to Overview, and every section h
   assert.deepEqual([...new Set(SETTINGS_SECTIONS.map(s=>s.group).filter(Boolean))],['Business','Storefront','Visibility']);
   const seo=render('section=seo',all);
   assert.match(seo,/data-active="seo"/);
-  for(const g of ['Business','Storefront','Visibility'])assert.match(seo,new RegExp(`<optgroup label="${g}">`));
+  // One nav serves desktop (sidebar) and phones/tablets (tab strip); no section dropdown remains.
+  for(const g of ['Business','Storefront','Visibility'])assert.match(seo,new RegExp(`id="bs-group-${g}"[^>]*>${g}<`));
+  assert.doesNotMatch(seo,/<select|<optgroup/);
+  assert.deepEqual([...seo.matchAll(/href="\?section=([a-z-]+)"/g)].map(m=>m[1]),all);
   assert.equal((seo.match(/aria-current="page"/g)||[]).length,1);
   assert.doesNotMatch(render('',['overview','branding']),/>Visibility</);assert.match(seo,/href="\?section=seo" aria-current="page"/);
   assert.match(render('section=storefront',['overview','branding']),/data-active="overview"/);

@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -108,6 +110,8 @@ function movementTab(product: Product): "fast" | "slow" | "none" {
 }
 
 export default function InventoryClient({ products, categories, locations, locationStock, defaultBranchId = "all", canAdjustStock = false, canDisable = false }: Props) {
+  const { t: translateLabel } = useLanguage();
+
   const [tab, setTab] = useState<Tab>("all");
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("all");
@@ -335,7 +339,7 @@ export default function InventoryClient({ products, categories, locations, locat
         </nav>
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200 p-3 max-sm:rounded-2xl max-sm:border max-sm:bg-white max-sm:p-2 max-sm:shadow-sm">
           <label className="relative min-w-20 flex-1 max-sm:min-w-0"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Search products…" aria-label="Search stock" className="h-10 w-full min-w-0 rounded-lg border border-slate-200 pl-9 pr-3 text-sm" /></label>
-          <select aria-label="Category" value={categoryId} onChange={event => { setCategoryId(event.target.value); setPage(1); }} className={`${selectClass} !w-auto max-w-36 shrink-0 max-sm:!max-w-[7.5rem] max-sm:!text-xs`}><option value="all">All Categories</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+          <select aria-label="Category" value={categoryId} onChange={event => { setCategoryId(event.target.value); setPage(1); }} className={`${selectClass} !w-auto max-w-36 shrink-0 max-sm:!max-w-[7.5rem] max-sm:!text-xs`}><option value="all">All Categories</option>{categories.map(category => <option key={category.id} value={category.id} data-i18n-ignore="true">{category.name}</option>)}</select>
           <select aria-label="Sort stock" value={sort} onChange={event => { setSort(event.target.value); setPage(1); }} className={`${selectClass} !w-auto shrink-0 max-sm:!w-[6.5rem] max-sm:!text-xs`}><option value="newest">Sort: Newest</option><option value="oldest">Sort: Oldest</option><option value="name">Sort: Name</option><option value="stock">Sort: Stock</option><option value="price">Sort: Price</option></select>
           <span className="contents max-sm:hidden"><AnchoredActionMenu label="Customize Columns">{(Object.keys(visibleColumns) as ColumnKey[]).map(key => <label key={key} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-sm"><input type="checkbox" checked={visibleColumns[key]} onChange={event => setVisibleColumns(current => ({ ...current, [key]: event.target.checked }))} /><span className="capitalize">{key === "cost" ? "Unit Cost" : key}</span></label>)}</AnchoredActionMenu></span>
           {selectedRows.length > 0 && <AnchoredActionMenu label={`Actions (${selectedRows.length})`}>
@@ -372,7 +376,7 @@ export default function InventoryClient({ products, categories, locations, locat
                   selected={selectedIds.has(product.id)}
                   onToggle={() => setSelectedIds(current => { const next = new Set(current); if (next.has(product.id)) next.delete(product.id); else next.add(product.id); return next; })}
                   onSelect={() => setSelectedProductId(product.id)}
-                  actions={<AnchoredActionMenu iconOnly label={`Actions for ${product.name}`}>
+                  actions={<AnchoredActionMenu iconOnly label={formatUiText(translateLabel("Actions for {0}"), [product.name])} data-i18n-ignore-attributes="label">
                     <button type="button" disabled={!canAdjustStock || busy} onClick={() => router.push(stockAdjustmentLink([product.id], defaultBranchId))} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-45"><SlidersHorizontal size={14} />Adjust Stock</button>
                     <button type="button" disabled={!canDisable || busy} onClick={() => setConfirmation({ kind: "hide", ids: [product.id] })} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-45"><EyeOff size={14} />Hide</button>
                     <button type="button" disabled={!canDisable || busy} onClick={() => setConfirmation({ kind: "delete", ids: [product.id] })} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-red-600 disabled:opacity-45"><Trash2 size={14} />Delete</button>
@@ -413,7 +417,7 @@ export default function InventoryClient({ products, categories, locations, locat
               }}
               className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-600 outline-none"
             >
-              {PAGE_SIZES.map((size) => <option key={size} value={size}>{size} / page</option>)}
+              {PAGE_SIZES.map((size) => <option key={size} value={size} data-i18n-ignore="true">{size}{translateLabel(" / page")}</option>)}
             </select>
           </div>
         </div>
@@ -430,7 +434,7 @@ export default function InventoryClient({ products, categories, locations, locat
               <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-slate-50">
                 {product.variant_image_url || product.image_url ? <ProductPhoto src={product.variant_image_url || product.image_url || ""} alt="" sizes="44px" className="h-full w-full object-contain" loading="lazy" /> : <Boxes size={20} className="text-slate-400" />}
               </span>
-              <span className="min-w-0"><span className="block truncate text-xs font-semibold text-slate-900">{product.name}</span><span className="block truncate text-[11px] text-slate-500">{[product.color, product.size].filter(Boolean).join(" · ") || "Standard product"}</span><span className="text-[11px] text-rose-600">{product.displayStock} in stock <span className="text-slate-400">(threshold: {product.displayThreshold})</span></span></span>
+              <span className="min-w-0"><span className="block truncate text-xs font-semibold text-slate-900" data-i18n-ignore="true">{product.name}</span><span className="block truncate text-[11px] text-slate-500" data-i18n-ignore={Boolean([product.color, product.size].filter(Boolean).join(" · "))}>{[product.color, product.size].filter(Boolean).join(" · ") || "Standard product"}</span><span className="text-[11px] text-rose-600">{product.displayStock} in stock <span className="text-slate-400">(threshold: {product.displayThreshold})</span></span></span>
             </button>
           ))}
         </section>
@@ -485,6 +489,8 @@ function InventoryRow({
   onToggle: () => void;
   actions: ReactNode;
 }) {
+  const { t: translateLabel } = useLanguage();
+
   const image = product.variant_image_url || product.image_url;
   const denominator = Math.max(product.displayThreshold * 2, product.displayStock, 1);
   const width = Math.max(3, Math.min(100, (product.displayStock / denominator) * 100));
@@ -502,8 +508,8 @@ function InventoryRow({
           checked={selected}
           onChange={onToggle}
           onClick={(event) => event.stopPropagation()}
-          aria-label={`Select ${product.name}`}
-        />
+          aria-label={formatUiText(translateLabel("Select {0}"), [product.name])}
+         data-i18n-ignore-attributes="aria-label"/>
       </td>
       <td className="px-3 py-3 max-sm:col-span-3 max-sm:row-start-1 max-sm:min-w-0 max-sm:p-0 max-sm:pl-7">
         <div className="flex items-center gap-3">
@@ -515,17 +521,17 @@ function InventoryRow({
             )}
           </div>
           <div className="min-w-0">
-            <p className="truncate font-semibold text-slate-900 max-sm:text-[15px] max-sm:font-bold">
-              {product.name}{product.color ? ` - ${product.color}` : ""}{product.size ? ` / ${product.size}` : ""}
+            <p className="break-words font-semibold text-slate-900 max-sm:text-[15px] max-sm:font-bold">
+              <span data-i18n-ignore="true">{product.name}</span><span data-i18n-ignore="true">{product.color ? ` - ${product.color}` : ""}</span><span data-i18n-ignore="true">{product.size ? ` / ${product.size}` : ""}</span>
             </p>
-            <p className="truncate text-xs text-slate-500">
+            <p className="break-words text-xs text-slate-500">
               {[product.color, product.size ? `Size ${product.size}` : null].filter(Boolean).join(" · ") || "Standard product"}
             </p>
           </div>
         </div>
       </td>
-      {visibleColumns.sku && <td className="px-3 py-3 text-slate-600 max-sm:col-span-3 max-sm:row-start-2 max-sm:truncate max-sm:p-0 max-sm:pl-[6.25rem] max-sm:text-[11px] max-sm:text-slate-400">{product.sku || "—"}</td>}
-      {visibleColumns.category && <td className="px-3 py-3 text-slate-600 max-sm:col-span-3 max-sm:row-start-3 max-sm:truncate max-sm:p-0 max-sm:pl-[6.25rem] max-sm:text-xs">{product.categoryName}</td>}
+      {visibleColumns.sku && <td className="px-3 py-3 text-slate-600 max-sm:col-span-3 max-sm:row-start-2 max-sm:break-all max-sm:p-0 max-sm:pl-[6.25rem] max-sm:text-[11px] max-sm:text-slate-400" data-i18n-ignore="true">{product.sku || "—"}</td>}
+      {visibleColumns.category && <td className="px-3 py-3 text-slate-600 max-sm:col-span-3 max-sm:row-start-3 max-sm:break-words max-sm:p-0 max-sm:pl-[6.25rem] max-sm:text-xs">{product.categoryName}</td>}
       {visibleColumns.stock && (
         <td className="px-3 py-3 max-sm:row-start-4 max-sm:mt-2 max-sm:border-t max-sm:border-slate-100 max-sm:p-0 max-sm:pt-2 max-sm:before:content-['Stock'] max-sm:before:block max-sm:before:text-[11px] max-sm:before:font-normal max-sm:before:text-slate-500">
           <div className="w-28 max-sm:w-full">
@@ -587,7 +593,7 @@ function InventoryDetailDrawer({
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">Inventory detail</p>
-            <h2 className="mt-1 text-xl font-bold text-slate-950">{product.name}</h2>
+            <h2 className="mt-1 text-xl font-bold text-slate-950" data-i18n-ignore="true">{product.name}</h2>
           </div>
           <button type="button" onClick={onClose} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
             <X size={18} />
@@ -605,7 +611,7 @@ function InventoryDetailDrawer({
             </div>
             <div className="min-w-0 flex-1">
               <p className="font-bold text-slate-950">
-                {product.name}{product.color ? ` · ${product.color}` : ""}{product.size ? ` · ${product.size}` : ""}
+                <span data-i18n-ignore="true">{product.name}</span><span data-i18n-ignore="true">{product.color ? ` · ${product.color}` : ""}</span><span data-i18n-ignore="true">{product.size ? ` · ${product.size}` : ""}</span>
               </p>
               <p className="mt-1 text-sm text-slate-500">{product.categoryName}</p>
               <div className="mt-3"><StatusBadge status={product.displayStatus} /></div>
@@ -643,8 +649,8 @@ function InventoryDetailDrawer({
               {branchRows.length > 0 ? branchRows.map((row) => (
                 <div key={row.id} className="flex items-center justify-between gap-3 px-4 py-3">
                   <div>
-                    <p className="font-medium text-slate-800">{row.name}</p>
-                    <p className="mt-0.5 text-xs text-slate-400">{row.code} · Threshold {row.threshold}</p>
+                    <p className="font-medium text-slate-800" data-i18n-ignore="true">{row.name}</p>
+                    <p className="mt-0.5 text-xs text-slate-400"><span data-i18n-ignore="true">{row.code}</span> · Threshold {row.threshold}</p>
                   </div>
                   <div className="text-right">
                     <p className={`font-bold ${row.status === "in" ? "text-emerald-700" : "text-red-600"}`}>{row.quantity}</p>
@@ -720,7 +726,7 @@ function MetricCard({
   } as const;
   return (
     <div className="min-w-0 px-5 py-4">
-      <div className="flex items-start gap-3">
+      <div className="flex flex-wrap items-start gap-3">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}>{icon}</div>
         <div>
           <p className="text-xs text-slate-500">{label}</p>

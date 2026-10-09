@@ -562,7 +562,7 @@ export default function SecurityForm({
               description="Your verified login email is used for account recovery."
             />
             <div className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 dark:border-slate-700">
-              <span className="min-w-0 truncate text-sm font-semibold text-slate-800 dark:text-slate-200">
+              <span className="min-w-0 break-all text-sm font-semibold text-slate-800 dark:text-slate-200" data-i18n-ignore={Boolean(email)}>
                 {email || "No email"}
               </span>
               <span

@@ -92,10 +92,10 @@ export default async function ProfilePage() {
             {typeof user.user_metadata?.avatar_url === 'string' && user.user_metadata.avatar_url.startsWith('https://') ? <img src={user.user_metadata.avatar_url} alt="Profile" className="h-16 w-16 rounded-full object-cover" /> : <CircleUserRound className="h-9 w-9" />}
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-lg font-bold text-slate-950 dark:text-white">
+            <h2 className="break-words text-lg font-bold text-slate-950 dark:text-white" data-i18n-ignore={Boolean(profile.full_name)}>
               {profile.full_name || "Unnamed User"}
             </h2>
-            <p className="truncate text-sm text-slate-500 dark:text-slate-400">
+            <p className="truncate text-sm text-slate-500 dark:text-slate-400" data-i18n-ignore={Boolean(user.email)}>
               {user.email ?? "No email"}
             </p>
             <span className="mt-2 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold capitalize text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">

@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 
 import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import ProductPhoto from "@/components/product-photo";
@@ -97,6 +99,8 @@ export default function LowStockClient({
   activities,
   loadError,
 }: Props) {
+  const { t: translateLabel } = useLanguage();
+
   const [query, setQuery] = useState("");
   const [branch, setBranch] = useState("all");
   const [supplier, setSupplier] = useState("all");
@@ -309,7 +313,7 @@ export default function LowStockClient({
               <div>
                 <h2 className="font-bold text-slate-900">Products ({filtered.length})</h2>
                 {selected.size > 0 && (
-                  <p className="mt-0.5 text-xs text-blue-600">{selected.size} selected</p>
+                  <p className="mt-0.5 text-xs text-blue-600"><span data-i18n-ignore="true">{selected.size}</span> selected</p>
                 )}
               </div>
             </div>
@@ -322,7 +326,7 @@ export default function LowStockClient({
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <MobileList>{pageRows.map((row) => <MobileListCard key={row.id} href={`/dashboard/products/${row.productId}/edit`} media={row.imageUrl ? <ProductPhoto src={row.imageUrl} alt="" sizes="64px" loading="lazy" className="h-full w-full object-cover" /> : <PackageOpen size={24} />} title={row.productName} date={[row.sku, row.branchName].filter(Boolean).join(" · ")} primary={`Reorder ${row.suggestedReorder} · Level ${row.reorderLevel}`} secondary={`Supplier: ${row.supplierName || "Unassigned"}`} amount={<span className={row.currentStock <= 0 ? "text-red-600" : "text-rose-600"}>{row.currentStock} left</span>} status={{ label: statusLabel(row.status) }} />)}</MobileList>
+                <MobileList>{pageRows.map((row) => <MobileListCard key={row.id} href={`/dashboard/products/${row.productId}/edit`} media={row.imageUrl ? <ProductPhoto src={row.imageUrl} alt="" sizes="64px" loading="lazy" className="h-full w-full object-cover" /> : <PackageOpen size={24} />} title={<span data-i18n-ignore="true">{row.productName}</span>} date={<span data-i18n-ignore="true">{[row.sku, row.branchName].filter(Boolean).join(" · ")}</span>} primary={`Reorder ${row.suggestedReorder} · Level ${row.reorderLevel}`} secondary={<>{"Supplier"}{":"}{" "}<span data-i18n-ignore={Boolean(row.supplierName)}>{row.supplierName || "Unassigned"}</span></>} amount={<span className={row.currentStock <= 0 ? "text-red-600" : "text-rose-600"}>{row.currentStock} left</span>} status={{ label: statusLabel(row.status) }}  data-i18n-ignore-attributes="title"/>)}</MobileList>
                 <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[1020px] text-sm">
                   <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
@@ -355,9 +359,9 @@ export default function LowStockClient({
                             type="checkbox"
                             checked={selected.has(row.id)}
                             onChange={() => toggleRow(row.id)}
-                            aria-label={`Select ${row.productName}`}
+                            aria-label={formatUiText(translateLabel("Select {0}"), [row.productName])}
                             className="h-4 w-4 rounded border-slate-300"
-                          />
+                           data-i18n-ignore-attributes="aria-label"/>
                         </td>
                         <td className="px-2 py-3">
                           <div className="flex items-center gap-3">
@@ -369,18 +373,18 @@ export default function LowStockClient({
                               )}
                             </div>
                             <Link href={`/dashboard/products/${row.productId}/edit`} className="max-w-[190px] truncate font-semibold text-slate-900 hover:text-blue-600">
-                              {row.productName}
+                              <span data-i18n-ignore="true">{row.productName}</span>
                             </Link>
                           </div>
                         </td>
-                        <td className="px-2 py-3 text-slate-500">{row.sku || "—"}</td>
-                        <td className="px-2 py-3 text-slate-600">{row.branchName}</td>
+                        <td className="px-2 py-3 text-slate-500" data-i18n-ignore="true">{row.sku || "—"}</td>
+                        <td className="px-2 py-3 text-slate-600" data-i18n-ignore="true">{row.branchName}</td>
                         <td className={`px-2 py-3 text-right font-bold ${row.currentStock <= 0 ? "text-red-600" : "text-rose-600"}`}>
                           {row.currentStock}
                         </td>
                         <td className="px-2 py-3 text-right text-slate-600">{row.reorderLevel}</td>
                         <td className="px-2 py-3 text-right font-semibold text-slate-800">{row.suggestedReorder}</td>
-                        <td className="px-2 py-3 text-slate-600">{row.supplierName || "Unassigned"}</td>
+                        <td className="px-2 py-3 text-slate-600" data-i18n-ignore={Boolean(row.supplierName)}>{row.supplierName || "Unassigned"}</td>
                         <td className="px-2 py-3 text-slate-500">
                           {row.lastRestockedAt ? date.format(new Date(row.lastRestockedAt)) : "—"}
                         </td>
@@ -392,9 +396,9 @@ export default function LowStockClient({
                         <td className="px-2 py-3 text-center">
                           <Link
                             href={`/dashboard/products/${row.productId}/edit`}
-                            aria-label={`Edit ${row.productName}`}
+                            aria-label={formatUiText(translateLabel("Edit {0}"), [row.productName])}
                             className="inline-flex rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-                          >
+                           data-i18n-ignore-attributes="aria-label">
                             <MoreHorizontal size={18} />
                           </Link>
                         </td>
@@ -474,10 +478,10 @@ export default function LowStockClient({
               {supplierSummary.length ? supplierSummary.map((item) => (
                 <div key={item.id} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2.5">
                   <div className="flex min-w-0 items-center gap-2.5">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-blue-600">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-blue-600" data-i18n-ignore="true">
                       {item.name.slice(0, 2).toUpperCase()}
                     </div>
-                    <span className="truncate text-sm font-semibold text-slate-700">{item.name}</span>
+                    <span className="truncate text-sm font-semibold text-slate-700" data-i18n-ignore="true">{item.name}</span>
                   </div>
                   <span className="text-xs text-slate-500">{item.count} {item.count === 1 ? "item" : "items"}</span>
                 </div>
@@ -504,7 +508,7 @@ export default function LowStockClient({
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-slate-800">{activity.reason || "Stock adjustment"}</p>
-                          <p className="truncate text-xs text-slate-500">{activity.productName}{activity.sku ? ` (${activity.sku})` : ""}</p>
+                          <p className="truncate text-xs text-slate-500"><span data-i18n-ignore="true">{activity.productName}</span><span data-i18n-ignore="true">{activity.sku ? ` (${activity.sku})` : ""}</span></p>
                         </div>
                         <span className={`shrink-0 text-sm font-bold ${positive ? "text-emerald-600" : "text-rose-600"}`}>
                           {positive ? "+" : ""}{activity.quantityDelta}
@@ -544,7 +548,7 @@ function MetricCard({
         <div className={`rounded-xl p-3 ${iconClass}`}>{icon}</div>
         <div className="min-w-0">
           <p className="text-sm text-slate-500">{title}</p>
-          <p className="mt-1 truncate text-2xl font-bold tracking-tight text-slate-950">{value}</p>
+          <p className="mt-1 break-words text-2xl font-bold tracking-tight text-slate-950">{value}</p>
           <p className="mt-0.5 text-xs text-slate-400">{note}</p>
         </div>
       </div>

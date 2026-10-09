@@ -188,11 +188,11 @@ export default function Home() {
           <div className="absolute left-[42%] top-52 h-72 w-72 rounded-full bg-cyan-100/70 blur-3xl" />
         </div>
 
-        <header className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-6 sm:px-8 lg:px-12">
+        <header className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-3 px-5 py-6 sm:px-8 lg:px-12">
           <Link href="/" className="flex items-center gap-3">
             <TenhLogo />
             <div>
-              <div className="text-lg font-extrabold tracking-tight text-slate-950">
+              <div className="whitespace-nowrap text-lg font-extrabold tracking-tight text-slate-950">
                 TENH POS
               </div>
               <div className="text-xs font-medium text-slate-500">
@@ -219,20 +219,20 @@ export default function Home() {
           <div className="flex items-center gap-2 sm:gap-3">
             <Link
               href={signInUrl}
-              className="rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-white/80 hover:text-blue-700 sm:px-4"
+              className="whitespace-nowrap rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-white/80 hover:text-blue-700 sm:px-4"
             >
               Sign in
             </Link>
             <Link
               href={createStoreUrl}
-              className="rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-violet-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-200 transition hover:-translate-y-0.5 sm:px-5"
+              className="whitespace-nowrap rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-violet-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-200 transition hover:-translate-y-0.5 sm:px-5"
             >
               Create store
             </Link>
           </div>
         </header>
 
-        <section className="mx-auto grid max-w-[1500px] items-center gap-12 px-5 pb-16 pt-10 sm:px-8 lg:grid-cols-[0.88fr_1.12fr] lg:px-12 lg:pb-24 lg:pt-16">
+        <section className="mx-auto grid max-w-[1500px] grid-cols-1 items-center gap-12 px-5 pb-16 pt-10 sm:px-8 lg:grid-cols-[0.88fr_1.12fr] lg:px-12 lg:pb-24 lg:pt-16">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/80 px-4 py-2 text-sm font-bold text-blue-700 shadow-sm backdrop-blur">
               <span className="flex h-2 w-2 rounded-full bg-violet-500 shadow-[0_0_0_5px_rgba(139,92,246,0.12)]" />
@@ -271,7 +271,7 @@ export default function Home() {
               <div className="min-w-0 flex-1 rounded-xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">
                 yourshop
               </div>
-              <div className="shrink-0 text-sm font-extrabold text-slate-400">
+              <div className="min-w-0 break-all text-sm font-extrabold text-slate-400">
                 .{publicDomain}
               </div>
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
@@ -319,7 +319,7 @@ export default function Home() {
           text="TENH POS keeps the daily tools a business needs together, while your public store stays separate from the admin application."
         />
 
-        <div className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-12 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
           {productFeatures.map((feature) => (
             <FeatureCard key={feature.title} {...feature} />
           ))}
@@ -328,7 +328,7 @@ export default function Home() {
 
       <section id="solutions" className="bg-white py-20 lg:py-28">
         <div className="mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12">
-          <div className="grid gap-10 lg:grid-cols-[0.75fr_1.25fr] lg:items-start">
+          <div className="grid grid-cols-1 gap-10 lg:grid-cols-[0.75fr_1.25fr] lg:items-start">
             <div className="lg:sticky lg:top-8">
               <SectionHeading
                 eyebrow="Built around your operation"
@@ -352,7 +352,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {operationFeatures.map((feature) => (
                 <OperationCard key={feature.title} {...feature} />
               ))}
@@ -368,7 +368,7 @@ export default function Home() {
           text="Choose from all 11 TENH business modes. Each mode uses the same TENH admin, POS, inventory and online-store architecture while adapting product workflows to the business."
         />
 
-        <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="mt-12 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {businessModes.map((mode) => (
             <ModeCard key={mode.title} {...mode} />
           ))}
@@ -377,7 +377,7 @@ export default function Home() {
 
       <section className="bg-gradient-to-b from-white to-blue-50/70 py-20 lg:py-28">
         <div className="mx-auto max-w-[1400px] px-5 sm:px-8 lg:px-12">
-          <div className="grid gap-8 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
             <DomainCard
               label="TENH Marketing"
               value={publicDomain}
@@ -400,7 +400,7 @@ export default function Home() {
       <PricingSection createStoreUrl={createStoreUrl} />
 
       <section id="resources" className="border-t border-slate-200 bg-white py-20">
-        <div className="mx-auto grid max-w-[1400px] gap-10 px-5 sm:px-8 lg:grid-cols-[1fr_auto] lg:px-12">
+        <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-10 px-5 sm:px-8 lg:grid-cols-[1fr_auto] lg:px-12">
           <div>
             <div className="flex items-center gap-3">
               <TenhLogo compact />

@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 
 import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import Link from "next/link";
@@ -133,7 +135,7 @@ function ProductThumb({ src, name }: { src: string | null; name: string }) {
   return (
     <div className="flex h-full w-full items-center justify-center bg-slate-100 text-slate-400">
       <Box size={22} />
-      <span className="sr-only">{name}</span>
+      <span className="sr-only" data-i18n-ignore="true">{name}</span>
     </div>
   );
 }
@@ -189,6 +191,8 @@ function ProductVariantPicker({
   values: string[];
   onChange: (ids: string[]) => void;
 }) {
+  const { t: translateLabel } = useLanguage();
+
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -325,10 +329,10 @@ function ProductVariantPicker({
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-900">
+          <p className="break-words text-sm font-semibold text-slate-900" data-i18n-ignore={!(values.length > 1) && ((selected) && (true))}>
             {values.length > 1 ? `${values.length} products / variants selected` : selected ? selected.name : "Choose products / variants"}
           </p>
-          <p className="truncate text-xs text-slate-500">
+          <p className="break-words text-xs text-slate-500">
             {selected
               ? values.length > 1 ? "Open to add or remove items" : `${variantText(selected)}${selected.sku ? ` · SKU: ${selected.sku}` : ""}`
               : "Search by product, colour, size or SKU"}
@@ -421,7 +425,7 @@ function ProductVariantPicker({
               groups.map(([groupName, groupProducts]) => (
                 <div key={groupName} className="mb-2 last:mb-0">
                   <div className="flex items-center justify-between bg-slate-50 px-3 py-2">
-                    <p className="text-xs font-bold text-slate-800">{groupName}</p>
+                    <p className="text-xs font-bold text-slate-800" data-i18n-ignore="true">{groupName}</p>
                     <span className="text-[11px] text-slate-500">{groupProducts.length} variants</span>
                   </div>
                   <div>
@@ -437,29 +441,29 @@ function ProductVariantPicker({
                           onMouseEnter={() => setHighlightedIndex(globalIndex)}
                           onClick={() => selectProduct(product)}
                           aria-pressed={isSelected}
-                          aria-label={`Select ${product.name} ${variantText(product)}`}
+                          aria-label={formatUiText(translateLabel("Select {0} {1}"), [product.name, product.color || product.size ? variantText(product) : translateLabel("Standard item")])}
                           disabled={!isSelected && values.length >= MAX_STOCK_ADJUSTMENT_ITEMS}
                           className={`flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-left transition last:border-b-0 ${
                             isSelected || isHighlighted
                               ? "bg-blue-50/80"
                               : "hover:bg-slate-50"
                           }`}
-                        >
+                         data-i18n-ignore-attributes="aria-label">
                           <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
                             <ProductThumb src={product.imageUrl} name={product.name} />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-slate-900">{product.name}</p>
+                            <p className="truncate text-sm font-semibold text-slate-900" data-i18n-ignore="true">{product.name}</p>
                             <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-slate-500">
                               {product.color && <ColourDot colour={product.color} />}
-                              <span className="truncate">
+                              <span className="truncate" data-i18n-ignore={Boolean([product.color, product.size].filter(Boolean).join(" · "))}>
                                 {[product.color, product.size].filter(Boolean).join(" · ") || "Standard item"}
                               </span>
                             </div>
                           </div>
                           <div className="hidden min-w-0 text-right sm:block">
                             <p className="max-w-[220px] truncate text-xs font-medium text-slate-500">
-                              SKU: {product.sku || "—"}
+                              SKU: <span data-i18n-ignore={Boolean(product.sku)}>{product.sku || "—"}</span>
                             </p>
                           </div>
                           <span className={`hidden shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold md:inline-flex ${status.className}`}>
@@ -716,7 +720,7 @@ export default function StockAdjustmentClient({
                 <div className="flex h-12 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">
                   <Store size={17} className="text-slate-400" />
                   <div>
-                    <p className="font-medium">{branchName}</p>
+                    <p className="font-medium" data-i18n-ignore="true">{branchName}</p>
                     <p className="text-[10px] text-slate-400">Stock adjustment for this branch</p>
                   </div>
                 </div>
@@ -781,7 +785,7 @@ export default function StockAdjustmentClient({
                   const label = product ? `${product.name} ${variantText(product)}` : row.productId;
                   const after = stockAfter(row.expectedQuantity, row.mode, Number(row.quantity) || 0);
                   return <tr key={row.productId} className={`border-t border-slate-100 ${valid ? "" : "bg-red-50"}`}>
-                    <td className="max-w-[220px] p-3"><p className="truncate font-semibold text-slate-900">{product?.name ?? "Unavailable product"}</p><p className="mt-1 text-slate-500">{product ? variantText(product) : row.productId}</p><p className="mt-1 text-[10px] text-slate-400">{product?.sku}</p>{!valid && <p className="mt-1 text-red-700">{product ? "Check quantity / available stock" : "Remove this unavailable item"}</p>}</td>
+                    <td className="max-w-[220px] p-3"><p className="break-words font-semibold text-slate-900" data-i18n-ignore={Boolean(product?.name)}>{product?.name ?? "Unavailable product"}</p><p className="mt-1 text-slate-500" data-i18n-ignore={((product) && (Boolean(product.color || product.size))) || (!(product) && (true))}>{product ? variantText(product) : row.productId}</p><p className="mt-1 text-[10px] text-slate-400" data-i18n-ignore="true">{product?.sku}</p>{!valid && <p className="mt-1 text-red-700">{product ? "Check quantity / available stock" : "Remove this unavailable item"}</p>}</td>
                     <td className="p-3 font-semibold">{row.expectedQuantity}</td>
                     <td className="p-3"><select aria-label={`Adjustment for ${label}`} value={row.mode} onChange={event => updateRow(row.productId, { mode: event.target.value as Mode })} className="h-10 rounded-lg border border-slate-300 bg-white px-2"><option value="increase">Increase</option><option value="decrease">Decrease</option><option value="set">Set exact</option></select></td>
                     <td className="p-3"><input aria-label={`Quantity for ${label}`} type="number" min={row.mode === "set" ? 0 : 1} max={2147483647} step={1} required value={row.quantity} onChange={event => updateRow(row.productId, { quantity: event.target.value })} className="h-10 w-24 rounded-lg border border-slate-300 bg-white px-2" /></td>
@@ -923,10 +927,10 @@ export default function StockAdjustmentClient({
                   <ProductThumb src={selectedProduct.imageUrl} name={selectedProduct.name} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-lg font-bold text-slate-950">
+                  <p className="break-words text-lg font-bold text-slate-950" data-i18n-ignore="true">
                     {selectedProduct.name}
                   </p>
-                  <p className="mt-0.5 text-sm text-slate-500">
+                  <p className="mt-0.5 text-sm text-slate-500" data-i18n-ignore={Boolean(selectedProduct.color || selectedProduct.size)}>
                     {variantText(selectedProduct)}
                   </p>
                   <p className="mt-1 truncate text-xs text-slate-400">
@@ -1032,7 +1036,7 @@ export default function StockAdjustmentClient({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <MobileList>{filteredAdjustments.map((adjustment) => <MobileListCard key={adjustment.id} media={<ProductThumb src={adjustment.imageUrl} name={adjustment.productName} />} title={adjustment.productName} date={dateTime(adjustment.createdAt)} primary={[adjustment.color, adjustment.size, adjustment.sku].filter(Boolean).join(" · ") || "Standard item"} secondary={`${adjustment.stockBefore} → ${adjustment.stockAfter} · ${adjustment.reason}`} amount={<span className={adjustment.quantityDelta > 0 ? "text-emerald-600" : adjustment.quantityDelta < 0 ? "text-red-600" : "text-slate-900"}>{adjustment.quantityDelta > 0 ? "+" : ""}{adjustment.quantityDelta}</span>} status={{ label: adjustment.quantityDelta > 0 ? "Increase" : adjustment.quantityDelta < 0 ? "Decrease" : "Set exact", tone: adjustment.quantityDelta > 0 ? "green" : adjustment.quantityDelta < 0 ? "red" : "blue" }} />)}</MobileList>
+            <MobileList>{filteredAdjustments.map((adjustment) => <MobileListCard key={adjustment.id} media={<ProductThumb src={adjustment.imageUrl} name={adjustment.productName} />} title={<span data-i18n-ignore="true">{adjustment.productName}</span>} date={dateTime(adjustment.createdAt)} primary={<span data-i18n-ignore={Boolean([adjustment.color, adjustment.size, adjustment.sku].filter(Boolean).join(" · "))}>{[adjustment.color, adjustment.size, adjustment.sku].filter(Boolean).join(" · ") || "Standard item"}</span>} secondary={`${adjustment.stockBefore} → ${adjustment.stockAfter} · ${adjustment.reason}`} amount={<span className={adjustment.quantityDelta > 0 ? "text-emerald-600" : adjustment.quantityDelta < 0 ? "text-red-600" : "text-slate-900"}>{adjustment.quantityDelta > 0 ? "+" : ""}{adjustment.quantityDelta}</span>} status={{ label: adjustment.quantityDelta > 0 ? "Increase" : adjustment.quantityDelta < 0 ? "Decrease" : "Set exact", tone: adjustment.quantityDelta > 0 ? "green" : adjustment.quantityDelta < 0 ? "red" : "blue" }}  data-i18n-ignore-attributes="title"/>)}</MobileList>
             <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[1040px] text-sm">
               <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
@@ -1061,10 +1065,12 @@ export default function StockAdjustmentClient({
                             <ProductThumb src={adjustment.imageUrl} name={adjustment.productName} />
                           </div>
                           <div className="min-w-0">
-                            <p className="truncate font-semibold text-slate-900">
+                            <p className="break-words font-semibold text-slate-900" data-i18n-ignore="true">
                               {adjustment.productName}
                             </p>
-                            <p className="truncate text-xs text-slate-500">
+                            <p className="break-words text-xs text-slate-500" data-i18n-ignore={Boolean([adjustment.color, adjustment.size, adjustment.sku]
+                                .filter(Boolean)
+                                .join(" · "))}>
                               {[adjustment.color, adjustment.size, adjustment.sku]
                                 .filter(Boolean)
                                 .join(" · ") || "Standard item"}
@@ -1106,7 +1112,7 @@ export default function StockAdjustmentClient({
                       <td className="max-w-[260px] px-4 py-3 text-slate-700">
                         <p className="line-clamp-2">{adjustment.reason}</p>
                       </td>
-                      <td className="px-4 py-3 text-slate-500">
+                      <td className="px-4 py-3 text-slate-500" data-i18n-ignore="true">
                         {adjustment.reference || "—"}
                       </td>
                       <td className="px-4 py-3">

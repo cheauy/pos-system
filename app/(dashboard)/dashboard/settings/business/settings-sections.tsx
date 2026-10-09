@@ -23,6 +23,7 @@ const valueOf = (el: Control) =>
 export default function SettingsSections({ available, children }: { available: SettingsSectionId[]; children: ReactNode }) {
   const params = useSearchParams();
   const panel = useRef<HTMLDivElement>(null);
+  const nav = useRef<HTMLElement>(null);
   const [unsaved, setUnsaved] = useState<string[]>([]);
   const raw = params.get("section");
   const requested = (raw && SECTION_ALIASES[raw]) || (raw as SettingsSectionId | null);
@@ -50,6 +51,24 @@ export default function SettingsSections({ available, children }: { available: S
     // Mount-only: later hash changes are not used by this page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Phone/tablet tab strip: bring the active tab into view. The desktop sidebar never scrolls sideways.
+  // Labels can widen after mount (Khmer is translated in the DOM, fonts load), so re-check on tab resize.
+  useEffect(() => {
+    const strip = nav.current;
+    if (!strip) return;
+    const reveal = () => {
+      const tab = strip.querySelector<HTMLElement>('[aria-current="page"]');
+      if (!tab || strip.scrollWidth <= strip.clientWidth) return;
+      const start = tab.offsetLeft, end = start + tab.offsetWidth;
+      if (start < strip.scrollLeft) strip.scrollLeft = start - 24;
+      else if (end > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = end - strip.clientWidth + 24;
+    };
+    reveal();
+    const resized = new ResizeObserver(reveal);
+    strip.querySelectorAll("a").forEach(tab => resized.observe(tab));
+    return () => resized.disconnect();
+  }, [active]);
 
   // Per-control baseline: a section is "unsaved" while one of its fields differs
   // from the value it had when loaded or last saved by its own form.
@@ -119,10 +138,11 @@ export default function SettingsSections({ available, children }: { available: S
 
   return (
     <div className="bs-layout">
-      <nav aria-label="Business settings sections" className="bs-nav">
+      {/* Desktop: grouped sidebar. Phones/tablets: the same links as a horizontal, scrollable tab strip (settings-layout.css). */}
+      <nav ref={nav} aria-label="Business settings sections" className="bs-nav">
         {groups.map(group => (
           <div key={group.name ?? "top"} className="bs-group" role="group" aria-labelledby={group.name ? `bs-group-${group.name}` : undefined}>
-            {group.name ? <p id={`bs-group-${group.name}`} className="bs-group-title">{group.name}</p> : null}
+            {group.name ? <p id={`bs-group-${group.name}`} className="bs-group-title" data-i18n-ignore="true">{group.name}</p> : null}
             <ul>
               {group.items.map(({ id, label, icon: Icon }) => (
                 <li key={id}>
@@ -138,15 +158,6 @@ export default function SettingsSections({ available, children }: { available: S
           </div>
         ))}
       </nav>
-      <label className="bs-picker">
-        <span className="sr-only">Settings section</span>
-        <select value={active} onChange={event => select(event.target.value as SettingsSectionId)}>
-          {groups.map(group => {
-            const options = group.items.map(({ id, label }) => <option key={id} value={id}>{label}{unsaved.includes(id) ? " •" : ""}</option>);
-            return group.name ? <optgroup key={group.name} label={group.name}>{options}</optgroup> : options;
-          })}
-        </select>
-      </label>
       <div ref={panel} className="bs-panel" data-active={active}>{children}</div>
     </div>
   );

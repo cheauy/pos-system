@@ -325,9 +325,9 @@ export function CustomersWorkspace({
               <li key={customer.id}><button type="button" onClick={() => { selectCustomer(customer.id); setSheet("detail"); }} className={`flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left shadow-sm ${selectedCustomer?.id === customer.id ? "border-blue-200" : "border-slate-200"}`}>
                 <Initials name={customer.name} card />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-bold text-slate-900">{customer.name}</span>
-                  <span className="block truncate text-sm text-blue-600">{customer.phone || "No phone"}</span>
-                  <span className="block truncate text-xs text-slate-500">{customer.orderCount} {customer.orderCount === 1 ? "order" : "orders"} • {formatMoney(customer.totalSpent, currency)} spent</span>
+                  <span className="block break-words font-bold text-slate-900" data-i18n-ignore="true">{customer.name}</span>
+                  <span className="block break-words text-sm text-blue-600" data-i18n-ignore={Boolean(customer.phone)}>{customer.phone || "No phone"}</span>
+                  <span className="block break-words text-xs text-slate-500">{customer.orderCount} {customer.orderCount === 1 ? "order" : "orders"} • {formatMoney(customer.totalSpent, currency)} spent</span>
                 </span>
                 <span className="flex shrink-0 flex-col items-end justify-between gap-5 self-stretch py-0.5"><ChevronRight size={18} className="text-slate-300" /><span className="text-xs text-slate-500">{customer.lastPurchaseAt ? formatDate(customer.lastPurchaseAt) : "—"}</span></span>
               </button></li>
@@ -365,14 +365,14 @@ export function CustomersWorkspace({
                           <div className="flex items-center gap-3">
                             <Initials name={customer.name} />
                             <div className="min-w-0">
-                              <p className="truncate font-semibold text-slate-900">{customer.name}</p>
+                              <p className="truncate font-semibold text-slate-900" data-i18n-ignore="true">{customer.name}</p>
                               <p className="truncate text-xs text-slate-400">Customer</p>
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 font-medium text-slate-700">{customer.phone || "—"}</td>
+                        <td className="px-4 py-3 font-medium text-slate-700" data-i18n-ignore="true">{customer.phone || "—"}</td>
                         {fieldSettings.emailEnabled ? (
-                          <td className="max-w-[180px] truncate px-4 py-3 text-slate-600">{customer.email || "—"}</td>
+                          <td className="max-w-[180px] truncate px-4 py-3 text-slate-600" data-i18n-ignore="true">{customer.email || "—"}</td>
                         ) : null}
                         <td className="px-4 py-3 text-center font-semibold text-slate-700">{customer.orderCount}</td>
                         <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatMoney(customer.totalSpent, currency)}</td>
@@ -442,7 +442,7 @@ export function CustomersWorkspace({
                 <div className="flex items-center gap-3">
                   <Initials name={selectedCustomer.name} large />
                   <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-lg font-bold text-slate-950">{selectedCustomer.name}</h3>
+                    <h3 className="break-words text-lg font-bold text-slate-950" data-i18n-ignore="true">{selectedCustomer.name}</h3>
                     {selectedCustomer.isActive ? (
                       <span
                         title="Purchase in the last 30 days"
@@ -564,7 +564,7 @@ export function CustomersWorkspace({
             </div>
             <h3 className="mt-4 text-lg font-bold text-slate-950">Delete customer?</h3>
             <p className="mt-2 text-sm text-slate-600">
-              Delete <span className="font-semibold text-slate-900">{deleteCandidate.name}</span>? This removes the customer profile. Existing order records remain part of business history.
+              Delete <span className="font-semibold text-slate-900" data-i18n-ignore="true">{deleteCandidate.name}</span>? This removes the customer profile. Existing order records remain part of business history.
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" onClick={() => setDeleteCandidate(null)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700">
@@ -669,7 +669,7 @@ function PurchaseHistoryPanel({ customer, currency }: { customer: Customer; curr
       <div className="mb-4 flex items-center gap-3">
         <Initials name={customer.name} />
         <div className="min-w-0">
-          <p className="truncate font-semibold text-slate-900">{customer.name}</p>
+          <p className="truncate font-semibold text-slate-900" data-i18n-ignore="true">{customer.name}</p>
           <p className="text-xs text-slate-500">{customer.purchaseHistory.length} recent order{customer.purchaseHistory.length === 1 ? "" : "s"}</p>
         </div>
       </div>
@@ -685,7 +685,7 @@ function PurchaseHistoryPanel({ customer, currency }: { customer: Customer; curr
             <div key={order.id} className="rounded-xl border border-slate-200 p-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-900">{order.orderNumber}</p>
+                  <p className="truncate text-sm font-semibold text-slate-900" data-i18n-ignore="true">{order.orderNumber}</p>
                   <p className="mt-0.5 text-xs text-slate-500">{formatDate(order.createdAt)} · {order.orderSource}</p>
                 </div>
                 <p className="text-sm font-bold text-slate-900">{formatMoney(order.total, currency)}</p>

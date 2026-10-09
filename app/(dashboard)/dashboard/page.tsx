@@ -286,7 +286,7 @@ export default async function DashboardPage({
             </div>
 
             <p className="mt-3 text-sm text-slate-500 dark:text-slate-400 sm:text-base">
-              Sales, orders, inventory, and product performance for {business.name}.
+              Sales, orders, inventory, and product performance for <span data-i18n-ignore="true">{business.name}</span>.
             </p>
           </div>
 
@@ -309,7 +309,7 @@ export default async function DashboardPage({
         </div>
       </section>
 
-      <section className="grid gap-4 max-sm:grid-cols-4 max-sm:gap-1.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+      <section className="grid gap-4 max-sm:grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] max-sm:gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         <KpiCard
           title="Net sales"
           value={money(revenue, currency)}
@@ -404,13 +404,13 @@ function KpiCard({
   }[tone];
 
   return (
-    <article className={`min-w-0 rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm max-sm:rounded-xl max-sm:p-1.5 dark:border-slate-800 dark:bg-slate-900 ${phoneHidden ? "max-sm:hidden" : ""}`}>
+    <article className={`min-w-0 rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm max-sm:rounded-xl max-sm:p-3 dark:border-slate-800 dark:bg-slate-900 ${phoneHidden ? "max-sm:hidden" : ""}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-500 max-sm:text-[9px] max-sm:leading-tight dark:text-slate-400">
+          <p className="text-sm font-semibold text-slate-500 max-sm:text-xs max-sm:leading-tight dark:text-slate-400">
             {title}
           </p>
-          <p className="mt-2 truncate text-3xl font-black tracking-tight text-slate-950 max-sm:mt-1 max-sm:whitespace-normal max-sm:break-all max-sm:text-[11px] dark:text-white">
+          <p className="mt-2 break-words text-3xl font-black tracking-tight text-slate-950 max-sm:mt-1 max-sm:text-lg dark:text-white">
             {value}
           </p>
           <p className="mt-2 text-xs font-medium text-slate-400 max-sm:hidden">{hint}</p>
@@ -528,7 +528,7 @@ function RecentOrders({
               className="grid gap-3 px-5 py-4 transition hover:bg-slate-50 dark:hover:bg-slate-800/40 sm:grid-cols-[minmax(0,1.5fr)_0.8fr_0.8fr_0.8fr_auto] sm:items-center sm:px-6"
             >
               <div className="min-w-0">
-                <p className="truncate text-sm font-black text-slate-900 dark:text-white">
+                <p className="break-all text-sm font-black text-slate-900 dark:text-white" data-i18n-ignore={Boolean(order.order_number)}>
                   {order.order_number || `Order ${order.id.slice(0, 8)}`}
                 </p>
                 <p className="mt-0.5 text-xs font-medium text-slate-400">

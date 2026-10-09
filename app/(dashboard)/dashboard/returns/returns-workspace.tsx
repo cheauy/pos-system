@@ -4,6 +4,7 @@ import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cancelReturn } from "./actions";
+import { dateRangeError } from "@/lib/date-range";
 import {
   ArrowRightLeft,
   BarChart3,
@@ -71,6 +72,10 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
   const [query, setQuery] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  // Date edits stay a draft (null = showing the applied range) until Apply.
+  const [dateDraft, setDateDraft] = useState<{ from: string; to: string } | null>(null);
+  const draftError = dateDraft ? dateRangeError(dateDraft.from, dateDraft.to) : "";
+  const shownFrom = dateDraft?.from ?? fromDate, shownTo = dateDraft?.to ?? toDate;
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState(initialRecords[0]?.id ?? null);
   const [message, setMessage] = useState<string | null>(null);
@@ -132,6 +137,12 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
       .slice(0, 5);
   }, [activeRecords]);
 
+  function closeDateFilter() { setDateDraft(null); setSheet(null); }
+  function applyDates() {
+    if (draftError) return;
+    if (dateDraft) { setFromDate(dateDraft.from); setToDate(dateDraft.to); setDateDraft(null); resetPage(); }
+    setSheet(null);
+  }
   function resetPage() {
     setPage(1);
   }
@@ -167,14 +178,16 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
               <input value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder="Search returns, customers, orders…" className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-blue-400" />
             </label>
             {/* Phones/tablets: compact date range beside search; it opens the date sheet. */}
-            <button type="button" aria-label="Select date range" onClick={() => setSheet("filter")} className={`inline-flex h-10 max-w-[45vw] items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold md:hidden ${fromDate || toDate ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600"}`}><CalendarDays size={16} className="shrink-0" /><span className="truncate">{fromDate || toDate ? `${fromDate ? formatShortDate(fromDate) : "…"} – ${toDate ? formatShortDate(toDate) : "…"}` : "Date"}</span></button>
-            {sheet === "filter" && <button type="button" aria-label="Close filters" onClick={() => setSheet(null)} className="fixed inset-0 z-40 bg-slate-950/40 md:hidden" />}
+            <button type="button" aria-label="Select date range" onClick={() => { setDateDraft(null); setSheet("filter"); }} className={`inline-flex h-10 max-w-[45vw] items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold md:hidden ${fromDate || toDate ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600"}`}><CalendarDays size={16} className="shrink-0" /><span className="truncate">{fromDate || toDate ? `${fromDate ? formatShortDate(fromDate) : "…"} – ${toDate ? formatShortDate(toDate) : "…"}` : "Date"}</span></button>
+            {sheet === "filter" && <button type="button" aria-label="Close filters" onClick={closeDateFilter} className="fixed inset-0 z-40 bg-slate-950/40 md:hidden" />}
             <div role={sheet === "filter" ? "dialog" : undefined} aria-modal={sheet === "filter" || undefined} aria-label="Return filters" data-sheet="bottom" className={`${sheet === "filter" ? "fixed inset-x-0 bottom-0 z-50 grid gap-3 rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-2xl" : "max-md:hidden"} md:contents`}>
-            {sheet === "filter" && <div className="md:hidden"><div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200" /><div className="mt-4 flex items-center justify-between"><h2 className="text-xl font-bold text-slate-900">Filter Returns</h2><button type="button" aria-label="Close filters" onClick={() => setSheet(null)} className="grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600"><X size={20} /></button></div></div>}
-            <input type="date" aria-label="From date" value={fromDate} onChange={(event) => { setFromDate(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
-            <input type="date" aria-label="To date" value={toDate} onChange={(event) => { setToDate(event.target.value); resetPage(); }} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
-            {sheet === "filter" && (fromDate || toDate) && <button type="button" onClick={() => { setFromDate(""); setToDate(""); resetPage(); }} className="min-h-11 rounded-xl border border-slate-200 font-semibold text-slate-700 md:hidden">Clear dates</button>}
-            {sheet === "filter" && <button type="button" onClick={() => setSheet(null)} className="min-h-12 rounded-xl bg-blue-600 font-semibold text-white md:hidden">Apply</button>}
+            {sheet === "filter" && <div className="md:hidden"><div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200" /><div className="mt-4 flex items-center justify-between"><h2 className="text-xl font-bold text-slate-900">Filter Returns</h2><button type="button" aria-label="Close filters" onClick={closeDateFilter} className="grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600"><X size={20} /></button></div></div>}
+            <input type="date" aria-label="From date" value={shownFrom} onChange={(event) => setDateDraft({ from: event.target.value, to: shownTo })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
+            <input type="date" aria-label="To date" value={shownTo} onChange={(event) => setDateDraft({ from: shownFrom, to: event.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
+            {sheet === "filter" && (shownFrom || shownTo) && <button type="button" onClick={() => setDateDraft({ from: "", to: "" })} className="min-h-11 rounded-xl border border-slate-200 font-semibold text-slate-700 md:hidden">Clear dates</button>}
+            {draftError && <p role="alert" className="text-xs font-semibold text-red-600 md:col-span-3 md:text-right">{draftError}</p>}
+            {sheet === "filter" && <button type="button" onClick={applyDates} disabled={Boolean(draftError)} className="min-h-12 rounded-xl bg-blue-600 font-semibold text-white disabled:opacity-50 md:hidden">Apply</button>}
+            {sheet !== "filter" && dateDraft && <div className="hidden justify-end gap-2 md:col-span-3 md:flex"><button type="button" onClick={() => setDateDraft(null)} className="h-9 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600">Cancel</button><button type="button" onClick={applyDates} disabled={Boolean(draftError)} className="h-9 rounded-xl bg-blue-600 px-4 text-xs font-semibold text-white disabled:opacity-50">Apply dates</button></div>}
             </div>
           </div>
 
@@ -190,7 +203,7 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
               <MobileList>{pageRecords.map((record) => {
                 const item = record.items[0], image = record.items.find((entry) => entry.imageUrl)?.imageUrl;
                 const tone = record.status === "refunded" || record.status === "approved" ? "green" : record.status === "pending" ? "amber" : record.status === "rejected" ? "red" : record.status === "exchanged" ? "violet" : "slate";
-                return <MobileListCard key={record.id} selected={selectedId === record.id} onClick={() => { setSelectedId(record.id); setSheet("detail"); }} media={image ? <img src={image} alt="" loading="lazy" className="h-full w-full object-contain" /> : <PackageOpen size={24} className="text-slate-300" />} title={record.returnNumber} date={formatDate(record.createdAt)} primary={`${item?.productName ?? "Return record"}${record.items.length > 1 ? ` +${record.items.length - 1}` : ""}`} secondary={`Customer: ${record.customerName}`} amount={formatCurrency(record.refundAmount)} status={{ label: record.status, tone }} />;
+                return <MobileListCard key={record.id} selected={selectedId === record.id} onClick={() => { setSelectedId(record.id); setSheet("detail"); }} media={image ? <img src={image} alt="" loading="lazy" className="h-full w-full object-contain" /> : <PackageOpen size={24} className="text-slate-300" />} title={record.returnNumber} date={formatDate(record.createdAt)} primary={<><span data-i18n-ignore={Boolean(item?.productName)}>{item?.productName ?? "Return record"}</span>{record.items.length > 1 ? ` +${record.items.length - 1}` : ""}</>} secondary={<>{"Customer"}{":"}{" "}<span data-i18n-ignore="true">{record.customerName}</span></>} amount={formatCurrency(record.refundAmount)} status={{ label: record.status, tone }} />;
               })}</MobileList>
               <div className="hidden overflow-x-auto lg:block">
                 <table className="w-full min-w-[980px] text-sm">
@@ -198,14 +211,14 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
                   <tbody className="divide-y divide-slate-100">
                     {pageRecords.map((record) => (
                       <tr key={record.id} onClick={() => { setSelectedId(record.id); setSheet("detail"); }} className={`cursor-pointer transition hover:bg-slate-50 ${selectedId === record.id ? "bg-blue-50/70" : ""}`}>
-                        <td className="px-4 py-3 font-bold text-blue-600">{record.returnNumber}</td><td className="px-4 py-3 font-medium text-slate-800">{record.customerName}</td><td className="px-4 py-3 text-blue-600">{record.orderNumber}</td><td className="px-4 py-3"><div className="max-w-[190px] truncate font-medium text-slate-800">{record.items[0]?.productName ?? "—"}</div><div className="text-xs text-slate-400">{record.items.reduce((sum, item) => sum + item.quantity, 0)} item(s)</div></td><td className="px-4 py-3 capitalize text-slate-600">{record.returnType}</td><td className="max-w-[170px] truncate px-4 py-3 text-slate-600">{record.reason}</td><td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(record.refundAmount)}</td><td className="px-4 py-3"><StatusBadge status={record.status} /></td><td className="px-4 py-3 text-slate-500">{formatDate(record.createdAt)}</td>
+                        <td className="px-4 py-3 font-bold text-blue-600">{record.returnNumber}</td><td className="px-4 py-3 font-medium text-slate-800" data-i18n-ignore="true">{record.customerName}</td><td className="px-4 py-3 text-blue-600" data-i18n-ignore="true">{record.orderNumber}</td><td className="px-4 py-3"><div className="max-w-[190px] truncate font-medium text-slate-800" data-i18n-ignore="true">{record.items[0]?.productName ?? "—"}</div><div className="text-xs text-slate-400">{record.items.reduce((sum, item) => sum + item.quantity, 0)} item(s)</div></td><td className="px-4 py-3 capitalize text-slate-600">{record.returnType}</td><td className="max-w-[170px] truncate px-4 py-3 text-slate-600">{record.reason}</td><td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(record.refundAmount)}</td><td className="px-4 py-3"><StatusBadge status={record.status} /></td><td className="px-4 py-3 text-slate-500">{formatDate(record.createdAt)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </>)}
-            <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4 text-sm text-slate-500 max-lg:mt-2 max-lg:border-0 max-lg:px-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-5 py-4 text-sm text-slate-500 max-lg:mt-2 max-lg:border-0 max-lg:px-1">
               <span>Showing {pageRecords.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}</span>
               <div className="flex gap-2"><button disabled={safePage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Previous</button><span className="rounded-lg bg-slate-100 px-3 py-1.5 font-semibold text-slate-700">{safePage} / {totalPages}</span><button disabled={safePage >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Next</button></div>
             </div>
@@ -217,12 +230,12 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
               <h2 className="font-bold text-slate-900">Return Reasons Breakdown</h2><p className="mt-1 text-xs text-slate-500">Why customers are returning products</p>
               <div className="mt-4 grid items-center gap-3 sm:grid-cols-[210px_1fr]">
                 <div className="h-52"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={reasonData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={82} paddingAngle={2}>{reasonData.map((item, index) => <Cell key={item.name} fill={pieColors[index % pieColors.length]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></div>
-                <div className="space-y-2">{reasonData.map((item, index) => <div key={item.name} className="flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: pieColors[index % pieColors.length] }} /><span className="truncate text-slate-600">{item.name}</span></span><span className="font-semibold text-slate-900">{item.value}</span></div>)}</div>
+                <div className="space-y-2">{reasonData.map((item, index) => <div key={item.name} className="flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: pieColors[index % pieColors.length] }} /><span className="truncate text-slate-600" data-i18n-ignore="true">{item.name}</span></span><span className="font-semibold text-slate-900">{item.value}</span></div>)}</div>
               </div>
             </section>
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="font-bold text-slate-900">Most Returned Products</h2><p className="mt-1 text-xs text-slate-500">Products with the highest returned quantity</p>
-              <div className="mt-5 space-y-4">{productData.length === 0 ? <div className="py-12 text-center text-sm text-slate-400">No returned product data yet.</div> : productData.map((product) => { const max = productData[0]?.quantity || 1; return <div key={product.name}><div className="mb-1.5 flex items-center justify-between text-sm"><span className="truncate font-medium text-slate-700">{product.name}</span><span className="font-bold text-slate-900">{product.quantity}</span></div><div className="h-2 rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${Math.max(6, (product.quantity / max) * 100)}%`, backgroundColor: accentColor }} /></div></div>; })}</div>
+              <div className="mt-5 space-y-4">{productData.length === 0 ? <div className="py-12 text-center text-sm text-slate-400">No returned product data yet.</div> : productData.map((product) => { const max = productData[0]?.quantity || 1; return <div key={product.name}><div className="mb-1.5 flex items-center justify-between text-sm"><span className="truncate font-medium text-slate-700" data-i18n-ignore="true">{product.name}</span><span className="font-bold text-slate-900">{product.quantity}</span></div><div className="h-2 rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${Math.max(6, (product.quantity / max) * 100)}%`, backgroundColor: accentColor }} /></div></div>; })}</div>
             </section>
           </div>
         </section>
@@ -266,9 +279,9 @@ function ReturnDetail({ record, accentColor, canCancel }: { record: ReturnWorksp
   return <div>
     <div className="border-b border-slate-200 p-5"><div className="flex items-center justify-between gap-3"><h2 className="font-bold text-slate-900">Return #{record.returnNumber}</h2><StatusBadge status={record.status} /></div><p className="mt-1 text-xs text-slate-500">{formatDateTime(record.createdAt)}{record.source === "import" ? " · Imported history" : ""}</p></div>
     <div className="space-y-5 p-5">
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Returned item</p><p className="mt-1 font-bold text-slate-900">{record.items[0]?.productName ?? "Return record"}</p><p className="mt-1 text-sm text-slate-500">{record.items.reduce((sum, item) => sum + item.quantity, 0)} item(s) · {formatCurrency(record.refundAmount)}</p></div>
-      <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Customer information</p><p className="mt-2 font-bold text-slate-900">{record.customerName}</p>{record.customerEmail && <p className="text-sm text-slate-500">{record.customerEmail}</p>}{record.customerPhone && <p className="text-sm text-slate-500">{record.customerPhone}</p>}</div>
-      <dl className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-2 text-sm"><dt className="text-slate-400">Order Number</dt><dd className="font-semibold text-blue-600">{record.orderNumber}</dd><dt className="text-slate-400">Return Reason</dt><dd className="text-slate-700">{record.reason}</dd><dt className="text-slate-400">Return Type</dt><dd className="capitalize text-slate-700">{record.returnType}</dd><dt className="text-slate-400">Refund Method</dt><dd className="text-slate-700">{formatLabel(record.refundMethod ?? record.paymentMethod ?? "—")}</dd><dt className="text-slate-400">Restock Status</dt><dd className="text-slate-700">{formatLabel(record.restockStatus ?? "Completed")}</dd></dl>
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Returned item</p><p className="mt-1 font-bold text-slate-900" data-i18n-ignore={Boolean(record.items[0]?.productName)}>{record.items[0]?.productName ?? "Return record"}</p><p className="mt-1 text-sm text-slate-500">{record.items.reduce((sum, item) => sum + item.quantity, 0)} item(s) · {formatCurrency(record.refundAmount)}</p></div>
+      <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Customer information</p><p className="mt-2 font-bold text-slate-900" data-i18n-ignore="true">{record.customerName}</p>{record.customerEmail && <p className="text-sm text-slate-500" data-i18n-ignore="true">{record.customerEmail}</p>}{record.customerPhone && <p className="text-sm text-slate-500" data-i18n-ignore="true">{record.customerPhone}</p>}</div>
+      <dl className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-2 text-sm"><dt className="text-slate-400">Order Number</dt><dd className="font-semibold text-blue-600" data-i18n-ignore="true">{record.orderNumber}</dd><dt className="text-slate-400">Return Reason</dt><dd className="text-slate-700">{record.reason}</dd><dt className="text-slate-400">Return Type</dt><dd className="capitalize text-slate-700">{record.returnType}</dd><dt className="text-slate-400">Refund Method</dt><dd className="text-slate-700">{formatLabel(record.refundMethod ?? record.paymentMethod ?? "—")}</dd><dt className="text-slate-400">Restock Status</dt><dd className="text-slate-700">{formatLabel(record.restockStatus ?? "Completed")}</dd></dl>
       <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Timeline</p><div className="mt-3 space-y-3"><TimelineDot color={accentColor} title="Return created" subtitle={formatDateTime(record.createdAt)} /><TimelineDot color={record.status === "rejected" ? "#ef4444" : accentColor} title={formatLabel(record.status)} subtitle={record.status === "pending" ? "Awaiting review" : "Current return status"} /></div></div>
       {record.status === "cancelled" && <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600"><p className="font-semibold text-slate-800">Cancelled{record.cancelledAt ? ` · ${formatDateTime(record.cancelledAt)}` : ""}</p>{record.cancelReason && <p className="mt-1">{record.cancelReason}</p>}</div>}
       {notice && <p role={notice.success ? "status" : "alert"} className={`rounded-xl px-3 py-2 text-sm ${notice.success ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{notice.message}</p>}

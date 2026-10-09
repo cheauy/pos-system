@@ -441,7 +441,7 @@ export default async function ReportsPage({
                   >
                     <div className="flex items-center justify-between gap-4">
                       <div>
-                        <p className="font-semibold text-slate-900">
+                        <p className="font-semibold text-slate-900" data-i18n-ignore="true">
                           {category.name}
                         </p>
 
@@ -498,7 +498,6 @@ function MobileReportFilters({ branches, branchId, selectedRange, from, to }: {
   from: string;
   to: string;
 }) {
-  const branchParam = `&branch=${encodeURIComponent(branchId || "all")}`;
   return <div className="sm:hidden">
     <a href="#report-filters" className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg"><SlidersHorizontal size={18} />Filter</a>
     <div id="report-filters" className="fixed inset-0 z-50 hidden items-end bg-slate-950/40 target:flex">
@@ -509,20 +508,19 @@ function MobileReportFilters({ branches, branchId, selectedRange, from, to }: {
           <div><h2 id="report-filters-title" className="text-xl font-bold text-slate-900">Filter Reports</h2><p className="mt-1 text-sm text-slate-500">Select branch and date range</p></div>
           <a href="#" aria-label="Close filters" className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600"><X size={20} /></a>
         </div>
-        <div className="mt-5"><ViewBranchSelect branches={branches} branchId={branchId} /></div>
-        <p className="mt-5 text-sm font-semibold text-slate-600">Date Range</p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {REPORT_RANGES.map((range) => <Link key={range.value} href={`/dashboard/reports?range=${range.value}${branchParam}`} className={`rounded-full px-4 py-2 text-sm font-semibold ${selectedRange === range.value ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}>{range.label}</Link>)}
-        </div>
-        <NavigationForm className="mt-5">
-          <div className="grid grid-cols-[1fr_1fr] gap-3">
-          <input type="hidden" name="branch" value={branchId || "all"} />
-          <input type="hidden" name="range" value="custom" />
-          <label className="text-sm font-semibold text-slate-600">From<input type="date" name="from" defaultValue={from} required className="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500" /></label>
-          <label className="text-sm font-semibold text-slate-600">To<input type="date" name="to" defaultValue={to} required className="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500" /></label>
+        {/* Every sheet field is a draft: nothing loads until Apply. Closing discards edits. */}
+        <NavigationForm key={[branchId, selectedRange, from, to].join("|")} className="mt-5" reset={{ range: "yesterday", from: "", to: "" }}>
+          <label className="text-xs font-semibold text-slate-500">Choose Branch<select name="branch" aria-label="View data for branch" defaultValue={branchId || "all"} className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900"><option value="all">All branches</option>{branches.map(b => <option key={b.id} value={b.id} data-i18n-ignore="true">{b.name}</option>)}</select></label>
+          <fieldset className="mt-5"><legend className="text-sm font-semibold text-slate-600">Date Range</legend>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {[...REPORT_RANGES, { value: "custom", label: "Custom" }].map((range) => <label key={range.value} className="cursor-pointer rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 has-[:checked]:bg-blue-600 has-[:checked]:text-white has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-blue-500"><input type="radio" name="range" value={range.value} defaultChecked={selectedRange === range.value} className="sr-only" />{range.label}</label>)}
+          </div></fieldset>
+          <div className="mt-5 grid grid-cols-[1fr_1fr] gap-3">
+          <label className="text-sm font-semibold text-slate-600">From<input type="date" name="from" defaultValue={from} className="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500" /></label>
+          <label className="text-sm font-semibold text-slate-600">To<input type="date" name="to" defaultValue={to} className="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500" /></label>
           </div>
           <button type="submit" className="mt-5 min-h-12 w-full rounded-xl bg-blue-600 font-semibold text-white">Apply</button>
-          <Link href={`/dashboard/reports?${branchParam.slice(1)}`} className="mt-3 grid min-h-12 place-items-center rounded-xl bg-slate-100 font-semibold text-slate-600">Reset</Link>
+          <button type="reset" className="mt-3 grid min-h-12 w-full place-items-center rounded-xl bg-slate-100 font-semibold text-slate-600">Reset</button>
         </NavigationForm>
       </section>
     </div>
@@ -561,7 +559,7 @@ function ReportFilters({
           ))}
         </div>
 
-        <NavigationForm className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <NavigationForm key={[branchId, selectedRange, from, to].join("|")} className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <input type="hidden" name="branch" value={branchId || "all"}/>
           <input
             type="hidden"

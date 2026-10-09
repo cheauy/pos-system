@@ -40,6 +40,7 @@ import {
 import PaymentRequestCountdown from "./payment-request-countdown";
 import SubscriptionPlanPickerPage from "./subscription-plan-picker-page";
 import ReactivateButton from "./reactivate-button";
+import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 
 type BusinessSubscriptionRow = {
   subscription_plan_key: string | null;
@@ -98,6 +99,10 @@ function formatDate(value: string | null) {
   if (!value) return "Not set";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Not set" : DATE_FORMATTER.format(date);
+}
+
+function historyTermLabel(months: number | null) {
+  return Number(months ?? 0) === 0 ? "7-day trial" : months === 12 ? "1 year" : months === 1 ? "1 month" : `${months} months`;
 }
 
 function formatDateTime(value: string) {
@@ -526,8 +531,9 @@ export default async function SubscriptionSettingsPage({
             ) : historyRows.length === 0 ? (
               <div className="px-6 py-10 text-center text-sm text-slate-500">No billing history yet.</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[820px] text-left">
+              <>
+              <div className="hidden overflow-x-auto lg:block">
+                <table data-phone-layout="custom" className="w-full min-w-[820px] text-left">
                   <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400 dark:bg-slate-950/60">
                     <tr>
                       <th className="px-5 py-3">Activity</th>
@@ -543,10 +549,10 @@ export default async function SubscriptionSettingsPage({
                       <tr key={item.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                         <td className="px-5 py-4">
                           <p className="text-sm font-semibold capitalize text-slate-900 dark:text-white">{item.action.replace(/_/g, " ")}</p>
-                          {item.reason ? <p className="mt-1 max-w-[260px] truncate text-[11px] text-slate-400">{item.reason}</p> : null}
+                          {item.reason ? <p className="mt-1 max-w-[260px] break-words text-[11px] text-slate-400">{item.reason}</p> : null}
                         </td>
                         <td className="px-5 py-4 text-xs font-medium text-slate-600 dark:text-slate-300">
-                          {Number(item.months ?? 0) === 0 ? "7-day trial" : item.months === 12 ? "1 year" : item.months === 1 ? "1 month" : `${item.months} months`}
+                          {historyTermLabel(item.months)}
                         </td>
                         <td className="px-5 py-4 text-xs text-slate-500">{formatDate(item.previous_expiry)}</td>
                         <td className="px-5 py-4 text-xs font-semibold text-slate-700 dark:text-slate-200">{formatDate(item.new_expiry)}</td>
@@ -561,6 +567,21 @@ export default async function SubscriptionSettingsPage({
                   </tbody>
                 </table>
               </div>
+              {/* Phones/tablets: compact rows; every column stays visible, so no details drawer. */}
+              <MobileList>
+                {historyRows.map((item) => (
+                  <MobileListCard
+                    key={item.id}
+                    title={<span className="capitalize">{item.action.replace(/_/g, " ")}</span>}
+                    date={formatDateTime(item.created_at)}
+                    primary={historyTermLabel(item.months)}
+                    secondary={<><span>Previous expiry</span>: {formatDate(item.previous_expiry)} · <span>New expiry</span>: <strong className="font-semibold text-slate-700">{formatDate(item.new_expiry)}</strong></>}
+                    extra={item.reason ? <span className="mt-1 block break-words text-xs text-slate-400">{item.reason}</span> : null}
+                    status={{ label: "Recorded", tone: "green" }}
+                  />
+                ))}
+              </MobileList>
+              </>
             )}
           </section>
           </div>
@@ -646,17 +667,17 @@ function SectionHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300">
           {icon}
         </div>
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-extrabold text-slate-950 dark:text-white">{title}</h2>
-          <p className="mt-0.5 truncate text-[11px] text-slate-400">{subtitle}</p>
+          <h2 className="break-words text-sm font-extrabold text-slate-950 dark:text-white">{title}</h2>
+          <p className="mt-0.5 break-words text-[11px] text-slate-400">{subtitle}</p>
         </div>
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className="max-w-full">{action}</div> : null}
     </div>
   );
 }

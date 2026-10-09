@@ -247,14 +247,14 @@ export default async function BusinessSettingsPage({ searchParams }: { searchPar
                 <div className="flex items-start gap-4">
                   <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-blue-100 bg-white text-blue-600 shadow-sm dark:border-slate-700 dark:bg-slate-950">
                     {sharedSettings.logo_url ? (
-                      <img src={sharedSettings.logo_url} alt={`${business.name} logo`} className="h-full w-full object-contain p-1.5" />
+                      <img src={sharedSettings.logo_url} alt={`${business.name} logo`} className="h-full w-full object-contain p-1.5"  data-i18n-template-alt="{0} logo" data-i18n-values-alt={JSON.stringify([business.name])}/>
                     ) : (
                       <Store size={28} />
                     )}
                   </span>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="truncate text-2xl font-extrabold text-slate-950 dark:text-white">
+                      <h2 className="break-words text-2xl font-extrabold text-slate-950 dark:text-white" data-i18n-ignore="true">
                         {business.name}
                       </h2>
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
@@ -278,7 +278,7 @@ export default async function BusinessSettingsPage({ searchParams }: { searchPar
                       <Link2 size={14} className="text-blue-600" /> Store URL
                     </p>
                     <a href={storeUrl} target="_blank" rel="noreferrer" className="mt-1 flex min-w-0 items-center gap-1.5 text-sm font-bold text-slate-900 hover:text-blue-600 dark:text-white">
-                      <span className="truncate">{business.slug}.{getRootDomain()}</span>
+                      <span className="truncate"><span data-i18n-ignore="true">{business.slug}</span>.{getRootDomain()}</span>
                       <ExternalLink size={13} className="shrink-0" />
                     </a>
                   </div>
@@ -333,13 +333,16 @@ export default async function BusinessSettingsPage({ searchParams }: { searchPar
             </section>
           ) : null}
 
-          <section aria-label="Status summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Columns follow the panel width: 2 on phones and narrow panels, 4 once each card keeps its label on one line. */}
+          <section aria-label="Status summary" className="@container">
+            <div className="grid grid-cols-2 gap-3 @4xl:grid-cols-4">
             {canViewStorefront ? <>
               <StatusCard section="storefront" label="Storefront" icon={<Globe2 size={18} />} tone="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300" value={sharedSettings.is_published ? "Public" : "Private"} on={sharedSettings.is_published} />
               <StatusCard section="storefront" label="Online Orders" icon={<ShoppingBag size={18} />} tone="bg-rose-50 text-rose-500 dark:bg-rose-950/50 dark:text-rose-300" value={sharedSettings.accept_online_orders ? "Accepting" : "Paused"} on={sharedSettings.accept_online_orders} />
               <StatusCard section="storefront" label="Pickup & Delivery" icon={<Truck size={18} />} tone="bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300" value={[sharedSettings.allow_pickup && "Pickup", sharedSettings.allow_delivery && "Delivery", showTables && sharedSettings.allow_dine_in && "Dine-in"].filter(Boolean).join(" · ") || "None enabled"} on={sharedSettings.allow_pickup || sharedSettings.allow_delivery} />
             </> : null}
             {canViewBusiness ? <StatusCard section="store-hours" label="Store Hours" icon={<Clock3 size={18} />} tone="bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-300" value={profile?.openingHours?.enabled ? "Shown on storefront" : "Hidden"} on={Boolean(profile?.openingHours?.enabled)} /> : null}
+            </div>
           </section>
 
           {changes ? (
@@ -481,7 +484,8 @@ function StatusToggle({ label, helper, slotId }: { label: string; helper: string
 
 function StatusCard({ section, label, value, on, icon, tone }: { section: SettingsSectionId; label: string; value: string; on: boolean; icon: React.ReactNode; tone: string }) {
   return (
-    <a href={`?section=${section}`} data-section-link={section} className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 focus-visible:outline-2 focus-visible:outline-blue-600 dark:border-slate-700 dark:bg-slate-900">
+    // Narrow summaries (phones) stack the icon above the text so labels get the full card width; from 28rem of summary width the original row layout applies.
+    <a href={`?section=${section}`} data-section-link={section} className="flex min-w-0 flex-col items-start gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-200 focus-visible:outline-2 focus-visible:outline-blue-600 @md:flex-row @md:items-center @md:gap-3 @md:p-4 dark:border-slate-700 dark:bg-slate-900">
       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone}`} aria-hidden="true">{icon}</span>
       <span className="min-w-0">
         <span className="block text-xs font-semibold text-slate-500">{label}</span>
@@ -503,7 +507,7 @@ function MetricCard({ icon, label, value, helper }: { icon: React.ReactNode; lab
         </span>
         <div className="min-w-0">
           <p className="text-xs font-semibold text-slate-500">{label}</p>
-          <p className="mt-1 truncate text-lg font-extrabold text-slate-950 dark:text-white">{value}</p>
+          <p className="mt-1 break-words text-lg font-extrabold text-slate-950 dark:text-white">{value}</p>
           <p className="mt-1 text-[11px] leading-4 text-slate-500">{helper}</p>
         </div>
       </div>

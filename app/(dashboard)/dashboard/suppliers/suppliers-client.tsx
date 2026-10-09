@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 
 import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import { ButtonSpinner } from "@/components/pending-submit-button";
@@ -111,7 +113,7 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
         <SupplierForm supplier={editing} onBusyChange={setEditingBusy} onSaved={() => setEditing(null)} />
       </SupplierDialog>}
       {deleting && <SupplierDialog title="Delete supplier?" busy={deletingBusy} close={() => setDeleting(null)}>
-        <p className="text-sm text-slate-600">Delete <strong>{deleting.name}</strong>? This cannot be undone. Suppliers with purchase history cannot be deleted; disable them instead to keep their records.</p>
+        <p className="text-sm text-slate-600">Delete <strong data-i18n-ignore="true">{deleting.name}</strong>? This cannot be undone. Suppliers with purchase history cannot be deleted; disable them instead to keep their records.</p>
         {deleteError && <p role="alert" className="mt-3 text-sm text-red-600">{deleteError}</p>}
         <div className="mt-5 flex justify-end gap-2">
           <button autoFocus type="button" disabled={deletingBusy} onClick={() => setDeleting(null)} className="rounded-xl border px-4 py-2 text-sm font-semibold">Cancel</button>
@@ -223,7 +225,7 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <MobileList>{visibleSuppliers.map((supplier) => { const m = metrics.get(supplier.id) ?? emptyMetric; return <MobileListCard key={supplier.id} selected={selectedSupplier?.id === supplier.id} onClick={() => { setSelectedSupplierId(supplier.id); if (window.matchMedia("(max-width: 639px)").matches) setSheet("detail"); }} media={<SupplierAvatar name={supplier.name} />} title={supplier.name} date={m.lastOrderDate ? `Last order ${formatDate(m.lastOrderDate)}` : "No orders yet"} primary={supplier.contact_person ?? supplier.phone ?? "No contact"} secondary={[supplier.phone, supplier.email].filter(Boolean).join(" · ") || undefined} amount={formatCurrency(m.openValue)} status={{ label: supplier.is_active ? "Active" : "Inactive" }} />; })}</MobileList>
+              <MobileList>{visibleSuppliers.map((supplier) => { const m = metrics.get(supplier.id) ?? emptyMetric; return <MobileListCard key={supplier.id} selected={selectedSupplier?.id === supplier.id} onClick={() => { setSelectedSupplierId(supplier.id); if (window.matchMedia("(max-width: 639px)").matches) setSheet("detail"); }} media={<SupplierAvatar name={supplier.name} />} title={<span data-i18n-ignore="true">{supplier.name}</span>} date={m.lastOrderDate ? `Last order ${formatDate(m.lastOrderDate)}` : "No orders yet"} primary={supplier.contact_person ?? supplier.phone ?? "No contact"} secondary={<span data-i18n-ignore={Boolean([supplier.phone, supplier.email].filter(Boolean).join(" · "))}>{[supplier.phone, supplier.email].filter(Boolean).join(" · ") || undefined}</span>} amount={formatCurrency(m.openValue)} status={{ label: supplier.is_active ? "Active" : "Inactive" }}  data-i18n-ignore-attributes="title"/>; })}</MobileList>
               <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[930px] text-sm">
                 <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
@@ -253,16 +255,16 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <SupplierAvatar name={supplier.name} />
-                            <span className="font-semibold text-slate-900">{supplier.name}</span>
+                            <span className="font-semibold text-slate-900" data-i18n-ignore="true">{supplier.name}</span>
                           </div>
                         </td>
                         <td className="px-3 py-3 text-slate-600">
                           {supplier.contact_person ?? "—"}
                         </td>
-                        <td className="px-3 py-3 whitespace-nowrap text-slate-600">
+                        <td className="px-3 py-3 whitespace-nowrap text-slate-600" data-i18n-ignore="true">
                           {supplier.phone ?? "—"}
                         </td>
-                        <td className="max-w-52 truncate px-3 py-3 text-slate-600">
+                        <td className="max-w-52 truncate px-3 py-3 text-slate-600" data-i18n-ignore="true">
                           {supplier.email ?? "—"}
                         </td>
                         <td className="px-3 py-3">
@@ -439,7 +441,7 @@ function SupplierDetailsPanel({
           <SupplierAvatar name={supplier.name} large />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="truncate text-lg font-bold text-slate-950">{supplier.name}</h3>
+              <h3 className="break-words text-lg font-bold text-slate-950" data-i18n-ignore="true">{supplier.name}</h3>
               <StatusPill active={supplier.is_active} />
             </div>
             <p className="mt-1 text-sm text-slate-500">Supplier account</p>
@@ -461,7 +463,7 @@ function SupplierDetailsPanel({
         {supplier.notes ? (
           <div className="mt-5 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Notes</p>
-            {supplier.notes}
+            <span data-i18n-ignore="true">{supplier.notes}</span>
           </div>
         ) : null}
       </div>
@@ -499,6 +501,8 @@ function SupplierDetailsPanel({
 }
 
 function SupplierActionMenu({ supplier, onEdit, onDelete }: { supplier: Supplier; onEdit: () => void; onDelete: () => void }) {
+  const { t: translateLabel } = useLanguage();
+
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -545,13 +549,13 @@ function SupplierActionMenu({ supplier, onEdit, onDelete }: { supplier: Supplier
       <button
         ref={buttonRef}
         type="button"
-        aria-label={`Actions for ${supplier.name}`}
+        aria-label={formatUiText(translateLabel("Actions for {0}"), [supplier.name])}
         onClick={(event) => {
           event.stopPropagation();
           setOpen((current) => !current);
         }}
         className="inline-grid h-8 w-8 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50"
-      >
+       data-i18n-ignore-attributes="aria-label">
         <MoreHorizontal size={17} />
       </button>
 
@@ -637,7 +641,7 @@ function SummaryCard({
         <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${tones[tone]}`}>{icon}</div>
         <div className="min-w-0">
           <p className="text-xs font-medium text-slate-500">{title}</p>
-          <p className="mt-0.5 truncate text-xl font-bold text-slate-950">{value}</p>
+          <p className="mt-0.5 break-words text-xl font-bold text-slate-950">{value}</p>
           {helper ? <p className="mt-0.5 truncate text-[11px] text-slate-400">{helper}</p> : null}
         </div>
       </div>

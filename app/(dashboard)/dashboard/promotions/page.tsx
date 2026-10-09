@@ -29,6 +29,9 @@ import { createClient } from "@/lib/supabase/branch-server";
 import { getBranchCurrency } from "@/lib/settings/branch-currency";
 import { getBranchContext } from '@/lib/branches/context';
 import CampaignForm from './campaign-form';
+import MobileListCard, { MobileList, type CardTone } from "@/components/mobile-list-card";
+import HashDrawerKeys from "@/components/ui/hash-drawer-keys";
+import NavigationForm from "@/components/navigation-form";
 import {
   deleteCoupon,
   setCouponActive,
@@ -269,7 +272,7 @@ export default async function PromotionsPage({
         <div className="min-w-0 space-y-4">
           <section className="overflow-hidden max-sm:overflow-clip rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200">
-              <nav className="flex min-w-max overflow-x-auto px-3" aria-label="Promotion sections">
+              <nav className="flex overflow-x-auto px-3" aria-label="Promotion sections">
                 {tabs.map((item) => {
                   const active = item.key === tab;
                   return (
@@ -282,7 +285,7 @@ export default async function PromotionsPage({
                         tab: item.key,
                         page: 1,
                       })}
-                      className={`relative px-4 py-4 text-sm font-semibold transition ${
+                      className={`relative shrink-0 whitespace-nowrap px-4 py-4 text-sm font-semibold transition ${
                         active
                           ? "text-blue-600"
                           : "text-slate-500 hover:text-slate-800"
@@ -301,7 +304,8 @@ export default async function PromotionsPage({
             {tab === "all" || tab === "coupons" ? (
               <>
                 <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-end">
-                  <form method="get" className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+                  {/* Draft until Apply; closing the phone sheet discards edits. */}
+                  <NavigationForm key={JSON.stringify(params)} reset={{ status: "all", sort: "newest" }} className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap lg:w-auto">
                     <input type="hidden" name="tab" value={tab} />
                     <div className="relative min-w-0 sm:w-[320px]">
                       <Search
@@ -352,6 +356,9 @@ export default async function PromotionsPage({
                       </select>
                       <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                     </label>
+                    <button type="reset" className="h-12 rounded-xl bg-slate-100 text-sm font-semibold text-slate-600 sm:hidden">
+                      Reset
+                    </button>
                     <button
                       type="submit"
                       className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 max-sm:h-12 max-sm:border-0 max-sm:bg-blue-600 max-sm:text-white"
@@ -360,11 +367,11 @@ export default async function PromotionsPage({
                     </button>
                     </div>
                     </div>
-                  </form>
+                  </NavigationForm>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[980px] text-left text-sm">
+                <div className="hidden overflow-x-auto lg:block">
+                  <table data-phone-layout="custom" className="w-full min-w-[980px] text-left text-sm">
                     <thead className="bg-slate-50/90 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       <tr>
                         <th className="w-12 px-4 py-3">
@@ -403,17 +410,17 @@ export default async function PromotionsPage({
                           return (
                             <tr key={coupon.id} className="bg-white transition hover:bg-slate-50/60">
                               <td className="px-4 py-3 align-middle">
-                                <input type="checkbox" aria-label={`Select ${coupon.name || coupon.code}`} className="h-4 w-4 rounded border-slate-300" />
+                                <input type="checkbox" aria-label={`Select ${coupon.name || coupon.code}`} className="h-4 w-4 rounded border-slate-300"  data-i18n-template-aria-label="Select {0}" data-i18n-values-aria-label={JSON.stringify([coupon.name || coupon.code])}/>
                               </td>
                               <td className="px-2 py-3">
                                 <div className="flex items-center gap-3">
                                   <CampaignIcon index={index} code={coupon.is_automatic?'Automatic discount':coupon.code} />
                                   <div className="min-w-0">
-                                    <p className="max-w-[220px] truncate font-semibold text-slate-900">
+                                    <p className="max-w-[220px] truncate font-semibold text-slate-900" data-i18n-ignore="true">
                                       {coupon.name || coupon.code}
                                     </p>
                                     <p className="mt-0.5 max-w-[240px] truncate text-xs text-slate-500">
-                                      {coupon.is_automatic ? `No code needed · ${coupon.product_ids?.length ? `${coupon.product_ids.length} product${coupon.product_ids.length === 1 ? "" : "s"}` : "All products"}` : `Code · ${coupon.code}`}
+                                      {couponScope(coupon)}
                                     </p>
                                   </div>
                                 </div>
@@ -479,42 +486,11 @@ export default async function PromotionsPage({
                               <td className="px-4 py-3 text-center">
                                 {canEdit ? (
                                   <>
-                                    <a href={`#campaign-${coupon.id}`} aria-label={`Actions for ${coupon.name || coupon.code}`} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800">
+                                    <a href={`#campaign-${coupon.id}`} aria-label={`Actions for ${coupon.name || coupon.code}`} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800" data-i18n-template-aria-label="Actions for {0}" data-i18n-values-aria-label={JSON.stringify([coupon.name || coupon.code])}>
                                       <MoreHorizontal size={17} />
                                     </a>
-                                    <CenterPopup id={`campaign-${coupon.id}`} title={coupon.name || "Campaign actions"} subtitle={coupon.is_automatic ? "Automatic discount" : `Coupon · ${coupon.code}`} icon={<TicketPercent size={18} />} size="sm">
-                                      <div className="space-y-4 pt-4 text-left">
-                                        <form action={updateCampaignChannels} className="rounded-xl border border-slate-200 p-3">
-                                          <input type="hidden" name="couponId" value={coupon.id} />
-                                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Where it applies</p>
-                                          <div className="mt-2 grid grid-cols-2 gap-2">
-                                            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 has-[:checked]:text-blue-700">
-                                              <input type="checkbox" name="applyPos" defaultChecked={coupon.apply_pos} className="h-4 w-4 accent-blue-600" /> POS
-                                            </label>
-                                            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 has-[:checked]:text-blue-700">
-                                              <input type="checkbox" name="applyOnline" defaultChecked={coupon.apply_online} className="h-4 w-4 accent-blue-600" /> Online store
-                                            </label>
-                                          </div>
-                                          <button type="submit" className="mt-3 w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Save channels</button>
-                                        </form>
-                                        <div className="grid grid-cols-2 gap-2">
-                                          <form action={setCouponActive}>
-                                            <input type="hidden" name="couponId" value={coupon.id} />
-                                            <input type="hidden" name="active" value={String(!coupon.is_active)} />
-                                            <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                                              {coupon.is_active ? <PauseCircle size={16} /> : <PlayCircle size={16} />}
-                                              {coupon.is_active ? "Pause" : "Enable"}
-                                            </button>
-                                          </form>
-                                          <form action={deleteCoupon}>
-                                            <input type="hidden" name="couponId" value={coupon.id} />
-                                            <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100">
-                                              <Trash2 size={16} />
-                                              {coupon.usage_count > 0 ? "Archive" : "Delete"}
-                                            </button>
-                                          </form>
-                                        </div>
-                                      </div>
+                                    <CenterPopup id={`campaign-${coupon.id}`} title={<span data-i18n-ignore={Boolean(coupon.name)}>{coupon.name || "Campaign actions"}</span>} subtitle={coupon.is_automatic ? "Automatic discount" : <>{"Coupon"}{" · "}<span data-i18n-ignore="true">{String(coupon.code)}</span></>} icon={<TicketPercent size={18} />} size="sm">
+                                      <CampaignActions coupon={coupon} />
                                     </CenterPopup>
                                   </>
                                 ) : (
@@ -528,6 +504,23 @@ export default async function PromotionsPage({
                     </tbody>
                   </table>
                 </div>
+                {/* Phones/tablets: one summary row per campaign; the row opens its details drawer. */}
+                <MobileList empty={pageCoupons.length === 0 ? <li className="px-6 py-14 text-center"><p className="font-semibold text-slate-800">No campaigns found</p><p className="mt-1 text-sm text-slate-500">Try another search or create a new coupon campaign.</p></li> : null}>
+                  {pageCoupons.map((coupon) => {
+                    const couponStatus = getCouponStatus(coupon, now);
+                    return (
+                      <MobileListCard
+                        key={coupon.id}
+                        href={`#campaign-details-${coupon.id}`}
+                        title={<span data-i18n-ignore="true">{coupon.name || coupon.code}</span>}
+                        date={couponScope(coupon)}
+                        primary={formatCouponValue(coupon, branchCurrency.currency)}
+                        secondary={`${couponUsage(coupon)} used · ${formatWindowLines(coupon.starts_at, coupon.ends_at).join(" ")}`}
+                        status={{ label: couponStatus, tone: statusTones[couponStatus] }}
+                       data-i18n-ignore-attributes="title"/>
+                    );
+                  })}
+                </MobileList>
 
                 <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs text-slate-500">
@@ -580,6 +573,10 @@ export default async function PromotionsPage({
 
       </section>
 
+      {tab === "all" || tab === "coupons"
+        ? pageCoupons.map((coupon) => <CampaignDrawer key={coupon.id} coupon={coupon} now={now} currency={branchCurrency.currency} canEdit={canEdit} />)
+        : null}
+      <HashDrawerKeys />
       {canEdit ? (
         <a href="#create-promotion" className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-semibold text-white shadow-lg sm:hidden">
           <Plus size={18} />
@@ -619,7 +616,7 @@ export default async function PromotionsPage({
 }
 
 // Opens via its #id link (CSS :target), so it works in this server component with no client state.
-function CenterPopup({ id, title, subtitle, icon, children, size = "lg" }: { id: string; title: string; subtitle?: string; icon: React.ReactNode; children: React.ReactNode; size?: "sm" | "lg" }) {
+function CenterPopup({ id, title, subtitle, icon, children, size = "lg" }: { id: string; title: React.ReactNode; subtitle?: React.ReactNode; icon: React.ReactNode; children: React.ReactNode; size?: "sm" | "lg" }) {
   return (
     <div id={id} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} className="fixed inset-0 z-50 hidden items-center justify-center p-4 target:flex">
       <a href="#close" aria-label="Close" className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px]" />
@@ -640,6 +637,83 @@ function CenterPopup({ id, title, subtitle, icon, children, size = "lg" }: { id:
   );
 }
 
+function CampaignActions({ coupon }: { coupon: Coupon }) {
+  return (
+    <div className="space-y-4 pt-4 text-left">
+      <form action={updateCampaignChannels} className="rounded-xl border border-slate-200 p-3">
+        <input type="hidden" name="couponId" value={coupon.id} />
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Where it applies</p>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 has-[:checked]:text-blue-700">
+            <input type="checkbox" name="applyPos" defaultChecked={coupon.apply_pos} className="h-4 w-4 accent-blue-600" /> POS
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 has-[:checked]:text-blue-700">
+            <input type="checkbox" name="applyOnline" defaultChecked={coupon.apply_online} className="h-4 w-4 accent-blue-600" /> Online store
+          </label>
+        </div>
+        <button type="submit" className="mt-3 w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Save channels</button>
+      </form>
+      <div className="grid grid-cols-2 gap-2">
+        <form action={setCouponActive}>
+          <input type="hidden" name="couponId" value={coupon.id} />
+          <input type="hidden" name="active" value={String(!coupon.is_active)} />
+          <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            {coupon.is_active ? <PauseCircle size={16} /> : <PlayCircle size={16} />}
+            {coupon.is_active ? "Pause" : "Enable"}
+          </button>
+        </form>
+        <form action={deleteCoupon}>
+          <input type="hidden" name="couponId" value={coupon.id} />
+          <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100">
+            <Trash2 size={16} />
+            {coupon.usage_count > 0 ? "Archive" : "Delete"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Phones/tablets: right-side drawer with every column of the desktop row plus its actions.
+// Opens via #id like CenterPopup; HashDrawerKeys adds Escape and focus handling.
+function CampaignDrawer({ coupon, now, currency, canEdit }: { coupon: Coupon; now: number; currency: string; canEdit: boolean }) {
+  const id = `campaign-details-${coupon.id}`;
+  const rows: [string, React.ReactNode][] = [
+    ["Type", coupon.is_automatic ? "Automatic" : "Coupon"],
+    ["Discount", formatCouponValue(coupon, currency)],
+    ["Minimum order", Number(coupon.minimum_order) > 0 ? formatMoney(Number(coupon.minimum_order), currency) : "No minimum order"],
+    ["Usage / Limit", couponUsage(coupon, true)],
+    ["Period", formatWindowLines(coupon.starts_at, coupon.ends_at).join(" ")],
+    ["Status", <StatusBadge key="status" status={getCouponStatus(coupon, now)} />],
+    ["Channels", [coupon.apply_pos ? "POS" : "", coupon.apply_online ? "Online" : ""].filter(Boolean).join(" · ") || "—"],
+  ];
+  return (
+    <div id={id} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} data-sheet="right" className="fixed inset-0 z-50 hidden justify-end target:flex lg:!hidden">
+      <a href="#close" aria-label="Close" tabIndex={-1} className="absolute inset-0 bg-slate-950/40" />
+      <div className="relative flex h-full w-[92%] max-w-md flex-col bg-white shadow-2xl">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))]">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Campaign details</p>
+            <h2 id={`${id}-title`} className="mt-1 break-words text-lg font-bold text-slate-900" data-i18n-ignore="true">{coupon.name || coupon.code}</h2>
+            <p className="mt-0.5 break-words text-sm text-slate-500">{couponScope(coupon)}</p>
+          </div>
+          <a href="#close" data-drawer-close aria-label="Close" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200"><X size={20} /></a>
+        </div>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          <dl className="divide-y divide-slate-100">
+            {rows.map(([label, value]) => (
+              <div key={label} className="flex items-start justify-between gap-4 py-3 text-sm">
+                <dt className="shrink-0 text-slate-500">{label}</dt>
+                <dd className="min-w-0 break-words text-right font-semibold text-slate-900">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          {canEdit ? <CampaignActions coupon={coupon} /> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function MetricCard({
   icon,
@@ -682,7 +756,7 @@ function CampaignIcon({ index, code }: { index: number; code: string }) {
     "bg-gradient-to-br from-emerald-500 to-green-600 text-white",
   ];
   return (
-    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[10px] font-black shadow-sm ${styles[index % styles.length]}`}>
+    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[10px] font-black shadow-sm ${styles[index % styles.length]}`} data-i18n-ignore="true">
       {code.slice(0, 4)}
     </div>
   );
@@ -756,6 +830,19 @@ function TabPlaceholder({
       <p className="mx-auto mt-1 max-w-lg text-sm leading-6 text-slate-500">{description}</p>
     </div>
   );
+}
+
+const statusTones: Record<ReturnType<typeof getCouponStatus>, CardTone> = { active: "green", scheduled: "blue", paused: "amber", expired: "red" };
+
+function couponScope(coupon: Coupon) {
+  return coupon.is_automatic ? `No code needed · ${coupon.product_ids?.length ? `${coupon.product_ids.length} product${coupon.product_ids.length === 1 ? "" : "s"}` : "All products"}` : `Code · ${coupon.code}`;
+}
+
+function couponUsage(coupon: Coupon, withPercent = false) {
+  const used = Number(coupon.usage_count ?? 0);
+  const limit = coupon.usage_limit ? Number(coupon.usage_limit) : null;
+  const percent = withPercent && limit ? ` (${Math.min(100, Math.round((used / limit) * 100))}%)` : "";
+  return `${used.toLocaleString()} / ${limit ? limit.toLocaleString() : "∞"}${percent}`;
 }
 
 function getCouponStatus(coupon: Coupon, now: number) {

@@ -1,4 +1,6 @@
 "use client";
+import { formatUiText } from "@/lib/i18n/translations";
+import { useLanguage } from "@/components/providers/language-provider";
 
 import { ArrowLeft, Barcode, Boxes, Check, ChevronDown, ChevronLeft, ChevronRight, ImageIcon, Loader2, Package, SlidersHorizontal, Plus, RotateCcw, Save, Shirt, Tag, Trash2, Upload, X } from "lucide-react";
 import Link from "next/link";
@@ -36,6 +38,7 @@ function fingerprint(draft: Draft) { return JSON.stringify(draft); }
 function skuPart(value: string) { return value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24); }
 
 export default function EditProductClient({ product, categories, initialVariants, businessType, branchId, canCreateVariants = false, canDisable = false, canAdjustStock = false }: { product: Product; categories: Category[]; initialVariants: InitialVariant[]; businessType?: string; branchId: string; canCreateVariants?: boolean; canDisable?: boolean; canAdjustStock?: boolean }) {
+  const { t: translateText } = useLanguage();
   const router = useRouter();
   const supportsVariants = product.productType === "variant" && Boolean(product.variantGroupId);
   const [draft, setDraft] = useState(() => createDraft(product, initialVariants));
@@ -92,11 +95,11 @@ export default function EditProductClient({ product, categories, initialVariants
       const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
       if (!(link instanceof HTMLAnchorElement) || link.target === "_blank" || link.hasAttribute("download") || event.ctrlKey || event.metaKey || event.shiftKey) return;
       if (!dirtyRef.current && !busyRef.current) return;
-      if (busyRef.current || !window.confirm("Leave this page? Unsaved product edits will be lost.")) { event.preventDefault(); event.stopPropagation(); }
+      if (busyRef.current || !window.confirm(translateText("Leave this page? Unsaved product edits will be lost."))) { event.preventDefault(); event.stopPropagation(); }
     };
     window.addEventListener("beforeunload", unload); document.addEventListener("click", navigate, true);
     return () => { window.removeEventListener("beforeunload", unload); document.removeEventListener("click", navigate, true); };
-  }, []);
+  }, [translateText]);
 
   const assetMap = useMemo(() => new Map(assets.map(asset => [asset.key, asset])), [assets]);
   const imageUrl = (key: string | null) => key ? assetMap.get(key)?.url ?? null : null;
@@ -245,7 +248,7 @@ export default function EditProductClient({ product, categories, initialVariants
     } catch { setMustReload(true); setError("The save result is uncertain. Reload and review the product before retrying; do not add the variants again."); }
     finally { if (!refreshingRef.current) { busyRef.current = false; setBusy(false); } }
   }
-  function reload() { if (!dirty || window.confirm("Reload saved product data? Unsaved edits will be discarded.")) { dirtyRef.current = false; busyRef.current = false; window.location.reload(); } }
+  function reload() { if (!dirty || window.confirm(translateText("Reload saved product data? Unsaved edits will be discarded."))) { dirtyRef.current = false; busyRef.current = false; window.location.reload(); } }
 
   return (
     <main className="mx-auto max-w-[1440px] space-y-3 pb-4">
@@ -269,7 +272,7 @@ export default function EditProductClient({ product, categories, initialVariants
                 <CardTitle icon={<Package size={17} />} title="Product information" subtitle="Basic details about your product." />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Product name"><input required minLength={2} maxLength={160} value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} className={inputClass} /></Field>
-                  <Field label="Category"><select value={draft.categoryId} onChange={e => setDraft({ ...draft, categoryId: e.target.value })} className={inputClass}><option value="">No category</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+                  <Field label="Category"><select value={draft.categoryId} onChange={e => setDraft({ ...draft, categoryId: e.target.value })} className={inputClass}><option value="">No category</option>{categories.map(c => <option key={c.id} value={c.id} data-i18n-ignore="true">{c.name}</option>)}</select></Field>
                   <div className="sm:col-span-2"><Field label="Description"><textarea value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} rows={2} className={`${inputClass} h-auto py-2`} /></Field></div>
                 </div>
               </section>
@@ -279,7 +282,7 @@ export default function EditProductClient({ product, categories, initialVariants
         <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-teal-300 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700">{runImageKey && imageUrl(runImageKey) ? <img src={imageUrl(runImageKey)!} alt="Quick size run" className="h-8 w-8 rounded object-contain" /> : <Upload size={16} />} {runImageKey ? "Replace run image" : "Upload run image"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label="Quick size run image" onChange={event => uploadImage(event, "run")} /></label>
         <div className="mt-2 flex flex-wrap gap-2">{[{ label: "XS–XXL", sizes: "XS, S, M, L, XL, XXL" }, { label: "Shoes 35–40", sizes: "35, 36, 37, 38, 39, 40" }, { label: "Shoes 40–45", sizes: "40, 41, 42, 43, 44, 45" }].map(run => <button key={run.label} type="button" onClick={() => setAdd({ ...add, sizes: run.sizes })} className={buttonClass}>{run.label}</button>)}</div>
         <div className="mt-3 grid gap-3 sm:grid-cols-3"><Field label="SKU prefix (optional)"><input value={add.prefix} placeholder={skuPart(draft.name) || "ITEM"} onChange={e => setAdd({ ...add, prefix: e.target.value })} className={inputClass} /></Field>{([["cost", "Cost price"], ["price", "Selling price"]] as const).map(([key, label]) => <Field key={key} label={label}><input type="number" min="0" step="0.01" value={add[key]} onChange={e => setAdd({ ...add, [key]: e.target.value })} className={inputClass} /></Field>)}</div>
-        <div className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-900"><strong>{combinations.length} new variants</strong><p className="mt-1 text-xs">New sizes start at zero stock. Save first, then use Adjust stock.</p>{combinations.length > 0 && <p className="mt-2 text-xs">{combinations.slice(0, 10).map(pair => `${pair.color} / ${pair.size}`).join(" · ")}{combinations.length > 10 ? " …" : ""}</p>}{combinations.length + draft.variants.length > MAX_EDIT_VARIANTS && <p className="mt-2 font-semibold">Maximum {MAX_EDIT_VARIANTS} total variants. Add fewer combinations.</p>}</div>
+        <div className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-900"><strong>{combinations.length} new variants</strong><p className="mt-1 text-xs">New sizes start at zero stock. Save first, then use Adjust stock.</p>{combinations.length > 0 && <p className="mt-2 text-xs"><span data-i18n-ignore="true">{combinations.slice(0, 10).map(pair => `${pair.color} / ${pair.size}`).join(" · ")}</span>{combinations.length > 10 ? " …" : ""}</p>}{combinations.length + draft.variants.length > MAX_EDIT_VARIANTS && <p className="mt-2 font-semibold">Maximum {MAX_EDIT_VARIANTS} total variants. Add fewer combinations.</p>}</div>
         <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={!combinations.length || combinations.length + draft.variants.length > MAX_EDIT_VARIANTS} onClick={generateVariants} className={primaryClass}>Add {combinations.length} to draft</button></div>
       </details>}
             </div>
@@ -310,14 +313,14 @@ export default function EditProductClient({ product, categories, initialVariants
                     return <Fragment key={row.localId}>
                       {first && <div className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5">
                         <span className="h-8 w-8 shrink-0 rounded-full border border-slate-200 bg-slate-200" style={{ backgroundColor: row.color.trim().toLowerCase() || undefined }} aria-hidden />
-                        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-900">{row.color.trim() || "New / unassigned colour"}</span><span className="block text-xs text-slate-500">{groupCount} {groupCount === 1 ? "variant" : "variants"}</span></span>
+                        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-900" data-i18n-ignore={Boolean(row.color.trim())}>{row.color.trim() || "New / unassigned colour"}</span><span className="block text-xs text-slate-500">{groupCount} {groupCount === 1 ? "variant" : "variants"}</span></span>
                         <button type="button" onClick={() => selectRows(draft.variants.filter(item => normalizeVariantText(item.color) === colorKey).map(item => item.localId))} className="text-xs font-semibold text-blue-700">Select</button>
-                        <button type="button" aria-expanded={open} aria-label={`${open ? "Collapse" : "Expand"} ${row.color.trim() || "unassigned colour"}`} onClick={() => setCollapsed(current => { const next = new Set(current); if (next.has(colorKey)) next.delete(colorKey); else next.add(colorKey); return next; })} className="grid h-9 w-9 place-items-center rounded-lg text-slate-600 hover:bg-white"><ChevronDown size={18} className={`transition ${open ? "rotate-180" : ""}`} /></button>
+                        <button type="button" aria-expanded={open} aria-label={formatUiText(translateText("{0} {1}"), [open ? (translateText("Collapse")) : (translateText("Expand")), row.color.trim() || (translateText("unassigned colour"))])} onClick={() => setCollapsed(current => { const next = new Set(current); if (next.has(colorKey)) next.delete(colorKey); else next.add(colorKey); return next; })} className="grid h-9 w-9 place-items-center rounded-lg text-slate-600 hover:bg-white" data-i18n-ignore-attributes="aria-label"><ChevronDown size={18} className={`transition ${open ? "rotate-180" : ""}`} /></button>
                       </div>}
                       {open && <div className={`rounded-xl border p-3 ${selected.has(row.localId) ? "border-blue-200 bg-blue-50/30" : "border-slate-200 bg-white"}`}>
                         <div className="flex items-center gap-2">
                           <input type="checkbox" checked={selected.has(row.localId)} onChange={() => toggleRow(row.localId)} aria-label={`Select ${label}`} className="h-4 w-4" />
-                          <strong className="min-w-0 flex-1 truncate text-sm text-slate-900">Size {row.size || "New size"} · {row.color || "New colour"}</strong>
+                          <strong className="min-w-0 flex-1 break-words text-sm text-slate-900">Size <span data-i18n-ignore={Boolean(row.size)}>{row.size || "New size"}</span> · <span data-i18n-ignore={Boolean(row.color)}>{row.color || "New colour"}</span></strong>
                           <button type="button" disabled={!canDisable} aria-label={`Toggle status for ${label}`} onClick={() => updateRow(row.localId, "isActive", !row.isActive)} className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{row.isActive ? "Active" : "Hidden"}</button>
                           <ActionMenu label={`More actions for ${label}`} iconOnly>
                             <button type="button" disabled={!canDisable} onClick={() => updateRow(row.localId, "isActive", !row.isActive)} className={buttonClass}>{row.isActive ? "Hide variant" : "Show variant"}</button>
@@ -362,7 +365,7 @@ export default function EditProductClient({ product, categories, initialVariants
                       {visible.map((row, index) => {
                         const label = `${row.color || "New colour"} ${row.size || "New size"}`, preview = imageUrl(row.imageKey) ?? mainImageUrl;
                         return <Fragment key={row.localId}>
-                          {(index === 0 || normalizeVariantText(visible[index - 1].color) !== normalizeVariantText(row.color)) && <tr className="bg-blue-50/50"><td colSpan={11} className="px-3 py-2"><span className="font-bold text-slate-700">{row.color.trim() || "New / unassigned colour"}</span><button type="button" onClick={() => selectRows(draft.variants.filter(item => normalizeVariantText(item.color) === normalizeVariantText(row.color)).map(item => item.localId))} className="ml-3 text-blue-700 underline">Select this colour</button></td></tr>}
+                          {(index === 0 || normalizeVariantText(visible[index - 1].color) !== normalizeVariantText(row.color)) && <tr className="bg-blue-50/50"><td colSpan={11} className="px-3 py-2"><span className="font-bold text-slate-700" data-i18n-ignore={Boolean(row.color.trim())}>{row.color.trim() || "New / unassigned colour"}</span><button type="button" onClick={() => selectRows(draft.variants.filter(item => normalizeVariantText(item.color) === normalizeVariantText(row.color)).map(item => item.localId))} className="ml-3 text-blue-700 underline">Select this colour</button></td></tr>}
                           <tr className={`border-t border-slate-100 ${selected.has(row.localId) ? "bg-blue-50/30" : "bg-white"}`}>
                             <td className="p-3"><input type="checkbox" checked={selected.has(row.localId)} onChange={() => toggleRow(row.localId)} aria-label={`Select ${label}`} /></td>
                             <td className="p-2"><div className="relative w-16"><label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg p-1 text-teal-700 hover:bg-teal-50">
