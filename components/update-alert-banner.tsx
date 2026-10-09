@@ -15,8 +15,8 @@ export function UpdateAlertCard({ alert, onDismiss, busy = false, preview = fals
     <Megaphone size={20} className="mt-1 shrink-0" />
     <div className="min-w-0 flex-1">
       <p className="text-[10px] font-bold uppercase tracking-wider">{kind.label}</p>
-      <h2 className="break-words font-bold">{alert.title}</h2>
-      <p className="mt-1 whitespace-pre-wrap break-words text-sm">{alert.message}</p>
+      <h2 className="break-words font-bold" data-i18n-ignore="true">{alert.title}</h2>
+      <p className="mt-1 whitespace-pre-wrap break-words text-sm" data-i18n-ignore="true">{alert.message}</p>
       {alert.button_label && alert.button_link && (preview
         ? <span className="mt-3 inline-flex rounded-lg border border-current px-3 py-1.5 text-sm font-semibold">{alert.button_label}</span>
         : <Link href={alert.button_link} className="mt-3 inline-flex rounded-lg border border-current px-3 py-1.5 text-sm font-semibold hover:underline">{alert.button_label}</Link>)}

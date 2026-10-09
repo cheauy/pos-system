@@ -100,7 +100,7 @@ export default function OrderStatusClient({
           <p className="mt-6 text-center text-sm font-semibold uppercase tracking-[0.18em] text-blue-600">
             Tenh POS Order
           </p>
-          <h1 className="mt-2 text-center text-3xl font-bold text-slate-950">
+          <h1 className="mt-2 text-center text-3xl font-bold text-slate-950" data-i18n-ignore="true">
             {order.order_number}
           </h1>
 
@@ -155,7 +155,7 @@ export default function OrderStatusClient({
             <p className="mt-2 text-sm leading-6 text-slate-600">You can leave this page. Return to Track My Order and enter your tracking ID, shown above, on any device.</p>
             <button type="button" onClick={copyTracking} className="mt-3 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white">Copy tracking ID</button>
             {copyMessage && <p role="status" className="mt-2 break-all text-sm">{copyMessage}</p>}
-            {(helpLinks.length > 0 || phone) && <><h3 className="mt-5 font-semibold">Want faster confirmation? Contact us below.</h3><p className="mt-1 text-sm leading-6 text-slate-600">Copy your tracking ID and send it to the store so they can find your order quickly.</p><div className="mt-3 flex flex-wrap gap-2">{helpLinks.map(link => <a key={link.name} href={link.href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><ContactLogo name={link.name} />{link.name}</a>)}{phone && <a className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" href={`tel:${phone.replace(/[^+\d]/g, "")}`}><PhoneCall size={20} />{phone}</a>}</div></>}
+            {(helpLinks.length > 0 || phone) && <><h3 className="mt-5 font-semibold">Want faster confirmation? Contact us below.</h3><p className="mt-1 text-sm leading-6 text-slate-600">Copy your tracking ID and send it to the store so they can find your order quickly.</p><div className="mt-3 flex flex-wrap gap-2">{helpLinks.map(link => <a key={link.name} href={link.href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><ContactLogo name={link.name} /><span data-i18n-ignore="true">{link.name}</span></a>)}{phone && <a className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" href={`tel:${phone.replace(/[^+\d]/g, "")}`}><PhoneCall size={20} /><span data-i18n-ignore="true">{phone}</span></a>}</div></>}
             <a className="mt-4 block text-sm font-semibold text-blue-700" href={storeUrl}>Continue shopping →</a>
           </section>
           <button

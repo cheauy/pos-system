@@ -1,5 +1,4 @@
 'use client';
-
 import { useEffect, useState, type ReactNode } from 'react';
 import { Check, CreditCard, MapPin, Package, Plus, ShoppingCart, Trash2 } from 'lucide-react';
 import type { CurrencyQuote, CartLine, PaymentMethod, Product, ProductGroup, ShippingDetails, Tender, Workspace } from './pos-workspace-types';
@@ -38,17 +37,17 @@ export function VariantPicker({ group, data, branchId, lines, onAdd, onAllocate,
   const branchName = data.branches.find(b => b.id === branchId)?.name || 'Selected branch';
   const cash = (v: number) => quote ? quoteMoney(v,quote) : money(v, data.settings.currency);
   return <div className={s.stack}>
-    <div className={s.productDialogHeading}><ProductImage src={selected?.variant_image_url || selected?.image_url || group.image} alt={group.name}/><div><h3>{group.name}</h3><p>Choose the exact color and size · {branchName}</p></div></div>
+    <div className={s.productDialogHeading}><ProductImage src={selected?.variant_image_url || selected?.image_url || group.image} alt={group.name} data-i18n-ignore-attributes="alt"/><div><h3 data-i18n-ignore="true">{group.name}</h3><p>Choose the exact color and size · <span data-i18n-ignore="true">{branchName}</span></p></div></div>
     <fieldset className={s.optionFieldset}><legend>1. Color</legend><div className={s.choiceChips}>{colorOptions.map(c => <button type="button" key={c} className={color === c ? s.selectedChoice : s.choice} aria-pressed={color === c} onClick={() => { setColor(c); setChosenId(''); if (!variants.some(p => (p.color || 'Standard') === c && (p.size || 'Standard') === size)) setSize(''); }}>{c}</button>)}</div></fieldset>
     <fieldset className={s.optionFieldset}><legend>2. Size</legend><div className={s.choiceChips}>{allSizes.map(z => {
       const options = variants.filter(p => (p.color || 'Standard') === color && (p.size || 'Standard') === z);
       const available = options.reduce((sum,p) => sum + stockFor(p,branchId,data),0);
       return <button type="button" key={z} disabled={!options.length} className={size === z ? s.selectedChoice : s.choice} aria-pressed={size === z} onClick={() => { setSize(z); setChosenId(''); }}><strong>{z}</strong><small>{!options.length ? 'Not available' : available > 0 ? `${available} in stock` : options.some(p => inventoryFor(p,branchId,data).unassigned > 0) ? 'Unassigned' : 'No branch stock'}</small></button>;
     })}</div></fieldset>
-    {matching.length > 1 && <label className={s.field}>Select SKU<select value={chosenId} onChange={e => setChosenId(e.target.value)}><option value="">Choose the exact SKU</option>{matching.map(p => <option key={p.id} value={p.id}>{p.sku || p.name} · {cash(Number(p.selling_price))}</option>)}</select></label>}
+    {matching.length > 1 && <label className={s.field}>Select SKU<select value={chosenId} onChange={e => setChosenId(e.target.value)}><option value="">Choose the exact SKU</option>{matching.map(p => <option key={p.id} value={p.id} data-i18n-ignore="true">{p.sku || p.name} · {cash(Number(p.selling_price))}</option>)}</select></label>}
     {selected && stock && <div className={s.stockDetail}>
-      <div className={s.between}><strong>{[selected.color,selected.size].filter(Boolean).join(' / ') || 'Standard'}</strong><strong className={s.blueText}>{cash(Number(selected.selling_price))}</strong></div>
-      <p>SKU: {selected.sku || '—'}</p><div className={s.between}><span>{branchName}</span><strong>{stock.available} available · {cartQty} in cart</strong></div>
+      <div className={s.between}><strong data-i18n-ignore={Boolean([selected.color,selected.size].filter(Boolean).join(' / '))}>{[selected.color,selected.size].filter(Boolean).join(' / ') || 'Standard'}</strong><strong className={s.blueText}>{cash(Number(selected.selling_price))}</strong></div>
+      <p>SKU: <span data-i18n-ignore={Boolean(selected.sku)}>{selected.sku || '—'}</span></p><div className={s.between}><span data-i18n-ignore="true">{branchName}</span><strong>{stock.available} available · {cartQty} in cart</strong></div>
       <div className={s.between}><span>Total stock across the business</span><strong>{stock.global}</strong></div>
       {stock.mirrorNeedsSync && <small>Using existing total stock for this single-location business. The branch mirror is synchronized during checkout; no stock is created.</small>}
       {stock.available === 0 && <p className={s.orangeText}>{stockLabel(selected,branchId,data)}. {stock.unassigned > 0 ? `${stock.unassigned} existing units have not been assigned to a branch.` : stock.global > 0 ? 'Use the correct branch or transfer stock through Inventory.' : 'Add stock through Inventory before selling this variant.'}</p>}
@@ -103,7 +102,7 @@ export function CheckoutPanel(p: CheckoutPanelProps) {
         <div className={s.checkoutStep}><span><Check size={14}/></span><div><h3>Confirm this sale</h3><p>Check the details below. The sale is saved only when you confirm.</p></div></div>
         <dl className={s.reviewTotals}>{details.map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
         <h3>Items ({p.lines.reduce((sum,l) => sum+l.quantity,0)})</h3>
-        <dl className={s.reviewTotals}>{p.lines.map(line => <div key={line.key}><dt>{line.quantity} × {line.name}{line.variant ? ` · ${line.variant}` : ''}{line.selectedOptions.length ? ` · ${line.selectedOptions.map(o => o.name).join(', ')}` : ''}</dt><dd>{cash(line.unitPrice * line.quantity)}</dd></div>)}</dl>
+        <dl className={s.reviewTotals}>{p.lines.map(line => <div key={line.key}><dt>{line.quantity} × <span data-i18n-ignore="true">{line.name}</span><span data-i18n-ignore="true">{line.variant ? ` · ${line.variant}` : ''}</span><span data-i18n-ignore="true">{line.selectedOptions.length ? ` · ${line.selectedOptions.map(o => o.name).join(', ')}` : ''}</span></dt><dd>{cash(line.unitPrice * line.quantity)}</dd></div>)}</dl>
         <dl className={s.reviewTotals}><div><dt>Merchandise subtotal</dt><dd>{cash(p.subtotal)}</dd></div><div><dt>{p.discountLabel}</dt><dd>−{cash(p.discount)}</dd></div><div><dt>Tax ({p.taxRate}%)</dt><dd>{cash(p.tax)}</dd></div><div><dt>Shipping fee</dt><dd>{cash(Number(p.delivery))}</dd></div><div className={s.totalRow}><dt>Total</dt><dd>{cash(p.total)}</dd></div><div><dt>Customer paid amount</dt><dd>{cash(p.method === 'cash' && p.paid === '' ? 0 : p.received)}</dd></div><div><dt>Change to give</dt><dd>{cash(p.method === 'cash' ? Math.max(0,p.received-p.total) : 0)}</dd></div></dl>
         {p.error && <p role="status" className={s.paymentInfo}>{p.error}</p>}
         <div className={s.flowActions}><button type="button" className={s.button} onClick={() => setReviewing(false)}>Back to payment</button><button type="button" className={s.primary} disabled={Boolean(p.error)} onClick={p.onConfirm}><Check size={18}/>{p.busy ? 'Saving sale…' : `Confirm · ${cash(p.total)}`}</button></div>
@@ -115,7 +114,7 @@ export function CheckoutPanel(p: CheckoutPanelProps) {
     <div className={s.stack}>
       <div className={s.checkoutStep}><span>1</span><div><h3>{shippingLabel(p.shipping.method)}</h3><p>Selected order type</p></div></div>
       <section aria-label="Customer selection" className={s.stack}>
-        <div className={s.between}><strong>{p.customerName || (p.shipping.method==='in_store'?'Walk-in customer':p.shipping.recipientName.trim() || 'Customer details')}</strong>{!p.customerPicker && <button type="button" className={s.textButton} onClick={p.onChooseCustomer}>{p.customerId?'Change customer':'Select customer'}</button>}</div>
+        <div className={s.between}><strong data-i18n-ignore={Boolean(p.customerName) || (!(p.shipping.method==='in_store') && (Boolean(p.shipping.recipientName.trim())))}>{p.customerName || (p.shipping.method==='in_store'?'Walk-in customer':p.shipping.recipientName.trim() || 'Customer details')}</strong>{!p.customerPicker && <button type="button" className={s.textButton} onClick={p.onChooseCustomer}>{p.customerId?'Change customer':'Select customer'}</button>}</div>
         {p.customerPicker}
       </section>
       {isDelivery && <div className={s.shippingForm}>

@@ -77,14 +77,14 @@ export default function BrandingPreview({ name, initial }: { name: string; initi
             <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
               {values.logo ? <img src={values.logo} alt="" className="h-full w-full object-contain" /> : <Store size={16} className="text-slate-400" />}
             </span>
-            <span className="min-w-0 flex-1 truncate text-sm font-bold">{name}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-bold" data-i18n-ignore="true">{name}</span>
             <ShoppingBag size={16} aria-hidden="true" />
           </div>
           <div className={`relative bg-[var(--store-primary-soft,#eff6ff)] ${mobile ? "h-28" : "h-40"}`}>
             {values.banner ? <img src={values.banner} alt="" className="h-full w-full object-cover" /> : <div className="h-full w-full" style={{ background: "linear-gradient(135deg, var(--store-primary), var(--store-primary-surface))" }} />}
           </div>
           <div className="space-y-3 p-3">
-            {values.description ? <p className="line-clamp-2 break-words text-xs leading-5 text-slate-600">{values.description}</p> : null}
+            {values.description ? <p className="line-clamp-2 break-words text-xs leading-5 text-slate-600" data-i18n-ignore="true">{values.description}</p> : null}
             <div className={`grid gap-2 ${mobile ? "grid-cols-2" : "grid-cols-4"}`}>
               {Array.from({ length: mobile ? 2 : 4 }, (_, index) => (
                 <div key={index} className="rounded-lg border border-slate-200 p-2">

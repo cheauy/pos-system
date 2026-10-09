@@ -5,7 +5,7 @@ import type { ShippingElement, ShippingLayout } from "@/lib/receipts/shipping-la
 export type { ShippingValues } from "@/lib/receipts/shipping-custom";
 export { shippingElementStyle } from "@/lib/receipts/shipping-layout";
 export function ShippingElementContent({element,values,showPlaceholders=false}:{element:ShippingElement;values:ShippingValues;showPlaceholders?:boolean}) {
-  return <div style={{width:"100%",height:"100%"}} dangerouslySetInnerHTML={{__html:shippingElementContent(element,values,showPlaceholders)}}/>;
+  return <div data-i18n-ignore="true" style={{width:"100%",height:"100%"}} dangerouslySetInnerHTML={{__html:shippingElementContent(element,values,showPlaceholders)}}/>;
 }
 export default function ShippingCanvas({layout,size,values}:{layout:ShippingLayout;size:string;values:ShippingValues}) {
   const [width,height]=size.split("x").map(Number);

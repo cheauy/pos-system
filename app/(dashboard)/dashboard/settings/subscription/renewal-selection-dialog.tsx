@@ -166,7 +166,7 @@ export default function RenewalSelectionDialog(props: Props) {
                   title={member.name}
                   detail={`${member.email || "No email"} · ${member.role === "owner" ? "Owner" : member.role}`}
                   onClick={() => toggleMember(member.id)}
-                />
+                 data-i18n-ignore-attributes="title"/>
               );
             })}
           </SelectionGroup>
@@ -189,7 +189,7 @@ export default function RenewalSelectionDialog(props: Props) {
                   title={branch.name}
                   detail={branch.isDefault ? "Main Branch" : "Branch"}
                   onClick={() => toggleBranch(branch.id)}
-                />
+                 data-i18n-ignore-attributes="title"/>
               );
             })}
           </SelectionGroup>

@@ -31,7 +31,7 @@ export default function AlertRecipientsForm({businessId,branchId,branchName,sett
     <fieldset disabled={pending} className="min-w-0 space-y-5">
       <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
         <h2 className="text-lg font-semibold">Business alerts</h2>
-        <p className="mt-1 text-sm text-slate-500">Enable alerts for {branchName}. Recipients are determined by their role.</p>
+        <p className="mt-1 text-sm text-slate-500">Enable alerts for <span data-i18n-ignore="true">{branchName}</span>. Recipients are determined by their role.</p>
         <div className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">{businessAlerts.map(({type,label})=><Toggle key={type} label={label} checked={draft.enabled[type]} onChange={value=>change({...draft,enabled:{...draft.enabled,[type]:value}})}/>)}</div>
       </section>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">

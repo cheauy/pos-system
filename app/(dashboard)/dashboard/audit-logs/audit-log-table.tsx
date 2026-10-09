@@ -452,7 +452,7 @@ export default function AuditLogsTable({
               <FilterSelect value={branchFilter} onChange={(value) => changeFilter(() => setBranchFilter(value))}>
                 <option value="all">All branches</option>
                 <option value="business">Business-wide</option>
-                {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                {branches.map((branch) => <option key={branch.id} value={branch.id} data-i18n-ignore="true">{branch.name}</option>)}
               </FilterSelect>
               <FilterSelect value={severityFilter} onChange={(value) => changeFilter(() => setSeverityFilter(value))}>
                 <option value="all">All severity</option>
@@ -478,7 +478,7 @@ export default function AuditLogsTable({
         </div>
 
         <div className="overflow-x-auto">
-          <MobileList empty={pagedLogs.length === 0 ? <li className="px-6 py-12 text-center text-sm text-slate-500">No audit logs found. Try another date range or reset the filters.</li> : null}>{pagedLogs.map((log) => <MobileListCard key={log.id} onClick={() => setSelectedLog(log)} media={<span className="grid h-10 w-10 place-items-center rounded-full bg-blue-600 text-xs font-bold text-white">{initials(log.userName)}</span>} title={log.userName} date={formatDate(log.created_at)} primary={`${log.action} · ${log.moduleName}`} secondary={log.description ?? log.branchName} status={{ label: String(log.severity), tone: /critical|high|error/i.test(String(log.severity)) ? "red" : /warn|medium/i.test(String(log.severity)) ? "amber" : "blue" }} />)}</MobileList>
+          <MobileList empty={pagedLogs.length === 0 ? <li className="px-6 py-12 text-center text-sm text-slate-500">No audit logs found. Try another date range or reset the filters.</li> : null}>{pagedLogs.map((log) => <MobileListCard key={log.id} onClick={() => setSelectedLog(log)} media={<span className="grid h-10 w-10 place-items-center rounded-full bg-blue-600 text-xs font-bold text-white" data-i18n-ignore="true">{initials(log.userName)}</span>} title={<span data-i18n-ignore="true">{log.userName}</span>} date={formatDate(log.created_at)} primary={`${log.action} · ${log.moduleName}`} secondary={log.description ?? log.branchName} status={{ label: String(log.severity), tone: /critical|high|error/i.test(String(log.severity)) ? "red" : /warn|medium/i.test(String(log.severity)) ? "amber" : "blue" }}  data-i18n-ignore-attributes="title"/>)}</MobileList>
           <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[1280px] table-fixed">
             <thead className="bg-slate-50/90 dark:bg-slate-950/70">
               <tr>
@@ -498,15 +498,15 @@ export default function AuditLogsTable({
                   <TableCell>{formatDate(log.created_at)}</TableCell>
                   <TableCell>
                     <div className="flex min-w-0 items-center gap-2.5">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white shadow-sm">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white shadow-sm" data-i18n-ignore="true">
                         {initials(log.userName)}
                       </span>
-                      <span className="truncate font-medium text-slate-800 dark:text-slate-100">{log.userName}</span>
+                      <span className="truncate font-medium text-slate-800 dark:text-slate-100" data-i18n-ignore="true">{log.userName}</span>
                     </div>
                   </TableCell>
                   <TableCell><ActionBadge action={log.action} /></TableCell>
                   <TableCell><span className="font-medium text-slate-700 dark:text-slate-200">{log.moduleName}</span></TableCell>
-                  <TableCell><span className="truncate text-slate-600 dark:text-slate-300">{log.branchName}</span></TableCell>
+                  <TableCell><span className="truncate text-slate-600 dark:text-slate-300" data-i18n-ignore="true">{log.branchName}</span></TableCell>
                   <TableCell><SeverityBadge severity={log.severity} /></TableCell>
                   <TableCell><p className="truncate text-slate-600 dark:text-slate-300" title={log.description ?? ""}>{log.description ?? "—"}</p></TableCell>
                   <TableCell className="text-center">
@@ -767,11 +767,11 @@ function AuditLogDialog({
   return (
     <Modal onClose={onClose} title="Audit Log Details" subtitle={formatDate(log.created_at)}>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Detail label="User">{log.userName}</Detail>
+        <Detail label="User"><span data-i18n-ignore="true">{log.userName}</span></Detail>
         <Detail label="Severity"><SeverityBadge severity={log.severity} /></Detail>
         <Detail label="Action">{formatLabel(log.action)}</Detail>
         <Detail label="Module / Entity">{log.moduleName}</Detail>
-        <Detail label="Branch">{log.branchName}</Detail>
+        <Detail label="Branch"><span data-i18n-ignore="true">{log.branchName}</span></Detail>
         <Detail label="Entity ID"><span className="break-all">{log.entity_id ?? "—"}</span></Detail>
         <div className="sm:col-span-2"><Detail label="Description">{log.description ?? "—"}</Detail></div>
         <Detail label="IP address">{log.ip_address ?? "—"}</Detail>

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
+import { useLanguage } from '@/components/providers/language-provider';
 import type { PaymentMethod, ShippingDetails } from './pos-workspace-types';
 import { paymentHiddenForDelivery, paymentHiddenForWalkIn } from './pos-customer-helpers';
 import s from './pos-workspace.module.css';
@@ -141,10 +142,14 @@ const CARRIERS: ReadonlyArray<{ id: Carrier; name: string; image: string }> = [
 ];
 
 function CarrierImage({ src }: { src: string }) {
+  const { language } = useLanguage();
+  const localizedSrc = language === 'km' && src === '/images/pos-carriers/other.svg'
+    ? '/images/pos-carriers/other-km.svg'
+    : src;
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [src]);
+  useEffect(() => setFailed(false), [localizedSrc]);
   return failed ? <span role="status" style={{fontSize:11,color:'#a63730'}}>Logo file unavailable</span> :
-    <img src={src} width={132} height={60} alt="" aria-hidden="true" decoding="async" onError={() => setFailed(true)}/>;
+    <img src={localizedSrc} width={132} height={60} alt="" aria-hidden="true" decoding="async" onError={() => setFailed(true)}/>;
 }
 
 export function CarrierCards({ value, onChange, disabled = false }: {
@@ -158,10 +163,10 @@ export function CarrierCards({ value, onChange, disabled = false }: {
     <div className={s.carrierGrid}>
       {CARRIERS.map(carrier => <label key={carrier.id} className={s.carrierOption}>
         <input type="radio" name={`${id}-carrier`} value={carrier.id} aria-label={carrier.name}
-          checked={value === carrier.id} onChange={() => onChange(carrier.id)}/>
+          checked={value === carrier.id} onChange={() => onChange(carrier.id)} data-i18n-ignore-attributes="aria-label"/>
         <span className={s.carrierTile}>
           <span className={s.carrierArtwork}><CarrierImage src={carrier.image}/></span>
-          <strong>{carrier.name}</strong>
+          <strong data-i18n-ignore="true">{carrier.name}</strong>
           <span className={s.carrierCheck} aria-hidden="true">{value === carrier.id && <Check size={12}/>}</span>
         </span>
       </label>)}

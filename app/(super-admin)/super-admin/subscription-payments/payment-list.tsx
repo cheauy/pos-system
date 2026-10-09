@@ -97,8 +97,8 @@ export default async function SubscriptionPaymentList() {
                 return (
                   <tr key={order.id} className="align-top">
                     <td className="px-5 py-4">
-                      <p className="font-bold text-slate-950 dark:text-white">{business?.name ?? "Unknown business"}</p>
-                      <p className="mt-1 text-xs text-slate-400">{business?.slug ?? order.business_id}</p>
+                      <p className="font-bold text-slate-950 dark:text-white" data-i18n-ignore={Boolean(business?.name)}>{business?.name ?? "Unknown business"}</p>
+                      <p className="mt-1 text-xs text-slate-400" data-i18n-ignore={Boolean(business?.slug)}>{business?.slug ?? order.business_id}</p>
                     </td>
                     <td className="px-5 py-4 text-sm font-semibold">{getSubscriptionPlanLabel(order.plan_key)}</td>
                     <td className="px-5 py-4 text-sm"><span className="inline-flex items-center gap-1.5"><UsersRound size={15} />{order.requested_user_limit} users / {order.requested_branch_limit ?? 1} branches</span></td>
@@ -122,7 +122,7 @@ export default async function SubscriptionPaymentList() {
                               <FileCheck2 size={14} /> View proof <ExternalLink size={12} />
                             </a>
                           ) : null}
-                          {order.payment_note ? <p className="max-w-xs text-xs leading-5 text-slate-500">{order.payment_note}</p> : null}
+                          {order.payment_note ? <p className="max-w-xs text-xs leading-5 text-slate-500" data-i18n-ignore="true">{order.payment_note}</p> : null}
                           <form action={reviewSubscriptionPayment} className="flex flex-wrap gap-2">
                             <input type="hidden" name="orderId" value={order.id} />
                             <input type="hidden" name="decision" value="approve" />

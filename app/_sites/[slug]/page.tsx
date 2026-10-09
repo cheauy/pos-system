@@ -568,7 +568,7 @@ function UnavailableStore({
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">
                 TENH POS Store
               </p>
-              <h1 className="font-bold text-slate-950">{businessName}</h1>
+              <h1 className="font-bold text-slate-950" data-i18n-ignore="true">{businessName}</h1>
             </div>
           </div>
 

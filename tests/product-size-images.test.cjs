@@ -6,6 +6,8 @@ test('size uploads override only their own row and submit the selected file', ()
   let cursor = 0;
   const states = [], errors = [];
   const { default: Form } = loadTs('app/(dashboard)/dashboard/products/variant-product-form.tsx', {
+    '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+    '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
     'react/jsx-runtime': require('react/jsx-runtime'),
     react: {
       useState: initial => { const id = cursor++; if (!(id in states)) states[id] = typeof initial === 'function' ? initial() : initial; return [states[id], value => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; },

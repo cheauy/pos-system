@@ -54,11 +54,11 @@ export function SaleCompleted({ receipt, meta, storeAddress, formatMoney, onNext
     <div className={s.thanks}><span><Check size={18} /></span><div><strong>Thank you for your purchase!</strong><small>Receipt is available to print or share if needed.</small></div></div>
 
     <section className={s.card}>
-      <div className={s.store}><span><Store size={24} /></span><div><strong>{receipt.businessName}</strong>{storeAddress && <small>{storeAddress}</small>}</div></div>
+      <div className={s.store}><span><Store size={24} /></span><div><strong data-i18n-ignore="true">{receipt.businessName}</strong>{storeAddress && <small>{storeAddress}</small>}</div></div>
       <dl className={s.details}>
-        <div><dt>Order No.</dt><dd>{receipt.orderNumber}</dd></div>
+        <div><dt>Order No.</dt><dd data-i18n-ignore="true">{receipt.orderNumber}</dd></div>
         <div><dt>Date</dt><dd>{saleDate(receipt.createdAt, receipt.timezone)}</dd></div>
-        <div><dt>Customer</dt><dd>{receipt.customerName || 'Walk-in customer'}</dd></div>
+        <div><dt>Customer</dt><dd data-i18n-ignore={Boolean(receipt.customerName)}>{receipt.customerName || 'Walk-in customer'}</dd></div>
         <div><dt>Order type</dt><dd>{shippingLabel(receipt.shipping?.method ?? 'in_store')}</dd></div>
         <div><dt>Payment</dt><dd>{payment}</dd></div>
       </dl>
@@ -67,8 +67,8 @@ export function SaleCompleted({ receipt, meta, storeAddress, formatMoney, onNext
     <section className={s.card}>
       <h3 className={s.itemsTitle}>Items ({itemCount})</h3>
       <div className={s.items}>{receipt.lines.map((line, index) => <div key={`${line.name}-${index}`} className={s.item}>
-        <ProductImage className={s.itemImage} src={meta?.images[lineImageKey(line.name, line.variant)] ?? null} alt={line.name} />
-        <div className={s.itemText}><strong>{line.name}</strong>{(line.variant || line.options.length > 0) && <small>{[line.variant, ...line.options.map(option => option.name)].filter(Boolean).join(' · ')}</small>}</div>
+        <ProductImage className={s.itemImage} src={meta?.images[lineImageKey(line.name, line.variant)] ?? null} alt={line.name}  data-i18n-ignore-attributes="alt"/>
+        <div className={s.itemText}><strong data-i18n-ignore="true">{line.name}</strong>{(line.variant || line.options.length > 0) && <small>{[line.variant, ...line.options.map(option => option.name)].filter(Boolean).join(' · ')}</small>}</div>
         <div className={s.itemPrice}><small>Qty {line.quantity}</small><strong>{formatMoney(line.subtotal)}</strong></div>
       </div>)}</div>
       {receipt.discount > 0 && <div className={s.row}><span>Discount</span><span>−{formatMoney(receipt.discount)}</span></div>}

@@ -8,7 +8,7 @@ function nodes(root){if(!root||typeof root!=='object')return [];if(Array.isArray
 function component(file,dependencies,props){
   let cursor=0,refCursor=0;const state=[],refs=[];
   const react={useState(initial){const at=cursor++;if(!(at in state))state[at]=typeof initial==='function'?initial():initial;return [state[at],next=>{state[at]=typeof next==='function'?next(state[at]):next;}];},useRef(initial){const at=refCursor++;return refs[at]??(refs[at]={current:initial});},useEffect(){},useCallback:fn=>fn};
-  const Component=loadTs(file,{'react/jsx-runtime':jsxRuntime,react,'lucide-react':icons,'@/lib/receipts/shipping-layout':api,...dependencies}).default;
+  const Component=loadTs(file,{'@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},'react/jsx-runtime':jsxRuntime,react,'lucide-react':icons,'@/lib/receipts/shipping-layout':api,...dependencies}).default;
   return ()=>{cursor=0;refCursor=0;return nodes(Component(props));};
 }
 const find=(tree,label)=>{const node=tree.find(node=>node.props?.['aria-label']===label);assert.ok(node,label);return node;};

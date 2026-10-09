@@ -153,7 +153,7 @@ export default function DeleteUserButton({
 
             <p className="mt-2 text-sm leading-6 text-slate-600">
               This will remove{" "}
-              <strong>{userName}</strong>{" "}
+              <strong data-i18n-ignore="true">{userName}</strong>{" "}
               and their login account permanently. Historical business records are kept, with ownership transferred to the business Owner.
             </p>
 
@@ -169,7 +169,7 @@ export default function DeleteUserButton({
                 className="block text-sm font-semibold text-slate-700"
               >
                 Type{" "}
-                <span className="text-red-600">
+                <span className="text-red-600" data-i18n-ignore="true">
                   {userName}
                 </span>{" "}
                 to confirm

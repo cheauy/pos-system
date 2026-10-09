@@ -1,4 +1,6 @@
 'use client';
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Pencil } from 'lucide-react';
@@ -6,9 +8,11 @@ import { toast } from 'sonner';
 import { saveOnlineCatalogProduct } from './catalog-actions';
 
 export default function CatalogProductEditor({ product, disabled, icon = false, onSaved }: { product: { id: string; name: string; selling_price: number }; disabled: boolean; icon?: boolean; onSaved?: () => void }) {
+  const { t: translateLabel } = useLanguage();
+
  const dialog=useRef<HTMLDialogElement>(null);const [pending,start]=useTransition();const router=useRouter();
  const [name,setName]=useState(product.name);const [price,setPrice]=useState(String(product.selling_price));
- return <><button type="button" disabled={disabled || pending} aria-label={`Edit online ${product.name}`} className="text-left font-semibold disabled:opacity-50" onClick={()=>{setName(product.name);setPrice(String(product.selling_price));dialog.current?.showModal();}}>{icon?<Pencil size={14}/>:product.name}</button>
+ return <><button type="button" disabled={disabled || pending} aria-label={formatUiText(translateLabel("Edit online {0}"), [product.name])} className="text-left font-semibold disabled:opacity-50" onClick={()=>{setName(product.name);setPrice(String(product.selling_price));dialog.current?.showModal();}} data-i18n-ignore-attributes="aria-label">{icon?<Pencil size={14}/>:product.name}</button>
  <dialog ref={dialog} className="m-auto w-full max-w-md rounded-2xl bg-white p-6 text-slate-900 shadow-xl backdrop:bg-black/40" aria-labelledby={`online-edit-${product.id}`} onCancel={e=>{if(pending)e.preventDefault();}}>
  <form onSubmit={e=>{e.preventDefault();start(async()=>{try{const result=await saveOnlineCatalogProduct(product.id,name,price,{name:product.name,price:product.selling_price});if(!result.success){toast.error(result.message);return;}toast.success(result.message);dialog.current?.close();if(onSaved)onSaved();else router.refresh();}catch{toast.error('Unable to save online product. Please retry.');}});}} className="space-y-4">
  <h3 id={`online-edit-${product.id}`} className="text-lg font-bold">Online product</h3><p className="text-sm text-slate-500">Shared online name and price. Branch POS prices are managed in Products.</p>

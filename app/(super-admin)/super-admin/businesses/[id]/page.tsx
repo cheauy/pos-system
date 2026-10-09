@@ -429,12 +429,12 @@ const daysRemaining = expiryDate
               </div>
 
               <div>
-                <h1 className="text-3xl font-bold text-slate-950">
+                <h1 className="text-3xl font-bold text-slate-950" data-i18n-ignore="true">
                   {business.name}
                 </h1>
 
                 <p className="mt-1 text-slate-500">
-                  {business.business_code || business.slug} · {formatProductMode(business.product_mode)}
+                  <span data-i18n-ignore="true">{business.business_code || business.slug}</span> · {formatProductMode(business.product_mode)}
                   <span className="ml-2 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold capitalize text-slate-700">{businessStatus}</span>
                 </p>
               </div>
@@ -524,7 +524,7 @@ const daysRemaining = expiryDate
 
         <section id="branches" className="scroll-mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="flex items-center justify-between border-b border-slate-100 p-5"><div><h2 className="text-lg font-bold">Branches</h2><p className="mt-1 text-sm text-slate-500">{activeBranches} active of {branchLimit} allowed</p></div><MapPin className="text-blue-600" size={21}/></div>
-          {branchResult.error?<p role="alert" className="p-5 text-sm text-red-600">Branch details could not be loaded.</p>:branches.length?branches.map(branch=><div key={branch.id} className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 last:border-0"><p className="font-semibold">{branch.name}</p><span className={branch.is_active?"rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700":"rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500"}>{branch.is_active?"Active":"Inactive"}</span></div>):<p className="p-6 text-sm text-slate-500">No branches created.</p>}
+          {branchResult.error?<p role="alert" className="p-5 text-sm text-red-600">Branch details could not be loaded.</p>:branches.length?branches.map(branch=><div key={branch.id} className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 last:border-0"><p className="font-semibold" data-i18n-ignore="true">{branch.name}</p><span className={branch.is_active?"rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700":"rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500"}>{branch.is_active?"Active":"Inactive"}</span></div>):<p className="p-6 text-sm text-slate-500">No branches created.</p>}
         </section>
 
 {showExpiryTest && <ExpiryTestControls businessId={id} active={Boolean(expiryTest?.data)} originalExpiry={expiryTest?.data?.original_expiry ?? null} available={!expiryTest?.error} />}
@@ -574,12 +574,12 @@ const daysRemaining = expiryDate
                   return (
                     <tr key={member.id}>
                       <td className="px-6 py-4">
-                        <p className="font-semibold text-slate-900">
+                        <p className="font-semibold text-slate-900" data-i18n-ignore={Boolean(profile?.full_name)}>
                           {profile?.full_name ??
                             "Unnamed user"}
                         </p>
 
-                        <p className="mt-1 text-sm text-slate-500">
+                        <p className="mt-1 text-sm text-slate-500" data-i18n-ignore={Boolean(profile?.email)}>
                           {profile?.email ??
                             "No email available"}
                         </p>
@@ -610,7 +610,7 @@ const daysRemaining = expiryDate
                           member.created_at,
                         )}
                       </td>
-                      <td className="px-6 py-4 text-sm text-slate-600">{branches.find(b=>b.id===member.default_location_id)?.name ?? "Not assigned"}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600" data-i18n-ignore={Boolean(branches.find(b=>b.id===member.default_location_id)?.name)}>{branches.find(b=>b.id===member.default_location_id)?.name ?? "Not assigned"}</td>
                     </tr>
                   );
                 })}

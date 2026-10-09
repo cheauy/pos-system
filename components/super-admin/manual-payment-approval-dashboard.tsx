@@ -553,13 +553,13 @@ export default function ManualPaymentApprovalDashboard({
                                   {initials(row)}
                                 </div>
                                 <div className="min-w-0">
-                                  <p className="truncate text-xs font-bold text-slate-900">
+                                  <p className="truncate text-xs font-bold text-slate-900" data-i18n-ignore="true">
                                     {row.businessName}
                                   </p>
-                                  <p className="truncate text-[10px] text-slate-500">
+                                  <p className="truncate text-[10px] text-slate-500" data-i18n-ignore="true">
                                     {row.customerName}
                                   </p>
-                                  <p className="truncate text-[10px] text-slate-400">
+                                  <p className="truncate text-[10px] text-slate-400" data-i18n-ignore="true">
                                     {row.customerEmail || "—"}
                                   </p>
                                 </div>
@@ -739,16 +739,16 @@ function PaymentDetails({
             {initials(row)}
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-slate-900">{row.businessName}</p>
-            <p className="truncate text-[11px] text-slate-500">{row.customerName}</p>
-            <p className="truncate text-[10px] text-slate-400">{row.customerEmail || "—"}</p>
+            <p className="truncate text-sm font-bold text-slate-900" data-i18n-ignore="true">{row.businessName}</p>
+            <p className="truncate text-[11px] text-slate-500" data-i18n-ignore="true">{row.customerName}</p>
+            <p className="truncate text-[10px] text-slate-400" data-i18n-ignore="true">{row.customerEmail || "—"}</p>
           </div>
         </div>
 
         <dl className="mt-5 space-y-2.5 text-[11px]">
           <Detail label="Request type" value={requestType(row)} />
-          {row.changeUrl ? <Detail label="Current URL" value={row.oldUrl} /> : null}
-          {row.changeUrl && !row.creditPurchase ? <Detail label="New URL" value={row.requestedUrl} /> : null}
+          {row.changeUrl ? <Detail label="Current URL" value={row.oldUrl} preserveValue /> : null}
+          {row.changeUrl && !row.creditPurchase ? <Detail label="New URL" value={row.requestedUrl} preserveValue /> : null}
           {row.changeBusinessMode ? (
             <Detail label="Current mode" value={row.oldBusinessType} />
           ) : null}
@@ -758,10 +758,10 @@ function PaymentDetails({
           {row.creditPurchase&&<Detail label="Approval adds" value={`${Number(row.changeUrl)} Store URL credit · ${Number(row.changeBusinessMode)} Business mode credit · No expiry`}/>}
           <Detail label="Amount" value={formatMoney(row.amount, row.currency)} strong />
           <Detail label="Payment method" value={row.paymentProvider || "Manual payment"} />
-          <Detail label="Customer note" value={row.paymentNote || "—"} />
+          <Detail label="Customer note" value={row.paymentNote || "—"} preserveValue />
           <Detail label="Submitted" value={formatDateTime(row.submittedAt)} />
           {row.reviewedAt ? <Detail label="Reviewed" value={formatDateTime(row.reviewedAt)} /> : null}
-          {row.reviewNote ? <Detail label="Review note" value={row.reviewNote} /> : null}
+          {row.reviewNote ? <Detail label="Review note" value={row.reviewNote} preserveValue /> : null}
         </dl>
 
         <div className="mt-5">
@@ -801,7 +801,7 @@ function PaymentDetails({
               </div>
 
               <div className="min-w-0 text-[10px] leading-5 text-slate-500">
-                <p className="font-bold text-slate-800">{row.proofFileName || "Payment proof"}</p>
+                <p className="font-bold text-slate-800" data-i18n-ignore={Boolean(row.proofFileName)}>{row.proofFileName || "Payment proof"}</p>
                 <p className="mt-1">
                   {formatFileSize(row.proofSizeBytes)}
                   {row.proofUploadedAt
@@ -876,7 +876,7 @@ function PaymentDetails({
                 </button>
 
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-4 pb-3 pt-10 text-white">
-                  <p className="truncate text-xs font-bold">
+                  <p className="truncate text-xs font-bold" data-i18n-ignore={Boolean(row.proofFileName)}>
                     {row.proofFileName || "Payment proof"}
                   </p>
                   <p className="mt-0.5 text-[10px] text-white/70">
@@ -919,16 +919,19 @@ function Detail({
   value,
   strong = false,
   mono = false,
+  preserveValue = false,
 }: {
   label: string;
   value: string;
   strong?: boolean;
   mono?: boolean;
+  preserveValue?: boolean;
 }) {
   return (
     <div className="grid grid-cols-[105px_minmax(0,1fr)] gap-3">
       <dt className="text-slate-400">{label}</dt>
       <dd
+        data-i18n-ignore={preserveValue || undefined}
         className={`min-w-0 break-words text-slate-700 ${strong ? "font-extrabold text-slate-950" : "font-semibold"} ${mono ? "font-mono text-[10px]" : ""}`}
       >
         {value}

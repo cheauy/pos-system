@@ -1,13 +1,15 @@
 'use client';
 import {useState} from 'react';
 import {Printer,Monitor} from 'lucide-react';
+import {useLanguage} from '@/components/providers/language-provider';
 export default function PrinterConnection(){
+ const {t}=useLanguage();
  const [status,setStatus]=useState('Managed by your computer');
  function test(){
   const preview=window.open('','_blank','width=520,height=650');
   if(!preview){setStatus('Allow pop-ups to open the printer test.');return;}
   preview.opener=null;
-  preview.document.write('<!doctype html><html><head><title>Printer test</title><style>body{font:14px Arial;color:#000;background:#fff;margin:20px}article{max-width:72mm}h1{font-size:20px}@media print{button,p.help{display:none}@page{size:80mm auto;margin:4mm}}</style></head><body><article><h1>TENH POS — Printer test</h1><p>Receipt and label printer setup</p><hr><p>Text quality: ABCDEFG 0123456789</p><p>Small text should be sharp and readable.</p><hr><strong>TEST ONLY — NOT A SALE</strong></article><p class="help">Choose your printer in the print dialog. Use 100% scale and the correct paper size.</p><button id="print">Choose printer / Print test</button></body></html>');
+  preview.document.write(`<!doctype html><html><head><title>${t('Printer test')}</title><style>body{font:14px Arial;color:#000;background:#fff;margin:20px}article{max-width:72mm}h1{font-size:20px}@media print{button,p.help{display:none}@page{size:80mm auto;margin:4mm}}</style></head><body><article><h1>${t('TENH POS — Printer test')}</h1><p>${t('Receipt and label printer setup')}</p><hr><p>${t('Text quality: ABCDEFG 0123456789')}</p><p>${t('Small text should be sharp and readable.')}</p><hr><strong>${t('TEST ONLY — NOT A SALE')}</strong></article><p class="help">${t('Choose your printer in the print dialog. Use 100% scale and the correct paper size.')}</p><button id="print">${t('Choose printer / Print test')}</button></body></html>`);
   preview.document.close();
   preview.document.getElementById('print')?.addEventListener('click',()=>preview.print());
   setStatus('Test preview opened. Select a printer there; completion is not reported to the website.');

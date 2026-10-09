@@ -8,5 +8,5 @@ export default function MemberBranchSelect({ memberId, branchId, branches, disab
     setBusy(true); setError("");
     try { const result = await assignMemberBranch(memberId, e.target.value); if (!result.success) setError(result.message); else router.refresh(); }
     catch { setError("Unable to save branch."); } finally { setBusy(false); }
-  }}><option value="" disabled>Choose branch</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select>{error && <p role="alert" className="mt-1 text-xs text-red-600">{error}</p>}</div>;
+  }}><option value="" disabled>Choose branch</option>{branches.map(b => <option key={b.id} value={b.id} data-i18n-ignore="true">{b.name}</option>)}</select>{error && <p role="alert" className="mt-1 text-xs text-red-600">{error}</p>}</div>;
 }

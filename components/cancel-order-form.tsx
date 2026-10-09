@@ -50,7 +50,7 @@ export default function CancelOrderForm({ orderId, orderNumber, businessId, upda
         <div className="flex items-start justify-between border-b border-slate-200 p-5">
           <div className="flex gap-3">
             <div className="rounded-xl bg-red-50 p-3 text-red-600"><AlertTriangle size={22} /></div>
-            <div><h2 id={`cancel-${orderId}`} className="text-lg font-bold text-slate-900">Cancel order</h2><p className="mt-1 text-sm text-slate-500">Order {orderNumber}</p></div>
+            <div><h2 id={`cancel-${orderId}`} className="text-lg font-bold text-slate-900">Cancel order</h2><p className="mt-1 text-sm text-slate-500">Order <span data-i18n-ignore="true">{orderNumber}</span></p></div>
           </div>
           <button type="button" disabled={busy} onClick={() => setOpen(false)} className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100" aria-label="Close"><X size={19} /></button>
         </div>

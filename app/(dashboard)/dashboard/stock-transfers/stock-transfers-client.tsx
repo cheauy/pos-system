@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import ProductPicker from "@/components/product-picker";
 import ProductPhoto from "@/components/product-photo";
@@ -166,6 +168,8 @@ export default function StockTransfersClient({
   locationStock,
   transfers,
 }: Props) {
+  const { t: translateLabel } = useLanguage();
+
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createPending, setCreatePending] = useState(false);
@@ -494,7 +498,7 @@ export default function StockTransfersClient({
                   >
                     <option value="">Select branch</option>
                     {locations.map((location) => (
-                      <option key={location.id} value={location.id}>
+                      <option key={location.id} value={location.id} data-i18n-ignore="true">
                         {location.name}
                       </option>
                     ))}
@@ -519,7 +523,7 @@ export default function StockTransfersClient({
                     {locations
                       .filter((location) => location.id !== sourceLocationId)
                       .map((location) => (
-                        <option key={location.id} value={location.id}>
+                        <option key={location.id} value={location.id} data-i18n-ignore="true">
                           {location.name}
                         </option>
                       ))}
@@ -570,10 +574,10 @@ export default function StockTransfersClient({
                               )}
                             </div>
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-slate-800">
+                              <p className="truncate text-sm font-semibold text-slate-800" data-i18n-ignore="true">
                                 {product?.name ?? item.productId}
                               </p>
-                              <p className="truncate text-xs text-slate-500">
+                              <p className="truncate text-xs text-slate-500" data-i18n-ignore={(product) && (true)}>
                                 {product
                                   ? [product.color, product.size, product.sku]
                                       .filter(Boolean)
@@ -615,8 +619,8 @@ export default function StockTransfersClient({
                               )
                             }
                             className="flex h-9 w-9 items-center justify-center rounded-lg text-rose-500 transition hover:bg-rose-50"
-                            aria-label={`Remove ${product?.name ?? "item"}`}
-                          >
+                            aria-label={formatUiText(translateLabel("Remove {0}"), [product?.name ?? (translateLabel("item"))])}
+                           data-i18n-ignore-attributes="aria-label">
                             <Trash2 size={16} />
                           </button>
                         </div>
@@ -733,7 +737,7 @@ export default function StockTransfersClient({
             >
               <option value="all">All Branches</option>
               {locations.map((location) => (
-                <option key={location.id} value={location.id}>
+                <option key={location.id} value={location.id} data-i18n-ignore="true">
                   {location.name}
                 </option>
               ))}
@@ -1045,7 +1049,7 @@ function TransferDetails({
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-800">
+                        <p className="truncate text-sm font-semibold text-slate-800" data-i18n-ignore="true">
                           {product?.name ?? item.productId}
                         </p>
                         <p className="truncate text-xs text-slate-500">
@@ -1066,7 +1070,7 @@ function TransferDetails({
         {transfer.note && (
           <div className="mt-5 rounded-xl border border-slate-200 p-4">
             <p className="text-sm font-semibold text-slate-800">Reference / Note</p>
-            <p className="mt-2 text-sm text-slate-600">{transfer.note}</p>
+            <p className="mt-2 text-sm text-slate-600" data-i18n-ignore="true">{transfer.note}</p>
           </div>
         )}
       </div>

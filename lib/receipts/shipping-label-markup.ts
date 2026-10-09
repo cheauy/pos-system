@@ -6,6 +6,7 @@ import { printTextScale, receiptLogoUrl } from '@/lib/receipts/receipt-model';
 import { shippingLabelSize, shippingTemplate, shippingCustomTemplates } from './shipping-templates';
 import { defaultShippingLayout, resizeShippingLayout, validateShippingLayout, assertShippingQrSize, shippingQrMinimumMm, shippingQrModules } from './shipping-layout';
 import { shippingElementMarkup, shippingQr, shippingOrderQrMinimumMm } from './shipping-custom';
+import { translateUiText, type AppLanguage } from '@/lib/i18n/translations';
 import type { ShippingDetails } from '@/app/(dashboard)/dashboard/pos/pos-workspace-types';
 
 export type ShippingOrder = PaymentRecord & {
@@ -45,8 +46,8 @@ export const SHIPPING_LABEL_COPY = {
   },
   km: {
     date: 'កាលបរិច្ឆេទ', recipient: 'ឈ្មោះអ្នកទទួល', phone: 'លេខទូរស័ព្ទ', address: 'អាសយដ្ឋាន',
-    senderPhone: 'លេខអ្នកផ្ញើរ', items: 'ចំនួន', payment: 'វិធីទូទាត់', amount: 'ចំនួនទឹកប្រាក់', balance: 'ប្រាក់នៅសល់',
-    scan: 'ស្កេនសម្រាប់ព័ត៌មានលម្អិត', thanks: 'សូមអរគុណសម្រាប់ការបញ្ជាទិញ', care: 'សូមដឹកជញ្ជូនដោយប្រុងប្រយ័ត្ន', missingAddress: 'មិនមានអាសយដ្ឋានដឹកជញ្ជូន',
+    senderPhone: 'លេខទូរស័ព្ទអ្នកផ្ញើ', items: 'ចំនួន', payment: 'វិធីទូទាត់', amount: 'ចំនួនទឹកប្រាក់', balance: 'ប្រាក់ត្រូវបង់',
+    scan: 'ស្កេនដើម្បីមើលព័ត៌មានលម្អិត', thanks: 'សូមអរគុណសម្រាប់ការបញ្ជាទិញ', care: 'សូមដឹកជញ្ជូនដោយប្រុងប្រយ័ត្ន', missingAddress: 'ខ្វះអាសយដ្ឋានដឹកជញ្ជូន',
   },
 } as const;
 export function escapeShippingHtml(value: unknown) {
@@ -65,33 +66,34 @@ const bag = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
 const heart = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg>';
 
 /** Barcodes are generated, not taken from the reference picture. Include quiet zones. */
-function orderBarcode(value: string) {
+function orderBarcode(value: string, language: AppLanguage = 'en') {
   const code = code39Bars(value);
   // Do not print a different identifier by silently truncating/normalizing custom order numbers.
   if (!value || code.text !== value.toUpperCase() || value.length > 40) return '';
   const quiet = 20;
-  return `<svg data-linear-code="${escapeShippingHtml(code.text)}" role="img" aria-label="Order barcode ${escapeShippingHtml(code.text)}" viewBox="0 0 ${code.width + quiet * 2} 32" preserveAspectRatio="none" shape-rendering="crispEdges"><rect width="100%" height="32" fill="white"/>${code.bars.map(bar => `<rect x="${bar.x + quiet}" y="0" width="${bar.width}" height="32" fill="black"/>`).join('')}</svg>`;
+  return `<svg data-linear-code="${escapeShippingHtml(code.text)}" role="img" aria-label="${translateUiText('Order barcode', language)} ${escapeShippingHtml(code.text)}" viewBox="0 0 ${code.width + quiet * 2} 32" preserveAspectRatio="none" shape-rendering="crispEdges"><rect width="100%" height="32" fill="white"/>${code.bars.map(bar => `<rect x="${bar.x + quiet}" y="0" width="${bar.width}" height="32" fill="black"/>`).join('')}</svg>`;
 }
-function paymentName(value: string | null) {
+function paymentName(value: string | null, language: AppLanguage = 'en') {
   const key = (value || '').trim().toLowerCase();
   if (key === 'cod') return 'COD';
   const labels: Record<string, string> = { cash: 'Cash', bank_transfer: 'Bank transfer', deposit: 'Cash deposit', khqr: 'KHQR', card: 'Card', aba: 'ABA', wing: 'Wing', split: 'Split payment', other: 'Other', credit: 'Customer credit' };
-  return labels[key] || (value || '—').replaceAll('_', ' ');
+  return labels[key] ? translateUiText(labels[key], language) : (value || '—').replaceAll('_', ' ');
 }
 
-export function shippingPaymentText(order: PaymentRecord, currency='USD', includeBalance=false): string {
-  if(order.status==='cancelled')return 'Cancelled — do not collect';
-  const state=orderPaymentState(order),method=paymentName(orderPaymentMethod(order));
-  if(state==='refunded')return `${method} (Refunded)`;
-  if(state==='pending_verification')return `${method} (Pending verification)`;
+export function shippingPaymentText(order: PaymentRecord, currency='USD', includeBalance=false, language: AppLanguage = 'en'): string {
+  const t = (text: string) => translateUiText(text, language);
+  if(order.status==='cancelled')return t('Cancelled — do not collect');
+  const state=orderPaymentState(order),method=paymentName(orderPaymentMethod(order),language);
+  if(state==='refunded')return `${method} (${t('Refunded')})`;
+  if(state==='pending_verification')return `${method} (${t('Pending verification')})`;
   const review=orderPaymentNeedsReview(order);
-  const description=review?`${method} (Needs review)`:method;
-  if(state==='paid'&&!review)return `${method} (Paid)`;
+  const description=review?`${method} (${t('Needs review')})`:method;
+  if(state==='paid'&&!review)return `${method} (${t('Paid')})`;
   if(!includeBalance)return description;
   const due=orderBalanceDue(order);
-  if(due===null)return `${description}; Balance unavailable`;
+  if(due===null)return `${description}; ${t('Balance unavailable')}`;
   let amount:string;try{amount=new Intl.NumberFormat('en-US',{style:'currency',currency}).format(due);}catch{amount=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(due);}
-  const balance=`${review?'Recorded balance':balanceIsCod(order)?'COD due':'Balance due'} ${amount}`;
+  const balance=`${t(review?'Recorded balance':balanceIsCod(order)?'COD due':'Balance due')} ${amount}`;
   // An unpaid COD order prints just "COD" (the total shows what to collect). If part was
   // already paid, keep the remaining amount so the courier does not collect the full total.
   if(orderPaymentMethod(order)==='cod'&&!review)return Math.abs(due-(Number(order.total)||0))<.005?method:balance;
@@ -126,7 +128,7 @@ export function shippingLabelMarkup({ order, store, settings, size, currency = '
     catch { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n); }
   };
   const qty = (order.order_items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-  const due = orderBalanceDue(order), balanceAmount = due == null ? 'Unavailable' : amount(due);
+  const due = orderBalanceDue(order), balanceAmount = due == null ? translateUiText('Unavailable', template.language) : amount(due);
   // A shorter Khmer total label leaves room for the explicit unknown balance at 80 x 50.
   const compactUnknownBalance = compact && km && due == null;
   const row = (label: string, value: string, className = '') => `<div class="ship-row ${className}" data-fit-box><dt>${escapeShippingHtml(label)}</dt><span aria-hidden="true">:</span><dd>${escapeShippingHtml(value)}</dd></div>`;
@@ -141,7 +143,7 @@ export function shippingLabelMarkup({ order, store, settings, size, currency = '
     row(copy.address, address || copy.missingAddress, 'ship-address'),
     sender('phone') && store.phone ? row(copy.senderPhone, store.phone, 'ship-sender-phone') : '',
     visible('item_count') ? row(copy.items, String(qty) + (km ? ' មុខទំនិញ' : qty === 1 ? ' item' : ' items')) : '',
-    visible('cod') ? row(copy.payment, shippingPaymentText(order,currency,false)) : '',
+    visible('cod') ? row(copy.payment, shippingPaymentText(order,currency,false,template.language)) : '',
     visible('cod') ? amounts : '',
   ].join('');
   const logo = visible('logo') && sender('name') ? receiptLogoUrl(store.logoUrl) : null;
@@ -150,20 +152,20 @@ export function shippingLabelMarkup({ order, store, settings, size, currency = '
     : `<span class="ship-truck">${truck}</span><strong class="ship-store">${escapeShippingHtml(store.name)}</strong>`) : '';
   // Scannable codes use the numeric order code; older rows without one keep the order number.
   const scanId = isOrderCode(order.order_code) ? order.order_code : order.order_number;
-  const barcode = visible('order_number') && visible('linear_barcode') ? orderBarcode(scanId) : '';
+  const barcode = visible('order_number') && visible('linear_barcode') ? orderBarcode(scanId,template.language) : '';
   const header = `<div class="ship-header" data-fit-box>
     <div class="ship-brand-title"><div class="ship-brand">${brand}</div></div>
     ${visible('order_number') ? `<div class="ship-order"><strong>${escapeShippingHtml(scanId)}</strong>${barcode}</div>` : ''}
   </div>`;
   const senderAddress = sender('address') && store.address ? `<div class="ship-store-address" data-fit-box>${escapeShippingHtml(store.address)}</div>` : '';
-  const qr = visible('barcode') && isOrderCode(order.order_code) ? `<div class="ship-codes"><div class="ship-qr" role="img" aria-label="Order QR code">${orderQrSvg(order.order_code)}</div><div class="ship-scan" data-fit-box>${copy.scan}${km ? '<span>Scan for details</span>' : ''}</div></div>` : '';
+  const qr = visible('barcode') && isOrderCode(order.order_code) ? `<div class="ship-codes"><div class="ship-qr" role="img" aria-label="${translateUiText('Order QR code', template.language)}">${orderQrSvg(order.order_code)}</div><div class="ship-scan" data-fit-box>${copy.scan}</div></div>` : '';
   let website = '';
   try {
     const url = new URL(store.websiteUrl || '');
     if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password) website = url.hostname;
   } catch { /* An absent/invalid website is not printed. */ }
   const footerSite = website ? `<span class="ship-website">${escapeShippingHtml(website)}</span>` : '';
-  const footer = visible('footer') ? `<div class="ship-footer${website ? ' ship-has-website' : ''}" data-fit-box><span class="ship-bag">${bag}</span><div>${footerSite}<strong>${copy.thanks}</strong>${km ? '<span>Thank you for your order!</span>' : ''}</div><span class="ship-heart">${heart}</span></div>` : '';
+  const footer = visible('footer') ? `<div class="ship-footer${website ? ' ship-has-website' : ''}" data-fit-box><span class="ship-bag">${bag}</span><div>${footerSite}<strong>${copy.thanks}</strong></div><span class="ship-heart">${heart}</span></div>` : '';
   const textScale = printTextScale(settings.font_size);
   const style = `--ship-width:${paper.width}mm;--ship-height:${paper.height}mm;--ship-user-scale:${textScale};--ship-fit-scale:1`;
   const className = `shipping-label ship-template ship-${template.layout}${compact ? ' ship-small' : paper.id === '100x100' ? ' ship-square' : ' ship-tall'}${km ? ' ship-khmer' : ''}${visible('barcode') ? '' : ' ship-no-qr'}${visible('footer') ? '' : ' ship-no-footer'}`;

@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 import { printTextScale } from "@/lib/receipts/receipt-model";
 import { preparePrint } from '@/lib/printing/prepare-print';
 
@@ -80,6 +82,8 @@ export default function BarcodeLabelsClient({
   categories: Category[];
   settings: Record<string, unknown>;
 }) {
+  const { t: translateLabel } = useLanguage();
+
   const [selected, setSelected] = useState<string[]>([]);
   const [categoryId, setCategoryId] = useState("all");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -191,7 +195,7 @@ export default function BarcodeLabelsClient({
             {[{ id: "all", name: "All", count: products.length }, ...categories.filter((category) => categoryCounts.has(category.id)).map((category) => ({ ...category, count: categoryCounts.get(category.id) ?? 0 }))].map((category) => (
               <button key={category.id} type="button" aria-pressed={categoryId === category.id} onClick={() => setCategoryId(category.id)}
                 className={`shrink-0 rounded-xl border px-4 py-2 text-sm font-semibold transition ${categoryId === category.id ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:text-blue-600"}`}>
-                {category.name} <span className={categoryId === category.id ? "text-blue-100" : "text-slate-400"}>({category.count})</span>
+                <span data-i18n-ignore="true">{category.name}</span> <span className={categoryId === category.id ? "text-blue-100" : "text-slate-400"}>({category.count})</span>
               </button>
             ))}
           </nav>
@@ -207,15 +211,15 @@ export default function BarcodeLabelsClient({
               {selectedProducts.map((product) => (
                 <li key={product.id} className="flex items-center gap-3 px-3 py-2 text-sm">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold text-slate-900">{product.name}</p>
-                    <p className="truncate text-xs text-slate-500">{variantLabel(product) || "Standard"}{product.barcode ? ` · ${product.barcode}` : ""}</p>
+                    <p className="truncate font-semibold text-slate-900" data-i18n-ignore="true">{product.name}</p>
+                    <p className="truncate text-xs text-slate-500">{variantLabel(product) || "Standard"}<span data-i18n-ignore="true">{product.barcode ? ` · ${product.barcode}` : ""}</span></p>
                   </div>
                   <div className="flex items-center overflow-hidden rounded-lg border border-slate-200">
-                    <button type="button" aria-label={`One fewer label for ${product.name}`} onClick={() => setQuantity(product.id, (quantities[product.id] ?? 1) - 1)} className="grid h-8 w-8 place-items-center text-slate-500 hover:bg-slate-50"><Minus size={13} /></button>
-                    <input type="number" min={1} max={999} aria-label={`Labels for ${product.name}`} value={quantities[product.id] ?? 1} onChange={(event) => setQuantity(product.id, Number(event.target.value))} className="h-8 w-10 border-x border-slate-200 text-center text-sm outline-none" />
-                    <button type="button" aria-label={`One more label for ${product.name}`} onClick={() => setQuantity(product.id, (quantities[product.id] ?? 1) + 1)} className="grid h-8 w-8 place-items-center text-slate-500 hover:bg-slate-50"><Plus size={13} /></button>
+                    <button type="button" aria-label={formatUiText(translateLabel("One fewer label for {0}"), [product.name])} onClick={() => setQuantity(product.id, (quantities[product.id] ?? 1) - 1)} className="grid h-8 w-8 place-items-center text-slate-500 hover:bg-slate-50" data-i18n-ignore-attributes="aria-label"><Minus size={13} /></button>
+                    <input type="number" min={1} max={999} aria-label={formatUiText(translateLabel("Labels for {0}"), [product.name])} value={quantities[product.id] ?? 1} onChange={(event) => setQuantity(product.id, Number(event.target.value))} className="h-8 w-10 border-x border-slate-200 text-center text-sm outline-none"  data-i18n-ignore-attributes="aria-label"/>
+                    <button type="button" aria-label={formatUiText(translateLabel("One more label for {0}"), [product.name])} onClick={() => setQuantity(product.id, (quantities[product.id] ?? 1) + 1)} className="grid h-8 w-8 place-items-center text-slate-500 hover:bg-slate-50" data-i18n-ignore-attributes="aria-label"><Plus size={13} /></button>
                   </div>
-                  <button type="button" aria-label={`Remove ${product.name}`} onClick={() => setSelected((current) => current.filter((id) => id !== product.id))} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"><X size={15} /></button>
+                  <button type="button" aria-label={formatUiText(translateLabel("Remove {0}"), [product.name])} onClick={() => setSelected((current) => current.filter((id) => id !== product.id))} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" data-i18n-ignore-attributes="aria-label"><X size={15} /></button>
                 </li>
               ))}
             </ul>
@@ -318,9 +322,11 @@ export function LabelCard({
   customText: string;
   fontSize?:unknown; density?:unknown;
 }) {
+  const { t: translateLabel } = useLanguage();
+
   const value = labelBarcode(product);
   const barcodeError = elements.barcode ? validateCode39(value) : null;
-  if (barcodeError) return <div role="alert" className="no-print rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{product.name}: {barcodeError} Saved barcode values are unchanged.</div>;
+  if (barcodeError) return <div role="alert" className="no-print rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"><span data-i18n-ignore="true">{product.name}</span>: {barcodeError} Saved barcode values are unchanged.</div>;
   const data = elements.barcode ? code39BarsExact(value) : { text: value, bars: [], width: 0 };
   const [width, height] = size.split("x").map(Number);
   const image = product.variant_image_url ?? product.image_url;
@@ -328,18 +334,18 @@ export function LabelCard({
   const scale = Math.min(width / 50, height / 30) * (elements.image && image ? 0.8 : elements.customText && customText ? 0.9 : 1);
   const textScale=scale*printTextScale(fontSize);
   const details = <div style={{minWidth:0,flex:1}}>
-    {elements.storeName && <div style={{fontSize:9*textScale,lineHeight:1.1,fontWeight:700,marginBottom:2*scale,overflowWrap:"anywhere"}}>{businessName}</div>}
+    {elements.storeName && <div style={{fontSize:9*textScale,lineHeight:1.1,fontWeight:700,marginBottom:2*scale,overflowWrap:"anywhere"}} data-i18n-ignore="true">{businessName}</div>}
     {elements.image && image && <img src={image} alt="" style={{width:20*scale,height:20*scale,objectFit:"contain",margin:"0 auto"}}/>}
-    {elements.name && <div style={{fontSize:12*textScale,fontWeight:800,lineHeight:1.05,overflowWrap:"anywhere"}}>{product.name}</div>}
-    {elements.variant && <div style={{fontSize:9*textScale,lineHeight:1.2}}>{[product.color,product.size].filter(Boolean).join(" / ")}</div>}
-    {elements.sku && <div style={{fontSize:8*textScale,lineHeight:1.3,overflowWrap:"anywhere"}}>SKU: {product.sku || data.text}</div>}
+    {elements.name && <div style={{fontSize:12*textScale,fontWeight:800,lineHeight:1.05,overflowWrap:"anywhere"}} data-i18n-ignore="true">{product.name}</div>}
+    {elements.variant && <div style={{fontSize:9*textScale,lineHeight:1.2}} data-i18n-ignore="true">{[product.color,product.size].filter(Boolean).join(" / ")}</div>}
+    {elements.sku && <div style={{fontSize:8*textScale,lineHeight:1.3,overflowWrap:"anywhere"}}>SKU: <span data-i18n-ignore="true">{product.sku || data.text}</span></div>}
   </div>;
   return <div className="barcode-label border border-slate-200 bg-white text-black" style={{width:`${width}mm`,height:`${height}mm`,boxSizing:"border-box",padding:`${1.5*scale}mm`,display:"flex",flexDirection:"column",justifyContent:"space-between",gap:(density==="compact"?1:2)*scale,overflow:"hidden",textAlign:split?"left":"center",fontFamily:"Arial, sans-serif"}}>
     <div style={{display:"flex",gap:5*scale,alignItems:"center"}}>
       {details}
       {split && elements.price && <div style={{borderLeft:"1px solid black",paddingLeft:5*scale,flexShrink:0}}><div style={{fontSize:7*textScale,letterSpacing:1}}>PRICE</div><div style={{fontSize:20*textScale,fontWeight:900,lineHeight:1.2}}>{money(product.selling_price)}</div></div>}
     </div>
-    {elements.barcode && <div style={{textAlign:"center",padding:"0 2mm"}}><svg shapeRendering="crispEdges" viewBox={`0 0 ${data.width} 44`} style={{width:"100%",height:`${(split?8:6)*scale}mm`,display:"block"}} preserveAspectRatio="none" aria-label={`Barcode ${data.text}`}>{data.bars.map((bar,index)=><rect key={index} x={bar.x} y="0" width={bar.width} height="44" fill="black"/>)}</svg><div style={{fontSize:8*textScale,letterSpacing:1,lineHeight:1.1}}>{data.text}</div></div>}
+    {elements.barcode && <div style={{textAlign:"center",padding:"0 2mm"}}><svg shapeRendering="crispEdges" viewBox={`0 0 ${data.width} 44`} style={{width:"100%",height:`${(split?8:6)*scale}mm`,display:"block"}} preserveAspectRatio="none" aria-label={formatUiText(translateLabel("Barcode {0}"), [data.text])} data-i18n-ignore-attributes="aria-label">{data.bars.map((bar,index)=><rect key={index} x={bar.x} y="0" width={bar.width} height="44" fill="black"/>)}</svg><div style={{fontSize:8*textScale,letterSpacing:1,lineHeight:1.1}} data-i18n-ignore="true">{data.text}</div></div>}
     {!split && elements.price && <div style={{fontSize:19*textScale,fontWeight:900,lineHeight:1}}>{money(product.selling_price)}</div>}
   </div>;
 }

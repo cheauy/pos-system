@@ -28,15 +28,15 @@ export default function StorefrontHero({ slug, brand, cartQuantity, onOpenCart, 
   const fashion = brand.businessType === "fashion";
   const banner = brand.bannerUrl || null;
   return <>
-    <div className="store-topbar">{locationUrl && <a href={locationUrl} target="_blank" rel="noreferrer"><MapPin size={14} />{t("View Our Location")}</a>}<label className="store-language"><Globe2 size={14} /><select aria-label="Store language" value={language} onChange={event => setLanguage(event.target.value)}><option value="en">ENG</option><option value="km">ខ្មែរ</option></select></label></div>
+    <div className="store-topbar">{locationUrl && <a href={locationUrl} target="_blank" rel="noreferrer"><MapPin size={14} />{t("View Our Location")}</a>}<label className="store-language"><Globe2 size={14} /><select aria-label={t("Store language")} value={language} onChange={event => setLanguage(event.target.value)}><option value="en">ENG</option><option value="km">ខ្មែរ</option></select></label></div>
     <header className="store-header">
       <div className="shop-brand">
-        {brand.logoUrl ? <img src={brand.logoUrl} alt={`${brand.name} logo`} /> : <span className="shop-logo-fallback"><Store size={23} /></span>}
-        <div><p>{brand.name}</p><span>{t(brand.businessTypeLabel)}</span></div>
+        {brand.logoUrl ? <img src={brand.logoUrl} alt={`${brand.name} ${t("logo")}`} /> : <span className="shop-logo-fallback"><Store size={23} /></span>}
+        <div><p data-i18n-ignore="true">{brand.name}</p><span>{t(brand.businessTypeLabel)}</span></div>
       </div>
-      <nav className="store-header-menu" aria-label="Store navigation"><a href={`${catalogHref}#store-home`} aria-current={active === "#store-home" ? "page" : undefined}><Home size={15} />{t("Home")}</a><a href={`${catalogHref}#store-products`} aria-current={active === "#store-products" ? "page" : undefined}><Grid2X2 size={15} />{t("All products")}</a>{brand.newArrivalsEnabled !== false && <a href={`${catalogHref}#new-arrivals`} aria-current={active === "#new-arrivals" ? "page" : undefined}><Sparkles size={15} />{t("New arrivals")}</a>}<a href="#contact-us" aria-current={active === "#contact-us" ? "page" : undefined}><Share2 size={15} />{t("Social")}</a><OrderTracking slug={slug} /></nav>
+      <nav className="store-header-menu" aria-label={t("Store navigation")}><a href={`${catalogHref}#store-home`} aria-current={active === "#store-home" ? "page" : undefined}><Home size={15} />{t("Home")}</a><a href={`${catalogHref}#store-products`} aria-current={active === "#store-products" ? "page" : undefined}><Grid2X2 size={15} />{t("All products")}</a>{brand.newArrivalsEnabled !== false && <a href={`${catalogHref}#new-arrivals`} aria-current={active === "#new-arrivals" ? "page" : undefined}><Sparkles size={15} />{t("New arrivals")}</a>}<a href="#contact-us" aria-current={active === "#contact-us" ? "page" : undefined}><Share2 size={15} />{t("Social")}</a><OrderTracking slug={slug} /></nav>
       <div className="store-header-actions">
-        <button type="button" onClick={onOpenCart} className="header-cart" aria-label={`Open cart, ${cartQuantity} items`}><ShoppingCart size={23} /><span>{cartQuantity}</span></button>
+        <button type="button" onClick={onOpenCart} className="header-cart" aria-label={`${t("Open cart")}, ${cartQuantity} ${t("items")}`}><ShoppingCart size={23} /><span>{cartQuantity}</span></button>
       </div>
 
     </header>
@@ -44,14 +44,14 @@ export default function StorefrontHero({ slug, brand, cartQuantity, onOpenCart, 
       {banner && <img src={banner} alt="" className="hero-image" />}
       <div className="hero-shade" />
       <div className="hero-content">
-        <h1>{brand.name}</h1>
-        <p className="hero-description">{brand.description || (fashion ? "Stylish essentials for your everyday story.\nFind your next favorite, made for your style." : "Explore our collection and find your next favorite.")}</p>
+        <h1 data-i18n-ignore="true">{brand.name}</h1>
+        <p className="hero-description" data-i18n-ignore={Boolean(brand.description)}>{brand.description || (fashion ? t("Stylish essentials for your everyday story.\nFind your next favorite, made for your style.") : t("Explore our collection and find your next favorite."))}</p>
         <div className="hero-actions">
           {brand.newArrivalsEnabled !== false && <a href={`${catalogHref}#new-arrivals`} className="hero-shop-link">{t("Shop New Arrivals")} <ArrowRight size={17} /></a>}
           <a href={`${catalogHref}#store-products`} className="hero-shop-link hero-browse-link">{t("Browse Collection")}</a>
         </div>
       </div>
-      {fashion && <div className="hero-editorial" aria-hidden="true"><span>Good Clothes.<br />Brighter Days.</span><small>FASHION<br />LIVES HERE</small></div>}
+      {fashion && <div className="hero-editorial" aria-hidden="true"><span>{t("Good Clothes.")}<br />{t("Brighter Days.")}</span><small>{t("FASHION")}<br />{t("LIVES HERE")}</small></div>}
     </section>}
   </>;
 }

@@ -45,7 +45,7 @@ export default function ShippingLabelsClient({ businessName, businessPhone, busi
           const address = contact.address;
           return <label key={order.id} className="flex items-start gap-3 py-3">
             <input type="checkbox" className="mt-1" checked={selected.includes(order.id)} onChange={() => toggle(order.id)} />
-            <div className="min-w-0 flex-1"><p className="font-semibold">{order.order_number} · {name}</p><p className="text-xs text-slate-500">{phone}</p><p className="truncate text-xs text-slate-500">{address || 'No delivery address'}</p></div><span className="font-bold">${Number(order.total).toFixed(2)}</span>
+            <div className="min-w-0 flex-1"><p className="font-semibold"><span data-i18n-ignore="true">{order.order_number}</span> · <span data-i18n-ignore={Boolean(contact.name)}>{name}</span></p><p className="text-xs text-slate-500" data-i18n-ignore="true">{phone}</p><p className="truncate text-xs text-slate-500" data-i18n-ignore={Boolean(address)}>{address || 'No delivery address'}</p></div><span className="font-bold">${Number(order.total).toFixed(2)}</span>
           </label>;
         }) : <div className="py-12 text-center text-slate-500">No delivery orders found.</div>}</div>
       </section>

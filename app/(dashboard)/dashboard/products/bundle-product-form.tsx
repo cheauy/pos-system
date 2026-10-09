@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 
 import { ButtonSpinner } from "@/components/pending-submit-button";
 import { useMemo, useRef, useState } from "react";
@@ -60,6 +62,8 @@ export default function BundleProductForm({
   initial?: BundleEditValues;
   onUnpackItems?: () => void;
 }) {
+  const { t: translateLabel } = useLanguage();
+
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, setPending] = useState(false);
   const submitting = useRef(false);
@@ -133,7 +137,7 @@ export default function BundleProductForm({
           <select id="bundle-category" name="categoryId" defaultValue={initial?.categoryId ?? ''} className={inputClass}>
             <option value="">No category</option>
             {initial?.categoryId && !categories.some(category => category.id === initial.categoryId) && <option value={initial.categoryId}>Current category</option>}
-            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            {categories.map((category) => <option key={category.id} value={category.id} data-i18n-ignore="true">{category.name}</option>)}
           </select>
         </Field>
         <Field label="Bundle selling price" htmlFor="bundle-price">
@@ -166,8 +170,8 @@ export default function BundleProductForm({
             const product = productMap.get(item.productId);
             if (!product) return <div key={item.productId} className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
               <ItemPhoto src={item.imageUrl} name={item.name || 'Unavailable product'} />
-              <div className="min-w-0 flex-1"><p className="font-medium text-slate-900">{item.name || 'Unavailable product'}</p><p className="text-xs text-slate-600">{item.sku || item.productId}{item.optionsLabel ? ` · ${item.optionsLabel}` : ''}</p><p className="mt-1 text-xs text-amber-800">This saved item is not available in the current branch catalog. It remains in this bundle.</p></div>
-              <span className="shrink-0 text-sm font-semibold">× {item.quantity}</span><button type="button" aria-label={`Remove ${item.name || 'unavailable product'}`} onClick={() => setItems(current => current.filter(row => row.productId !== item.productId))} className="rounded-lg p-2 text-red-600 hover:bg-red-50"><Trash2 size={17} /></button>
+              <div className="min-w-0 flex-1"><p className="font-medium text-slate-900" data-i18n-ignore={Boolean(item.name)}>{item.name || 'Unavailable product'}</p><p className="text-xs text-slate-600"><span data-i18n-ignore="true">{item.sku || item.productId}</span>{item.optionsLabel ? ` · ${item.optionsLabel}` : ''}</p><p className="mt-1 text-xs text-amber-800">This saved item is not available in the current branch catalog. It remains in this bundle.</p></div>
+              <span className="shrink-0 text-sm font-semibold">× {item.quantity}</span><button type="button" aria-label={formatUiText(translateLabel("Remove {0}"), [item.name || (translateLabel("unavailable product"))])} onClick={() => setItems(current => current.filter(row => row.productId !== item.productId))} className="rounded-lg p-2 text-red-600 hover:bg-red-50" data-i18n-ignore-attributes="aria-label"><Trash2 size={17} /></button>
             </div>;
             return (
               <div key={item.productId} className="rounded-xl border border-slate-200 bg-white p-3">
@@ -175,10 +179,10 @@ export default function BundleProductForm({
                 <ItemPhoto src={product.imageUrl} name={product.name} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-slate-900">{formatProductName(product)}</p>
-                  <p className="text-xs text-slate-500">SKU {product.sku ?? "—"} · available {product.stock_quantity}</p>
+                  <p className="text-xs text-slate-500">SKU <span data-i18n-ignore={Boolean(product.sku)}>{product.sku ?? "—"}</span> · available {product.stock_quantity}</p>
                 </div>
                 <input
-                  aria-label={`Quantity for ${product.name}`}
+                  aria-label={formatUiText(translateLabel("Quantity for {0}"), [product.name])}
                   type="number"
                   min="1"
                   max={999}
@@ -189,15 +193,15 @@ export default function BundleProductForm({
                     setItems((current) => current.map((row) => row.productId === item.productId ? { ...row, quantity } : row));
                   }}
                   className="w-20 rounded-lg border border-slate-300 px-3 py-2"
-                />
-                <button type="button" aria-label={`Remove ${product.name}`} onClick={() => setItems((current) => current.filter((row) => row.productId !== item.productId))} className="rounded-lg p-2 text-red-600 hover:bg-red-50">
+                 data-i18n-ignore-attributes="aria-label"/>
+                <button type="button" aria-label={formatUiText(translateLabel("Remove {0}"), [product.name])} onClick={() => setItems((current) => current.filter((row) => row.productId !== item.productId))} className="rounded-lg p-2 text-red-600 hover:bg-red-50" data-i18n-ignore-attributes="aria-label">
                   <Trash2 size={17} />
                 </button>
               </div>
               {product.groups.map(group => <fieldset key={group.id} className="mt-3 border-t border-slate-100 pt-2">
-                <legend className="text-xs font-semibold text-slate-600">{group.name}{group.is_required || group.min_selections > 0 ? ' *' : ''} · {group.selection_type === 'single' ? 'Choose one' : `Up to ${group.max_selections}`}</legend>
+                <legend className="text-xs font-semibold text-slate-600"><span data-i18n-ignore="true">{group.name}</span>{group.is_required || group.min_selections > 0 ? ' *' : ''} · {group.selection_type === 'single' ? 'Choose one' : `Up to ${group.max_selections}`}</legend>
                 <div className="mt-1 flex flex-wrap gap-3">{product.options.filter(option => option.group_id === group.id).map(option => <label key={option.id} className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={item.optionIds.includes(option.id)} onChange={event => setItems(current => current.map(row => row.productId !== item.productId ? row : { ...row, optionIds: event.target.checked ? [...row.optionIds.filter(id => group.selection_type !== 'single' || !product.options.some(o => o.id === id && o.group_id === group.id)), option.id] : row.optionIds.filter(id => id !== option.id) }))} />{option.name}
+                  <input type="checkbox" checked={item.optionIds.includes(option.id)} onChange={event => setItems(current => current.map(row => row.productId !== item.productId ? row : { ...row, optionIds: event.target.checked ? [...row.optionIds.filter(id => group.selection_type !== 'single' || !product.options.some(o => o.id === id && o.group_id === group.id)), option.id] : row.optionIds.filter(id => id !== option.id) }))} /><span data-i18n-ignore="true">{option.name}</span>
                 </label>)}</div>
               </fieldset>)}
               </div>

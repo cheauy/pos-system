@@ -68,6 +68,8 @@ test('delete opens confirmation; Cancel preserves the offer and repeated confirm
   const state=[],refs=[],calls=[];let cursor=0,refCursor=0,finish;
   const react={useState(initial){const i=cursor++;if(!(i in state))state[i]=initial;return[state[i],v=>{state[i]=typeof v==='function'?v(state[i]):v;}];},useRef(initial){const i=refCursor++;return refs[i]??(refs[i]={current:initial});},useEffect(){},useActionState(){}};
   const Component=loadTs('app/(super-admin)/super-admin/discounts/discount-manager.tsx',{
+    '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+    '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
     react,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),
     sonner:{toast:{success(){},error(){}}},'@/lib/subscriptions/plans':{subscriptionPlans:{},subscriptionTerms:[]},
     './actions':{managePromotion:async(...args)=>{calls.push(args);await new Promise(resolve=>{finish=resolve;});return {error:null};},savePromotion(){}},

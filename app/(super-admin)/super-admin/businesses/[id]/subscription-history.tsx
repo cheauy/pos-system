@@ -262,7 +262,8 @@ export async function SubscriptionHistory({
                       <div className="flex items-center gap-2 text-sm text-slate-500">
                         <UserRound size={16} />
 
-                        <span>
+                        <span data-i18n-ignore={Boolean(creator?.full_name ??
+                            creator?.email)}>
                           {creator?.full_name ??
                             creator?.email ??
                             (item.created_by

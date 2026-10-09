@@ -123,7 +123,7 @@ export default function StorefrontShop({
   function addConfiguredItem(item: CartItem) {
     setCart(current => restoreCart([...current, item], products));
     setSelectedProduct(null);
-    toast.success("Added to cart");
+    toast.success(t("Added to cart"));
   }
 
   function quickAdd(product: StorefrontCatalogProduct, variantId?: string) {
@@ -152,11 +152,11 @@ export default function StorefrontShop({
       <StorefrontHero compact={Boolean(productKey)} catalogHref={productKey ? catalogHref : ""} slug={slug} brand={brand} cartQuantity={cartQuantity} onOpenCart={() => setCartOpen(true)} />
       {productKey ? <main className="store-product-detail">
         <a className="inline-flex min-h-11 items-center text-sm font-semibold" href={`${catalogHref}#store-products`}>← {t("All products")}</a>
-        {pageProduct ? <ProductConfigurator key={pageProduct.key} fullPage product={pageProduct} cart={cart} businessType={settings.businessType} currency={settings.currency} canOrder={settings.orderingEnabled && hydrated} onClose={() => {}} onAdd={addConfiguredItem} /> : <p className="py-16 text-center">This product is no longer available.</p>}
-        {pageProduct?.description && <section className="product-detail-description"><h2>{t("Description")}</h2><p>{pageProduct.description}</p></section>}
+        {pageProduct ? <ProductConfigurator key={pageProduct.key} fullPage product={pageProduct} cart={cart} businessType={settings.businessType} currency={settings.currency} canOrder={settings.orderingEnabled && hydrated} onClose={() => {}} onAdd={addConfiguredItem} /> : <p className="py-16 text-center">{t("This product is no longer available.")}</p>}
+        {pageProduct?.description && <section className="product-detail-description"><h2>{t("Description")}</h2><p data-i18n-ignore="true">{pageProduct.description}</p></section>}
       </main> : <StorefrontCatalog productHref={productHref} products={products} categories={categories} settings={settings} onAdd={quickAdd} />}
 
-      {brand.socialLinks?.telegram && /^https:\/\//i.test(brand.socialLinks.telegram) && <a className="store-telegram-contact" href={brand.socialLinks.telegram} target="_blank" rel="noreferrer" aria-label="Contact store on Telegram"><img src="/social/telegram.png" alt="" width={28} height={28}/><span>Chat with us</span></a>}
+      {brand.socialLinks?.telegram && /^https:\/\//i.test(brand.socialLinks.telegram) && <a className="store-telegram-contact" href={brand.socialLinks.telegram} target="_blank" rel="noreferrer" aria-label={t("Contact store on Telegram")}><img src="/social/telegram.png" alt="" width={28} height={28}/><span>{t("Chat with us")}</span></a>}
       {settings.orderingEnabled && cartQuantity > 0 && (
         <button
           type="button"
@@ -347,19 +347,19 @@ function ProductConfigurator({
 
   return (
     <div className={fullPage ? "product-detail-content" : "fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"}>
-      <div role={fullPage ? undefined : "dialog"} aria-modal={fullPage ? undefined : true} aria-label={product.name} className={fullPage ? "product-detail-layout" : "max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"}>
+      <div role={fullPage ? undefined : "dialog"} aria-modal={fullPage ? undefined : true} aria-label={product.name} className={fullPage ? "product-detail-layout" : "max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"} data-i18n-ignore-attributes="aria-label">
         {fullPage && <div className="product-detail-gallery">{gallery}</div>}
         <div className={fullPage ? "product-detail-heading" : "sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-5"}>
           <div>
-            <Heading className="text-xl font-bold text-slate-950">{product.name}</Heading>
+            <Heading className="text-xl font-bold text-slate-950"><span data-i18n-ignore="true">{product.name}</span></Heading>
             {fullPage && <div className="mt-3 flex flex-wrap items-center gap-3"><strong className="text-2xl">{formatMoney(unitPrice, currency)}</strong><span className="text-sm">{remainingStock > 0 ? `${remainingStock} ${t("In stock")}` : t("Out of stock")}</span>{product.isBestseller && <span className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-800">{t("Bestseller")}</span>}{!product.isBestseller && product.isNewArrival && <span className="rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-700">{t("New arrival")}</span>}</div>}
             {product.preorderVariantIds?.includes(variant.id) && <span className="mt-2 inline-flex rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">{t("Pre-order")}</span>}
             <p className="mt-1 text-sm text-slate-500">
               {isShoeProduct
-                ? "Choose colour and size. Stock is checked for the exact pair."
+                ? t("Choose colour and size. Stock is checked for the exact pair.")
                 : isMilkTeaProduct
-                  ? "Build your drink — choose size, sweetness, ice, milk and toppings."
-                  : "Choose options before adding to cart."}
+                  ? t("Build your drink — choose size, sweetness, ice, milk and toppings.")
+                  : t("Choose options before adding to cart.")}
             </p>
           </div>
           <button
@@ -374,7 +374,7 @@ function ProductConfigurator({
         </div>
 
         <div className={fullPage ? "product-detail-options space-y-6" : "space-y-6 p-5"}>
-          {!fullPage && product.description && <p className="whitespace-pre-line text-sm leading-6 text-slate-600">{product.description}</p>}
+          {!fullPage && product.description && <p className="whitespace-pre-line text-sm leading-6 text-slate-600" data-i18n-ignore="true">{product.description}</p>}
           {!fullPage && gallery}
 
           {product.productType === "variant" && isShoeProduct && (
@@ -382,7 +382,7 @@ function ProductConfigurator({
               <div>
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-800">{t("Colour")}</p>
-                  <span className="text-xs text-slate-400">{selectedColor || "Choose"}</span>
+                  <span className="text-xs text-slate-400">{selectedColor || t("Choose")}</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {shoeColors.map((color) => {
@@ -405,7 +405,7 @@ function ProductConfigurator({
                             : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                         }`}
                       >
-                        {color}
+                        <span data-i18n-ignore="true">{color}</span>
                       </button>
                     );
                   })}
@@ -416,7 +416,7 @@ function ProductConfigurator({
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-800">{t("Size")}</p>
                   <span className="text-xs text-slate-400">
-                    {variant.size ? `${isFashionProduct ? t("Size") : "EU"} ${variant.size}` : "Choose"}
+                    {variant.size ? `${isFashionProduct ? t("Size") : "EU"} ${variant.size}` : t("Choose")}
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6">
@@ -434,7 +434,7 @@ function ProductConfigurator({
                             : "border-slate-200 text-slate-800 hover:border-slate-300"
                         }`}
                       >
-                        {row.size || "—"}
+                        <span data-i18n-ignore="true">{row.size || "—"}</span>
                       </button>
                     );
                   })}
@@ -442,8 +442,7 @@ function ProductConfigurator({
                 <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 text-xs">
                   <span className="text-slate-500">{t("Selected")}</span>
                   <span className="font-semibold text-slate-800">
-                    {variantLabel} · {remainingStock} available to add
-                  </span>
+                    {variantLabel} · {remainingStock} {t(" available to add")}</span>
                 </div>
               </div>
             </div>
@@ -457,7 +456,7 @@ function ProductConfigurator({
                   const label =
                     [row.color, row.size].filter(Boolean).join(" / ") ||
                     row.sku ||
-                    "Option";
+                    t("Option");
                   const active = row.id === variant.id;
                   return (
                     <button
@@ -473,8 +472,7 @@ function ProductConfigurator({
                     >
                       <span className="font-semibold text-slate-900">{label}</span>
                       <span className="mt-1 block text-xs text-slate-500">
-                        {formatMoney(row.sellingPrice, currency)} · {row.stockQuantity} stock
-                      </span>
+                        {formatMoney(row.sellingPrice, currency)} · {row.stockQuantity} {t(" stock")}</span>
                     </button>
                   );
                 })}
@@ -485,11 +483,11 @@ function ProductConfigurator({
           {product.optionGroups.map((group) => (
             <div key={group.id}>
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-slate-800">{group.name}</p>
+                <p className="text-sm font-semibold text-slate-800" data-i18n-ignore="true">{group.name}</p>
                 <span className="text-xs text-slate-400">
                   {group.selectionType === "single"
-                    ? "Choose one"
-                    : `Choose up to ${group.maxSelections}`}
+                    ? t("Choose one")
+                    : `${t("Choose up to")} ${group.maxSelections}`}
                 </span>
               </div>
               <div className={isMilkTeaProduct && group.selectionType === "single" ? "mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3" : "mt-3 space-y-2"}>
@@ -523,12 +521,12 @@ function ProductConfigurator({
                         >
                           {active && <Check size={13} />}
                         </span>
-                        {option.name}
+                        <span data-i18n-ignore="true">{option.name}</span>
                       </span>
                       <span className="text-slate-500">
                         {option.priceAdjustment > 0
                           ? `+${formatMoney(option.priceAdjustment, currency)}`
-                          : "Included"}
+                          : t("Included")}
                       </span>
                     </button>
                   );
@@ -744,7 +742,7 @@ function CartDrawer({
       });
       setCouponInput(payload.coupon.code);
       setCouponMessage(
-        `Coupon ${payload.coupon.code} applied · save ${formatMoney(
+        `${t("Coupon")} ${payload.coupon.code} ${t("applied · save")} ${formatMoney(
           Number(payload.coupon.discount ?? 0),
           settings.currency,
         )}.`,
@@ -758,7 +756,7 @@ function CartDrawer({
     } finally {
       if (requestId === couponRequest.current) setCouponChecking(false);
     }
-  }, [slug, subtotal, settings.currency, cart, fulfillment, tableToken, couponContextKey]);
+  }, [slug, subtotal, settings.currency, cart, fulfillment, tableToken, couponContextKey, t]);
 
   useEffect(() => {
     if (!coupon?.code || coupon.contextKey === couponContextKey) return;
@@ -849,7 +847,7 @@ function CartDrawer({
         return;
       }
       setMessage(
-        `Order ${payload.order?.orderNumber ?? "created"} was sent successfully.`,
+        `${t("Order")} ${payload.order?.orderNumber ?? t("created")} ${t("was sent successfully.")}`,
       );
     } catch (error) {
       setMessage(
@@ -893,9 +891,9 @@ function CartDrawer({
                 className="rounded-xl border border-slate-200 p-4"
               >
                 <div className="flex justify-between gap-3">
-                  {item.imageUrl && <img src={item.imageUrl} alt={item.name} className="h-20 w-16 shrink-0 rounded-lg bg-slate-50 object-contain" />}
+                  {item.imageUrl && <img src={item.imageUrl} alt={item.name} className="h-20 w-16 shrink-0 rounded-lg bg-slate-50 object-contain"  data-i18n-ignore-attributes="alt"/>}
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-slate-900">{item.name}</p>
+                    <p className="font-semibold text-slate-900" data-i18n-ignore="true">{item.name}</p>
                     {item.variantLabel && (
                       <p className="text-xs text-slate-500">{item.variantLabel}</p>
                     )}
@@ -908,12 +906,11 @@ function CartDrawer({
                       className="mt-1 text-sm font-semibold"
                       style={{ color: "var(--store-primary-ink)" }}
                     >
-                      {formatMoney(item.unitPrice, settings.currency)} each
-                    </p>
+                      {formatMoney(item.unitPrice, settings.currency)} {t(" each")}</p>
                   </div>
                   <button
                     type="button"
-                    aria-label={`Remove ${item.name} from order`}
+                    aria-label={t("Remove {0} from order").replace("{0}", () => item.name)}
                     onClick={() =>
                       setCart((current) =>
                         current.filter((row) => row.key !== item.key),
@@ -929,7 +926,7 @@ function CartDrawer({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      aria-label={`Decrease ${item.name} quantity`}
+                      aria-label={t("Decrease {0} quantity").replace("{0}", () => item.name)}
                       disabled={item.quantity <= 1}
                       onClick={() => updateQuantity(item.key, item.quantity - 1)}
                       className="rounded-lg border border-slate-300 p-1.5"
@@ -941,7 +938,7 @@ function CartDrawer({
                     </span>
                     <button
                       type="button"
-                      aria-label={`Increase ${item.name} quantity`}
+                      aria-label={t("Increase {0} quantity").replace("{0}", () => item.name)}
                       disabled={item.quantity >= 999 || cart.filter(row => row.productId === item.productId).reduce((sum, row) => sum + row.quantity, 0) >= item.maxStock}
                       onClick={() => updateQuantity(item.key, item.quantity + 1)}
                       className="rounded-lg border border-slate-300 p-1.5"
@@ -967,13 +964,13 @@ function CartDrawer({
             />
             {couponDiscount > 0 && (
               <PriceRow
-                label={coupon ? `Coupon · ${coupon.code}` : "Coupon"}
+                label={coupon ? `${t("Coupon")} · ${coupon.code}` : t("Coupon")}
                 value={`-${formatMoney(couponDiscount, settings.currency)}`}
               />
             )}
             {fulfillment === "delivery" && (
               <PriceRow
-                label={selectedZone ? `Delivery · ${selectedZone.name}` : t("Delivery")}
+                label={selectedZone ? `${t("Delivery")} · ${selectedZone.name}` : t("Delivery")}
                 value={formatMoney(deliveryFee, settings.currency)}
               />
             )}
@@ -1024,14 +1021,14 @@ function CartDrawer({
                   )}
                 </button>
               </div>
-              {couponPending && <p className="mt-2 text-xs text-slate-500" role="status">Checking discount for your current cart…</p>}
+              {couponPending && <p className="mt-2 text-xs text-slate-500" role="status">{t("Checking discount for your current cart…")}</p>}
               {!couponPending && couponMessage && (
                 <p
                   className={`mt-2 text-xs ${
                     coupon ? "text-emerald-700" : "text-red-600"
                   }`}
                 >
-                  {couponMessage}
+                  {t(couponMessage)}
                 </p>
               )}
             </div>
@@ -1039,14 +1036,13 @@ function CartDrawer({
 
           {settings.loyaltyEnabled && (
             <p className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-800">
-              Loyalty is enabled. This order can earn points after the shop marks it completed.
-            </p>
+              {t("Loyalty is enabled. This order can earn points after the shop marks it completed.")}</p>
           )}
 
           {belowMinimum && (
             <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              Minimum order is {formatMoney(effectiveMinimum, settings.currency)}
-              {selectedZone ? ` for ${selectedZone.name}` : ""}.
+              {t("Minimum order is ")}{formatMoney(effectiveMinimum, settings.currency)}
+              {selectedZone ? ` ${t("for")} ${selectedZone.name}` : ""}.
             </p>
           )}
 
@@ -1088,14 +1084,14 @@ function CartDrawer({
                   className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-[var(--store-primary)] focus:ring-4 focus:ring-[var(--store-primary-soft)]"
                 >
                   {settings.deliveryZones.map((zone) => (
-                    <option key={zone.id} value={zone.id}>
+                    <option key={zone.id} value={zone.id} data-i18n-ignore="true">
                       {zone.name} · {formatMoney(zone.fee, settings.currency)}
                     </option>
                   ))}
                 </select>
                 {selectedZone && selectedZone.minimumOrder > 0 && (
                   <span className="mt-1 block text-xs text-slate-500">
-                    Zone minimum: {formatMoney(selectedZone.minimumOrder, settings.currency)}
+                    {t("Zone minimum: ")}{formatMoney(selectedZone.minimumOrder, settings.currency)}
                   </span>
                 )}
               </label>
@@ -1160,7 +1156,7 @@ function CartDrawer({
                         : "border-slate-200 text-slate-700"
                     }`}
                   >
-                    {value === "khqr" ? "KHQR" : t("Cash on Delivery (COD)")}
+                    {value === "khqr" ? t("KHQR") : t("Cash on Delivery (COD)")}
                   </button>
                 ))}
               </div>
@@ -1175,7 +1171,7 @@ function CartDrawer({
                   </p>
                 )}
                 <p className="mt-1 text-sm text-slate-600">
-                  Pay exactly {formatMoney(total, settings.currency)}.
+                  {t("Pay exactly ")}{formatMoney(total, settings.currency)}.
                 </p>
                 {settings.khqrInstructions && (
                   <p className="mt-2 text-xs leading-5 text-slate-500">
@@ -1185,11 +1181,10 @@ function CartDrawer({
                 <label className="mt-4 block text-left text-sm font-medium text-slate-700">
                   {t("Payment proof")}
                   <input type="file" name="paymentProof" accept="image/jpeg,image/png,image/webp" required className="mt-2 block w-full rounded-xl border border-slate-300 bg-white p-3 text-sm" />
-                  <span className="mt-1 block text-xs text-slate-500">JPG, PNG or WebP, up to 5 MB. Required for KHQR payment.</span>
+                  <span className="mt-1 block text-xs text-slate-500">{t("JPG, PNG or WebP, up to 5 MB. Required for KHQR payment.")}</span>
                 </label>
                 <p className="mt-2 text-left text-xs text-amber-700">
-                  The shop will verify the KHQR payment before marking it paid.
-                </p>
+                  {t("The shop will verify the KHQR payment before marking it paid.")}</p>
               </div>
             )}
 
@@ -1205,7 +1200,7 @@ function CartDrawer({
               required
               placeholder={t("Phone number")}
             />
-            <CheckoutInput name="guestEmail" label={t("Email")} required placeholder="you@example.com" />
+            <CheckoutInput name="guestEmail" label={t("Email")} required placeholder={t("you@example.com")} />
             {fulfillment === "delivery" && (
               <CheckoutInput
                 name="guestAddress"
@@ -1233,7 +1228,7 @@ function CartDrawer({
 
             {message && (
               <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
-                {message}
+                {t(message)}
               </p>
             )}
 

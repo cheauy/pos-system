@@ -179,7 +179,7 @@ export default async function ProductsView() {
         </section>
       )}
 
-      <div className="col-span-2 min-w-0 space-y-4">
+      <div className="col-span-2 min-w-0 space-y-4 max-sm:pb-24">
           <section className="hidden grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white sm:grid xl:grid-cols-4 [&>div]:border-slate-100 [&>div]:border-r">
             <MetricCard
               icon={<Package size={22} />}

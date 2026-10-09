@@ -16,6 +16,8 @@ test('supplier form reports success only after save, prevents duplicate submissi
   const messages = [], states = [];
   let calls = 0, resolve, reject;
   const Client = loadTs('app/(dashboard)/dashboard/suppliers/suppliers-client.tsx', {
+    '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+    '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
     'react/jsx-runtime': jsx, 'next/link': () => null, 'lucide-react': icons, '@/components/pending-submit-button': { ButtonSpinner: () => null },
     react: { useState: initial => [initial, value => states.push(value)], useMemo: fn => fn(), useEffect() {}, useRef: value => ({current:value}) },
     'react-dom': { createPortal: node => node }, sonner: {toast:{success:(...args)=>messages.push(args)}},

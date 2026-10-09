@@ -11,6 +11,8 @@ test('catalog opens details directly and toggles Hide / Unhide through confirmat
       let cursor = 0, pending;
       const states = [], writes = [], deletions = [];
       const { default: Catalog } = loadTs('components/product-list.tsx', {
+    '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+    '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
         'react/jsx-runtime': require('react/jsx-runtime'),
     '@/components/anchored-action-menu': { default: 'action-menu' },
         react: {

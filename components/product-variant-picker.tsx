@@ -1,4 +1,5 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
 import ProductPhoto from '@/components/product-photo';
 import {Box,Check,ChevronDown,Search,Package} from "lucide-react";
 import {useEffect,useMemo,useRef,useState,type KeyboardEvent as ReactKeyboardEvent} from "react";
@@ -39,6 +40,8 @@ export default function ProductVariantPicker({
   stockForProduct: (product: PickerProduct) => number;
   allowOutOfStock?: boolean;
 }) {
+  const { t: translateLabel } = useLanguage();
+
   const wrapperRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -172,10 +175,10 @@ export default function ProductVariantPicker({
         <div className="min-w-0 flex-1">
           {selected ? (
             <>
-              <p className="truncate text-sm font-semibold text-slate-900">
+              <p className="truncate text-sm font-semibold text-slate-900" data-i18n-ignore="true">
                 {[selected.name, selected.color, selected.size].filter(Boolean).join(" · ")}
               </p>
-              <p className="truncate text-xs text-slate-500">SKU: {selected.sku || "No SKU"}</p>
+              <p className="truncate text-xs text-slate-500">SKU: <span data-i18n-ignore={Boolean(selected.sku)}>{selected.sku || "No SKU"}</span></p>
             </>
           ) : (
             <>
@@ -260,7 +263,7 @@ export default function ProductVariantPicker({
                     className="h-3.5 w-3.5 rounded-full border border-slate-300"
                     style={{ backgroundColor: swatchColor(color) }}
                   />
-                  {color}
+                  <span data-i18n-ignore="true">{color}</span>
                 </button>
               ))}
               {(categoryFilter !== "all" || colorFilter !== "all" || query) && (
@@ -283,7 +286,7 @@ export default function ProductVariantPicker({
             {groups.map(([name, rows]) => (
               <section key={name}>
                 <div className="sticky top-0 z-10 flex items-center justify-between bg-slate-50 px-3 py-2">
-                  <p className="min-w-0 truncate text-sm font-bold text-slate-900">{name}</p>
+                  <p className="min-w-0 truncate text-sm font-bold text-slate-900" data-i18n-ignore="true">{name}</p>
                   <p className="ml-2 shrink-0 whitespace-nowrap text-xs text-slate-500">
                     {rows.length} {rows.length === 1 ? "variant" : "variants"}
                   </p>
@@ -321,12 +324,12 @@ export default function ProductVariantPicker({
                         </div>
 
                         <div className="min-w-0">
-                          <p title={product.name} className="truncate text-sm font-semibold text-slate-900">{product.name}</p>
+                          <p title={product.name} className="truncate text-sm font-semibold text-slate-900" data-i18n-ignore="true">{product.name}</p>
                           <div className="mt-1 flex min-w-0 items-center gap-2 text-xs text-slate-500">
-                            {product.color && <span className="inline-flex min-w-0 items-center gap-1.5"><span className="h-3 w-3 shrink-0 rounded-full border border-slate-300" style={{ backgroundColor: swatchColor(product.color) }} /><span className="truncate" title={product.color}>{product.color}</span></span>}
-                            {product.size && <span className="shrink-0 whitespace-nowrap">{product.color ? '· ' : ''}{product.size}</span>}
+                            {product.color && <span className="inline-flex min-w-0 items-center gap-1.5"><span className="h-3 w-3 shrink-0 rounded-full border border-slate-300" style={{ backgroundColor: swatchColor(product.color) }} /><span className="truncate" title={product.color} data-i18n-ignore-attributes="title" data-i18n-ignore="true">{product.color}</span></span>}
+                            {product.size && <span className="shrink-0 whitespace-nowrap">{product.color ? '· ' : ''}<span data-i18n-ignore="true">{product.size}</span></span>}
                           </div>
-                          <p title={product.sku || 'No SKU'} className="mt-1 truncate text-[11px] text-slate-500">SKU: {product.sku || 'No SKU'}</p>
+                          <p title={product.sku || (translateLabel("No SKU"))} className="mt-1 truncate text-[11px] text-slate-500" data-i18n-ignore-attributes="title">SKU: <span data-i18n-ignore={Boolean(product.sku)}>{product.sku || 'No SKU'}</span></p>
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                             <span className={`inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${outOfStock ? 'bg-rose-50 text-rose-700' : lowStock ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
                               {outOfStock ? 'Out of stock' : lowStock ? `Low stock · ${quantity}` : `In stock · ${quantity}`}

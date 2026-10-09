@@ -70,7 +70,7 @@ export default async function AuditLogsPage() {
         <section className="rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
           <h1 className="text-lg font-semibold">Failed to load audit logs</h1>
           <p className="mt-2 text-sm">{logsResult.error.message}</p>
-          <p className="mt-1 text-xs">Error code: {logsResult.error.code}</p>
+          <p className="mt-1 text-xs">Error code: <span data-i18n-ignore="true">{logsResult.error.code}</span></p>
         </section>
       </main>
     );

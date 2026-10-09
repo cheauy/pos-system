@@ -484,7 +484,7 @@ export default async function SubscriptionPaymentPage({
           ) : null}
 
           {rejected && order.review_note ? (
-            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-800">
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-800" data-i18n-ignore="true">
               {order.review_note}
             </div>
           ) : null}

@@ -127,7 +127,7 @@ export default function BusinessSettingsClient({
           Business Settings
         </p>
         <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.03em] text-slate-950 sm:text-4xl dark:text-white">
-          Change {businessName}
+          Change <span data-i18n-ignore="true">{businessName}</span>
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-400">
           Edit your TENH POS store address or switch the business setup that matches how you sell.

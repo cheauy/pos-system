@@ -187,7 +187,7 @@ export default function BusinessChangePaymentReview({
             }
           }}
         >
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${
               confirmDecision === "reject"
                 ? "bg-red-50 text-red-600"

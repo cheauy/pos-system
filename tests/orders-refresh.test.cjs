@@ -100,6 +100,8 @@ function fixture({receiveAll = false, baseline = false, delayDetail = false, sta
   // Synthetic success: models Next applying the action's revalidatePath payload 20ms later. No real mutation.
   const statusAction = async () => {counts.mutations++; rows = rows.map(r => r.id === 'selected' ? {...r, status: 'in_progress', updatedAt: 'v2'} : r); time.setTimeout(() => workspace.update({...workspace.props, data: data()}), 20); return {success: true, data: undefined};};
   const deps = {
+    '@/components/providers/language-provider': {useLanguage: () => ({language: 'en', t: text => text})},
+    '@/lib/i18n/translations': loadTs('lib/i18n/translations.ts'),
     react: hooks, 'react/jsx-runtime': jsx, 'react-dom': {createPortal: child => child}, 'next/link': {default: () => null}, 'next/navigation': {useRouter: () => router},
     'lucide-react': new Proxy({}, {get: () => () => null}), './orders-workspace.module.css': new Proxy({}, {get: (_obj, key) => key}),
     './[id]/return-items-form': {default: function ReturnItemsForm() {}}, './[id]/order-detail-controls': {CancelOrderItem: () => null},
@@ -207,7 +209,9 @@ test('dirty edit and return state survives unrelated refreshes in the same verif
   const note = elements(dialog.tree, node => node.type === 'textarea' && node.props.placeholder?.startsWith('Add a note for this order'))[0];
   assert.ok(note, JSON.stringify(elements(dialog.tree, node => ['textarea','input','p'].includes(node.type)).map(node => ({type: node.type, props: node.props}))));
   note.props.onChange({target: {value: 'Unsaved edit'}}); await settle();
-  const returnForm = loadTs('app/(dashboard)/dashboard/orders/[id]/return-items-form.tsx', {react: hooks, 'react/jsx-runtime': jsx, 'react-dom': {createPortal: child => child}, sonner: {toast: {success() {}}}, 'next/navigation': {useRouter: () => ({refresh() {}})}, 'lucide-react': f.deps['lucide-react'], './return-actions': {createOrderReturn() {throw Error('No real returns');}}, '@/components/product-photo': {default: () => null}}).default;
+  const returnForm = loadTs('app/(dashboard)/dashboard/orders/[id]/return-items-form.tsx', {
+    '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+    '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),react: hooks, 'react/jsx-runtime': jsx, 'react-dom': {createPortal: child => child}, sonner: {toast: {success() {}}}, 'next/navigation': {useRouter: () => ({refresh() {}})}, 'lucide-react': f.deps['lucide-react'], './return-actions': {createOrderReturn() {throw Error('No real returns');}}, '@/components/product-photo': {default: () => null}}).default;
   const props = {orderId: 'selected', orderNumber: 'selected', items: [{id: 'item', product_name: 'Item', quantity: 5, returned_quantity: 0, unit_price: 2}]};
   const returns = renderer(returnForm, props);
   elements(returns.tree, node => node.type === 'button')[0].props.onClick(); await settle();

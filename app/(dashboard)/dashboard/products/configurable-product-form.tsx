@@ -89,7 +89,7 @@ export default function ConfigurableProductForm({ categories, businessType = "ge
 
   return (
     <form ref={formRef} action={formAction} className="mt-6 space-y-5">
-      <label className="block text-sm font-semibold text-slate-700">Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
+      <label className="block text-sm font-semibold text-slate-700">Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id} data-i18n-ignore="true">{b.name}</option>)}</select></label>
       <input
         type="hidden"
         name="optionGroups"
@@ -135,7 +135,7 @@ export default function ConfigurableProductForm({ categories, businessType = "ge
         <Field label="Category" htmlFor="config-category">
           <select id="config-category" name="categoryId" defaultValue="" className={inputClass}>
             <option value="">No category</option>
-            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            {categories.map((category) => <option key={category.id} value={category.id} data-i18n-ignore="true">{category.name}</option>)}
           </select>
         </Field>
       </div>

@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 
 import { ButtonSpinner } from "@/components/pending-submit-button";
 import CategoryDisplayBranches from "./category-display-branches";
@@ -76,7 +78,7 @@ function StatCard({
   }[accent];
 
   return (
-    <div className="flex min-h-28 items-center gap-5 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+    <div className="flex min-h-28 flex-wrap items-center gap-5 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
       <div className={`grid size-14 shrink-0 place-items-center rounded-2xl ${classes}`}>
         {icon}
       </div>
@@ -100,6 +102,8 @@ export default function CategoriesClient({
   totalProducts: number;
   loadError: string | null;
 }) {
+  const { t: translateLabel } = useLanguage();
+
   const router = useRouter();
   const createFormRef = useRef<HTMLFormElement>(null);
   const repairRequestedRef = useRef(false);
@@ -308,7 +312,7 @@ export default function CategoriesClient({
       {!sheetOpen && <button type="button" onClick={() => setSheet("create")} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg sm:hidden"><Plus size={18} />Create Category</button>}
       {detail && <section role="dialog" aria-modal="true" aria-label="Category details" className="fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-16 bg-white px-5 pb-6 sm:hidden">
         <button type="button" aria-label="Close category details" onClick={() => setDetailId(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-700 sm:hidden"><X size={20} /></button>
-        <h2 className="text-xl font-bold text-slate-950">{detail.name}</h2>
+        <h2 className="text-xl font-bold text-slate-950" data-i18n-ignore="true">{detail.name}</h2>
         <div className="mt-2"><StatusPill online={detail.isOnline} /></div>
         <dl className="mt-5 grid grid-cols-[7rem_1fr] gap-x-3 gap-y-3 text-sm">
           <dt className="text-slate-500">Index</dt><dd className="font-semibold text-slate-800">{detail.index}</dd>
@@ -522,10 +526,10 @@ export default function CategoriesClient({
                     <tr key={category.id} onClick={() => { if (window.matchMedia("(max-width: 639px)").matches) setDetailId(category.id); }} className="text-sm text-slate-700 transition hover:bg-slate-50/70 max-sm:cursor-pointer">
                       <td className="px-3 py-4 font-semibold text-slate-600 max-sm:hidden">{category.index}</td>
                       <td className="px-3 py-4">
-                        <div className="font-semibold text-slate-950">{category.name}</div>
+                        <div className="font-semibold text-slate-950" data-i18n-ignore="true">{category.name}</div>
                       </td>
                       <td className="max-w-72 px-3 py-4 text-slate-600 max-sm:hidden">
-                        <span className="line-clamp-2">{category.description || "No description"}</span>
+                        <span className="line-clamp-2" data-i18n-ignore={Boolean(category.description)}>{category.description || "No description"}</span>
                       </td>
                       <td className="px-3 py-4 font-semibold text-slate-700 max-sm:hidden">{category.productCount}</td>
                       <td className="px-3 py-4"><StatusPill online={category.isOnline} /></td>
@@ -544,9 +548,9 @@ export default function CategoriesClient({
                           type="button"
                           onClick={(event) => toggleActionMenu(category.id, event.currentTarget)}
                           className="inline-grid size-9 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                          aria-label={`Actions for ${category.name}`}
+                          aria-label={formatUiText(translateLabel("Actions for {0}"), [category.name])}
                           aria-expanded={openMenuId === category.id}
-                        >
+                         data-i18n-ignore-attributes="aria-label">
                           <MoreHorizontal size={18} />
                         </button>
 
@@ -713,7 +717,7 @@ export default function CategoriesClient({
           <button type="button" className="absolute inset-0" onClick={() => setDeleting(null)} aria-label="Close delete dialog" />
           <div className="relative z-10 w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
             <div className="grid size-12 place-items-center rounded-2xl bg-rose-50 text-rose-600"><Trash2 size={22} /></div>
-            <h3 className="mt-4 text-lg font-bold text-slate-950">Delete {deleting.name}?</h3>
+            <h3 className="mt-4 text-lg font-bold text-slate-950">Delete <span data-i18n-ignore="true">{deleting.name}</span>?</h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               This category will be deleted. Its {deleting.productCount} product{deleting.productCount === 1 ? "" : "s"} will be kept and moved to uncategorized.
             </p>

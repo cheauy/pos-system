@@ -156,7 +156,7 @@ export function PosCustomerPicker(p:Props) {
     <div className={s.customerResults} aria-busy={loading}>
       {loading && offset===0 && !rows.length && <p className={s.customerLoading} role="status"><RefreshCw size={16} className={s.spin}/>Loading customers…</p>}
       {rows.map(c=><button type="button" key={c.id} disabled={loading} className={`${s.customerResult} ${p.customerId===c.id?s.selectedCustomer:''}`} onClick={()=>p.onSelect(c)}>
-        <UserRound size={20}/><span><strong>{c.name}{c.id===newId && <em className={s.newCustomerTag}>New</em>}</strong><small>{c.phone || 'No phone number'}{c.address?` · ${c.address}`:''}</small></span>
+        <UserRound size={20}/><span><strong><span data-i18n-ignore="true">{c.name}</span>{c.id===newId && <em className={s.newCustomerTag}>New</em>}</strong><small><span data-i18n-ignore={Boolean(c.phone)}>{c.phone || 'No phone number'}</span><span data-i18n-ignore="true">{c.address?` · ${c.address}`:''}</span></small></span>
         <small>{c.loyalty_points || 0} points</small>{p.customerId===c.id && <Check size={16}/>}
       </button>)}
       {!loading && !error && !rows.length && <p className={s.customerEmpty}>{search?'No matching customers. Try a name or phone number.':'No saved customers yet. Add your first customer below.'}</p>}

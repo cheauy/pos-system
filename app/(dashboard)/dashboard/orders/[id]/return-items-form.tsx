@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -34,6 +36,8 @@ const NOTE_LIMIT = 200;
 const field = "w-full appearance-none rounded-xl border border-slate-300 bg-white py-3 pl-12 pr-10 text-sm text-slate-900 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-100 disabled:bg-slate-100";
 
 export default function ReturnItemsForm({ orderId, orderNumber, items, triggerClassName, onReturned, currency = "USD" }: ReturnItemsFormProps) {
+  const { t: translateLabel } = useLanguage();
+
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
   const handledReturn = useRef<string | null>(null);
@@ -116,14 +120,14 @@ export default function ReturnItemsForm({ orderId, orderNumber, items, triggerCl
                 <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-700"><Package size={26} /></span>
                 <div>
                   <h2 className="text-2xl font-bold">Return Items</h2>
-                  <p className="mt-0.5 text-slate-500">Order {orderNumber}</p>
+                  <p className="mt-0.5 text-slate-500">Order <span data-i18n-ignore="true">{orderNumber}</span></p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <div className="text-right">
                   <span className="inline-flex items-center gap-3 rounded-full bg-amber-50 px-4 py-1.5 text-sm">
                     <span className="flex items-center gap-2 font-semibold text-amber-800"><span className="h-2.5 w-2.5 rounded-full bg-amber-600" />Original sale</span>
-                    <span className="text-slate-600">{orderNumber}</span>
+                    <span className="text-slate-600" data-i18n-ignore="true">{orderNumber}</span>
                   </span>
                   <p className="mt-1.5 text-sm text-slate-500">Process a return for items in this order.</p>
                 </div>
@@ -160,9 +164,9 @@ export default function ReturnItemsForm({ orderId, orderNumber, items, triggerCl
                                 ? <ProductPhoto src={item.image_url} alt="" width={128} height={128} sizes="64px" className="h-16 w-16 shrink-0 rounded-lg bg-slate-100 object-cover" />
                                 : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400"><Package size={22} /></span>}
                               <div className="min-w-0">
-                                <p className="font-semibold">{item.product_name}</p>
+                                <p className="font-semibold" data-i18n-ignore="true">{item.product_name}</p>
                                 <p className="text-sm text-slate-600">{formatCurrency(Number(item.unit_price))} each</p>
-                                {item.sku && <p className="text-xs text-slate-500">SKU: {item.sku}</p>}
+                                {item.sku && <p className="text-xs text-slate-500">SKU: <span data-i18n-ignore="true">{item.sku}</span></p>}
                               </div>
                             </div>
                           </td>
@@ -171,11 +175,11 @@ export default function ReturnItemsForm({ orderId, orderNumber, items, triggerCl
                           <td className="px-3 py-4 text-center font-semibold">{available}</td>
                           <td className="px-3 py-4">
                             <div className="mx-auto flex w-fit items-center overflow-hidden rounded-lg border border-slate-300">
-                              <button type="button" aria-label={`Return one fewer ${item.product_name}`} disabled={isPending || selectedQuantity <= 0} onClick={() => updateQuantity(item, selectedQuantity - 1)} className="flex h-10 w-10 items-center justify-center text-slate-600 hover:bg-slate-50 disabled:text-slate-300"><Minus size={16} /></button>
-                              <input type="number" min="0" max={available} step="1" inputMode="numeric" aria-label={`Return quantity for ${item.product_name}`} disabled={isPending} value={selectedQuantity}
+                              <button type="button" aria-label={formatUiText(translateLabel("Return one fewer {0}"), [item.product_name])} disabled={isPending || selectedQuantity <= 0} onClick={() => updateQuantity(item, selectedQuantity - 1)} className="flex h-10 w-10 items-center justify-center text-slate-600 hover:bg-slate-50 disabled:text-slate-300" data-i18n-ignore-attributes="aria-label"><Minus size={16} /></button>
+                              <input type="number" min="0" max={available} step="1" inputMode="numeric" aria-label={formatUiText(translateLabel("Return quantity for {0}"), [item.product_name])} disabled={isPending} value={selectedQuantity}
                                 onChange={event => updateQuantity(item, Number(event.target.value))}
-                                className="h-10 w-14 border-x border-slate-300 text-center outline-none [appearance:textfield] focus:bg-amber-50 [&::-webkit-inner-spin-button]:appearance-none" />
-                              <button type="button" aria-label={`Return one more ${item.product_name}`} disabled={isPending || selectedQuantity >= available} onClick={() => updateQuantity(item, selectedQuantity + 1)} className="flex h-10 w-10 items-center justify-center text-slate-600 hover:bg-slate-50 disabled:text-slate-300"><Plus size={16} /></button>
+                                className="h-10 w-14 border-x border-slate-300 text-center outline-none [appearance:textfield] focus:bg-amber-50 [&::-webkit-inner-spin-button]:appearance-none"  data-i18n-ignore-attributes="aria-label"/>
+                              <button type="button" aria-label={formatUiText(translateLabel("Return one more {0}"), [item.product_name])} disabled={isPending || selectedQuantity >= available} onClick={() => updateQuantity(item, selectedQuantity + 1)} className="flex h-10 w-10 items-center justify-center text-slate-600 hover:bg-slate-50 disabled:text-slate-300" data-i18n-ignore-attributes="aria-label"><Plus size={16} /></button>
                             </div>
                           </td>
                           <td className="px-5 py-4 text-right font-semibold">{formatCurrency(selectedQuantity * Number(item.unit_price))}</td>

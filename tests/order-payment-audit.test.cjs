@@ -8,12 +8,13 @@ const qr={isOrderCode:()=>false,orderQrSvg:()=>'<svg viewBox="0 0 41 41"></svg>'
 const layout=loadTs('lib/receipts/shipping-layout.ts'),barcode=loadTs('lib/barcode/code39.ts'),receipt=loadTs('lib/receipts/receipt-model.ts');
 const custom=loadTs('lib/receipts/shipping-custom.ts',{'@/lib/receipts/receipt-model':receipt,qrcode:require('qrcode'),'@/lib/barcode/code39':barcode,'@/lib/orders/order-qr':qr,'./shipping-layout':layout});
 const templates=loadTs('lib/receipts/shipping-templates.ts',{'./shipping-layout':layout,'./shipping-custom':custom});
-const render=loadTs('lib/receipts/shipping-label-markup.ts',{'@/lib/orders/order-payment':payment,'@/lib/orders/order-contact':contact,'@/lib/barcode/code39':barcode,'@/lib/orders/order-qr':qr,'@/lib/receipts/receipt-model':receipt,'./shipping-templates':templates,'./shipping-layout':layout,'./shipping-custom':custom});
+const render=loadTs('lib/receipts/shipping-label-markup.ts',{'@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),'@/lib/orders/order-payment':payment,'@/lib/orders/order-contact':contact,'@/lib/barcode/code39':barcode,'@/lib/orders/order-qr':qr,'@/lib/receipts/receipt-model':receipt,'./shipping-templates':templates,'./shipping-layout':layout,'./shipping-custom':custom});
 const orderModel=loadTs('app/(dashboard)/dashboard/orders/[id]/order-detail-model.ts',{'@/lib/orders/order-contact':contact,'@/lib/orders/order-payment':payment});
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const base={requestId:id(1),branchId:id(2),customerId:null,items:[{productId:id(3),quantity:1,optionIds:[],expectedUnitPrice:50}],paymentMethod:'bank_transfer',amountPaid:50,tenders:[],paymentsConfirmed:true,discount:0,deliveryFee:0,redeemPoints:0,note:'Synthetic payment audit',expectedTotal:50,expectedTaxRate:0,holdId:null,holdVersion:null};
 const order={id:id(4),order_number:'SAMPLE-PAYMENT',created_at:'2026-10-04T00:00:00Z',total:50,amount_paid:50,change_amount:0,remaining_balance:0,payment_method:'bank_transfer',payment_status:'paid',status:'new',fulfillment_type:'delivery',guest_name:'SAMPLE RECIPIENT',guest_phone:'Sample phone',guest_address:'SAMPLE ADDRESS',customers:null,order_items:[]};
 const store={name:'SAMPLE STORE',phone:'Sample phone',address:'SAMPLE SENDER'};
+const translate=loadTs('lib/i18n/translations.ts').translateUiText;
 const mobile=loadTs('lib/mobile/shipping-html.ts',{'@/lib/orders/order-qr':qr,'@/lib/receipts/receipt-model':receipt,'@/lib/orders/order-contact':contact,'@/lib/orders/order-payment':payment,'./receipt-html':loadTs('lib/mobile/receipt-html.ts',{'@/lib/receipts/receipt-model':receipt}),'@/lib/receipts/shipping-label-markup':render});
 for(const fulfillment of ['in_store','pickup','delivery'])test(`confirmed bank transfer serializes and validates independently of ${fulfillment} fulfillment`,()=>{
  const shipping=fulfillment==='in_store'?{method:fulfillment,recipientName:'',phone:'',address:''}:{method:fulfillment,recipientName:'Sample',phone:'012345',address:fulfillment==='delivery'?'Sample address':'',carrier:fulfillment==='delivery'?'jt':''};
@@ -74,13 +75,14 @@ test('actual checkbox state reaches the typed request, without a FormData checkb
  }
 });
 for(const size of ['80x50','100x100','100x150'])for(const template of ['en-classic','en-courier','km-classic','km-courier','custom'])test(`label payment semantics: ${template} ${size}`,()=>{
+ const language=template.startsWith('km-')?'km':'en';
  const customLayout=layout.defaultShippingLayout(size);customLayout.elements.push({id:'payment-audit',field:'payment',text:'',x:5,y:84,width:90,height:10,fontSize:8,bold:false,align:'left'});
  const settings={shipping_template:template,shipping_label_size:size,...(template==='custom'?{shipping_custom_layout:JSON.stringify(customLayout)}:{})};
  const paid=render.shippingLabelMarkup({order:{...order,payment_method:'cod',pos_checkout:{method:'bank_transfer'}},store,settings}).inner;
- assert.match(paid,/Bank transfer \(Paid\)/);assert.ok(!paid.includes('COD'));
+ assert.ok(paid.includes(render.shippingPaymentText({...order,payment_method:'cod',pos_checkout:{method:'bank_transfer'}},'USD',false,language)));assert.ok(!paid.includes('COD'));
  const partial={...order,payment_method:'deposit',payment_status:'unpaid',amount_paid:20,remaining_balance:30};
  const output=render.shippingLabelMarkup({order:partial,store,settings}).inner;
- assert.match(output,/Cash deposit/);assert.match(output,/\$30\.00/);assert.match(output,/\$50\.00/,'order total is retained separately');
+ assert.ok(output.includes(translate('Cash deposit',language)));assert.match(output,/\$30\.00/);assert.match(output,/\$50\.00/,'order total is retained separately');
  assert.equal(render.shippingValues(partial,store).payment,'Cash deposit; COD due $30.00');
  // Unpaid COD prints only "COD"; a partly paid COD order keeps the amount still to collect.
  const unpaidCod={...order,payment_method:'cod',payment_status:'unpaid',amount_paid:0,remaining_balance:Number(order.total)};
@@ -153,11 +155,11 @@ for(const [name,patch,state,due,review]of conflicts)test(`conflicting payment pr
   const settings={shipping_label_size:size,shipping_template:template,shipping_show_barcode:false,shipping_custom_layout:JSON.stringify(design)};
   const web=render.shippingLabelMarkup({order:input,store,settings}).inner;
   const native=mobile.mobileShippingHtml(input,{store},settings,'USD').html;
-  for(const html of [web,native]){
-   if(state!=='paid'||review)assert.ok(!html.includes('(Paid)'),`${template} ${size}: no false Paid`);
-   if(input.status==='cancelled')assert.match(html,/do not collect/);
-   else if(review)assert.match(html,/Needs review/);
-   if(due===null)assert.match(html,/unavailable|Unavailable/);
+  for(const [html,language] of [[web,template.startsWith('km-')?'km':'en'],[native,'en']]){
+   if(state!=='paid'||review)assert.ok(!html.includes(`(${translate('Paid',language)})`),`${template} ${size}: no false Paid`);
+   if(input.status==='cancelled')assert.ok(html.includes(translate('Cancelled — do not collect',language)));
+   else if(review)assert.ok(html.includes(translate('Needs review',language)), `${template} ${size}: payment review remains visible`);
+   if(due===null)assert.ok(html.includes(translate('Unavailable',language))||html.includes(translate('Balance unavailable',language)));
    else if(template!=='custom'||(!['cancelled','refunded'].includes(input.status)&&!['paid','refunded','pending_verification'].includes(state)))assert.ok(html.includes(new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(due)),`${template} ${size}: current balance retained`);
   }
  }

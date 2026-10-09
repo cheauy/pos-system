@@ -216,7 +216,7 @@ export default async function BusinessChangePaymentPage({
               <h3 className="mt-4 text-lg font-extrabold text-slate-950 dark:text-white">
                 Payment rejected
               </h3>
-              <p className="mt-2 rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-semibold leading-6 text-red-800 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-200">
+              <p className="mt-2 rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-semibold leading-6 text-red-800 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-200" data-i18n-ignore="true">
                 {order.review_note}
               </p>
               {order.reviewed_at ? (

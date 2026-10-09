@@ -10,6 +10,8 @@ test('edit uses direct variant uploads, preserves sibling photos and supports ne
   let effects = [];
   const { default: Editor } = loadTs('app/(dashboard)/dashboard/products/[id]/edit/edit-product-client.tsx', {
     'react/jsx-runtime': require('react/jsx-runtime'),
+    '@/components/providers/language-provider': { useLanguage: () => ({ language: 'en', t: text => text }) },
+    '@/lib/i18n/translations': loadTs('lib/i18n/translations.ts'),
     '@/components/anchored-action-menu': { default: 'action-menu' },
     react: {
       Fragment: 'fragment', useId: () => 'dialog',

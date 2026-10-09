@@ -14,7 +14,7 @@ export default function CategoryDisplayBranches({ branches, branchIds = null, em
     <legend className="px-1 font-semibold">Display in branches</legend>
     <input type="hidden" name="branchMode" value={all ? "all" : "selected"} />
     <label className="flex items-center gap-2"><input type="checkbox" checked={all} onChange={event => setAll(event.target.checked)} />Apply all branches</label>
-    {!all && <div className="max-h-44 space-y-2 overflow-auto">{branches.map(branch => <label key={branch.id} className="flex items-center gap-2"><input type="checkbox" name="branchIds" value={branch.id} defaultChecked={branchIds?.includes(branch.id) ?? false} />{branch.name}</label>)}</div>}
+    {!all && <div className="max-h-44 space-y-2 overflow-auto">{branches.map(branch => <label key={branch.id} className="flex items-center gap-2"><input type="checkbox" name="branchIds" value={branch.id} defaultChecked={branchIds?.includes(branch.id) ?? false} /><span data-i18n-ignore="true">{branch.name}</span></label>)}</div>}
     <p className="text-xs text-slate-500">{all ? "Includes branches added later." : "Choose at least one branch."}</p>
   </fieldset>;
 }

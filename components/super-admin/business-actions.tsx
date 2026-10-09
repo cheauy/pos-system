@@ -30,6 +30,7 @@ import {
 
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useLanguage } from "@/components/providers/language-provider";
 
 
 type BusinessActionsProps = {
@@ -165,6 +166,7 @@ export function ToggleAndDeleteActions({
   business,
 }: BusinessActionsProps) {
   const router = useRouter();
+  const { t } = useLanguage();
    const [showEdit, setShowEdit] =
     useState(false);
     const STAFF_OPTIONS = [
@@ -224,7 +226,7 @@ const isExpired = useSubscriptionExpired(
 <form
   action={async (formData) => {
     const confirmed = window.confirm(
-      `Delete ${business.name}? This action cannot be undone.`,
+      t("Delete {0}? This action cannot be undone.").replace("{0}", () => business.name),
     );
 
     if (!confirmed) return;
@@ -285,7 +287,7 @@ const isExpired = useSubscriptionExpired(
           onClick={() => setShowEdit(false)}
         >
           <div
-            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
+            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto"
             onClick={(event) =>
               event.stopPropagation()
             }
@@ -470,7 +472,7 @@ const isExpired = useSubscriptionExpired(
     }}
   >
     <div
-      className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+      className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto"
       onClick={(event) =>
         event.stopPropagation()
       }
@@ -487,7 +489,7 @@ const isExpired = useSubscriptionExpired(
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
             This permanently deletes{" "}
-            <strong>{business.name}</strong>{" "}
+            <strong data-i18n-ignore="true">{business.name}</strong>{" "}
             and its related tenant data. This
             action cannot be undone.
           </p>
@@ -568,7 +570,7 @@ const isExpired = useSubscriptionExpired(
             className="block text-sm font-semibold text-slate-700"
           >
             Type{" "}
-            <span className="text-red-700">
+            <span className="text-red-700" data-i18n-ignore="true">
               {business.name}
             </span>{" "}
             to confirm
@@ -781,7 +783,7 @@ export function BusinessStatusActions({
           }
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl max-h-[calc(100dvh-2rem)] overflow-y-auto"
             onClick={(event) =>
               event.stopPropagation()
             }
@@ -794,7 +796,7 @@ export function BusinessStatusActions({
 
                 <p className="mt-2 text-sm text-slate-600">
                   Staff and owners of{" "}
-                  <strong>
+                  <strong data-i18n-ignore="true">
                     {businessName}
                   </strong>{" "}
                  will lose access. The business
@@ -1031,7 +1033,7 @@ function ReactivateBusinessModal({
       Select a new subscription and staff limit for this business.
     </p>
 
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-slate-600" data-i18n-ignore="true">
               {businessName}
             </p>
           </div>

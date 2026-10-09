@@ -289,7 +289,7 @@ export default async function PurchaseDetailsPage({
               <tbody className="divide-y divide-slate-200">
                 {items.map((item) => (
                   <tr key={item.id}>
-                    <td className="px-6 py-4 font-semibold text-slate-900">
+                    <td className="px-6 py-4 font-semibold text-slate-900" data-i18n-ignore="true">
                       {item.product_name}
                     </td>
 
@@ -339,7 +339,7 @@ export default async function PurchaseDetailsPage({
             Notes
           </h2>
 
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-slate-600" data-i18n-ignore="true">
             {purchase.notes}
           </p>
         </section>

@@ -1,4 +1,6 @@
  'use client';
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Copy, MoreHorizontal, ChevronDown, CircleCheck, Timer, CheckCheck, Ban } from 'lucide-react';
@@ -49,6 +51,8 @@ export function OrderProgressBanner(p:{id:string;updatedAt:string|null;businessI
 }
 
 export function CancelOrderItem(p:{orderId:string;itemId:string;name:string;updatedAt:string|null;businessId:string;onCancelled?:()=>void}) {
+  const { t: translateLabel } = useLanguage();
+
  const router=useRouter();const[open,setOpen]=useState(false);const[reason,setReason]=useState('');const[busy,setBusy]=useState(false);const[error,setError]=useState('');
- return <><button type="button" className={s.cancelItem} onClick={()=>{setError('');setOpen(true);}}><Ban size={13}/>Cancel Item</button>{open&&<Modal title={`Cancel ${p.name}`} locked={busy} onClose={()=>setOpen(false)}><div className={s.actionForm}><p>Stock will be restored. Paid or discounted items use the return/refund action.</p>{error&&<p role="alert">{error}</p>}<label>Reason<textarea required maxLength={500} rows={3} value={reason} onChange={e=>setReason(e.target.value)} disabled={busy}/></label><button className={s.primary} type="button" disabled={busy||!reason.trim()||!p.updatedAt} onClick={async()=>{setBusy(true);setError('');try{const result=await cancelOrderWorkspaceItem(p.orderId,p.itemId,p.updatedAt,reason,p.businessId);if(!result.success)setError(result.message);else{setOpen(false);p.onCancelled?.();router.refresh();}}catch{setError('The result could not be confirmed. Refresh this order before retrying.');}finally{setBusy(false);}}}>{busy?'Cancelling…':'Cancel Item'}</button></div></Modal>}</>;
+ return <><button type="button" className={s.cancelItem} onClick={()=>{setError('');setOpen(true);}}><Ban size={13}/>Cancel Item</button>{open&&<Modal title={formatUiText(translateLabel("Cancel {0}"), [p.name])} locked={busy} onClose={()=>setOpen(false)} data-i18n-ignore-attributes="title"><div className={s.actionForm}><p>Stock will be restored. Paid or discounted items use the return/refund action.</p>{error&&<p role="alert">{error}</p>}<label>Reason<textarea required maxLength={500} rows={3} value={reason} onChange={e=>setReason(e.target.value)} disabled={busy}/></label><button className={s.primary} type="button" disabled={busy||!reason.trim()||!p.updatedAt} onClick={async()=>{setBusy(true);setError('');try{const result=await cancelOrderWorkspaceItem(p.orderId,p.itemId,p.updatedAt,reason,p.businessId);if(!result.success)setError(result.message);else{setOpen(false);p.onCancelled?.();router.refresh();}}catch{setError('The result could not be confirmed. Refresh this order before retrying.');}finally{setBusy(false);}}}>{busy?'Cancelling…':'Cancel Item'}</button></div></Modal>}</>;
 }

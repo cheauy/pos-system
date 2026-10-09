@@ -1,4 +1,5 @@
 "use client";
+import { formatUiText } from "@/lib/i18n/translations";
 import { useEffect, useRef, useState } from "react";
 import { X, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { useStorefrontLanguage } from "./storefront-language";
@@ -8,9 +9,9 @@ export function ImageViewer({ images, initialIndex = 0, name, onClose, downloada
   const [index, setIndex] = useState(initialIndex);
   const { t } = useStorefrontLanguage();
   useEffect(() => { const dialog = ref.current; dialog?.showModal(); return () => dialog?.close(); }, []);
-  return <dialog ref={ref} className="store-image-viewer" aria-label={name} onCancel={onClose} onClick={e => { if (e.target === e.currentTarget) onClose(); }} onKeyDown={e => { if (e.key === "ArrowRight") setIndex(i => Math.min(images.length - 1, i + 1)); if (e.key === "ArrowLeft") setIndex(i => Math.max(0, i - 1)); }}>
-    <div className="viewer-toolbar"><span>{name} {images.length > 1 && `${index + 1} / ${images.length}`}</span>{downloadable && <SaveImage src={images[index]} />}<button type="button" onClick={onClose} aria-label={t("Close")}><X /></button></div>
-    <img className="viewer-photo" src={images[index]} alt={`${name} ${index + 1}`} />
+  return <dialog ref={ref} className="store-image-viewer" aria-label={name} onCancel={onClose} onClick={e => { if (e.target === e.currentTarget) onClose(); }} onKeyDown={e => { if (e.key === "ArrowRight") setIndex(i => Math.min(images.length - 1, i + 1)); if (e.key === "ArrowLeft") setIndex(i => Math.max(0, i - 1)); }} data-i18n-ignore-attributes="aria-label">
+    <div className="viewer-toolbar"><span><span data-i18n-ignore="true">{name}</span> {images.length > 1 && `${index + 1} / ${images.length}`}</span>{downloadable && <SaveImage src={images[index]} />}<button type="button" onClick={onClose} aria-label={t("Close")}><X /></button></div>
+    <img className="viewer-photo" src={images[index]} alt={formatUiText(t("{0} {1}"), [name, index + 1])}  data-i18n-ignore-attributes="alt"/>
     {images.length > 1 && <div className="viewer-navigation"><button type="button" disabled={index === 0} onClick={() => setIndex(index - 1)} aria-label={t("Previous photo")}><ChevronLeft /></button><button type="button" disabled={index === images.length - 1} onClick={() => setIndex(index + 1)} aria-label={t("Next photo")}><ChevronRight /></button></div>}
   </dialog>;
 }
@@ -34,5 +35,5 @@ function SaveImage({ src }: { src: string }) {
 }
 export function KhqrPreview({ src }: { src: string }) {
   const [open, setOpen] = useState(false); const { t } = useStorefrontLanguage();
-  return <><button type="button" className="mx-auto block w-full max-w-[230px]" onClick={() => setOpen(true)} aria-label={t("View KHQR")}><img src={src} alt="Store KHQR" className="aspect-square w-full rounded-2xl bg-white object-contain p-2" /></button><div className="khqr-actions"><button type="button" onClick={() => setOpen(true)}>{t("View KHQR")}</button><SaveImage src={src} /></div>{open && <ImageViewer images={[src]} name="KHQR" downloadable onClose={() => setOpen(false)} />}</>;
+  return <><button type="button" className="mx-auto block w-full max-w-[230px]" onClick={() => setOpen(true)} aria-label={t("View KHQR")}><img src={src} alt={t("Store KHQR")} className="aspect-square w-full rounded-2xl bg-white object-contain p-2" /></button><div className="khqr-actions"><button type="button" onClick={() => setOpen(true)}>{t("View KHQR")}</button><SaveImage src={src} /></div>{open && <ImageViewer images={[src]} name="KHQR" downloadable onClose={() => setOpen(false)} />}</>;
 }

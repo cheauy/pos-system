@@ -1,4 +1,6 @@
 'use client';
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ImageOff, Search, X } from 'lucide-react';
 
@@ -7,6 +9,8 @@ type Group = { name: string; image: string | null; items: PromotionProduct[] };
 
 /** Uncontrolled with `name` (submits hidden inputs), or controlled with `value` + `onChange`. */
 export default function ProductPicker({ products, name, value, onChange }: { products: PromotionProduct[]; name?: string; value?: string[]; onChange?: (ids: string[]) => void }) {
+  const { t: translateLabel } = useLanguage();
+
   const [own, setOwn] = useState<Set<string>>(new Set());
   const selected = useMemo(() => value ? new Set(value) : own, [value, own]);
   const setSelected = (update: (previous: Set<string>) => Set<string>) => {
@@ -54,7 +58,7 @@ export default function ProductPicker({ products, name, value, onChange }: { pro
           aria-label="Search products" className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
       </div>
       <div className="flex items-center justify-between gap-2 text-xs">
-        <span className={`font-semibold ${selected.size ? 'text-blue-700' : 'text-slate-500'}`}>{selected.size} selected</span>
+        <span className={`font-semibold ${selected.size ? 'text-blue-700' : 'text-slate-500'}`}><span data-i18n-ignore="true">{selected.size}</span> selected</span>
         <span className="flex gap-3">
           <button type="button" disabled={!visibleIds.length} onClick={() => change(visibleIds, !allVisibleSelected)} className="font-semibold text-blue-600 hover:underline disabled:text-slate-300">
             {allVisibleSelected ? 'Unselect shown' : term ? 'Select shown' : 'Select all'}
@@ -72,11 +76,11 @@ export default function ProductPicker({ products, name, value, onChange }: { pro
         const expanded = open.has(group.name) || !!term;
         return <li key={group.name} className="px-2.5 py-2">
           <div className="flex items-center gap-2.5">
-            <GroupCheckbox checked={count === ids.length} partial={count > 0 && count < ids.length} onChange={on => change(ids, on)} label={group.name} />
+            <GroupCheckbox checked={count === ids.length} partial={count > 0 && count < ids.length} onChange={on => change(ids, on)} label={group.name}  data-i18n-ignore-attributes="label"/>
             <Thumb src={group.image} />
             <button type="button" onClick={() => single ? change(ids, count === 0) : toggleOpen(group.name)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-semibold text-slate-800">{group.name}</span>
+                <span className="block truncate text-sm font-semibold text-slate-800" data-i18n-ignore="true">{group.name}</span>
                 <span className="block text-[11px] text-slate-500">{single ? (group.items[0].sku ? `SKU ${group.items[0].sku}` : 'No variants') : `${count ? `${count} of ` : ''}${ids.length} variants`}</span>
               </span>
               {!single && <ChevronDown size={15} className={`shrink-0 text-slate-400 transition ${expanded ? 'rotate-180' : ''}`} />}
@@ -85,9 +89,9 @@ export default function ProductPicker({ products, name, value, onChange }: { pro
           {!single && expanded && <div className="mt-2 flex flex-wrap gap-1.5 pl-7">
             {group.items.map(item => {
               const on = selected.has(item.id);
-              return <button key={item.id} type="button" aria-pressed={on} onClick={() => change([item.id], !on)} title={item.sku ? `SKU ${item.sku}` : undefined}
-                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition ${on ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300'}`}>
-                {item.variant || 'Standard'}{on && <X size={11} />}
+              return <button key={item.id} type="button" aria-pressed={on} onClick={() => change([item.id], !on)} title={item.sku ? (formatUiText(translateLabel("SKU {0}"), [item.sku])) : (undefined)}
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition ${on ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300'}`} data-i18n-ignore-attributes="title">
+                <span data-i18n-ignore={Boolean(item.variant)}>{item.variant || 'Standard'}</span>{on && <X size={11} />}
               </button>;
             })}
           </div>}

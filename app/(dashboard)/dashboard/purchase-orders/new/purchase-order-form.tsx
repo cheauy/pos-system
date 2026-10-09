@@ -365,7 +365,7 @@ export default function PurchaseOrderForm({
                   >
                     <option value="">Select supplier</option>
                     {suppliers.map((supplier) => (
-                      <option key={supplier.id} value={supplier.id}>
+                      <option key={supplier.id} value={supplier.id} data-i18n-ignore="true">
                         {supplier.name}
                       </option>
                     ))}
@@ -421,7 +421,7 @@ export default function PurchaseOrderForm({
               />
             </Field>
           </div>
-          {selectedSupplier && <details className="mt-3 rounded-lg bg-slate-50 p-3"><summary className="cursor-pointer text-xs font-semibold text-slate-600">{selectedSupplier.name} · Contact details</summary><div className="mt-3"><SupplierDetails supplier={selectedSupplier} /></div></details>}
+          {selectedSupplier && <details className="mt-3 rounded-lg bg-slate-50 p-3"><summary className="cursor-pointer text-xs font-semibold text-slate-600"><span data-i18n-ignore="true">{selectedSupplier.name}</span> · Contact details</summary><div className="mt-3"><SupplierDetails supplier={selectedSupplier} /></div></details>}
         </SectionCard>
 
 
@@ -526,10 +526,10 @@ export default function PurchaseOrderForm({
                     {index + 1}
                   </td>
                   <td className="px-3 py-3">
-                    <p className="font-semibold text-slate-900">{item.name || "Select products above"}</p>
+                    <p className="font-semibold text-slate-900" data-i18n-ignore={Boolean(item.name)}>{item.name || "Select products above"}</p>
                   </td>
                   <td className="px-3 py-3">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-600">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-600" data-i18n-ignore="true">
                       {item.sku || "—"}
                     </div>
                   </td>
@@ -660,7 +660,7 @@ function SupplierDetails({ supplier }: { supplier: Supplier }) {
         </div>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate font-semibold text-slate-950">{supplier.name}</p>
+            <p className="truncate font-semibold text-slate-950" data-i18n-ignore="true">{supplier.name}</p>
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
               Active
             </span>
@@ -677,7 +677,7 @@ function SupplierDetails({ supplier }: { supplier: Supplier }) {
       </div>
 
       {supplier.notes ? (
-        <div className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+        <div className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600" data-i18n-ignore="true">
           {supplier.notes}
         </div>
       ) : null}

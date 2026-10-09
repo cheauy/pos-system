@@ -77,6 +77,8 @@ test('changing the branch cookie while a catalog confirmation is open mutates ne
   try {
     const f=fixture(); let cursor=0,pending; const states=[];
     const Catalog=loadTs('components/product-list.tsx',{
+      '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+      '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
       react:{useState:initial=>{const k=cursor++;if(!(k in states))states[k]=typeof initial==='function'?initial():initial;return[states[k],value=>{states[k]=typeof value==='function'?value(states[k]):value;}];},useMemo:fn=>fn(),useEffect(){},useTransition:()=>[false,fn=>{pending=fn();}]},
       'react/jsx-runtime':require('react/jsx-runtime'),'react-dom':{createPortal:node=>node},
       'next/link':{default:'a'},'next/navigation':{useRouter:()=>({refresh(){}})},'lucide-react':require('lucide-react'),sonner:{toast:{error(){}}},
@@ -121,7 +123,7 @@ test('new or changed invalid product barcodes reject before writes; unchanged le
     assert.equal(saved.success,true); assert.equal(legacy.rows.get('branch-a')[0].barcode,value);assert.ok(!Object.hasOwn(legacy.writes[0].payload,'stock_quantity'));
   }
 });
-const labelDeps={react:React,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'@/lib/barcode/code39':barcode,'@/lib/receipts/receipt-model':{printTextScale:()=>1},'@/lib/printing/prepare-print':{},'@/components/product-picker':{default:()=>null}};
+const labelDeps={react:React,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},'@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),'@/lib/barcode/code39':barcode,'@/lib/receipts/receipt-model':{printTextScale:()=>1},'@/lib/printing/prepare-print':{},'@/components/product-picker':{default:()=>null}};
 test('unsupported saved labels show an explanation instead of a transformed barcode or render crash', () => {
   const {LabelCard}=loadTs('app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx',labelDeps);
   for(const value of ['abc123','SKU_1','1'.repeat(41),'',' SKU1 ','   ']) {
@@ -211,6 +213,8 @@ test('variant create serializer and action preserve raw barcode input until vali
     const f=fixture();
     const react={useState:initial=>{let state=typeof initial==='function'?initial():initial;if(Array.isArray(state)&&state[0]?.id==='initial-variant')state=[{...state[0],size:'M',color:'Black',sku:'SKU1',barcode:value}];return[state,()=>{}];},useActionState:()=>[{success:false,message:''},()=>{},false],useEffect(){},useMemo:fn=>fn(),useRef:value=>({current:value})};
     const Component=loadTs('app/(dashboard)/dashboard/products/variant-product-form.tsx',{
+      '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+      '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
       react,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),sonner:{toast:{error(){},success(){}}},
       '@/components/product-gallery-input':{default:()=>null},'@/lib/barcode/generate':{generateInternalBarcode:()=> 'GENERATED'},'./actions':f.api,
     }).default;
@@ -228,6 +232,8 @@ test('actual edit submission sends padding unchanged and the action rejects it i
   for(const rows of f.rows.values())Object.assign(rows[0],{product_type:'variant',variant_group_id:'style',size:'M',color:'Black'});
   const react={Fragment:React.Fragment,useState:initial=>{let state=typeof initial==='function'?initial():initial;if(state&&typeof state==='object'&&'variants' in state&&'name' in state)state={...state,name:'Renamed',variants:state.variants.map(row=>({...row,barcode:value}))};return[state,()=>{}];},useEffect(){},useId:()=> 'fixture',useMemo:fn=>fn(),useRef:value=>({current:value})};
   const Component=loadTs('app/(dashboard)/dashboard/products/[id]/edit/edit-product-client.tsx',{
+    '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+    '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
     react,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),sonner:{toast:{error(){},success(){}}},
     'next/link':{default:'a'},'next/navigation':{useRouter:()=>({refresh(){},push(){},replace(){}})},
     '@/components/anchored-action-menu':{default:()=>null},'@/components/product-gallery-input':{default:()=>null},'@/lib/barcode/generate':{generateInternalBarcode:()=> 'GENERATED'},

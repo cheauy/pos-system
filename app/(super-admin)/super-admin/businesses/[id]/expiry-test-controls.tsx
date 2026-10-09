@@ -4,16 +4,18 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FlaskConical, RotateCcw, TimerOff } from 'lucide-react';
 import { changeTestExpiry } from './expiry-test-actions';
+import { useLanguage } from '@/components/providers/language-provider';
 
 export default function ExpiryTestControls({ businessId, active, originalExpiry, available }: {
   businessId: string; active: boolean; originalExpiry: string | null; available: boolean;
 }) {
   const router = useRouter();
+  const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   async function run(operation: 'expire' | 'restore') {
     if (busy) return;
-    if (operation === 'expire' && !window.confirm('Expire this test business now? Its workspace will be locked until you restore the expiry.')) return;
+    if (operation === 'expire' && !window.confirm(t('Expire this test business now? Its workspace will be locked until you restore the expiry.'))) return;
     setBusy(true); setMessage('');
     try {
       const result = await changeTestExpiry(businessId, operation);

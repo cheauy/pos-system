@@ -92,11 +92,11 @@ export default async function CustomerDetailsPage({ params }: CustomerPageProps)
       <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
         <section className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-3">
-            <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-blue-600">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-blue-600" data-i18n-ignore="true">
               {initials(customer.name)}
             </span>
             <div>
-              <h1 className="text-xl font-bold text-slate-900">{customer.name}</h1>
+              <h1 className="text-xl font-bold text-slate-900" data-i18n-ignore="true">{customer.name}</h1>
               <span className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Active</span>
             </div>
           </div>
@@ -144,7 +144,7 @@ export default async function CustomerDetailsPage({ params }: CustomerPageProps)
                   >
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-slate-900">{order.order_number}</p>
+                        <p className="font-semibold text-slate-900" data-i18n-ignore="true">{order.order_number}</p>
                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase text-slate-500">{order.order_source}</span>
                         {order.coupon_code ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">{order.coupon_code}</span> : null}
                       </div>

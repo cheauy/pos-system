@@ -57,7 +57,7 @@ export default function StandardProductForm({
       action={formAction}
       className="mt-6 space-y-5"
     >
-      <label className="block text-sm font-semibold text-slate-700">Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
+      <label className="block text-sm font-semibold text-slate-700">Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id} data-i18n-ignore="true">{b.name}</option>)}</select></label>
       <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 text-sm text-slate-700">
         <p className="font-semibold text-slate-900">{getProductExperience(businessType).modeLabel}</p>
         <p className="mt-1 text-xs leading-5 text-slate-600">{experience.helper}</p>
@@ -102,7 +102,7 @@ export default function StandardProductForm({
             <option
               key={category.id}
               value={category.id}
-            >
+             data-i18n-ignore="true">
               {category.name}
             </option>
           ))}

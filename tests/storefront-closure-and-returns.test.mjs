@@ -37,6 +37,8 @@ test('return popup only reports success after a confirmed return and never navig
  for(const success of [false,true]){
   const effects=[],toasts=[],changes=[],ref={current:null};let refresh=0,returned=0;
   const api=loadTs('app/(dashboard)/dashboard/orders/[id]/return-items-form.tsx',{
+    '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+    '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
    react:{useState:initial=>[initial,value=>changes.push(value)],useMemo:fn=>fn(),useRef:()=>ref,useEffect:fn=>effects.push(fn),useActionState:()=>[{success,returnId:success?'return-id':undefined,message:''},()=>{},false]},
    'react/jsx-runtime':{jsx:()=>null,jsxs:()=>null,Fragment:'fragment'},
    'react-dom':{createPortal:()=>null},'@/components/product-photo':{default:()=>null},sonner:{toast:{success:message=>toasts.push(message)}},
@@ -58,6 +60,8 @@ test('return reason presets submit directly and Other requires a custom reason',
    let stateIndex=0;const states=[true,reason,'Custom reason',{}],nodes=[];
    const jsx=(type,props)=>{const node={type,props};nodes.push(node);return node;};
    const api=loadTs('app/(dashboard)/dashboard/orders/[id]/return-items-form.tsx',{
+    '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+    '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
     react:{useState:()=>[states[stateIndex++],()=>{}],useMemo:fn=>fn(),useRef:()=>({current:null}),useEffect:()=>{},useActionState:()=>[{success:false,message:''},()=>{},false]},
     'react/jsx-runtime':{jsx,jsxs:jsx,Fragment:'fragment'},'react-dom':{createPortal:node=>node},'@/components/product-photo':{default:()=>null},
     sonner:{toast:{success:()=>{}}},'next/navigation':{useRouter:()=>({refresh:()=>{}})},'lucide-react':{},'./return-actions':{createOrderReturn:()=>{}}

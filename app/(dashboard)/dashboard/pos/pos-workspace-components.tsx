@@ -6,6 +6,8 @@ import type { SaleReceipt } from './pos-workspace-types';
 import { money } from './pos-workspace-helpers';
 import s from './pos-workspace.module.css';
 import ProductPhoto from '@/components/product-photo';
+import { useLanguage } from '@/components/providers/language-provider';
+import { formatUiText } from '@/lib/i18n/translations';
 
 export function Modal({ title, children, onClose, wide = false, locked = false, paper = false, bare = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean; locked?: boolean; paper?: boolean; bare?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -26,9 +28,10 @@ export function Modal({ title, children, onClose, wide = false, locked = false, 
 }
 
 export function ProductImage({ src, alt, className = '', loading = 'lazy' }: { src: string | null; alt: string; className?: string; loading?: 'eager' | 'lazy' }) {
+  const { t } = useLanguage();
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
-  return src && !failed ? <ProductPhoto loading={loading} className={className} src={src} alt={alt} sizes="(max-width: 640px) 45vw, 200px" onError={() => setFailed(true)} /> : <span className={`${s.imageFallback} ${className}`} role="img" aria-label={`${alt} — no image`}><Package size={32} /></span>;
+  return src && !failed ? <ProductPhoto loading={loading} className={className} src={src} alt={alt} data-i18n-ignore-attributes="alt" sizes="(max-width: 640px) 45vw, 200px" onError={() => setFailed(true)} /> : <span className={`${s.imageFallback} ${className}`} role="img" aria-label={formatUiText(t("{0} — no image"), [alt])} data-i18n-ignore-attributes="aria-label"><Package size={32} /></span>;
 }
 
 type DetectorInstance = { detect: (video: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>> };

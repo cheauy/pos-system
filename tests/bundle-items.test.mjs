@@ -22,6 +22,8 @@ test('editing removes and replaces old items, adds a third, and stops at eight',
  const require=createRequire(import.meta.url);let cursor=0;const state=[];
  const Picker=()=>null;
  const Form=loadTs('app/(dashboard)/dashboard/products/bundle-product-form.tsx',{
+    '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+    '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
   react:{useState:initial=>{const i=cursor++;if(!(i in state))state[i]=initial;return[state[i],v=>{state[i]=typeof v==='function'?v(state[i]):v;}];},useMemo:fn=>fn(),useRef:v=>({current:v})},
   'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'@/components/pending-submit-button':{ButtonSpinner:()=>null},sonner:{toast:{}},
   '@/components/product-gallery-input':{default:()=>null},'@/components/product-variant-picker':{default:Picker},
@@ -65,6 +67,8 @@ test('bundle actions support every business mode and reject stale branch submiss
 test('bundle list renders status and permission-aware three-dot actions',()=>{
  const require=createRequire(import.meta.url);const loaded={exports:{}};
  const deps={
+  '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+  '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
   'next/dynamic':{default:()=>()=>null},'@/components/product-photo':{default:({sizes,...props})=>React.createElement('img',props)},
   'react':React,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'@/components/pending-submit-button':{ButtonSpinner:()=>null},
   'next/navigation':{useRouter:()=>({refresh:()=>{}})},'next/link':({children})=>children,
@@ -132,6 +136,8 @@ test('bundle edit sends contents and image removal atomically and rejects stale 
 test('edit form restores its image and component quantities for editing', () => {
  const require=createRequire(import.meta.url);
  const Form=loadTs('app/(dashboard)/dashboard/products/bundle-product-form.tsx',{
+    '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+    '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
   react:React,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'@/components/pending-submit-button':{ButtonSpinner:()=>null},sonner:{toast:{}},
   '@/components/product-gallery-input':{default:({initialUrls})=>React.createElement('div', {'data-gallery':true},initialUrls.map(url=>React.createElement('img',{key:url,src:url})))},
   '@/components/product-variant-picker':{default:()=>null},'./bundle-actions':{},'@/lib/products/bundle-items':bundleItemRules,'@/components/product-photo':{default:({sizes,...props})=>React.createElement('img',props)},
@@ -183,6 +189,8 @@ test('bundle gallery saves every photo, preserves ordering and rejects foreign U
 test('bundle selection, grid view and deletion confirmation remain separate from detail navigation', () => {
  const require=createRequire(import.meta.url);let cursor=0;const state=[];
  const Client=loadTs('app/(dashboard)/dashboard/bundles/bundle-items-client.tsx',{
+    '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+    '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
   react:{useState:initial=>{const id=cursor++;if(!(id in state))state[id]=initial;return [state[id],value=>{state[id]=typeof value==='function'?value(state[id]):value;}];},useRef:value=>({current:value}),useId:()=> 'id',useEffect(){},useMemo:fn=>fn(),useCallback:fn=>fn,useDeferredValue:value=>value,useTransition:()=>[false,fn=>fn()]},
   'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'@/components/pending-submit-button':{ButtonSpinner:()=>null},'next/navigation':{useRouter:()=>({refresh(){}})},'next/link':{default:'a'},'next/dynamic':{default:()=>()=>null},
   '@/components/product-photo':{default:'img'},'@/components/anchored-action-menu':{default:'actions'},sonner:{toast:{},Toaster:'toast-status'},'../products/bundle-actions':{},

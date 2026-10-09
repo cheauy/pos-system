@@ -149,7 +149,7 @@ export default async function ReturnDetailsPage({
               {returnRecord.return_items.map(
                 (item) => (
                   <tr key={item.id}>
-                    <td className="px-6 py-4 font-semibold text-slate-900">
+                    <td className="px-6 py-4 font-semibold text-slate-900" data-i18n-ignore="true">
                       {item.product_name}
                     </td>
 

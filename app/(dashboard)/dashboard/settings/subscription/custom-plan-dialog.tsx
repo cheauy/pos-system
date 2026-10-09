@@ -169,7 +169,7 @@ export default function CustomPlanDialog(props: Props) {
           <div className="flex justify-between"><span>Branches</span><span>{branches}</span></div>
           {matchedPlan ? (
             <div className="rounded-xl border border-blue-200 bg-white/70 p-3 text-xs leading-5 text-blue-800 dark:border-blue-900 dark:bg-slate-900/50 dark:text-blue-300">
-              This setup matches <strong>{matchedPlan.name}</strong>, so TENH POS uses the same ${matchedPlan.monthlyPrice?.toFixed(2)}/month base price.
+              This setup matches <strong data-i18n-ignore="true">{matchedPlan.name}</strong>, so TENH POS uses the same ${matchedPlan.monthlyPrice?.toFixed(2)}/month base price.
             </div>
           ) : (
             <div className="space-y-2 text-xs text-slate-500 dark:text-slate-400">

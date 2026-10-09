@@ -144,7 +144,7 @@ export default function BusinessUsersTable({
                       </div>
                       <div>
                         <p className="font-semibold text-slate-900 dark:text-white">{member.fullName}</p>
-                        <p className="mt-0.5 text-xs text-slate-500">{member.email}</p>
+                        <p className="mt-0.5 text-xs text-slate-500" data-i18n-ignore="true">{member.email}</p>
                       </div>
                     </div>
                   </td>

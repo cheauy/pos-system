@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useLanguage } from "@/components/providers/language-provider";
 
 import {
   createBusinessTable,
@@ -56,6 +57,7 @@ export default function QrSection({
   showTables?: boolean;
   storeQrImage: string;
 }) {
+  const { t } = useLanguage();
   const [state, formAction, pending] = useActionState(createBusinessTable, initialState);
   const [query, setQuery] = useState("");
 
@@ -84,7 +86,7 @@ export default function QrSection({
       return;
     }
 
-    popup.document.write(`<!doctype html><html><head><title>Store QR code</title></head><body style="margin:0;display:grid;place-items:center;min-height:100vh;font-family:Arial,sans-serif"><div style="text-align:center"><h1>Scan to visit our store</h1><img src="${imageUrl}" style="width:320px;height:320px" onload="window.print()"/><p style="font-size:12px;color:#64748b;max-width:420px;word-break:break-all">${url}</p></div></body></html>`);
+    popup.document.write(`<!doctype html><html><head><title>${t("Store QR code")}</title></head><body style="margin:0;display:grid;place-items:center;min-height:100vh;font-family:Arial,sans-serif"><div style="text-align:center"><h1>${t("Scan to visit our store")}</h1><img src="${imageUrl}" style="width:320px;height:320px" onload="window.print()"/><p style="font-size:12px;color:#64748b;max-width:420px;word-break:break-all">${url}</p></div></body></html>`);
     popup.document.close();
   }
 
@@ -187,7 +189,7 @@ export default function QrSection({
                       <TableProperties size={15} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h3 className="truncate text-xs font-bold text-slate-900">{table.name}</h3>
+                      <h3 className="truncate text-xs font-bold text-slate-900" data-i18n-ignore="true">{table.name}</h3>
                       <p className="mt-0.5 text-[10px] text-slate-500">Dine-in mode</p>
                     </div>
                     <MoreVertical size={14} className="text-slate-400" />

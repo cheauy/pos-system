@@ -12,6 +12,7 @@ const qr = { isOrderCode: v => typeof v === 'string' && /^[1-9][0-9]{11}$/.test(
 const custom = loadTs('lib/receipts/shipping-custom.ts',{'@/lib/receipts/receipt-model':loadTs('lib/receipts/receipt-model.ts'),qrcode:require('qrcode'),'@/lib/barcode/code39':loadTs('lib/barcode/code39.ts'),'@/lib/orders/order-qr':qr,'./shipping-layout':layoutApi});
 const templates = loadTs('lib/receipts/shipping-templates.ts', {'./shipping-layout':layoutApi,'./shipping-custom':custom});
 const render = loadTs('lib/receipts/shipping-label-markup.ts', {'@/lib/orders/order-payment':loadTs('lib/orders/order-payment.ts'),
+  '@/lib/i18n/translations': loadTs('lib/i18n/translations.ts'),
   '@/lib/orders/order-contact': contact,
   '@/lib/barcode/code39': loadTs('lib/barcode/code39.ts'),
   '@/lib/orders/order-qr': qr,
@@ -131,9 +132,10 @@ test('unknown presentation input has safe deterministic fallbacks', () => {
   assert.equal(templates.shippingLabelSize('broken').id, '100x150');
   assert.equal(templates.isShippingTemplate('km-courier'), true);
 });
-test('Khmer reference template includes date, sender phone, amount, QR caption and bilingual footer', () => {
+test('Khmer reference template includes Khmer date, sender phone, amount, QR caption and footer', () => {
   const { inner } = markup({ shipping_template: 'km-courier' });
-  for (const text of ['កាលបរិច្ឆេទ', 'ឈ្មោះអ្នកទទួល', 'លេខអ្នកផ្ញើរ', 'ចំនួនទឹកប្រាក់', 'Scan for details', 'Thank you for your order!']) assert.ok(inner.includes(text));
+  for (const text of ['កាលបរិច្ឆេទ', 'ឈ្មោះអ្នកទទួល', 'លេខទូរស័ព្ទអ្នកផ្ញើ', 'ចំនួនទឹកប្រាក់', 'ស្កេនដើម្បីមើលព័ត៌មានលម្អិត', 'សូមអរគុណសម្រាប់ការបញ្ជាទិញ']) assert.ok(inner.includes(text), text);
+  assert.ok(!inner.includes('Scan for details') && !inner.includes('Thank you for your order!'));
   assert.ok(!inner.includes('FASHION FOR A BETTER YOU'));
   assert.ok(!inner.includes('Melody'));
 });

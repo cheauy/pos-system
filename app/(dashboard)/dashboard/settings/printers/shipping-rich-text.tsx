@@ -1,4 +1,5 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -37,6 +38,8 @@ export function shippingRunsFromDom(root:Node, base:ShippingTextMarks):ShippingT
 }
 
 export default function ShippingRichText({item,onChange,inlineTarget,onFinish,toolsOnly=false,onInsertTag,additionalTools,compact=false,canvasTools=false}:{item:ShippingElement;onChange:(patch:Partial<ShippingElement>)=>void;inlineTarget?:HTMLDivElement|null;onFinish?:()=>void;toolsOnly?:boolean;onInsertTag?:(tag:string)=>void;additionalTools?:ReactNode;compact?:boolean;canvasTools?:boolean}) {
+  const { t: translateLabel } = useLanguage();
+
   const editable=item.field==='text';
   const root=useRef<HTMLDivElement>(null), selection=useRef<TextSelection>({start:0,end:0}), composing=useRef(false);
   const [chosenRange,setChosenRange]=useState<TextSelection>({start:0,end:0}),[error,setError]=useState('');
@@ -112,7 +115,7 @@ export default function ShippingRichText({item,onChange,inlineTarget,onFinish,to
           if(['b','i','u'].includes(key)){event.preventDefault();capture();const mark=({b:'bold',i:'italic',u:'underline'} as const)[key as 'b'|'i'|'u'];format({[mark]:!markAtSelection[mark]});}
           if(key==='z'||key==='y'){event.preventDefault();undo(event.shiftKey||key==='y');}
         }}/>
-  const fontSizeTool=<label className="mx-1 text-[11px] text-slate-500">Font size<select aria-label="Rich text font size" value={markAtSelection.fontSize} onChange={event=>format({fontSize:Number(event.target.value)})} className={`mt-1 block ${compact?'h-9':'h-12'} rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900`}>{Array.from({length:31},(_,index)=>index+6).map(size=><option key={size} value={size}>{size} px</option>)}</select></label>;
+  const fontSizeTool=<label className="mx-1 text-[11px] text-slate-500">Font size<select aria-label="Rich text font size" value={markAtSelection.fontSize} onChange={event=>format({fontSize:Number(event.target.value)})} className={`mt-1 block ${compact?'h-9':'h-12'} rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-900`}>{Array.from({length:31},(_,index)=>index+6).map(size=><option key={size} value={size} data-i18n-ignore="true">{size}{translateLabel(" px")}</option>)}</select></label>;
   return <div className={canvasTools?'flex flex-wrap items-end gap-3':'space-y-2'}>
     {compact&&(!canvasTools||inlineTarget)&&!toolsOnly&&editable&&(inlineTarget?<><div className="flex items-center justify-between gap-2 text-[10px] text-blue-600"><span>Editing on label · Esc to finish</span><button type="button" onClick={onFinish} className="rounded border border-blue-200 px-2 py-1">Done</button></div>{createPortal(textbox,inlineTarget)}</>:textbox)}
     {compact&&!canvasTools&&toolsOnly&&editable&&item.text&&<div className="rounded border border-slate-200 p-2 text-xs text-slate-600">{item.text}</div>}

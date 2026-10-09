@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Clock3 } from "lucide-react";
+import { useLanguage } from "@/components/providers/language-provider";
 
 type DeletionCountdownProps = {
   scheduledDeletionAt: string | null;
@@ -86,6 +87,7 @@ export default function DeletionCountdown({
   scheduledDeletionAt,
   isActive,
 }: DeletionCountdownProps) {
+  const { language, t } = useLanguage();
   const [nowTick, setNowTick] =
     useState<number | null>(null);
 
@@ -178,10 +180,9 @@ export default function DeletionCountdown({
         <p
           className={`text-sm font-semibold ${urgencyClass}`}
         >
-          {remaining.months}m{" "}
-          {remaining.days}d{" "}
-          {remaining.hours}h{" "}
-          {remaining.minutes}min left
+          {language === "km"
+            ? `${remaining.months} ${t("months")} ${remaining.days} ${t("days")} ${remaining.hours} ${t("hours")} ${remaining.minutes} ${t("minutes")} ${t("left")}`
+            : `${remaining.months}m ${remaining.days}d ${remaining.hours}h ${remaining.minutes}min left`}
         </p>
       </div>
 

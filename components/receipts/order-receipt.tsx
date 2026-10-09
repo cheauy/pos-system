@@ -63,12 +63,12 @@ export default function OrderReceipt({
       className={`${receiptWidth} mx-auto bg-white p-3 text-black`}
     >
       <header className="space-y-1 text-center">
-        <h1 className="text-lg font-bold">
+        <h1 className="text-lg font-bold" data-i18n-ignore="true">
           {settings.business_name}
         </h1>
 
         {settings.receipt_header && (
-          <p className="whitespace-pre-line text-xs">
+          <p className="whitespace-pre-line text-xs" data-i18n-ignore="true">
             {settings.receipt_header}
           </p>
         )}
@@ -76,13 +76,13 @@ export default function OrderReceipt({
         {settings.show_business_phone &&
           settings.business_phone && (
             <p className="text-xs">
-              Phone: {settings.business_phone}
+              Phone: <span data-i18n-ignore="true">{settings.business_phone}</span>
             </p>
           )}
 
         {settings.show_business_address &&
           settings.business_address && (
-            <p className="whitespace-pre-line text-xs">
+            <p className="whitespace-pre-line text-xs" data-i18n-ignore="true">
               {settings.business_address}
             </p>
           )}
@@ -93,7 +93,7 @@ export default function OrderReceipt({
       <section className="space-y-1 text-xs">
         <div className="flex justify-between gap-3">
           <span>Order</span>
-          <span className="font-medium">
+          <span className="font-medium" data-i18n-ignore="true">
             {order.order_number}
           </span>
         </div>
@@ -107,7 +107,7 @@ export default function OrderReceipt({
           order.cashier_name && (
             <div className="flex justify-between gap-3">
               <span>Cashier</span>
-              <span>{order.cashier_name}</span>
+              <span data-i18n-ignore="true">{order.cashier_name}</span>
             </div>
           )}
 
@@ -115,7 +115,7 @@ export default function OrderReceipt({
           order.customer_name && (
             <div className="flex justify-between gap-3">
               <span>Customer</span>
-              <span>{order.customer_name}</span>
+              <span data-i18n-ignore="true">{order.customer_name}</span>
             </div>
           )}
       </section>
@@ -125,19 +125,22 @@ export default function OrderReceipt({
       <section className="space-y-3">
         {order.items.map((item) => (
           <div key={item.id} className="text-xs">
-            <p className="font-medium">
+            <p className="font-medium" data-i18n-ignore="true">
               {item.product_name}
             </p>
 
             {item.variant_label && (
-              <p className="text-[10px]">{item.variant_label}</p>
+              <p className="text-[10px]" data-i18n-ignore="true">{item.variant_label}</p>
             )}
 
             {Array.isArray(item.selected_options) && item.selected_options.length > 0 && (
               <p className="text-[10px] leading-4">
                 {item.selected_options
-                  .map((option) => `${option.groupName ? `${option.groupName}: ` : ""}${option.name ?? "Option"}`)
-                  .join(" · ")}
+                  .map((option, index) => <span key={index}>
+                    {index > 0 ? " · " : ""}
+                    {option.groupName ? <><span data-i18n-ignore="true">{option.groupName}</span>{": "}</> : null}
+                    {option.name != null ? <span data-i18n-ignore="true">{option.name}</span> : "Option"}
+                  </span>)}
               </p>
             )}
 
@@ -205,7 +208,7 @@ export default function OrderReceipt({
         <>
           <div className="my-3 border-t border-dashed border-black" />
 
-          <footer className="whitespace-pre-line text-center text-xs">
+          <footer className="whitespace-pre-line text-center text-xs" data-i18n-ignore="true">
             {settings.receipt_footer}
           </footer>
         </>

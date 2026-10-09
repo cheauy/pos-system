@@ -4,6 +4,8 @@ const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 const { loadTs } = require('./helpers/load-ts.cjs');
 const { default: StockOverview } = loadTs('app/(dashboard)/dashboard/inventory/inventory-client.tsx', {
+    '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+    '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
   react: React,
   'next/navigation': { useRouter: () => ({ refresh() {}, push() {} }) },
   sonner: { toast: { error() {} } },
@@ -49,6 +51,8 @@ test('stock selection never opens details and sort keeps the selection', () => {
   let cursor = 0;
   const states = [];
   const { default: Inventory } = loadTs('app/(dashboard)/dashboard/inventory/inventory-client.tsx', {
+    '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
+    '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
     react: { useState: initial => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], value => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; }, useMemo: fn => fn(), useEffect() {} },
     'react/jsx-runtime': require('react/jsx-runtime'),
     'next/link': { default: 'a' }, 'next/navigation': { useRouter: () => ({}) },

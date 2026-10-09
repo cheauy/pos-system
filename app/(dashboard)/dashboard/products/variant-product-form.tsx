@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 
 import {
   Loader2,
@@ -103,6 +105,8 @@ export default function VariantProductForm({
   businessType?: string;
   onCreated?: () => void;
 }) {
+  const { t: translateLabel } = useLanguage();
+
   const isShoes = businessType === "shoes";
   const isFashion = businessType === "fashion";
   const isGeneral = businessType === "general";
@@ -250,7 +254,7 @@ export default function VariantProductForm({
 
   return (
     <form ref={formRef} action={formAction} className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-      <label className="col-span-full flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 sm:flex-row sm:items-center sm:justify-between">Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm sm:max-w-xs"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
+      <label className="col-span-full flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 sm:flex-row sm:items-center sm:justify-between">Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm sm:max-w-xs"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id} data-i18n-ignore="true">{b.name}</option>)}</select></label>
       <input
         type="hidden"
         name="variants"
@@ -301,7 +305,7 @@ export default function VariantProductForm({
             <select name="categoryId" defaultValue="" className={inputClass}>
               <option value="">No category</option>
               {categories.map((category) => (
-                <option key={category.id} value={category.id}>
+                <option key={category.id} value={category.id} data-i18n-ignore="true">
                   {category.name}
                 </option>
               ))}
@@ -375,7 +379,7 @@ export default function VariantProductForm({
                 {activeRunImageSlot?.preview ? (
                   <>
                     <img src={activeRunImageSlot.preview} alt="Colour run" className="h-6 w-6 shrink-0 rounded object-cover" />
-                    <span className="min-w-0 flex-1 truncate">{activeRunImageSlot.name || "Selected image"}</span>
+                    <span className="min-w-0 flex-1 truncate" data-i18n-ignore={Boolean(activeRunImageSlot.name)}>{activeRunImageSlot.name || "Selected image"}</span>
                   </>
                 ) : (
                   <>
@@ -489,10 +493,10 @@ export default function VariantProductForm({
                     <td className="w-20 px-2 py-2">
                       <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg p-1 text-teal-700 hover:bg-teal-50" title="Upload or replace this size's image">
                         {runImageSlots.find(slot => slot.id === variant.imageSlot)?.preview ? (
-                          <img src={runImageSlots.find(slot => slot.id === variant.imageSlot)?.preview ?? ""} alt={`${variant.color || "Variant"} ${variant.size || "image"}`} className="h-10 w-10 rounded-lg border border-slate-200 object-contain" />
+                          <img src={runImageSlots.find(slot => slot.id === variant.imageSlot)?.preview ?? ""} alt={formatUiText(translateLabel("{0} {1}"), [variant.color || (translateLabel("Variant")), variant.size || (translateLabel("image"))])} className="h-10 w-10 rounded-lg border border-slate-200 object-contain"  data-i18n-ignore-attributes="alt"/>
                         ) : <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-dashed border-teal-300 bg-teal-50"><Upload size={16} /></span>}
                         <span className="text-[10px] font-semibold">{variant.imageSlot ? "Replace" : "Upload"}</span>
-                        <input type="file" accept=".jpg,.jpeg,.png,.webp" aria-label={`Upload image for ${variant.color || "variant"} ${variant.size || "new size"}`} className="sr-only" onChange={event => { handleRunImageChange(`size-${variant.id}`, event, variant.id); event.target.value = ""; }} />
+                        <input type="file" accept=".jpg,.jpeg,.png,.webp" aria-label={formatUiText(translateLabel("Upload image for {0} {1}"), [variant.color || (translateLabel("variant")), variant.size || (translateLabel("new size"))])} className="sr-only" onChange={event => { handleRunImageChange(`size-${variant.id}`, event, variant.id); event.target.value = ""; }}  data-i18n-ignore-attributes="aria-label"/>
                       </label>
                     </td>
                     <CellInput

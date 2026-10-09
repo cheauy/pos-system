@@ -1,4 +1,5 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
 
 import { useEffect, useState } from "react";
 
@@ -9,6 +10,7 @@ type ImageUploadProps = {
 export default function ImageUpload({
   currentImage,
 }: ImageUploadProps) {
+  const { t: translateText } = useLanguage();
   const [selectedImage, setSelectedImage] =
     useState<{
       fileName: string;
@@ -51,14 +53,14 @@ export default function ImageUpload({
     ];
 
     if (!allowedTypes.includes(file.type)) {
-      alert("Only JPG, PNG or WebP images are allowed.");
+      alert(translateText("Only JPG, PNG or WebP images are allowed."));
       e.target.value = "";
       setSelectedImage(null);
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert("Image size must not exceed 5 MB.");
+      alert(translateText("Image size must not exceed 5 MB."));
       e.target.value = "";
       setSelectedImage(null);
       return;

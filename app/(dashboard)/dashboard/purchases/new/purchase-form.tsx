@@ -1,4 +1,6 @@
 "use client";
+import { useLanguage } from "@/components/providers/language-provider";
+import { formatUiText } from "@/lib/i18n/translations";
 
 import {
   useMemo,
@@ -44,6 +46,8 @@ export default function CreatePurchaseForm({
   suppliers,
   products,
 }: CreatePurchaseFormProps) {
+  const { t: translateLabel } = useLanguage();
+
   const [
     selectedProductId,
     setSelectedProductId,
@@ -250,7 +254,7 @@ export default function CreatePurchaseForm({
                     value={
                       supplier.id
                     }
-                  >
+                   data-i18n-ignore="true">
                     {supplier.name}
                   </option>
                 ),
@@ -332,7 +336,7 @@ export default function CreatePurchaseForm({
                 <option
                   key={product.id}
                   value={product.id}
-                >
+                 data-i18n-ignore="true">
                   {product.name}
                   {product.sku
                     ? ` — ${product.sku}`
@@ -401,7 +405,7 @@ export default function CreatePurchaseForm({
                         item.productId
                       }
                     >
-                      <td className="px-3 py-4 font-semibold text-slate-900">
+                      <td className="px-3 py-4 font-semibold text-slate-900" data-i18n-ignore="true">
                         {
                           item.productName
                         }
@@ -508,8 +512,8 @@ export default function CreatePurchaseForm({
                             )
                           }
                           className="inline-flex items-center justify-center rounded-lg p-2 text-red-600 hover:bg-red-50"
-                          aria-label={`Remove ${item.productName}`}
-                        >
+                          aria-label={formatUiText(translateLabel("Remove {0}"), [item.productName])}
+                         data-i18n-ignore-attributes="aria-label">
                           <Trash2
                             size={18}
                           />
