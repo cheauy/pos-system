@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check, CreditCard, MapPin, Package, Plus, ShoppingCart, Trash2 } from 'lucide-react';
+import { Check, CreditCard, MapPin, Package, Plus, RefreshCw, ShoppingCart, Trash2 } from 'lucide-react';
 import type { CurrencyQuote, CartLine, PaymentMethod, Product, ProductGroup, ShippingDetails, Tender, Workspace } from './pos-workspace-types';
 import { inventoryFor, money, splitRemaining, stockFor, stockLabel, tenderIssue } from './pos-workspace-helpers';
 import { CurrencyAmountInput } from './pos-currency-components';
@@ -105,7 +105,7 @@ export function CheckoutPanel(p: CheckoutPanelProps) {
         <dl className={s.reviewTotals}>{p.lines.map(line => <div key={line.key}><dt>{line.quantity} × <span data-i18n-ignore="true">{line.name}</span><span data-i18n-ignore="true">{line.variant ? ` · ${line.variant}` : ''}</span><span data-i18n-ignore="true">{line.selectedOptions.length ? ` · ${line.selectedOptions.map(o => o.name).join(', ')}` : ''}</span></dt><dd>{cash(line.unitPrice * line.quantity)}</dd></div>)}</dl>
         <dl className={s.reviewTotals}><div><dt>Merchandise subtotal</dt><dd>{cash(p.subtotal)}</dd></div><div><dt>{p.discountLabel}</dt><dd>−{cash(p.discount)}</dd></div><div><dt>Tax ({p.taxRate}%)</dt><dd>{cash(p.tax)}</dd></div><div><dt>Shipping fee</dt><dd>{cash(Number(p.delivery))}</dd></div><div className={s.totalRow}><dt>Total</dt><dd>{cash(p.total)}</dd></div><div><dt>Customer paid amount</dt><dd>{cash(p.method === 'cash' && p.paid === '' ? 0 : p.received)}</dd></div><div><dt>Change to give</dt><dd>{cash(p.method === 'cash' ? Math.max(0,p.received-p.total) : 0)}</dd></div></dl>
         {p.error && <p role="status" className={s.paymentInfo}>{p.error}</p>}
-        <div className={s.flowActions}><button type="button" className={s.button} onClick={() => setReviewing(false)}>Back to payment</button><button type="button" className={s.primary} disabled={Boolean(p.error)} onClick={p.onConfirm}><Check size={18}/>{p.busy ? 'Saving sale…' : `Confirm · ${cash(p.total)}`}</button></div>
+        <div className={s.flowActions}><button type="button" className={s.button} onClick={() => setReviewing(false)}>Back to payment</button><button type="button" className={s.primary} disabled={p.busy || Boolean(p.error)} aria-busy={p.busy} onClick={p.onConfirm}>{p.busy ? <RefreshCw size={18} className={s.spin} aria-hidden="true"/> : <Check size={18}/>} {p.busy ? 'Saving sale…' : `Confirm · ${cash(p.total)}`}</button></div>
       </div>
     </fieldset>;
   }

@@ -1,3 +1,4 @@
+import { DateFilterScope, DateFilterContent } from "@/components/date-range-filter";
 import { getBranchContext, getViewingBranchId } from "@/lib/branches/context";
 import ViewBranchSelect from "@/components/view-branch-select";
 import {soldVariant} from "@/lib/analytics/product-variants";
@@ -255,7 +256,7 @@ export default async function DashboardPage({
   const averageChange = percentChange(averageOrder, previousAverage);
 
   return (
-    <main className="mx-auto w-full max-w-[1900px] space-y-6 pb-10">
+    <DateFilterScope><main className="mx-auto w-full max-w-[1900px] space-y-6 pb-10">
 
 
       {analyticsErrors.length > 0 ? (
@@ -299,6 +300,7 @@ export default async function DashboardPage({
               <a href="#" aria-label="Close dashboard filters" className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600 sm:hidden"><X size={20} /></a>
               <DashboardPeriodFilter
                 activeRange={period.range}
+                today={localDateKey(new Date())}
                 selectedFrom={period.selectedFrom}
                 selectedTo={period.selectedTo}
                 canViewReports={canViewReports}
@@ -309,7 +311,7 @@ export default async function DashboardPage({
         </div>
       </section>
 
-      <section className="grid gap-4 max-sm:grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] max-sm:gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+      <DateFilterContent className="space-y-6"><section className="grid gap-4 max-sm:grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] max-sm:gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         <KpiCard
           title="Net sales"
           value={money(revenue, currency)}
@@ -372,7 +374,7 @@ export default async function DashboardPage({
 
 
 
-    </main>
+    </DateFilterContent></main></DateFilterScope>
   );
 }
 

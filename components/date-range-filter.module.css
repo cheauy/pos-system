@@ -1,0 +1,14 @@
+.desktop { display: none; }
+.wrapper { min-width: 0; }
+.content { min-width: 0; }
+.skeleton { display: none; }
+@media (min-width: 1280px) and (hover: hover) and (pointer: fine) {
+  .desktop { display: block; min-width: 0; width: 100%; }
+  .legacy { display: none !important; }
+  .pending { display: block; }
+  .bar { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+  .searchRow.searchRow { grid-template-columns: minmax(0, 1fr); }
+  .purchaseControls.purchaseControls { grid-template-columns: minmax(160px, 1.5fr) repeat(3, minmax(110px, .8fr)); }
+  .pending > .content { display: none; }
+  .pending > .skeleton { display: grid; gap: 16px; padding: 24px; min-height: 320px; }
+}

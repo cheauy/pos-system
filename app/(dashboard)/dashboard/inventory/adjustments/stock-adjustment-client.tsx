@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter, { dateFilterStyles } from "@/components/date-range-filter";
+import { inCalendarDateRange } from "@/lib/date-range";
 import { useLanguage } from "@/components/providers/language-provider";
 import { formatUiText } from "@/lib/i18n/translations";
 
@@ -551,6 +553,7 @@ export default function StockAdjustmentClient({
   const [notes, setNotes] = useState("");
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>("30");
+  const [customDates, setCustomDates] = useState<{from:string;to:string}|null>(null);
 
   const selectedProduct = rows.length === 1 ? products.find(product => product.id === rows[0].productId) ?? null : null;
   const productMap = new Map(products.map(product => [product.id, product]));
@@ -611,7 +614,9 @@ export default function StockAdjustmentClient({
     const days = dateRange === "all" ? null : Number(dateRange);
 
     return recentAdjustments.filter((adjustment) => {
-      if (days !== null) {
+      if (customDates) {
+        if (!inCalendarDateRange(adjustment.createdAt, customDates.from, customDates.to)) return false;
+      } else if (days !== null) {
         const time = new Date(adjustment.createdAt).getTime();
         if (!Number.isFinite(time) || time < now - days * 86_400_000) return false;
       }
@@ -628,7 +633,7 @@ export default function StockAdjustmentClient({
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
-  }, [dateRange, recentAdjustments, search]);
+  }, [dateRange, customDates, recentAdjustments, search]);
 
   useEffect(() => {
     if (!state.submittedAt || !state.success) return;
@@ -1013,8 +1018,8 @@ export default function StockAdjustmentClient({
             </div>
             <select
               value={dateRange}
-              onChange={(event) => setDateRange(event.target.value as DateRange)}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-500"
+              onChange={(event) => { setDateRange(event.target.value as DateRange); setCustomDates(null); }}
+              className={`${dateFilterStyles.legacy} h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-500`}
             >
               <option value="7">Last 7 days</option>
               <option value="30">Last 30 days</option>
@@ -1024,6 +1029,7 @@ export default function StockAdjustmentClient({
           </div>
         </div>
 
+        <div className="px-5"><DateRangeFilter from={customDates?.from??""} to={customDates?.to??""} onApply={(from,to)=>setCustomDates({from,to})} /></div>
         {filteredAdjustments.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">

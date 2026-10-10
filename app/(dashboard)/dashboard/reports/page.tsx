@@ -1,3 +1,4 @@
+import { DateFilterScope, DateFilterContent, NavigationDateRange, dateFilterStyles } from "@/components/date-range-filter";
 import { getViewingBranchId } from "@/lib/branches/context";
 import ViewBranchSelect from "@/components/view-branch-select";
 import NavigationForm from "@/components/navigation-form";
@@ -244,7 +245,7 @@ export default async function ReportsPage({
  
 
   return (
-    <main className="max-lg:pb-24">
+    <DateFilterScope><main className="max-lg:pb-24">
       <div className="mb-8 flex flex-col justify-between gap-5 max-sm:hidden lg:flex-row lg:items-end">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">
@@ -276,7 +277,7 @@ export default async function ReportsPage({
         to={dateRange.endDate}
       />
 
-      {/* Phones/tablets: both KPI rows sit in one card, four compact tiles per row. */}
+      <DateFilterContent>{/* Phones/tablets: both KPI rows sit in one card, four compact tiles per row. */}
       <div className="max-lg:rounded-2xl max-lg:border max-lg:border-slate-200 max-lg:bg-white max-lg:p-2 max-lg:shadow-sm">
       <div className="mt-6 grid gap-4 max-lg:mt-0 max-lg:grid-cols-4 max-[39.99rem]:grid-cols-2 max-lg:gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
@@ -478,7 +479,7 @@ export default async function ReportsPage({
           )}
         </section>
       </div>
-    </main>
+    </DateFilterContent></main></DateFilterScope>
   );
 }
 
@@ -542,7 +543,8 @@ function ReportFilters({
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm max-sm:hidden">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <NavigationDateRange path="/dashboard/reports" query={{ branch: branchId || "all" }} from={from} to={to} today={getDateRange("today").startDate} />
+      <div className={`${dateFilterStyles.legacy} flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between`}>
         <div className="flex flex-wrap gap-2">
           {ranges.map((range) => (
             <Link

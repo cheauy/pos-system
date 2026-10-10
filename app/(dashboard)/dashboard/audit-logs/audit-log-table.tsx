@@ -1,4 +1,7 @@
 "use client";
+import DateRangeFilter, { dateFilterStyles } from "@/components/date-range-filter";
+import { inCalendarDateRange } from "@/lib/date-range";
+
 
 import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import {
@@ -76,6 +79,7 @@ export default function AuditLogsTable({
   const [branchFilter, setBranchFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [dateRange, setDateRange] = useState<DateRangeKey>("7d");
+  const [customDates, setCustomDates] = useState<{from:string;to:string}|null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [selectedLog, setSelectedLog] = useState<NormalizedAuditLog | null>(null);
@@ -193,7 +197,7 @@ export default function AuditLogsTable({
 
     return normalizedLogs.filter((log) => {
       const created = new Date(log.created_at);
-      const matchesDate = !dateStart || created >= dateStart;
+      const matchesDate = customDates ? inCalendarDateRange(log.created_at, customDates.from, customDates.to) : !dateStart || created >= dateStart;
       const matchesSearch =
         !keyword ||
         [
@@ -230,7 +234,7 @@ export default function AuditLogsTable({
   }, [
     actionFilter,
     branchFilter,
-    dateRange,
+    dateRange, customDates,
     moduleFilter,
     normalizedLogs,
     search,
@@ -256,7 +260,7 @@ export default function AuditLogsTable({
     setActionFilter("all");
     setBranchFilter("all");
     setSeverityFilter("all");
-    setDateRange("7d");
+    setDateRange("7d"); setCustomDates(null);
     setPage(1);
   }
 
@@ -318,7 +322,7 @@ export default function AuditLogsTable({
     setShowExportMenu(false);
   }
 
-  const dateLabel = formatDateRangeLabel(dateRange, todayStart);
+  const dateLabel = customDates ? `${customDates.from || "…"} – ${customDates.to || "…"}` : formatDateRangeLabel(dateRange, todayStart);
 
   return (
     <main className="mx-auto w-full max-w-[1600px] space-y-4 pb-8">
@@ -372,6 +376,7 @@ export default function AuditLogsTable({
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <DateRangeFilter from={customDates?.from??""} to={customDates?.to??""} onApply={(from,to)=>changeFilter(()=>setCustomDates({from,to}))} />
         <div className="space-y-3 border-b border-slate-100 p-4 dark:border-slate-800">
           <div className="flex flex-col gap-3 lg:flex-row">
             <div className="relative min-w-0 flex-1">
@@ -400,7 +405,7 @@ export default function AuditLogsTable({
           {!filtersOpen ? <button type="button" onClick={() => setFiltersOpen(true)} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg sm:hidden"><ListFilter className="h-4 w-4" />Filter</button> : null}
           <div role={filtersOpen ? "dialog" : undefined} aria-modal={filtersOpen || undefined} aria-label="Audit log filters" data-sheet="bottom" className={`${filtersOpen ? "fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-14 shadow-2xl dark:bg-slate-900" : "max-sm:hidden"} flex flex-col gap-3 sm:static sm:max-h-none sm:overflow-visible sm:rounded-none sm:bg-transparent sm:p-0 sm:shadow-none 2xl:flex-row 2xl:items-center`}>
             {filtersOpen ? <button type="button" aria-label="Close audit log filters" onClick={() => setFiltersOpen(false)} className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600 sm:hidden"><X className="h-5 w-5" /></button> : null}
-            <div className="relative min-w-[260px] flex-1 max-sm:min-w-0 2xl:max-w-[330px]">
+            <div className={`${dateFilterStyles.legacy} relative min-w-[260px] flex-1 max-sm:min-w-0 2xl:max-w-[330px]`}>
               <button
                 type="button"
                 onClick={() => setShowDateMenu((open) => !open)}
@@ -422,7 +427,7 @@ export default function AuditLogsTable({
                       key={value}
                       type="button"
                       onClick={() => {
-                        setDateRange(value);
+                        setDateRange(value); setCustomDates(null);
                         setPage(1);
                         setShowDateMenu(false);
                       }}

@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter, { dateFilterStyles } from "@/components/date-range-filter";
+
 import OrderQrScanner from '@/components/order-qr-scanner';
 
 import Link from "next/link";
@@ -396,6 +398,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
           <button type="button" onClick={() => setFiltersOpen(true)} aria-label="Filter results" className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm sm:hidden"><SlidersHorizontal size={18} /></button>
         </form>
 
+        <DateRangeFilter from={dateFrom} to={dateTo} onApply={(from,to)=>{setDateFrom(from);setDateTo(to);setDraft(current=>current?{...current,dateFrom:from,dateTo:to}:null);}} />
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 max-sm:-mx-1 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-1 max-sm:pb-1 max-sm:[scrollbar-width:none]">
           <span className="max-sm:hidden">Try searching:</span>
           {suggestions.map((suggestion) => (
@@ -474,7 +477,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
               </div>
             </FilterSection>
 
-            <FilterSection title="Date Range">
+            <div className={dateFilterStyles.legacy}><FilterSection title="Date Range">
               <div className="grid grid-cols-2 gap-2">
                 <label className="relative">
                   <CalendarDays size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -484,7 +487,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
               </div>
             </FilterSection>
 
-            <FilterSection title="Branch">
+            </div><FilterSection title="Branch">
               <select value={panel.branch} onChange={(event) => editPanel({ branch: event.target.value })} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950">
                 <option value="all">All branches</option>
                 {response.branches.map((item: GlobalSearchBranch) => <option key={item.id} value={item.id} data-i18n-ignore="true">{item.name}</option>)}

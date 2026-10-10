@@ -14,6 +14,7 @@ import {
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import ProductGalleryInput from "@/components/product-gallery-input";
+import quickStyles from "./quick-fashion.module.css";
 import { generateInternalBarcode } from "@/lib/barcode/generate";
 
 import {
@@ -120,6 +121,8 @@ export default function VariantProductForm({
   const [quickCost, setQuickCost] = useState("0");
   const [quickPrice, setQuickPrice] = useState("0");
   const [quickStock, setQuickStock] = useState("0");
+  const [sizePreset, setSizePreset] = useState(0);
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [runImageSlots, setRunImageSlots] = useState<RunImageSlot[]>(() => [createRunImageSlot("initial-run")]);
 
   const activeRunImageSlot =
@@ -139,6 +142,8 @@ export default function VariantProductForm({
       setQuickCost("0");
       setQuickPrice("0");
       setQuickStock("0");
+      setSizePreset(0);
+      setSelectedSizes([]);
         for (const slot of runImageSlots) {
         if (slot.preview) URL.revokeObjectURL(slot.preview);
       }
@@ -355,11 +360,27 @@ export default function VariantProductForm({
               <h3 className="text-sm font-bold text-slate-900">
                 {isShoes ? "Quick shoe size run" : "Quick fashion size run"}
               </h3>
-              <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+              <p className={`mt-0.5 text-[11px] leading-4 text-slate-500 ${isFashion ? quickStyles.legacy : ""}`}>
                 Enter a colour, SKU prefix, prices and starting stock, then add a common size run in one tap.
               </p>
             </div>
           </div>
+
+          {isFashion && <div className={quickStyles.desktop}>
+            <p className="mt-1 text-xs text-slate-500">{translateLabel("Select sizes first, then click Add.")}</p>
+            <div role="tablist" aria-label={translateLabel("Size presets")} className="mt-4 flex flex-wrap gap-2">
+              {fashionSizeRuns.map((run, index) => <button key={run.label} type="button" role="tab" tabIndex={sizePreset === index ? 0 : -1} aria-selected={sizePreset === index} aria-controls="fashion-size-chips" id={`fashion-size-preset-${index}`} onClick={() => { setSizePreset(index); setSelectedSizes([]); }} onKeyDown={event => {
+                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                event.preventDefault();
+                const next = event.key === "Home" ? 0 : event.key === "End" ? fashionSizeRuns.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + fashionSizeRuns.length) % fashionSizeRuns.length;
+                setSizePreset(next); setSelectedSizes([]);
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
+              }} className={`min-h-10 rounded-lg border px-3 text-xs font-semibold transition-colors ${sizePreset === index ? "border-blue-600 bg-blue-600 text-white" : "border-blue-200 bg-white text-blue-700 hover:bg-blue-100"}`}>{translateLabel(run.label.replace("â€“", "–"))}</button>)}
+            </div>
+            <div id="fashion-size-chips" role="tabpanel" aria-labelledby={`fashion-size-preset-${sizePreset}`} className="mt-3 flex flex-wrap gap-2">
+              {fashionSizeRuns[sizePreset].sizes.map(size => <button key={size} type="button" aria-pressed={selectedSizes.includes(size)} onClick={() => setSelectedSizes(current => current.includes(size) ? current.filter(value => value !== size) : [...current, size])} className={`min-h-10 min-w-12 rounded-lg border px-3 text-xs font-semibold transition-colors ${selectedSizes.includes(size) ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:bg-blue-50"}`} data-i18n-ignore="true">{size}</button>)}
+            </div>
+          </div>}
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <MiniField label="Colour" value={quickColor} placeholder="Black" onChange={setQuickColor} />
@@ -391,7 +412,7 @@ export default function VariantProductForm({
             </label>
           </div>
 
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className={`mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 ${isFashion ? quickStyles.legacy : ""}`}>
             {(isShoes ? shoeSizeRuns : fashionSizeRuns).map((run) => (
               <button
                 key={run.label}
@@ -403,6 +424,12 @@ export default function VariantProductForm({
               </button>
             ))}
           </div>
+          {isFashion && <div className={quickStyles.desktop}>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-teal-200 pt-4">
+              <p className="text-xs text-slate-600" aria-live="polite">{translateLabel("Selected sizes")}: <span data-i18n-ignore="true">{selectedSizes.join(", ") || "—"}</span></p>
+              <button type="button" disabled={!selectedSizes.length || pending} onClick={() => { addSizeRun(fashionSizeRuns[sizePreset].sizes.filter(size => selectedSizes.includes(size))); setSelectedSizes([]); }} className="min-h-11 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50">{formatUiText(translateLabel("Add {0} sizes"), [selectedSizes.length])}</button>
+            </div>
+          </div>}
         </section>
       )}
 

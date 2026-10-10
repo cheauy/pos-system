@@ -1,0 +1,5 @@
+.desktop { display: none; }
+@media (min-width: 1280px) and (hover: hover) and (pointer: fine) {
+  .desktop { display: block; }
+  .legacy { display: none; }
+}

@@ -5,14 +5,14 @@ import { useLanguage } from "@/components/providers/language-provider";
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { posBranchSwitchReason } from '@/lib/branches/switch-model';
-import { useWorkspaceBranch, useBranchSwitchGuard } from "../workspace-branch-provider";
+import { useBranchSwitchGuard } from "../workspace-branch-provider";
 import { usePosNavigationLock } from '../pos-lock-provider';
 import { LockKeyhole, LockKeyholeOpen } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Barcode, Banknote, Check, ChevronDown, Clock, CreditCard, Gift, Grid2X2, Heart, List, Minus, Package, Plus, Printer, RefreshCw, Search, ShoppingCart, SlidersHorizontal, Store, Trash2, UserRound, X } from 'lucide-react';
+import { Barcode, Banknote, Check, ChevronDown, Clock, CreditCard, Gift, Grid2X2, Heart, List, Minus, Package, Plus, Printer, RefreshCw, Search, ShoppingCart, SlidersHorizontal, Trash2, UserRound, X } from 'lucide-react';
 import { allocatePosStock, checkPosSale, completePosSale, deletePosHold, loadPosWorkspace, savePosHold } from './pos-workspace-actions';
 import { couponPreview } from '@/lib/promotions/pricing';
-import { cartIssue, cents, configuredLine, discountIssue, EMPTY_FILTERS, inventoryFor, isVariantGroup, restoreHeldDraft, money, productGroups, stockFor, thresholdFor, totals, validateCheckout } from './pos-workspace-helpers';
+import { cartIssue, cents, configuredLine, discountIssue, EMPTY_FILTERS, inventoryFor, isVariantGroup, restoreHeldDraft, money, productGroups, totals, validateCheckout } from './pos-workspace-helpers';
 import { currencyQuote, currencySymbol, quoteMoney } from './pos-currency';
 import { CurrencyAmountInput } from './pos-currency-components';
 import { CheckoutPanel, VariantPicker } from './pos-workspace-flow';
@@ -37,7 +37,6 @@ const messageOf = (e: unknown) => e instanceof Error ? e.message : 'The request 
 export default function PosClient({ initialData }: { initialData: Workspace }) {
   const { t: translateText } = useLanguage();
   const navigationLock=usePosNavigationLock();
-  const { requestSwitch } = useWorkspaceBranch();
   const [data, setData] = useState(initialData);
   const [branch, setBranch] = useState(initialData.defaultBranchId);
   const [filters, setFilters] = useState<CatalogFilters>({ ...EMPTY_FILTERS });
@@ -120,8 +119,6 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   const currencyChanged = lines.length > 0 && cartCurrency !== data.settings.currency ? 'The store accounting currency changed. Clear this unsaved cart and start again; prices cannot be reinterpreted as another currency.' : null;
   const issue = currencyChanged || productIssue || couponIssue || amountIssue;
   const groups = useMemo(() => productGroups(data, branch, filters, favorites), [data, branch, filters, favorites]);
-  const allGroupCount = useMemo(() => productGroups(data, branch, EMPTY_FILTERS, []).length, [data, branch]);
-  const lowStockCount = useMemo(() => data.products.filter(p => stockFor(p, branch, data) > 0 && stockFor(p, branch, data) <= thresholdFor(p, branch, data)).length, [data, branch]);
   const colors = useMemo(() => Array.from(new Set(data.products.map(p => p.color).filter((v): v is string => Boolean(v)))).sort(), [data.products]);
   const sizes = useMemo(() => Array.from(new Set(data.products.map(p => p.size).filter((v): v is string => Boolean(v)))).sort((a,b) => a.localeCompare(b, undefined, { numeric: true })), [data.products]);
   const branchName = data.branches.find(b => b.id === branch)?.name || 'All branches';
@@ -249,10 +246,6 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     try { const result = await loadPosWorkspace(data.businessId, branch, true, customerId ? [customerId] : []); if (result.success) { setData(result.data); if (!silent) setNotice({ kind: 'success', text: 'Products, stock and held orders refreshed.' }); } else setNotice({ kind: 'error', text: result.message }); }
     catch (e) { setNotice({ kind: 'error', text: messageOf(e) }); }
     finally { if (!silent) setBusy(''); }
-  }
-  async function changeBranch(next: string) {
-    if (next === branch || frozen) return;
-    await requestSwitch(next);
   }
   function addProduct(product: Product, ids: string[] = []): boolean {
     if (frozen) return false;
@@ -407,7 +400,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     const sent = recoveryRef.current;
     const customerUnconfirmed = Boolean(sent && (sent.createCustomer || sent.customerId) && !r.customerId);
     setPending(null); setReceipt(r); clearCart(); setDialog('receipt');
-    setNotice(customerUnconfirmed ? { kind: 'error', text: `Sale ${r.orderNumber} saved, but its customer link could not be confirmed. Check this order and Customers before continuing. Do not repeat the sale.` } : { kind: 'success', text: `Sale ${r.orderNumber} saved. ${r.remaining > 0 ? 'A balance remains due.' : 'Payment recorded.'}` }); await refresh(true);
+    setNotice(customerUnconfirmed ? { kind: 'error', text: `Sale ${r.orderNumber} saved, but its customer link could not be confirmed. Check this order and Customers before continuing. Do not repeat the sale.` } : null); await refresh(true);
   }
   async function submit(retry = false) {
     if (!retry && reviewIssue) { setModalError(reviewIssue); return; }
@@ -454,24 +447,13 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
 
   return <main className={s.workspace} ref={rootRef}>
     <div className={s.catalogColumn}>
-      <header className={s.pageHeader}>
-        <div><h1>Point of Sale</h1><p>Search products, filter inventory, and complete sales quickly.</p></div>
-        <div className={s.headerStats}>
-          <button type="button" className={s.button} aria-pressed={navigationLock.locked} disabled={navigationLock.pending||frozen} onClick={()=>void navigationLock.toggle()} title={navigationLock.locked?'Unlock navigation':'Lock navigation to POS, Orders and Register'}>{navigationLock.locked?<LockKeyhole size={17}/>:<LockKeyholeOpen size={17}/>} {navigationLock.pending?'Saving…':navigationLock.locked?'Locked':'Lock'}</button>
-          <div className={s.productSummary} aria-label="Products">
-            <div className={s.productCount}><span><Package size={19}/></span><div><strong>{allGroupCount}</strong><small>Products</small></div></div>
-
-          </div>
-          <button className={`${s.miniStat} ${s.warningStat}`} onClick={() => changeFilter('stock', filters.stock === 'low' ? 'all' : 'low')} aria-pressed={filters.stock === 'low'}><span><AlertTriangle size={19} /></span><div><strong>{lowStockCount}</strong><small>Low stock SKUs</small></div></button>
-          <label className={s.branchStat}><Store size={19} /><span><select aria-label="Sale branch" value={branch} onChange={e => changeBranch(e.target.value)} disabled={frozen||navigationLock.locked||data.branches.length<2}>{data.branches.map(b => <option key={b.id} value={b.id} data-i18n-ignore="true">{b.name}</option>)}</select></span></label>
-        </div>
-      </header>
       {notice && <div role={notice.kind === 'error' ? 'alert' : 'status'} className={`${s.notice} ${notice.kind === 'error' ? s.error : notice.kind === 'success' ? s.success : ''}`}><span>{notice.text}</span><button className={s.iconButton} aria-label="Dismiss message" onClick={() => setNotice(null)}><X size={16} /></button></div>}
       {recovery && <section className={`${s.notice} ${s.recovery}`}><div><strong>Confirm interrupted sale · {cash(recovery.expectedTotal)}</strong><p>Request {recovery.requestId.slice(0,8)}. The cart is locked until the saved request is resolved.</p></div><div className={s.row}><button className={s.button} disabled={Boolean(busy)} onClick={checkPending}>Check sale</button><button className={s.primary} disabled={Boolean(busy)} onClick={() => submit(true)}>Retry same sale</button></div></section>}
       <section className={s.filterPanel} aria-label="Product search and filters">
         <div className={s.searchRow}><div className={s.searchInput}><Search size={19} /><input ref={searchRef} value={filters.search} onChange={e => changeFilter('search', e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && filters.search.trim()) { e.preventDefault(); scan(filters.search); } }} placeholder="Search by product name, SKU, or barcode…" aria-label="Search products" /><kbd>F2</kbd><button type="button" className={s.searchScan} onClick={() => open('scan')} disabled={frozen} aria-label="Scan barcode"><Barcode size={18} /> Scan</button></div>
-          <div className={s.viewToggle} aria-label="Product view"><button className={view === 'grid' ? s.activeView : ''} onClick={() => setView('grid')} aria-label="Grid view" aria-pressed={view === 'grid'}><Grid2X2 size={18}/></button><button className={view === 'list' ? s.activeView : ''} onClick={() => setView('list')} aria-label="List view" aria-pressed={view === 'list'}><List size={19}/></button></div>
-          <button className={s.button} onClick={() => setExtraFilters(!extraFilters)} aria-expanded={extraFilters}><SlidersHorizontal size={17} /> Filters</button>
+          <div className={s.viewToggle} aria-label="Product view"><button type="button" className={s.activeView} onClick={() => setView(current => current === 'grid' ? 'list' : 'grid')} aria-label={translateText(view === 'grid' ? 'Switch to List View' : 'Switch to Grid View')} title={translateText(view === 'grid' ? 'Switch to List View' : 'Switch to Grid View')} data-i18n-ignore-attributes="aria-label title">{view === 'grid' ? <List size={19}/> : <Grid2X2 size={18}/>}</button></div>
+          <button type="button" className={s.button} aria-label={navigationLock.locked?'Unlock navigation':'Lock navigation to POS, Orders and Register'} aria-pressed={navigationLock.locked} disabled={navigationLock.pending||frozen} onClick={()=>void navigationLock.toggle()} title={navigationLock.locked?'Unlock navigation':'Lock navigation to POS, Orders and Register'}>{navigationLock.locked?<LockKeyhole size={17}/>:<LockKeyholeOpen size={17}/>} {navigationLock.pending?'Saving…':navigationLock.locked?'Locked':'Lock'}</button>
+          <button className={s.button} aria-label="Filters" onClick={() => setExtraFilters(!extraFilters)} aria-expanded={extraFilters}><SlidersHorizontal size={17} /> Filters</button>
         </div>
         <nav className={s.categoryMenu} aria-label="Categories">{[{ id: 'all', name: 'All' }, ...data.categories].map(c => <button key={c.id} type="button" aria-pressed={filters.category === c.id} className={filters.category === c.id ? s.categoryActive : ''} onClick={() => changeFilter('category', c.id)}><span data-i18n-ignore="true">{c.name}</span></button>)}</nav>
         {extraFilters && <button type="button" aria-label="Close filters" className={s.sheetBackdrop} onClick={() => setExtraFilters(false)}/>}
@@ -484,9 +466,18 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
           const single = group.variants.length === 1 ? group.variants[0] : null;
           const isLow = group.stock > 0 && group.stock <= group.threshold;
           const groupLabel = group.stock > 0 ? (isLow ? 'Low stock' : 'In stock') : group.variants.some(p => inventoryFor(p,branch,data).unassigned > 0) ? 'Stock unassigned' : group.variants.some(p => Number(p.stock_quantity) > 0) ? 'Not at this branch' : 'Out of stock';
+          if (view === 'list') return <article key={group.key} className={s.compactProduct} data-stock={group.stock <= 0 ? 'empty' : isLow ? 'low' : 'available'}>
+            <button type="button" className={s.compactSelect} disabled={frozen || !branch} onClick={() => chooseGroup(group)} title={group.name} aria-label={formatUiText(translateText("{0} {1}"), [translateText(isVariantGroup(group) || single?.product_type === 'configurable' ? 'Choose Options' : group.stock <= 0 ? 'View stock' : 'Add to Cart'), group.name])} data-i18n-ignore-attributes="title aria-label">
+              <span className={s.compactPhoto}><ProductImage loading={index < 4 ? 'eager' : 'lazy'} src={group.image} alt={group.name} data-i18n-ignore-attributes="alt"/></span>
+              <span className={s.compactName} data-i18n-ignore="true">{group.name}</span>
+              <span className={s.compactPrice}>{cash(group.price)}</span>
+              <span className={s.compactStock} title={translateText(groupLabel)} aria-label={`${translateText(groupLabel)}: ${group.stock}`} data-i18n-ignore-attributes="title aria-label">{group.stock}</span>
+            </button>
+            <button type="button" className={`${s.compactFavorite} ${group.favorite ? s.isFavorite : ''}`} aria-label={formatUiText(translateText("{0} {1}"), [translateText(group.favorite ? 'Unfavorite' : 'Favorite'), group.name])} aria-pressed={group.favorite} onClick={() => favorite(group.key)} data-i18n-ignore-attributes="aria-label"><Heart size={14}/></button>
+          </article>;
           return <article key={group.key} className={s.productCard}>
             <div className={s.productPhoto}><button className={s.photoButton} disabled={frozen || !branch} onClick={() => chooseGroup(group)} aria-label={formatUiText(translateText("Choose {0}"), [group.name])} data-i18n-ignore-attributes="aria-label"><ProductImage loading={index < 4 ? 'eager' : 'lazy'} src={group.image} alt={group.name} data-i18n-ignore-attributes="alt"/></button><button className={`${s.favorite} ${group.favorite ? s.isFavorite : ''}`} aria-label={formatUiText(translateText("{0} {1}"), [group.favorite ? (translateText("Unfavorite")) : (translateText("Favorite")), group.name])} aria-pressed={group.favorite} onClick={() => favorite(group.key)} data-i18n-ignore-attributes="aria-label"><Heart size={18}/></button><span className={`${s.stockBadge} ${group.stock === 0 ? s.outStock : isLow ? s.lowStock : ''}`}>{groupLabel}</span>{inCart > 0 && <span className={s.cartBadge}>{inCart} in cart</span>}</div>
-            <div className={s.productInfo}><small>{group.category}</small><h3 title={group.name} data-i18n-ignore="true">{group.name}</h3><p className={s.sku} title={single ? (formatUiText(translateText("SKU: {0}"), [single.sku || ('—')])) : (formatUiText(translateText("{0} variants · choose size / color"), [group.variants.length]))} data-i18n-ignore-attributes="title">{single ? `SKU: ${single.sku || '—'}` : `${group.variants.length} variants · choose size / color`}</p><div className={s.priceRow}><strong>{group.variants.length > 1 ? 'From ' : ''}{cash(group.price)}</strong>{single?.compare_at_price != null && single.compare_at_price > single.selling_price && <del>{cash(single.compare_at_price)}</del>}<span className={isLow ? s.orangeText : ''}>Stock: {group.stock}</span></div></div>
+            <div className={s.productInfo}><small>{group.category}</small><h3 title={group.name} data-i18n-ignore="true">{group.name}</h3><p className={s.sku} title={single ? (formatUiText(translateText("SKU: {0}"), [single.sku || ('—')])) : (formatUiText(translateText("{0} variants · choose size / color"), [group.variants.length]))} data-i18n-ignore-attributes="title">{single ? `SKU: ${single.sku || '—'}` : `${group.variants.length} variants · choose size / color`}</p><div className={s.priceRow}><strong>{cash(group.price)}</strong>{single?.compare_at_price != null && single.compare_at_price > single.selling_price && <del>{cash(single.compare_at_price)}</del>}<span className={isLow ? s.orangeText : ''}>Stock: {group.stock}</span></div></div>
             <button className={s.addButton} disabled={frozen || !branch} onClick={() => chooseGroup(group)}><ShoppingCart size={17}/>{isVariantGroup(group) ? 'Choose Options' : group.stock <= 0 ? 'View stock' : single?.product_type === 'configurable' ? 'Choose Options' : 'Add to Cart'}</button>
           </article>;
         })}

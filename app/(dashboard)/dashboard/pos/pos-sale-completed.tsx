@@ -49,7 +49,6 @@ export function SaleCompleted({ receipt, meta, storeAddress, formatMoney, onNext
       {[0, 1, 2, 3, 4, 5, 6].map(index => <i key={index} className={s.spark} data-index={index} />)}
     </div>
     <h2 className={s.title}>Sale completed</h2>
-    <p className={s.subtitle}>{receipt.remaining > 0 ? `Sale saved · ${formatMoney(receipt.remaining)} balance due.` : 'Payment recorded successfully.'}</p>
 
     <div className={s.thanks}><span><Check size={18} /></span><div><strong>Thank you for your purchase!</strong><small>Receipt is available to print or share if needed.</small></div></div>
 
@@ -79,10 +78,10 @@ export function SaleCompleted({ receipt, meta, storeAddress, formatMoney, onNext
 
     <button type="button" className={s.primary} onClick={onNextSale} autoFocus><Plus size={20} />Next Sale</button>
     <div className={s.pair}>
-      <button type="button" className={s.secondary} onClick={() => setPreview(true)}><Printer size={18} />Print Receipt</button>
+      <button type="button" className={s.secondary} disabled={preview} onClick={() => setPreview(true)}><Printer size={18} />Print Receipt</button>
       <button type="button" className={s.secondary} disabled={sharing} onClick={() => void share()}><Share2 size={18} />Share Receipt</button>
     </div>
     <Link className={s.ghost} href={`/dashboard/orders/${receipt.orderId}`}>View Order</Link>
-    {preview && <OrderPrintPreview orderId={receipt.orderId} kind="receipt" onClose={() => setPreview(false)} />}
+    {preview && <OrderPrintPreview orderId={receipt.orderId} kind="receipt" direct onClose={() => setPreview(false)} />}
   </div>;
 }

@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter, { dateFilterStyles } from "@/components/date-range-filter";
+import { inCalendarDateRange } from "@/lib/date-range";
 
 import Link from "next/link";
 import {
@@ -185,6 +187,7 @@ export default function ManualPaymentApprovalDashboard({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [dateFilter, setDateFilter] = useState<DateFilter>("30");
+  const [customDates, setCustomDates] = useState<{from:string;to:string}|null>(null);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -213,7 +216,9 @@ export default function ManualPaymentApprovalDashboard({
     return rows.filter((row) => {
       if (statusFilter !== "all" && row.status !== statusFilter) return false;
       if (!rowMatchesType(row, typeFilter)) return false;
-      if (!rowMatchesDate(row, dateFilter, referenceNow)) return false;
+      if (customDates) {
+        if (!inCalendarDateRange(row.submittedAt, customDates.from, customDates.to, "+07:00")) return false;
+      } else if (!rowMatchesDate(row, dateFilter, referenceNow)) return false;
 
       if (!normalizedSearch) return true;
 
@@ -235,7 +240,7 @@ export default function ManualPaymentApprovalDashboard({
 
       return haystack.includes(normalizedSearch);
     });
-  }, [rows, statusFilter, typeFilter, dateFilter, search, referenceNow]);
+  }, [rows, statusFilter, typeFilter, dateFilter, customDates, search, referenceNow]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
@@ -412,6 +417,7 @@ export default function ManualPaymentApprovalDashboard({
           />
         </section>
 
+        <DateRangeFilter from={customDates?.from??""} to={customDates?.to??""} today={new Date().toLocaleDateString("en-CA",{timeZone:DISPLAY_TIME_ZONE})} onApply={(from,to)=>{setCustomDates({from,to});setPage(1);}} />
         <section className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_8px_28px_rgba(15,23,42,0.05)]">
           <div className="border-b border-slate-100 p-3">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -473,7 +479,7 @@ export default function ManualPaymentApprovalDashboard({
                   <option value="both">URL + mode</option>
                 </select>
 
-                <label className="relative">
+                <label className={`${dateFilterStyles.legacy} relative`}>
                   <CalendarDays
                     size={15}
                     className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -482,6 +488,7 @@ export default function ManualPaymentApprovalDashboard({
                     value={dateFilter}
                     onChange={(event) => {
                       setDateFilter(event.target.value as DateFilter);
+                      setCustomDates(null);
                       setPage(1);
                     }}
                     className="h-10 rounded-xl border border-slate-200 bg-white pl-9 pr-8 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50"

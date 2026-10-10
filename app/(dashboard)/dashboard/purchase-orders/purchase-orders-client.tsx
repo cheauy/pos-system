@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter, { DateFilterContent, dateFilterStyles } from "@/components/date-range-filter";
+
 
 import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import Link from "next/link";
@@ -189,6 +191,7 @@ export default function PurchaseOrdersClient({
 
   return (
     <main className="space-y-5" aria-busy={busy}>
+      <DateRangeFilter from={fromDate} to={toDate} busy={busy} onApply={(from,to)=>{setFromDate(from);setToDate(to);setPage(1);setDateDraft(null);}} />
       {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error} The list below still shows the previous filters.</p>}
       {creating && <NewOrderDialog cacheRef={choicesCache} close={() => setCreating(false)} created={id => { setCreating(false); setSearch(""); setSupplierFilter("all"); setStatusFilter("all"); setFromDate(""); setToDate(""); setSortMode("newest"); setPage(1); setSelectedId(id); setDetailTab("overview"); }} />}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -235,7 +238,7 @@ export default function PurchaseOrdersClient({
         <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           {filtersOpen && (
             <div className="border-b border-slate-200 bg-white p-3">
-              <div className="grid grid-cols-6 gap-2 sm:grid-cols-2 2xl:grid-cols-[minmax(160px,1.5fr)_minmax(110px,.8fr)_minmax(110px,.8fr)_minmax(220px,1.3fr)_minmax(110px,.8fr)]">
+              <div className={`${dateFilterStyles.purchaseControls} grid grid-cols-6 gap-2 sm:grid-cols-2 2xl:grid-cols-[minmax(160px,1.5fr)_minmax(110px,.8fr)_minmax(110px,.8fr)_minmax(220px,1.3fr)_minmax(110px,.8fr)]`}>
                 <label className="relative col-span-2 block max-sm:order-4 max-[39.99rem]:col-span-6 sm:col-span-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input
@@ -272,7 +275,7 @@ export default function PurchaseOrdersClient({
                   <option value="cancelled">Cancelled</option>
                 </select>
 
-                <div className="col-span-4 grid grid-cols-2 gap-2 max-sm:order-5 max-[39.99rem]:col-span-6 sm:col-span-1">
+                <div className={`${dateFilterStyles.legacy} col-span-4 grid grid-cols-2 gap-2 max-sm:order-5 max-[39.99rem]:col-span-6 sm:col-span-1`}>
                   <label className="relative">
                     <CalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                     <input
@@ -323,7 +326,7 @@ export default function PurchaseOrdersClient({
             </div>
           )}
 
-          <div className={`overflow-x-auto transition-opacity ${busy || error ? "opacity-60" : ""}`}>
+          <DateFilterContent busy={busy}><div className={`overflow-x-auto transition-opacity ${busy || error ? "opacity-60" : ""}`}>
             <MobileList>{visibleOrders.map((order) => <MobileListCard key={order.id} selected={order.id === selectedOrder?.id} onClick={() => { setSelectedId(order.id); setDetailTab("overview"); if (window.matchMedia("(max-width: 639px)").matches) setDetailOpen(true); }} media={<FileText size={24} />} title={order.po_number} date={formatDate(order.order_date)} primary={order.supplier_name || "No supplier"} secondary={`${order.item_count} items · Expected ${formatDate(order.expected_date)}`} amount={money(order.total)} status={{ label: statusLabel(order.status) }} />)}</MobileList>
             <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[760px] text-xs">
               <thead className="border-b border-slate-200 bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -392,7 +395,7 @@ export default function PurchaseOrdersClient({
             </table>
           </div>
 
-          {visibleOrders.length === 0 && (
+          </DateFilterContent>{visibleOrders.length === 0 && (
             <div className="flex min-h-80 flex-col items-center justify-center px-6 py-12 text-center">
               <div className="relative mb-2"><FileText className="text-slate-200" size={64} /><span className="absolute -bottom-1 -right-1 rounded-full border-4 border-white bg-teal-600 p-1 text-white"><Plus size={18} /></span></div>
               <p className="mt-3 font-semibold text-slate-700">No purchase orders found</p>

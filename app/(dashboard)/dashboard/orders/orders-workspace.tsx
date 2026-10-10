@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter, { DateFilterContent, dateFilterStyles } from "@/components/date-range-filter";
+
 import { useLanguage } from "@/components/providers/language-provider";
 import { formatUiText } from "@/lib/i18n/translations";
 
@@ -87,14 +89,14 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
 
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [selectedId, setSelectedId] = useState<string | null>(data.rows[0]?.id ?? null);
-  const [panelClosed, setPanelClosed] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTrigger, setDrawerTrigger] = useState<HTMLElement | null>(null);
+  const listRef = useRef<HTMLElement | null>(null);
   const [detail, setDetail] = useState<OrderDetail | null>(null);
   const [detailError, setDetailError] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailReload, setDetailReload] = useState(0);
-  const [narrow, setNarrow] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [selected, setSelected] = useState<QueueItem[]>([]);
   const [queueOpen, setQueueOpen] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
@@ -103,6 +105,8 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
   const [printPreview,setPrintPreview]=useState<{id:string;kind:OrderPrintKind}|null>(null);
   const [menu, setMenu] = useState<{ row: OrderRow; rect: DOMRect; trigger: HTMLButtonElement } | null>(null);
   const [dialog, setDialog] = useState<ActionDialog | null>(null);
+  const [discardAction, setDiscardAction] = useState<(() => void) | null>(null);
+  const requestDiscard = (action: () => void) => setDiscardAction(() => action);
   const [notice, setNotice] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filterForm = useRef<HTMLFormElement>(null);
@@ -113,12 +117,12 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
   const allCheckbox = useRef<HTMLInputElement>(null);
   // New rows can push the selected order off this page. Keep its mounted
   // detail/return draft until the user selects another order or closes it.
-  const visibleId = selectedId ?? data.rows[0]?.id ?? null;
+  const visibleId = selectedId;
   const detailRevision = JSON.stringify([data.rows.find(row => row.id === visibleId) ?? null, permissions, data.receiveAllOnline]);
   const detailSnapshot = useRef({ id: visibleId, revision: detailRevision });
   const currentDetailFormat = { id: visibleId, viewingBranch: filters.branch, currency: data.currency, currencyFormat: data.currencyFormat, timezone: data.timezone };
   const [detailFormat, setDetailFormat] = useState(currentDetailFormat);
-  // Adjust on every selection transition, including deletion/empty-list fallback.
+  // Adjust on every selection transition.
   // Same-scope settings stay current; a retained order keeps its original units
   // while another branch's list is shown. This does not remount its return form.
   if (detailFormat.id !== visibleId || (detailFormat.viewingBranch === filters.branch &&
@@ -131,12 +135,6 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
   const allChecked = data.rows.length > 0 && data.rows.every((row) => selected.some((item) => item.id === row.id));
   const someChecked = data.rows.some((row) => selected.some((item) => item.id === row.id));
 
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 1279px)");
-    const update = () => setNarrow(query.matches);
-    update(); query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
   useEffect(() => { if (allCheckbox.current) allCheckbox.current.indeterminate = someChecked && !allChecked; }, [someChecked, allChecked]);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(""), 6500); return () => clearTimeout(timer); }, [notice]);
   const [live, setLive] = useState(false);
@@ -205,7 +203,7 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
   }
   useEffect(() => {
     let active = true;
-    if (!visibleId || panelClosed || (narrow && !mobileOpen)) { setDetail(null); setDetailLoading(false); loadedId.current = null; return; }
+    if (!visibleId || !drawerOpen) { setDetail(null); setDetailLoading(false); loadedId.current = null; return; }
     // Live refreshes of the same order update in place instead of flashing a skeleton.
     const sameOrder = loadedId.current === visibleId;
     if (!sameOrder) { setDetailLoading(true); setDetail(null); }
@@ -216,7 +214,7 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
     }).catch(() => { if (active) setDetailError("Could not load the order. Check your connection and try again."); })
       .finally(() => { if (active) setDetailLoading(false); });
     return () => { active = false; };
-  }, [visibleId, businessId, detailReload, panelClosed, narrow, mobileOpen]);
+  }, [visibleId, businessId, detailReload, drawerOpen]);
 
   function navigate(changes: Partial<WorkspaceFilters>) {
     const next = { ...filters, ...changes };
@@ -243,9 +241,10 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
     navigate({ search: values.search?.trim() ?? "", from: values.from ?? "", to: values.to ?? "", source: values.source || "all", fulfillment: values.fulfillment || "all", payment: values.payment || "all", page: 1 });
   }
   function refresh() { setMenu(null); refreshScheduler.current?.request(true, true); }
-  function selectRow(row: OrderRow) {
+  function selectRow(row: OrderRow, trigger?: HTMLElement) {
+    setDrawerTrigger(trigger ?? menu?.trigger ?? (document.activeElement as HTMLElement | null));
     setDetailFormat({ id: row.id, viewingBranch: filters.branch, currency: data.currency, currencyFormat: data.currencyFormat, timezone: data.timezone });
-    setSelectedId(row.id); setPanelClosed(false); setMobileOpen(true);
+    setDetailError(""); setSelectedId(row.id); setDrawerOpen(true);
   }
   function toggleSelected(row: OrderRow) {
     setSelected((items) => items.some((item) => item.id === row.id) ? items.filter((item) => item.id !== row.id) : items.length < 50 ? [...items, { id: row.id, number: row.orderNumber, row }] : items);
@@ -256,14 +255,17 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
   function openAction(type: ActionDialog["type"], order: OrderRow) { setMenu(null); setDialog({ type, order }); }
   function actionSuccess(message: string, deletedId?: string) {
     setDialog(null); setNotice(message);
-    if (deletedId) { setSelected((items) => items.filter((item) => item.id !== deletedId)); setSelectedId(data.rows.find((row) => row.id !== deletedId)?.id ?? null); setMobileOpen(false); }
+    if (deletedId) {
+      setSelected((items) => items.filter((item) => item.id !== deletedId));
+      if (visibleId === deletedId) { setSelectedId(null); setDrawerOpen(false); }
+    }
     // A status action's revalidatePath already returned the fresh list; refreshing again doubled the page fetch.
     if (dialog?.type !== "status") refresh();
   }
   function bulkDeleted(deleted: string[], failed: number) {
     if (!deleted.length) return;
     setSelected((items) => items.filter((item) => !deleted.includes(item.id)));
-    if (visibleId && deleted.includes(visibleId)) { setSelectedId(data.rows.find((row) => !deleted.includes(row.id))?.id ?? null); setMobileOpen(false); }
+    if (visibleId && deleted.includes(visibleId)) { setSelectedId(null); setDrawerOpen(false); }
     setNotice(`${deleted.length} ${deleted.length === 1 ? "order" : "orders"} deleted.${failed ? ` ${failed} could not be deleted and remain selected.` : ""}`);
   }
   // Successful orders leave the selection; failed and skipped ones stay for review.
@@ -277,8 +279,8 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
   const lastShown = Math.min(data.page * filters.limit, data.total);
   const activeFilters = !!(filters.search || filters.from || filters.to || [filters.branch, filters.source, filters.fulfillment, filters.payment, filters.status].some((value) => value !== "all"));
   const filterCount = [filters.from || filters.to, filters.source !== "all", filters.fulfillment !== "all", filters.payment !== "all", filters.branch !== "all"].filter(Boolean).length;
-  const detailContent = <DetailPanel onPrint={(id,kind)=>setPrintPreview({id,kind})} detail={detail} loading={detailLoading} error={detailError} currency={detailFormat.currency} currencyFormat={detailFormat.currencyFormat} timezone={detailFormat.timezone} permissions={permissions} businessId={businessId}
-    onClose={() => { setPanelClosed(true); setMobileOpen(false); }} onRetry={() => setDetailReload((value) => value + 1)} onAction={openAction} onReturned={refresh} />;
+  const detailContent = <DetailPanel onDiscardRequest={requestDiscard} onPrint={(id,kind)=>setPrintPreview({id,kind})} detail={detail?.id === visibleId ? detail : null} loading={detailLoading || (!!visibleId && detail?.id !== visibleId && !detailError)} error={detailError} currency={detailFormat.currency} currencyFormat={detailFormat.currencyFormat} timezone={detailFormat.timezone} permissions={permissions} businessId={businessId}
+    onClose={() => setDrawerOpen(false)} onRetry={() => setDetailReload((value) => value + 1)} onAction={openAction} onReturned={refresh} />;
 
   return <div className={styles.workspace}>
     <header className={styles.header}>
@@ -294,6 +296,7 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
       </div>
     </header>
     {notice && <div className={styles.toast} role="status"><Check size={18} />{notice}<button type="button" aria-label="Dismiss notification" onClick={() => setNotice("")}><X size={15} /></button></div>}
+    <DateRangeFilter from={filters.from} to={filters.to} today={new Date().toLocaleDateString("en-CA",{timeZone:data.timezone})} busy={pending} onApply={(from,to)=>navigate({from,to,page:1})} />
     <div className={styles.workspaceGrid}>
       <div className={styles.mainColumn}>
         <form ref={filterForm} key={JSON.stringify(filters)} onSubmit={applyFilters} className={styles.filters} aria-label="Filter orders">
@@ -306,7 +309,7 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
           {filtersOpen && <button type="button" aria-label="Close filters" className={styles.sheetBackdrop} onClick={closeFilters} />}
           <div key={draftKey} id="order-filter-panel" className={styles.filterPanel} hidden={!filtersOpen}>
             <button type="button" className={styles.sheetClose} aria-label="Close order filters" onClick={closeFilters}><X size={20} /></button>
-            <div className={styles.dateRange}><label><span>From</span><input name="from" type="date" defaultValue={filters.from} aria-label="Start date" /></label><span className={styles.dateDash}>—</span><label><span>To</span><input name="to" type="date" defaultValue={filters.to} aria-label="End date" /></label></div>
+            <div className={`${styles.dateRange} ${dateFilterStyles.legacy}`}><label><span>From</span><input name="from" type="date" defaultValue={filters.from} aria-label="Start date" /></label><span className={styles.dateDash}>—</span><label><span>To</span><input name="to" type="date" defaultValue={filters.to} aria-label="End date" /></label></div>
             <select name="source" defaultValue={filters.source} aria-label="Filter by source"><option value="all">All Sources</option>{Object.entries(sourceLabels).filter(([value]) => value !== 'qr' || showTableQr).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             <select name="fulfillment" defaultValue={filters.fulfillment} aria-label="Filter by fulfillment"><option value="all">All Fulfillment Types</option>{Object.entries(fulfillmentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             <select name="payment" defaultValue={filters.payment} aria-label="Filter by payment status"><option value="all">All Payment Statuses</option>{Object.entries(paymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
@@ -318,7 +321,7 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
           <div className={styles.tabs} aria-label="Order status filters">{statusTabs.map((status) => <button key={status} type="button" disabled={pending} className={filters.status === status ? styles.activeTab : ""} onClick={() => navigate({ status, page: 1 })} aria-pressed={filters.status === status}>{statusLabels[status]} <span>({data.counts[status] ?? 0})</span></button>)}</div>
           {activeFilters && <button className={styles.textButton} type="button" onClick={() => navigate({ search: "", branch: "all", source: "all", fulfillment: "all", payment: "all", status: "all", from: "", to: "", page: 1 })}>Clear filters</button>}
         </div>
-        <section className={styles.tableCard} aria-label="Orders list" aria-busy={pending}>
+        <DateFilterContent busy={pending}><section ref={listRef} tabIndex={-1} className={styles.tableCard} aria-label="Orders list" aria-busy={pending}>
           {selected.length > 0 && <div className={styles.selectionBar} role="toolbar" aria-label="Selected orders"><Check size={14} /><span>{selected.length} selected <small>(up to 50)</small></span><button type="button" onClick={() => setSelected([])}>Clear selection</button>{(permissions.edit || permissions.delete) && <button type="button" className={styles.selectionActions} aria-haspopup="menu" aria-expanded={!!bulkMenu} onClick={(event) => { const trigger = event.currentTarget; setBulkMenu((open) => open ? null : trigger); }}>Actions<ChevronDown size={13} /></button>}</div>}
           <div className={styles.tableScroll}>
             <table className={styles.table} data-phone-layout="custom">
@@ -328,9 +331,12 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
                 <th><button type="button" className={styles.sortButton} onClick={() => navigate({ sort: filters.sort === "newest" ? "oldest" : "newest", page: 1 })} aria-label={`Sort by date, currently ${filters.sort}`}>Date/Time <ArrowUpDown size={12} /></button></th>
                 <th>Branch</th><th className={styles.actionColumn}>Actions</th>
               </tr></thead>
-              <tbody>{data.rows.map((row) => <tr key={row.id} className={!panelClosed && visibleId === row.id ? styles.selectedRow : ""} onClick={() => selectRow(row)}>
+              <tbody>{data.rows.map((row) => <tr key={row.id} className={drawerOpen && visibleId === row.id ? styles.selectedRow : ""} onClick={(event) => {
+                if ((event.target as HTMLElement).closest("button, a, input, select, textarea, label, [role='button']")) return;
+                selectRow(row, event.currentTarget.querySelector<HTMLButtonElement>("button") ?? undefined);
+              }}>
                 <td className={styles.checkColumn}><input type="checkbox" checked={selected.some((item) => item.id === row.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleSelected(row)} aria-label={formatUiText(translateLabel("Select order {0}"), [row.orderNumber])}  data-i18n-ignore-attributes="aria-label"/></td>
-                <td><button className={styles.orderLink} type="button" onClick={(event) => { event.stopPropagation(); selectRow(row); }}><span data-i18n-ignore="true">{row.orderNumber}</span></button></td>
+                <td><button className={styles.orderLink} type="button" aria-haspopup="dialog" onClick={(event) => { event.stopPropagation(); selectRow(row, event.currentTarget); }}><span data-i18n-ignore="true">{row.orderNumber}</span></button></td>
                 <td className={styles.customerCell}><span title={row.customerName} data-i18n-ignore="true">{row.customerName}</span><small data-i18n-ignore={Boolean(row.customerPhone)}>{row.customerPhone || "No phone"}</small></td>
                 <td><Package size={17} className={styles.phoneIcon} />{row.itemCount} {row.itemCount === 1 ? "item" : "items"}</td>
                 <td><span className={styles.source}><SourceIcon source={row.source} />{sourceLabels[row.source] || row.source}</span></td>
@@ -353,18 +359,20 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
             </div>
           </footer>
         </section>
-        <p className={styles.scopeNote}><ShieldCheck size={12} /><span data-i18n-ignore="true">{businessName}</span> · Sales, pending amounts, refunds, and tab counts follow your filters. Today’s count covers the business day.</p>
+        </DateFilterContent><p className={styles.scopeNote}><ShieldCheck size={12} /><span data-i18n-ignore="true">{businessName}</span> · Sales, pending amounts, refunds, and tab counts follow your filters. Today’s count covers the business day.</p>
         {data.branches.length > 1 && <label className={styles.scopeToggle}><input type="checkbox" role="switch" checked={data.receiveAllOnline === true} disabled={scopeBusy} onChange={(event) => void toggleScope(event.target.checked)} />Receive online-order alerts from all branches<span>{data.receiveAllOnline ? "All branches" : "Current branch only"}</span></label>}
       </div>
-      {!narrow && <aside className={styles.detailColumn}>{panelClosed || !visibleId ? <div className={styles.detailPlaceholder}><FileText size={32} /><h3>Select an order</h3><p>Review customer details, items, payments, and activity.</p>{panelClosed && visibleId && <button className={styles.button} type="button" onClick={() => setPanelClosed(false)}>Show details</button>}</div> : detailContent}</aside>}
     </div>
-    {narrow && mobileOpen && !panelClosed && visibleId && <Modal title="Order details" onClose={() => setMobileOpen(false)} wide drawer>{detailContent}</Modal>}
+    {drawerOpen && visibleId && <Modal title="Order details" onClose={() => setDrawerOpen(false)} returnFocus={drawerTrigger} fallbackFocus={listRef} wide drawer>{detailContent}</Modal>}
     {printPreview&&<OrderPrintPreview orderId={printPreview.id} kind={printPreview.kind} onClose={()=>setPrintPreview(null)}/>}
     {menu && <RowMenu onPrint={kind=>{setPrintPreview({id:menu.row.id,kind});setMenu(null);}} menu={menu} permissions={permissions} onClose={() => setMenu(null)} onAction={openAction} onView={() => { selectRow(menu.row); setMenu(null); }} />}
     {bulkMenu && selected.length > 0 && <BulkActionsMenu trigger={bulkMenu} count={selected.length} permissions={permissions} onClose={() => setBulkMenu(null)} onStatus={() => { setBulkMenu(null); setBulkStatusOpen(true); }} onDelete={() => { setBulkMenu(null); setBulkDeleteOpen(true); }} />}
     {bulkStatusOpen && selected.length > 0 && <BulkStatusDialog items={selectedItems()} businessId={businessId} canCancel={permissions.cancel} onClose={() => setBulkStatusOpen(false)} onUpdated={bulkStatusUpdated} onUncertain={refresh} />}
     {bulkDeleteOpen && selected.length > 0 && <BulkDeleteDialog items={selectedItems()} businessId={businessId} onClose={() => setBulkDeleteOpen(false)} onDeleted={bulkDeleted} />}
-    {dialog && <ManageOrderDialog action={dialog} businessId={businessId} permissions={permissions} onClose={() => setDialog(null)} onSuccess={actionSuccess} />}
+    {dialog && <ManageOrderDialog action={dialog} businessId={businessId} permissions={permissions} onDiscardRequest={requestDiscard} onClose={() => setDialog(null)} onSuccess={actionSuccess} />}
+    {discardAction && <Modal title={translateLabel("Discard unsaved changes?")} onClose={() => setDiscardAction(null)}>
+      <div className={styles.modalFooter}><button type="button" className={styles.button} onClick={() => setDiscardAction(null)}>Cancel</button><button type="button" className={`${styles.button} ${styles.dangerButton}`} onClick={() => { setDiscardAction(null); discardAction(); }}>Discard changes</button></div>
+    </Modal>}
     {queueOpen && <Modal title={`Print Queue (${selected.length})`} onClose={() => setQueueOpen(false)}>
       <p className={styles.modalHelp}>Choose a receipt or shipping label for each order, review the preview, then print using your saved settings.</p>
       <div className={styles.printQueue}>{selected.map((item) => <div key={item.id}><span>{item.number}</span><OrderPrintMenu orderId={item.id} className={styles.button} onPreview={kind=>setPrintPreview({id:item.id,kind})}/><button className={styles.iconButton} type="button" aria-label={`Remove ${item.number} from print queue`} onClick={() => setSelected((items) => items.filter((entry) => entry.id !== item.id))}><X size={14} /></button></div>)}</div>
@@ -385,8 +393,9 @@ function pageButtons(current: number, total: number): (number | "gap")[] {
   return output;
 }
 
-function DetailPanel({ detail, loading, error, currency, currencyFormat, timezone, permissions, businessId, onClose, onRetry, onAction, onReturned, onPrint }: {
+function DetailPanel({ onDiscardRequest, detail, loading, error, currency, currencyFormat, timezone, permissions, businessId, onClose, onRetry, onAction, onReturned, onPrint }: {
   onPrint: (id:string,kind:OrderPrintKind)=>void;
+  onDiscardRequest: (discard: () => void) => void;
   onReturned: () => void;
   detail: OrderDetail | null; loading: boolean; error: string; currency: string; currencyFormat?: CurrencyFormat; timezone: string; permissions: WorkspacePermissions; businessId: string;
   onClose: () => void; onRetry: () => void; onAction: (type: ActionDialog["type"], row: OrderRow) => void;
@@ -438,11 +447,11 @@ function DetailPanel({ detail, loading, error, currency, currencyFormat, timezon
     <div className={styles.odToolbar}>
       <Link className={styles.odTool} href={orderHref(order.id)}><Eye size={17} />View</Link>
       <OrderPrintMenu orderId={order.id} className={styles.odTool} onPreview={kind=>onPrint(order.id,kind)}/>
-      {canReturn ? <ReturnItemsForm key={order.id} orderId={order.id} orderNumber={order.orderNumber} triggerClassName={styles.odTool} onReturned={onReturned} currency={currency} items={order.items.map(item => ({ id: item.id, product_name: [item.name, item.variant, ...item.options].filter(Boolean).join(" · "), quantity: item.quantity, unit_price: item.unitPrice, returned_quantity: item.returnedQuantity, image_url: item.imageUrl }))} />
+      {canReturn ? <ReturnItemsForm key={order.id} onDiscardRequest={onDiscardRequest} orderId={order.id} orderNumber={order.orderNumber} triggerClassName={styles.odTool} onReturned={onReturned} currency={currency} items={order.items.map(item => ({ id: item.id, product_name: [item.name, item.variant, ...item.options].filter(Boolean).join(" · "), quantity: item.quantity, unit_price: item.unitPrice, returned_quantity: item.returnedQuantity, image_url: item.imageUrl }))} />
         : <button type="button" className={styles.odTool} disabled title="Returns are not available for this order."><RotateCcw size={17} />Return Items</button>}
       <button type="button" className={styles.odTool} disabled={!permissions.edit} title={!permissions.edit ? "Order update permission is required." : "Edit order details"} onClick={() => onAction("edit", order)}><Pencil size={17} />Edit</button>
       {canCancelOrder
-        ? <CancelOrderForm orderId={order.id} orderNumber={order.orderNumber} businessId={businessId} updatedAt={order.updatedAt} online={online} className={`${styles.odTool} ${styles.odToolDanger}`} onCancelled={() => onReturned()} />
+        ? <CancelOrderForm modal={OrderActionModal} onDiscardRequest={onDiscardRequest} orderId={order.id} orderNumber={order.orderNumber} businessId={businessId} updatedAt={order.updatedAt} online={online} className={`${styles.odTool} ${styles.odToolDanger}`} onCancelled={() => onReturned()} />
         : <button type="button" className={`${styles.odTool} ${styles.odToolDanger}`} disabled title={cancelBlockedReason}><Ban size={17} />Cancel Order</button>}
     </div>
 
@@ -472,7 +481,7 @@ function DetailPanel({ detail, loading, error, currency, currencyFormat, timezon
     <OdCard icon={<ShoppingBag size={17} />} title={`Items (${order.items.length})`}>
       <div className={styles.odItems}>{order.items.map((item) => <div key={item.id} className={styles.odItem}>
         <div className={styles.odItemImage}>{item.imageUrl ? <ProductPhoto src={item.imageUrl} alt="" width={104} height={104} sizes="52px" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <Package size={19} />}</div>
-        <div className={styles.odItemText}><strong data-i18n-ignore="true">{item.name}</strong>{item.variant && <small data-i18n-ignore="true">{item.variant}</small>}{item.options.length > 0 && <small data-i18n-ignore="true">{item.options.join(", ")}</small>}<small>{money(item.unitPrice, currency, currencyFormat)} × {item.quantity}</small>{item.returnedQuantity > 0 && <small className={styles.odReturned}>Returned: {item.returnedQuantity}</small>}{canCancelItem && <CancelOrderItem orderId={order.id} itemId={item.id} name={item.name} updatedAt={order.updatedAt} businessId={businessId} onCancelled={onReturned}/>}</div>
+        <div className={styles.odItemText}><strong data-i18n-ignore="true">{item.name}</strong>{item.variant && <small data-i18n-ignore="true">{item.variant}</small>}{item.options.length > 0 && <small data-i18n-ignore="true">{item.options.join(", ")}</small>}<small>{money(item.unitPrice, currency, currencyFormat)} × {item.quantity}</small>{item.returnedQuantity > 0 && <small className={styles.odReturned}>Returned: {item.returnedQuantity}</small>}{canCancelItem && <CancelOrderItem modal={OrderActionModal} onDiscardRequest={onDiscardRequest} orderId={order.id} itemId={item.id} name={item.name} updatedAt={order.updatedAt} businessId={businessId} onCancelled={onReturned}/>}</div>
         <span className={styles.odItemTotal}>{money(item.subtotal, currency, currencyFormat)}</span>
       </div>)}</div>
     </OdCard>
@@ -612,20 +621,30 @@ function useMenuDismiss(element: RefObject<HTMLDivElement | null>, trigger: HTML
   }, []);
 }
 
-function Modal({ title, onClose, children, busy = false, wide = false, drawer = false }: { title: string; onClose: () => void; children: ReactNode; busy?: boolean; wide?: boolean; drawer?: boolean }) {
+function Modal({ title, onClose, children, busy = false, wide = false, drawer = false, returnFocus, fallbackFocus }: { title: string; onClose: () => void; children: ReactNode; busy?: boolean; wide?: boolean; drawer?: boolean; returnFocus?: HTMLElement | null; fallbackFocus?: RefObject<HTMLElement | null> }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
   useEffect(() => {
-    const prior = document.activeElement as HTMLElement | null;
+    const prior = returnFocus ?? document.activeElement as HTMLElement | null;
     const dialog = ref.current;
+    const fallback = fallbackFocus?.current;
+    const overflow = document.body.style.overflow;
+    if (drawer) document.body.style.overflow = "hidden";
     dialog?.showModal();
-    return () => { dialog?.close(); if (prior?.isConnected) prior.focus(); };
+    return () => {
+      dialog?.close(); if (drawer) document.body.style.overflow = overflow;
+      (prior?.isConnected ? prior : fallback)?.focus({ preventScroll: true });
+    };
+    // Capture the opener once; list refreshes must not move focus or reset scrolling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return createPortal(<dialog ref={ref} className={`${styles.modal} ${wide ? styles.wideModal : ""} ${drawer ? styles.drawer : ""}`} aria-label={title} onCancel={(event) => { event.preventDefault(); if (!busy) closeRef.current(); }} onClick={(event) => { const element = ref.current; if (!busy && element && event.target === element) { const rect = element.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeRef.current(); } }}>
+  return createPortal(<dialog ref={ref} className={`${styles.modal} ${wide ? styles.wideModal : ""} ${drawer ? styles.drawer : ""}`} aria-label={title} onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }} onClick={(event) => { const element = ref.current; if (!busy && element && event.target === element) { const rect = element.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose(); } }}>
     <div className={styles.modalHeader}><h2>{title}</h2><button className={styles.iconButton} type="button" onClick={onClose} disabled={busy} aria-label="Close dialog"><X size={18} /></button></div>
     <div className={styles.modalBody}>{children}</div>
   </dialog>, document.body);
+}
+
+function OrderActionModal({ title, locked, onClose, children }: { title: string; locked: boolean; onClose: () => void; children: ReactNode }) {
+  return <Modal title={title} busy={locked} onClose={onClose}>{children}</Modal>;
 }
 
 function BulkDeleteDialog({ items, businessId, onClose, onDeleted }: { items: QueueItem[]; businessId: string; onClose: () => void; onDeleted: (deleted: string[], failed: number) => void }) {
@@ -724,7 +743,7 @@ function BulkStatusDialog({ items, businessId, canCancel, onClose, onUpdated, on
   </Modal>;
 }
 
-function ManageOrderDialog({ action, businessId, permissions, onClose, onSuccess }: { action: ActionDialog; businessId: string; permissions: WorkspacePermissions; onClose: () => void; onSuccess: (message: string, deletedId?: string) => void }) {
+function ManageOrderDialog({ action, businessId, permissions, onDiscardRequest, onClose, onSuccess }: { action: ActionDialog; onDiscardRequest: (discard: () => void) => void; businessId: string; permissions: WorkspacePermissions; onClose: () => void; onSuccess: (message: string, deletedId?: string) => void }) {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -751,6 +770,12 @@ function ManageOrderDialog({ action, businessId, permissions, onClose, onSuccess
   const options = order ? nextStatuses(order, permissions.cancel) : [];
   const blockedDelete = order ? deleteReason(order) : "";
   const title = action.type === "edit" ? "Edit Order Details" : action.type === "status" ? "Change Order Status" : "Delete Order";
+  const dirty = !!order && (note !== (order.note || "") || (contactEditable &&
+    (name !== (order.guestName || "") || phone !== (order.guestPhone || "") || address !== (order.guestAddress || ""))) || !!reason || !!confirm);
+  function close() {
+    if (saving) return;
+    if (dirty) onDiscardRequest(onClose); else onClose();
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!order || saving) return;
     setError(""); setSaving(true);
@@ -770,9 +795,9 @@ function ManageOrderDialog({ action, businessId, permissions, onClose, onSuccess
     } catch { setError("Unable to confirm the result. Check your connection, then refresh the order before retrying."); }
     finally { setSaving(false); }
   }
-  return <Modal title={title} onClose={onClose} busy={saving}>
+  return <Modal title={title} onClose={close} busy={saving}>
     {loading ? <p className={styles.modalLoading}><Loader2 className={styles.spin} size={20} />Loading the latest order…</p> : <form onSubmit={submit}>
-      {error && <div role="alert" className={styles.error}><AlertCircle size={18} /><div>{error}<button type="button" className={styles.textButton} onClick={() => setReload((value) => value + 1)} disabled={saving}>Reload latest order</button></div></div>}
+      {error && <div role="alert" className={styles.error}><AlertCircle size={18} /><div>{error}<button type="button" className={styles.textButton} onClick={() => { const reloadLatest = () => setReload((value) => value + 1); if (dirty) onDiscardRequest(reloadLatest); else reloadLatest(); }} disabled={saving}>Reload latest order</button></div></div>}
       {order && <><div className={styles.modalOrder}><strong data-i18n-ignore="true">{order.orderNumber}</strong><span data-i18n-ignore="true">{order.customerName}</span><Badge value={order.status} /></div>
         {action.type === "edit" && <>
           <p className={styles.modalHelp}>Edit the order note{contactEditable ? " and guest contact details" : ""}. Products, quantities, totals, payments, and stock are not changed here.</p>
@@ -796,7 +821,7 @@ function ManageOrderDialog({ action, businessId, permissions, onClose, onSuccess
             <label className={styles.fieldLabel}>Type <strong data-i18n-ignore="true">{order.orderNumber}</strong> to confirm<input required value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="off" disabled={saving} /></label>
           </>}
         </>}
-        <div className={styles.modalFooter}><button type="button" className={styles.button} onClick={onClose} disabled={saving}>Cancel</button><button type="submit" className={`${styles.button} ${action.type === "delete" ? styles.dangerButton : styles.primary}`} disabled={saving || (action.type === "delete" && (!!blockedDelete || confirm.trim() !== order.orderNumber || !reason.trim())) || (action.type === "status" && (!options.length || (status === "cancelled" && !reason.trim())))}>{saving ? <Loader2 size={16} className={styles.spin} /> : action.type === "delete" ? <Trash2 size={15} /> : <Check size={16} />}{action.type === "delete" ? "Delete Order" : action.type === "edit" ? "Save Changes" : "Update Status"}</button></div>
+        <div className={styles.modalFooter}><button type="button" className={styles.button} onClick={close} disabled={saving}>Cancel</button><button type="submit" className={`${styles.button} ${action.type === "delete" ? styles.dangerButton : styles.primary}`} disabled={saving || (action.type === "delete" && (!!blockedDelete || confirm.trim() !== order.orderNumber || !reason.trim())) || (action.type === "status" && (!options.length || (status === "cancelled" && !reason.trim())))}>{saving ? <Loader2 size={16} className={styles.spin} /> : action.type === "delete" ? <Trash2 size={15} /> : <Check size={16} />}{action.type === "delete" ? "Delete Order" : action.type === "edit" ? "Save Changes" : "Update Status"}</button></div>
       </>}
     </form>}
   </Modal>;
