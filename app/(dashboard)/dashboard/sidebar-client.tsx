@@ -191,7 +191,7 @@ export default function SidebarClient({ businessId, branchId, effectivePermissio
     const previous = document.activeElement as HTMLElement | null;
     const overflow = document.body.style.overflow;
     dialog?.showModal(); document.body.style.overflow = 'hidden';
-    const desktop = window.matchMedia('(min-width: 768px)');
+    const desktop = window.matchMedia('(min-width: 768px) and (orientation: landscape), (min-width: 1025px)');
     const resize = () => { if (desktop.matches) setIsMobileOpen(false); };
     desktop.addEventListener('change', resize);
     return () => { desktop.removeEventListener('change', resize); dialog?.close(); document.body.style.overflow = overflow; previous?.focus(); };

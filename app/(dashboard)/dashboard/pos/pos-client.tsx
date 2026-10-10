@@ -105,7 +105,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     if (!orderOpen) return;
     const overflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('dialog[open]')) setOrderOpen(false); };
-    const wide = window.matchMedia('(min-width: 801px)'); const onWide = () => { if (wide.matches) setOrderOpen(false); };
+    const wide = window.matchMedia('(min-width: 801px) and (orientation: landscape), (min-width: 1025px)'); const onWide = () => { if (wide.matches) setOrderOpen(false); };
     window.addEventListener('keydown', onKey); wide.addEventListener('change', onWide);
     return () => { document.body.style.overflow = overflow; window.removeEventListener('keydown', onKey); wide.removeEventListener('change', onWide); };
   }, [orderOpen]);

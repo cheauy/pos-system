@@ -1,5 +1,6 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import type { Viewport } from "next";
 
 import OnlineOrderListener from "@/components/online-order-listener";
 import UpdateAlertBanner from "@/components/update-alert-banner";
@@ -18,6 +19,7 @@ import PosLockProvider from './pos-lock-provider';
 import { posLockAllows, posLockCookie } from '@/lib/pos/navigation-lock';
 
 const SUBSCRIPTION_PATH = "/dashboard/settings/subscription";
+export const viewport: Viewport = { viewportFit: "cover" };
 const LEGACY_SUBSCRIPTION_PLANS_PATH =
   "/dashboard/settings/subscription/plans";
 const SUBSCRIPTION_PAYMENT_PATH =
@@ -87,9 +89,9 @@ export default async function DashboardLayout({
       ? await (await createClient()).from("profiles").select("role").eq("id", userId).maybeSingle()
       : { data: null };
     return (
-      <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <div data-workspace-shell className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
         <WorkspaceActivity />
-        <main className="mx-auto min-h-screen w-full max-w-[1600px] p-4 sm:p-6">
+        <main className="workspace-locked-content mx-auto min-h-screen w-full max-w-[1600px] p-4 sm:p-6">
           <UpdateAlertBanner />
           {lockedProfile?.role === "super_admin" && <div className="mb-3 flex justify-end"><a href={getAdminUrl("/super-admin")} className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700">Super Admin</a></div>}
           {children}
@@ -115,7 +117,7 @@ export default async function DashboardLayout({
   // Phones hide page titles/summary cards on list pages; these overview pages keep them.
   const compactChrome = !workspacePage(pathname).back && !/^\/dashboard(\/(reports|staff-report|expenses))?$/.test(pathname);
   return (
-    <div className="workspace-theme min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div data-workspace-shell className="workspace-theme min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <WorkspaceActivity />
       <PosLockProvider key={`${business.id}:${branchContext.userId}`} businessId={business.id} userId={branchContext.userId} branchId={branchContext.branchId} initialLocked={posLocked}>
       <WorkspaceBranchProvider businessId={business.id} businessName={business.name} role={business.role} userId={branchContext.userId} branchId={branchContext.branchId} branches={branchContext.branches} superAdminHref={superAdmin ? getAdminUrl("/super-admin") : undefined}>

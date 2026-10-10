@@ -48,4 +48,4 @@
 .bs-layout>.bs-nav a:focus-visible{outline-offset:-2px}
 }
 /* 1025-1279px: the workspace header is sticky; keep the section nav below it. */
-@media screen and (max-width:1279px){.bs-nav{top:calc(var(--workspace-header-h,72px) + 12px)}}
+@media screen and (max-width:1279px), screen and (hover:none) and (pointer:coarse){.bs-nav{top:calc(var(--workspace-header-h,72px) + 12px)}}

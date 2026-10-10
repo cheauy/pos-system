@@ -16,7 +16,7 @@ export default function ProductPhotoViewer({ images, initialIndex, name, onClose
     element?.showModal();
     return () => element?.close();
   }, []);
-  return <dialog ref={dialog} aria-label={formatUiText(translateLabel("{0} photos"), [name])} onCancel={onClose} onClick={event => { if (event.target === event.currentTarget) onClose(); }} onKeyDown={event => {
+  return <dialog data-workspace-image-viewer ref={dialog} aria-label={formatUiText(translateLabel("{0} photos"), [name])} onCancel={onClose} onClick={event => { if (event.target === event.currentTarget) onClose(); }} onKeyDown={event => {
     event.stopPropagation();
     if (event.key === "ArrowLeft") setIndex(value => Math.max(0, value - 1));
     if (event.key === "ArrowRight") setIndex(value => Math.min(images.length - 1, value + 1));

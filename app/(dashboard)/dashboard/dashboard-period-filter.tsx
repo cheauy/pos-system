@@ -91,7 +91,7 @@ export default function DashboardPeriodFilter({
           );
         })}
 
-        <div ref={popoverRef} className="relative">
+        <div ref={popoverRef} className="dashboard-date-filter relative">
           <button
             type="button"
             onClick={() => { setError(""); setOpen((current) => !current); }}
@@ -106,7 +106,7 @@ export default function DashboardPeriodFilter({
           </button>
 
           {open ? (
-            <div className="absolute left-0 top-full z-50 mt-2 w-[min(390px,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="dashboard-date-popover absolute left-0 top-full z-50 mt-2 w-[min(390px,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-black text-slate-950 dark:text-white">

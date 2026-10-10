@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { Viewport } from "next";
 import { Search } from "lucide-react";
 
 import SuperAdminSideRail from "@/components/super-admin/super-admin-side-rail";
@@ -7,6 +8,8 @@ import WorkspaceActivity from '@/components/ui/workspace-activity';
 import { requireSuperAdmin } from "@/lib/auth/require-super-admin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAppUrl, getTenantDashboardUrl } from "@/lib/tenancy/domain";
+
+export const viewport: Viewport = { viewportFit: "cover" };
 
 export default async function SuperAdminLayout({
   children,
@@ -60,14 +63,14 @@ export default async function SuperAdminLayout({
   const mySlug = Array.isArray(myBusiness) ? myBusiness[0]?.slug : myBusiness?.slug;
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div data-workspace-shell className="super-admin-workspace min-h-screen bg-slate-100">
       <WorkspaceActivity />
       <SuperAdminSideRail
         pendingPayments={pendingPayments}
         pendingSubscriptionPayments={pendingSubscriptionPayments}
       />
       <div className="min-h-screen lg:pl-16">
-        <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6">
+        <div className="super-admin-content mx-auto w-full min-w-0 max-w-[1600px] p-4 sm:p-6">
           <UpdateAlertBanner />
           {/* Full page load so no Super Admin client state carries into the business workspace. */}
           <div className="mb-3 flex justify-end">

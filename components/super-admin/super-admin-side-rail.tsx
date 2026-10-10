@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
+import FixedWorkspaceHeader from "@/components/ui/fixed-workspace-header";
 
 type SuperAdminSideRailProps = {
   pendingPayments?: number;
@@ -99,7 +100,7 @@ export default function SuperAdminSideRail({
 
   // The drawer only exists below lg; close it if the window grows to the desktop rail.
   useEffect(() => {
-    const desktop = window.matchMedia("(min-width: 1024px)");
+    const desktop = window.matchMedia("(min-width: 1024px) and (orientation: landscape), (min-width: 1025px)");
     const close = () => { if (desktop.matches) drawer.current?.close(); };
     desktop.addEventListener("change", close);
     return () => desktop.removeEventListener("change", close);
@@ -112,7 +113,7 @@ export default function SuperAdminSideRail({
 
   return (
     <>
-    <header
+    <FixedWorkspaceHeader className="lg:hidden"><header
       data-super-admin-header
       className="sticky top-0 z-40 flex items-center gap-3 border-b border-slate-200 bg-white pb-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(.75rem,env(safe-area-inset-top))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] lg:hidden"
     >
@@ -140,7 +141,7 @@ export default function SuperAdminSideRail({
           <span className="block truncate text-sm font-bold text-slate-900">{current?.label ?? "Super Admin"}</span>
         </span>
       </Link>
-    </header>
+    </header></FixedWorkspaceHeader>
 
     <dialog
       ref={drawer}

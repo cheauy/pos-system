@@ -94,6 +94,7 @@
 .scopeNote{display:flex;align-items:flex-start;gap:5px;color:#8696b0;font-size:0.5625rem;margin:10px 1px}
 .scopeNote svg{flex-shrink:0;margin-top:1px}
 .detailColumn{min-width:0;position:sticky;top:16px}
+@media screen and (max-width:1024px), screen and (hover:none) and (pointer:coarse){.detailColumn{top:calc(var(--workspace-header-h,69px) + 16px)}}
 .detailCard,.detailPlaceholder{padding:15px 14px;background:var(--surface,#fff);border:1px solid var(--line,#e3ebf5);border-radius:8px;box-shadow:0 2px 3px #17305603;color:var(--ink,#101d3d)}
 .detailPlaceholder{display:flex;align-items:center;justify-content:center;flex-direction:column;min-height:245px;text-align:center;gap:10px;color:var(--muted,#7182a1);font-size:0.75rem}
 .detailPlaceholder h3{font-size:0.875rem;color:var(--ink,#101d3d);margin:0}.detailPlaceholder p{margin:0 0 8px}

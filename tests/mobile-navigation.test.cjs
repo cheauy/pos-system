@@ -7,7 +7,7 @@ test('mobile navigation locks scrolling, closes at tablet/desktop width, and res
  const events=[];let listener;
  const document={body:{style:{overflow:'auto'}},activeElement:{focus:()=>events.push('focus')}};
  const media={matches:false,addEventListener:(_,fn)=>listener=fn,removeEventListener:(_,fn)=>assert.equal(fn,listener)};
- const context={isMobileOpen:true,document,window:{matchMedia:value=>{assert.equal(value,'(min-width: 768px)');return media;}},drawer:{current:{showModal:()=>events.push('open'),close:()=>events.push('close')}},setIsMobileOpen:value=>events.push(value)};
+ const context={isMobileOpen:true,document,window:{matchMedia:value=>{assert.equal(value,'(min-width: 768px) and (orientation: landscape), (min-width: 1025px)');return media;}},drawer:{current:{showModal:()=>events.push('open'),close:()=>events.push('close')}},setIsMobileOpen:value=>events.push(value)};
  const run=new Function(...Object.keys(context),source+';return effect;')(...Object.values(context));
  const cleanup=run();assert.equal(document.body.style.overflow,'hidden');listener();assert.deepEqual(events,['open']);
  media.matches=true;listener();assert.deepEqual(events,['open',false]);cleanup();

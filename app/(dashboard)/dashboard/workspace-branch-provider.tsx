@@ -11,6 +11,7 @@ import { useTheme } from '@/components/providers/theme-provider';
 import { APPEARANCE_STORAGE_KEY } from '@/lib/appearance';
 import { usePosNavigationLock } from './pos-lock-provider';
 import { useActivity } from '@/components/ui/activity-link';
+import FixedWorkspaceHeader from '@/components/ui/fixed-workspace-header';
 
 type Guard=(targetId?:string)=>string|null;
 type SwitchContext={requestSwitch:(id:string)=>Promise<void>;registerGuard:(guard:Guard)=>()=>void};
@@ -113,7 +114,7 @@ export default function WorkspaceBranchProvider(p:Props) {
   const page=workspacePage(pathname);
   return <Context.Provider value={{requestSwitch,registerGuard}}>
     <div ref={content} inert={busy || Boolean(stale)} onInputCapture={()=>{dirty.current=true;}} onChangeCapture={()=>{dirty.current=true;}}>
-      <div className="workspace-header flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 md:ml-16 dark:border-slate-800 dark:bg-slate-900" data-workspace-branch-header>
+      <FixedWorkspaceHeader><div className="workspace-header flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 md:ml-16 dark:border-slate-800 dark:bg-slate-900" data-workspace-branch-header>
         <div className="flex min-w-0 flex-1 items-center gap-3"><button type="button" aria-label="Open dashboard navigation" aria-haspopup="dialog" onClick={()=>window.dispatchEvent(new Event('tenh:open-navigation'))} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-700 dark:border-slate-700 dark:text-slate-200 md:hidden"><Menu size={22}/></button><Store size={22} className="hidden shrink-0 text-blue-600 xl:block"/><div className="min-w-0"><p className="truncate text-[10px] font-bold uppercase tracking-widest text-blue-600"><span className="xl:hidden" data-i18n-ignore="true">{p.businessName}</span><span className="hidden xl:inline">TENH POS workspace</span></p><p title={page.title} className="truncate font-bold text-slate-900 dark:text-white"><span className="xl:hidden">{page.title}</span><span className="hidden xl:inline" data-i18n-ignore="true">{p.businessName}</span></p></div></div>
         <div className="workspace-header-actions flex min-w-0 flex-wrap items-center gap-2">
         {!sharedOnlineStore && <><span className="hidden text-sm text-slate-500 xl:inline">{currentName}</span><button type="button" aria-label="Switch Branches" title={currentName} aria-haspopup="dialog" disabled={busy||Boolean(stale)||posLocked||p.branches.length<2} onClick={()=>{setSelected(p.branchId);setOpen(true);setError('');}} className="inline-flex min-h-11 min-w-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
@@ -122,7 +123,7 @@ export default function WorkspaceBranchProvider(p:Props) {
         {p.superAdminHref&&<a href={p.superAdminHref} className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200">Super Admin</a>}
         <span className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700"><ShieldCheck size={16}/><span><span className="hidden sm:inline">Role: </span><span className="capitalize">{p.role}</span></span></span>
         </div>
-      </div>
+      </div></FixedWorkspaceHeader>
       {p.children}
     </div>
     <dialog ref={modal} aria-label="Switch workspace branch" onCancel={e=>{if(busy)e.preventDefault();else setOpen(false);}} className="m-auto w-[min(94vw,520px)] rounded-2xl border-0 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/50 dark:bg-slate-900 dark:text-white">

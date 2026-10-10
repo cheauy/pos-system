@@ -40,7 +40,7 @@
   :root { --workspace-header-h: calc(57px + max(.75rem, env(safe-area-inset-top))); }
   /* Keyboard focus and anchor jumps stop below the sticky header instead of under it. */
   html:has(.workspace-header) { scroll-padding-top: calc(var(--workspace-header-h) + 8px); }
-  .workspace-content { padding-inline: max(1rem, env(safe-area-inset-left)); }
+  .workspace-content { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); }
   .workspace-theme dialog:not(.workspace-mobile-navigation) { overscroll-behavior: contain; }
   .workspace-theme :is(input,select,textarea):not([type="checkbox"],[type="radio"],[type="range"],[type="color"]) { font-size: max(1rem, 1em); }
   .workspace-mobile-navigation :is(button,a) { min-height: 44px; }
@@ -77,7 +77,7 @@
 }
 @media screen and (max-width: 639px), screen and (orientation: portrait) and (max-width: 1024px) {
   /* One-row phone header: menu, title, compact branch switcher; role chip hidden. */
-  .workspace-header { flex-wrap: nowrap; gap: .5rem; padding-inline: max(.75rem, env(safe-area-inset-left)); }
+  .workspace-header { flex-wrap: nowrap; gap: .5rem; padding-left: max(.75rem, env(safe-area-inset-left)); padding-right: max(.75rem, env(safe-area-inset-right)); }
   .workspace-header > div:first-child { flex: 1 1 auto; min-width: 0; }
   .workspace-header-actions { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; }
   .workspace-header-actions > span { display: none; }
@@ -244,11 +244,34 @@ body {
   }
 }
 
-/* Super-admin phones/tablets: anchor jumps and focus stop below the sticky mobile header. */
-@media screen and (max-width: 1023px) {
-  html:has([data-super-admin-header]) { scroll-padding-top: calc(57px + max(.75rem, env(safe-area-inset-top)) + 8px); }
+/* Workspace web shells: fixed headers escape document overscroll; the measured slot reserves their space. */
+@media screen and (min-width: 1025px) {
+  .workspace-header-slot { display: contents; }
+}
+@media screen and (max-width: 1024px), screen and (hover: none) and (pointer: coarse) {
+  .workspace-header-slot { display: block; height: var(--workspace-header-h, calc(57px + max(.75rem, env(safe-area-inset-top)))); }
+  .workspace-header, [data-super-admin-header] { position: fixed; top: 0; left: 0; right: 0; z-index: 40; padding-top: max(.75rem, env(safe-area-inset-top)); }
+  .workspace-header { padding-left: max(.75rem, env(safe-area-inset-left)); padding-right: max(.75rem, env(safe-area-inset-right)); }
+  html:has([data-workspace-shell]) { overflow-x: clip; overscroll-behavior-x: none; overscroll-behavior-y: none; }
+  [data-workspace-shell] { min-height: 100dvh; max-width: 100%; overflow-x: clip; touch-action: pan-x pan-y; }
+  /* The photo viewer keeps browser zoom; portal viewers already sit outside the shell. */
+  [data-workspace-shell]:has([data-workspace-image-viewer]) { touch-action: auto; }
+  html:has([data-workspace-shell]) :is(dialog, [role="dialog"]):not([data-workspace-image-viewer]) { touch-action: pan-x pan-y; }
+  html:has([data-workspace-shell]) :is(dialog, [role="dialog"]) :is(input, select, textarea):not([type="checkbox"], [type="radio"], [type="range"], [type="color"]) { font-size: max(1rem, 1em); }
+  .super-admin-content, .workspace-locked-content { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); padding-bottom: max(2rem, env(safe-area-inset-bottom)); }
+  [data-workspace-shell] :is(input, select, textarea):not([type="checkbox"], [type="radio"], [type="range"], [type="color"]) { font-size: max(1rem, 1em); }
+  .workspace-content .dashboard-date-filter { width: 100%; }
+  .workspace-content .dashboard-date-popover { position: static; width: 100%; }
+  .workspace-content aside:is([class~="sm:sticky"], [class~="lg:sticky"], [class~="xl:sticky"], [class~="2xl:sticky"]):not([role="dialog"]) { top: calc(var(--workspace-header-h, 69px) + 1rem); }
+  html:has([data-super-admin-header]) { scroll-padding-top: calc(var(--workspace-header-h, 69px) + 8px); }
   /* Page behind the open navigation drawer stays put; CSS so it can never stay locked after close. */
   html:has(#super-admin-drawer[open]) { overflow: hidden; }
+}
+@media screen and (min-width: 640px) and (max-width: 1024px) and (orientation: landscape), screen and (min-width: 1025px) and (hover: none) and (pointer: coarse) {
+  .workspace-header, .super-admin-content, .workspace-locked-content { padding-left: max(1.5rem, env(safe-area-inset-left)); padding-right: max(1.5rem, env(safe-area-inset-right)); }
+}
+@media screen and (min-width: 1025px) and (hover: none) and (pointer: coarse) {
+  .workspace-content { padding-left: max(1.5rem, env(safe-area-inset-left)); padding-right: max(1.5rem, env(safe-area-inset-right)); }
 }
 
 /* Touch phones and tablets: hide every scrollbar (page, tables, menus, dialogs) while touch, wheel and keyboard scrolling keep working.

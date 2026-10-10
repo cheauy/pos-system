@@ -40,7 +40,7 @@ export default function ImageField({ label, name, preview, disabled, imageClass 
       setSelected(file); setRemoved(false); setDimensions("");
     }} className="sr-only" /></label>
     {removed && preview && <button type="button" onClick={() => setRemoved(false)} className="ml-2 text-xs text-blue-600">Undo removal</button>}
-    {expanded && source && <div role="dialog" aria-modal="true" aria-label={`${label} preview`} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6" onKeyDown={event => { if (event.key === "Escape") setExpanded(false); }}><button type="button" aria-label="Close image preview" onClick={() => setExpanded(false)} className="absolute left-5 top-5 flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-900"><X size={20} /> Close preview</button><img src={source} alt={label} className="max-h-[85vh] max-w-full rounded-xl bg-white object-contain" /></div>}
+    {expanded && source && <div data-workspace-image-viewer role="dialog" aria-modal="true" aria-label={`${label} preview`} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6" onKeyDown={event => { if (event.key === "Escape") setExpanded(false); }}><button type="button" aria-label="Close image preview" onClick={() => setExpanded(false)} className="absolute left-5 top-5 flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-900"><X size={20} /> Close preview</button><img src={source} alt={label} className="max-h-[85vh] max-w-full rounded-xl bg-white object-contain" /></div>}
   </div>;
 }
 
