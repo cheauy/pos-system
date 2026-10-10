@@ -31,11 +31,13 @@ function fixture(file, extra = {}, exportName = 'default') {
     useRef(value) { const index = cursor++; return slots[index] ??= {current:value}; },
     useEffect() {}, useMemo(fn) {return fn();}, useActionState(_action, state) {return [state,()=>{},false];},
     createContext(value) {return {value};}, useContext(context) {return context.value;}, useTransition() {return [false,fn=>fn()];},
+    useSyncExternalStore(_subscribe, snapshot) {return snapshot();},
   };
   const jsx = {jsx:(type,props)=>({type,props}), jsxs:(type,props)=>({type,props})};
   const dependencies = {
     react:hooks, 'react/jsx-runtime':jsx,
     '@/components/providers/language-provider':{useLanguage:()=>({t:value=>value})},
+    '@/lib/ui/activity':loadTs('lib/ui/activity.ts'),
     ...extra,
   };
   const component = loadTs(file,dependencies)[exportName];
@@ -48,6 +50,37 @@ function elements(node, predicate, found = []) {
 }
 const buttons = tree => elements(tree,node=>node.type==='button');
 const label = button => button.props.children;
+
+test('date scope keeps skeletons pending until all overlapping filter operations finish', () => {
+  const f=fixture('components/date-range-filter.tsx', {'next/navigation':{},'@/lib/date-range':dates,'./date-range-filter.module.css':{default:{}}},'DateFilterScope');
+  const props={children:'content'};
+  const scope=f.render(props).props.value;
+  assert.equal(scope.pending,false);
+  const first=scope.begin(),second=scope.begin();
+  assert.equal(f.render(props).props.value.pending,true);
+  first();first();
+  assert.equal(f.render(props).props.value.pending,true);
+  second();
+  assert.equal(f.render(props).props.value.pending,false);
+});
+
+test('legacy navigation activity signals its nearest date scope and clears on completion', () => {
+  const store=loadTs('lib/ui/activity.ts').createActivityStore();
+  let cleanup;
+  const date=loadTs('components/date-range-filter.tsx', {
+    react:{createContext:()=>({}),useContext:()=>({begin:store.begin}),useEffect:fn=>{cleanup=fn();}},
+    'react/jsx-runtime':{},'next/navigation':{},'@/components/providers/language-provider':{},
+    '@/lib/date-range':dates,'@/lib/ui/activity':{createActivityStore:()=>store},'./date-range-filter.module.css':{},
+  });
+  const link=loadTs('components/ui/activity-link.tsx', {
+    react:{useEffect(){}},'react/jsx-runtime':{},'next/link':{},
+    '@/lib/ui/activity':{activity:{begin(){throw Error('should only run in effect');}}},
+    '@/components/date-range-filter':date,
+  });
+  link.useActivity(false);assert.equal(store.getSnapshot(),false);
+  link.useActivity(true);assert.equal(store.getSnapshot(),true);
+  cleanup();assert.equal(store.getSnapshot(),false);
+});
 
 test('server date Apply keeps the branch and uses existing custom range navigation without scrolling', () => {
   const calls=[];

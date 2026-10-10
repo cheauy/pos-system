@@ -1,17 +1,24 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useTransition, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/components/providers/language-provider";
 import { calendarPresets, calendarRange, dateRangeError } from "@/lib/date-range";
+import { createActivityStore } from "@/lib/ui/activity";
 import styles from "./date-range-filter.module.css";
 
 export { styles as dateFilterStyles };
-const DateLoading = createContext<{ pending: boolean; setPending: (pending: boolean) => void } | null>(null);
+const DateLoading = createContext<{ pending: boolean; begin: () => () => void } | null>(null);
 
 export function DateFilterScope({ children }: { children: ReactNode }) {
-  const [pending, setPending] = useState(false);
-  return <DateLoading.Provider value={{ pending, setPending }}>{children}</DateLoading.Provider>;
+  const [activity] = useState(createActivityStore);
+  const pending = useSyncExternalStore(activity.subscribe, activity.getSnapshot, () => false);
+  return <DateLoading.Provider value={{ pending, begin: activity.begin }}>{children}</DateLoading.Provider>;
+}
+
+export function useDateFilterPending(pending: boolean) {
+  const begin = useContext(DateLoading)?.begin;
+  useEffect(() => { if (pending) return begin?.(); }, [pending, begin]);
 }
 
 export function DateFilterContent({ children, busy = false, className = "" }: { children: ReactNode; busy?: boolean; className?: string }) {
@@ -53,9 +60,7 @@ export default function DateRangeFilter({ from, to, today, onApply, busy = false
 export function NavigationDateRange({ path, query, ...props }: Omit<Parameters<typeof DateRangeFilter>[0], "onApply" | "busy"> & { path: string; query: Record<string, string> }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const loading = useContext(DateLoading);
-  const setPending = loading?.setPending;
-  useEffect(() => { setPending?.(pending); return () => setPending?.(false); }, [pending, setPending]);
+  useDateFilterPending(pending);
   return <DateRangeFilter {...props} required busy={pending} onApply={(from, to) => {
     const params = new URLSearchParams({ ...query, range: "custom", from, to });
     startTransition(() => router.push(`${path}?${params}`, { scroll: false }));

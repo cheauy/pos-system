@@ -3,8 +3,10 @@
 import Link, { useLinkStatus } from 'next/link';
 import { useEffect, type ComponentProps } from 'react';
 import { activity } from '@/lib/ui/activity';
+import { useDateFilterPending } from '@/components/date-range-filter';
 
 export function useActivity(pending: boolean) {
+  useDateFilterPending(pending);
   useEffect(() => { if (pending) return activity.begin(); }, [pending]);
 }
 
