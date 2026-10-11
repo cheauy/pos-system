@@ -1,0 +1,173 @@
+.compactToolbar, .bottomBar, .sheetTitle, .itemPhoto, .mobileSku, .itemLabel, .itemsEmpty, .mobileProductName, .itemVariant { display: none; }
+
+.filterDialog {
+  position: fixed;
+  inset: 0;
+  margin: auto !important;
+  width: min(440px, calc(100vw - 24px)) !important;
+  max-width: calc(100vw - 24px) !important;
+  height: fit-content !important;
+  max-height: calc(100dvh - 24px) !important;
+  overflow: auto;
+  border: 1px solid var(--color-slate-200);
+  border-radius: 16px !important;
+  padding: 16px;
+  background: var(--workspace-panel);
+  color: var(--foreground);
+}
+.filterDialog::backdrop { background: rgb(15 23 42 / .4); }
+.filterHeading, .filterActions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.filterHeading h2 { font-weight: 700; }
+.filterDialog button { min-height: 44px; border-radius: 8px; padding: 8px 12px; font-weight: 600; }
+.filterHeading button { padding: 10px; }
+.filterForm { display: grid; gap: 14px; margin-top: 12px; }
+.filterForm label { display: grid; gap: 6px; min-width: 0; font-size: .875rem; font-weight: 600; }
+.filterForm :is(input, select) { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--color-slate-300); border-radius: 8px; padding: 8px; font-size: 1rem; font-weight: 400; background: var(--workspace-panel); }
+.filterDates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.filterActions { justify-content: flex-end; padding-bottom: env(safe-area-inset-bottom); }
+.filterActions button { border: 1px solid var(--color-slate-200); }
+.primary { background: var(--app-accent); color: white; }
+.filterDialog :is(input, select, button):focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
+.filterDialog button:hover { background: color-mix(in srgb, var(--app-accent) 10%, var(--workspace-panel)); }
+.filterDialog .primary:hover:not(:disabled) { background: color-mix(in srgb, var(--app-accent) 88%, black); }
+
+@media (max-width: 1279px), (max-width: 1366px) and (pointer: coarse) {
+  .responsive { min-width: 0; }
+  .responsive :is([class*="bg-teal-"], [class~="bg-blue-600"]) { background-color: var(--app-accent); }
+  .responsive :is([class~="bg-blue-50"], [class~="bg-blue-100"], [class~="bg-teal-50"]) { background-color: color-mix(in srgb, var(--app-accent) 10%, var(--workspace-panel)); }
+  .responsive :is([class*="text-teal-"], [class~="text-blue-600"], [class~="text-blue-700"]) { color: var(--app-accent); }
+  .responsive :is([class~="border-blue-200"], [class~="ring-blue-100"]) { border-color: color-mix(in srgb, var(--app-accent) 35%, var(--workspace-panel)); --tw-ring-color: color-mix(in srgb, var(--app-accent) 20%, transparent); }
+  .responsive :is(button, a):hover:not(:disabled) { background-color: color-mix(in srgb, var(--app-accent) 10%, var(--workspace-panel)); }
+  .responsive :is([class*="bg-teal-"], [class~="bg-blue-600"]):hover:not(:disabled) { background-color: color-mix(in srgb, var(--app-accent) 88%, black); }
+  .responsive :is([class*="bg-red-"], [class*="text-red-"]):hover:not(:disabled) { background-color: var(--color-red-100); }
+  .responsive :is(input, select, textarea):focus { border-color: var(--app-accent); --tw-ring-color: color-mix(in srgb, var(--app-accent) 20%, transparent); }
+  .responsive [class~="border-blue-600"] { border-color: var(--app-accent); }
+  .responsive input[type="checkbox"] { accent-color: var(--app-accent); width: 24px; min-height: 24px; }
+  .responsive :is(button, a):focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
+  .responsive :is(input, select, textarea) { min-width: 0; max-width: 100%; font-size: 1rem; }
+  .responsive :is(button, a, input, select) { min-height: 44px; }
+  .desktopFilters, .desktopFilterToggle { display: none; }
+  .compactToolbar { display: flex; align-items: center; gap: 8px; padding: 12px; border-bottom: 1px solid var(--color-slate-200); }
+  .compactSearch { position: relative; display: flex; align-items: center; min-width: 0; flex: 1; }
+  .compactSearch svg { position: absolute; left: 12px; color: var(--color-slate-400); pointer-events: none; }
+  .compactSearch input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--color-slate-200); border-radius: 10px; padding: 8px 10px 8px 36px; background: var(--workspace-panel); outline: none; }
+  .compactToolbar > button { display: flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; min-height: 44px; padding: 8px 12px; border: 1px solid var(--color-slate-200); border-radius: 10px; font-size: .875rem; font-weight: 600; }
+  .compactToolbar .activeFilter { color: var(--app-accent); border-color: var(--app-accent); background: color-mix(in srgb, var(--app-accent) 10%, var(--workspace-panel)); }
+  .filterDot { width: 6px; height: 6px; border-radius: 50%; background: var(--app-accent); }
+  .listHeader { gap: 10px; }
+  .listHeader p, .listStats { display: none; }
+  .listHeader h1 { font-size: 1.25rem; }
+  .newOrderAction { position: static; border-radius: 10px; box-shadow: none; }
+  .emptyNewOrder { display: none; }
+  .emptyDetails { display: none; }
+  .emptyState { min-height: min(65dvh, 540px); }
+  .listContent > ul { display: block; }
+  .listContent > table { display: none; }
+
+  .orderDialog {
+    display: flex;
+    flex-direction: column;
+    width: min(1100px, calc(100vw - 24px)) !important;
+    max-width: calc(100vw - 24px) !important;
+    height: min(94dvh, var(--po-viewport-height, 94dvh)) !important;
+    max-height: min(94dvh, var(--po-viewport-height, 94dvh)) !important;
+    overflow: hidden;
+  }
+  .dialogHeader { flex-shrink: 0; align-items: center; justify-content: space-between; padding: 8px 12px; }
+  .dialogHeader strong { font-size: 1rem; }
+  .sheetTitle { display: block; }
+  .dialogBody { flex: 1; min-height: 0; padding: 0; }
+  .form { display: flex; flex-direction: column; min-width: 0; height: calc(var(--po-viewport-height, 100dvh) - var(--workspace-header-h, 80px) - 32px); overflow: hidden; }
+  .dialogBody .form { height: 100%; }
+  .formContent { display: grid; grid-template-columns: minmax(0, 1fr) 220px; grid-template-areas: "error error" "header header" "info summary" "items items" "notes notes"; gap: 12px; flex: 1; min-height: 0; margin: 0; padding: 12px; overflow: auto; overscroll-behavior: contain; scroll-padding-block: 12px 24px; align-content: start; }
+  .formContent > * { margin-block: 0; min-width: 0; }
+  .dialogBody .formContent { grid-template-areas: "info summary" "items items" "notes notes"; }
+  .dialogBody .formContent:has(> .saveError) { grid-template-areas: "error error" "info summary" "items items" "notes notes"; }
+  .saveError { grid-area: error; }
+  .formHeader { grid-area: header; }
+  .formHeader p, .formHeader > div:last-child, .dialogBody .formHeader { display: none; }
+  .information { grid-area: info; }
+  .informationGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .informationGrid > :first-child, .informationGrid > :last-child { grid-column: 1 / -1; }
+  .itemsCard { grid-area: items; }
+  .additional { display: contents; }
+  .notesCard { grid-area: notes; }
+  .summary { grid-area: summary; }
+  .sectionSubtitle { display: none; }
+  .itemsTable { min-width: 0; table-layout: fixed; }
+  .itemsTable th:nth-child(2) { width: auto; }
+  .itemsTable :is(th, td) { padding-inline: 6px; }
+  .itemsTable :is(th, td):first-child { width: 28px; }
+  .itemsTable :is(th, td):nth-child(3) { width: 92px; overflow-wrap: anywhere; }
+  .itemsTable :is(th, td):nth-child(4) { width: 112px; }
+  .itemsTable :is(th, td):nth-child(5) { width: 84px; }
+  .itemsTable :is(th, td):nth-child(6) { width: 94px; overflow-wrap: anywhere; }
+  .itemsTable :is(th, td):last-child { width: 52px; }
+  .itemIdentity { display: flex; gap: 8px; align-items: center; min-width: 0; overflow-wrap: anywhere; }
+  .itemPhoto { display: block; width: 40px; height: 44px; flex-shrink: 0; border-radius: 6px; object-fit: cover; background: var(--color-slate-50); }
+  .mobileSku, .itemLabel { display: none; }
+  .desktopProductName { display: none; }
+  .mobileProductName { display: block; }
+  .itemVariant { display: block; margin-top: 3px; color: var(--color-slate-500); font-size: .75rem; }
+  .bottomBar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; margin-top: 0 !important; border-top: 1px solid var(--color-slate-200); background: var(--workspace-panel); padding: 10px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  .bottomTotals { display: grid; gap: 2px; font-size: .875rem; }
+  .bottomTotals small { color: var(--color-slate-500); }
+  .bottomBar > div:last-child { flex-wrap: nowrap; }
+}
+
+@media (min-width: 1024px) and (max-width: 1279px), (min-width: 1024px) and (max-width: 1366px) and (pointer: coarse) {
+  .informationGrid { grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)); }
+  .informationGrid > :first-child { grid-column: auto; }
+}
+
+@media (max-width: 767px), (max-height: 500px) and (max-width: 1023px) {
+  .orderDialog {
+    inset: var(--po-viewport-top, 0px) 0 auto !important;
+    margin: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: var(--po-viewport-height, 100dvh) !important;
+    max-height: var(--po-viewport-height, 100dvh) !important;
+    border-radius: 0;
+  }
+  .dialogHeader { padding-top: max(8px, env(safe-area-inset-top)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  .formContent { display: flex; flex-direction: column; gap: 10px; padding: 10px max(10px, env(safe-area-inset-right)) 10px max(10px, env(safe-area-inset-left)); }
+  .formContent > * { flex-shrink: 0; }
+  .informationGrid { gap: 10px; }
+  .informationGrid label:nth-child(2) { grid-column: 1; }
+  .informationGrid label:nth-child(3) { grid-column: 2; }
+  .informationGrid :is(input, select) { padding-inline: 8px; }
+  .informationGrid input[type="date"] { padding-left: 8px; font-size: 1rem; }
+  .informationGrid label:has(input[type="date"]) svg { display: none; }
+  .informationGrid select { padding-left: 30px; }
+  .informationGrid a { padding-inline: 8px; font-size: .75rem; }
+  .summary { display: none; }
+  .itemsCard > div:first-child { gap: 8px; }
+  .formContent section > div:first-child { padding: 8px 12px; }
+  .formContent section > div:first-child > div:first-child { gap: 8px; }
+  .formContent section > div:first-child > div:first-child > div:first-child { padding: 5px; }
+  .itemsCard > div:first-child > div:last-child { width: 100%; }
+  .itemsCard > div:first-child > div:last-child > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .itemsCard > div:first-child button { padding-inline: 8px; gap: 5px; font-size: .75rem; }
+  .itemsCard > div:first-child button:last-of-type { grid-column: 1 / -1; }
+  .itemsCard > div:last-child { padding: 10px; }
+  .itemsTable, .itemsTable tbody { display: block; width: 100%; }
+  .itemsTable thead { display: none; }
+  .itemsTable tr { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .8fr) minmax(0, .9fr); gap: 10px; padding: 12px; border: 1px solid var(--color-slate-200); border-radius: 10px; margin-bottom: 8px; }
+  .itemsTable tr.emptyItem { display: none; }
+  .itemsEmpty { display: block; padding: 24px 12px; border: 1px dashed var(--color-slate-300); border-radius: 10px; text-align: center; color: var(--color-slate-500); font-size: .875rem; }
+  .itemsTable td { display: block; width: auto !important; padding: 0; min-width: 0; }
+  .itemsTable td:first-child, .itemsTable td:nth-child(3) { display: none; }
+  .itemsTable td:nth-child(2) { grid-column: 1 / -1; padding-right: 36px; }
+  .itemsTable td:nth-child(6) { text-align: right; align-self: end; padding-bottom: 10px; }
+  .itemsTable td:last-child { position: absolute; right: 8px; top: 8px; }
+  .itemPhoto { width: 44px; height: 48px; }
+  .mobileSku, .itemLabel { display: block; font-size: .75rem; font-weight: 500; color: var(--color-slate-500); margin-bottom: 5px; }
+  .mobileSku { margin: 3px 0 0; overflow-wrap: anywhere; }
+  .itemsTable input { padding-inline: 8px; }
+  .itemsTable td:nth-child(4) input { padding-left: 28px; }
+  .bottomBar { display: grid; gap: 8px; }
+  .bottomTotals { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px; }
+  .bottomBar > div:last-child { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .bottomBar button { padding-inline: 6px; gap: 5px; font-size: .8125rem; }
+}

@@ -1,4 +1,18 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript');
+test('equivalent filter objects during rerenders do not cancel the active load or leave loading stuck',async()=>{
+ let slots=[],cursor=0,effects=[],timers=new Set(),requests=[];
+ const initial={rows:['saved']};
+ const react={useState(v){const i=cursor++;if(!(i in slots))slots[i]=v;return[slots[i],v=>slots[i]=v];},useRef(v){const i=cursor++;return slots[i]??(slots[i]={current:v});},useEffect(fn,deps){const i=cursor++,old=slots[i];if(!old||deps.some((x,n)=>!Object.is(old.deps[n],x))){slots[i]={deps};effects.push(()=>{old?.cleanup?.();slots[i].cleanup=fn();});}}};
+ const m={exports:{}};const js=ts.transpileModule(fs.readFileSync('lib/use-paged-workspace.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ new Function('require','module','exports','setTimeout','clearTimeout',js)(()=>react,m,m.exports,fn=>{timers.add(fn);return fn;},fn=>timers.delete(fn));
+ const load=f=>new Promise(resolve=>requests.push({filters:f,resolve}));
+ function render(page){cursor=0;effects=[];const result=m.exports.usePagedWorkspace(initial,{page,query:''},load);effects.forEach(fn=>fn());return result;}
+ render(1);render(2);assert.equal(render(2).busy,true);
+ for(const fn of timers){timers.delete(fn);fn();}
+ assert.equal(requests.length,1,'the changed filter must issue exactly one request after rerender');
+ requests[0].resolve({rows:['page-two']});await new Promise(setImmediate);
+ const result=render(2);assert.deepEqual(result.data.rows,['page-two']);assert.equal(result.busy,false);
+});
 test('management pages debounce searches, retain rows and ignore obsolete responses',async()=>{
  let slots=[],cursor=0,effects=[],timers=new Set(),requests=[],result;
  const initial={rows:['saved']};let filters={page:1,query:''};

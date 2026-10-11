@@ -13,16 +13,16 @@ export function usePagedWorkspace<T, F>(initial: T, filters: F, load: (filters: 
   const previous = useRef({ initial, key, filters });
   useEffect(() => {
     if (previous.current.initial === initial && previous.current.key === key) return;
-    const typed = textField !== undefined && previous.current.filters[textField] !== filters[textField];
+    const nextFilters = JSON.parse(key) as F;
+    const typed = textField !== undefined && previous.current.filters[textField] !== nextFilters[textField];
     const refreshed = previous.current.initial !== initial;
-    previous.current = { initial, key, filters };
+    previous.current = { initial, key, filters: nextFilters };
     let current = true;
     if (refreshed && key === defaultKey.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- adopt the server's fresh default page
       setData(initial); setError(""); setBusy(false);
       return;
     }
-    setBusy(true);
+    setBusy(true); setError("");
     const timer = setTimeout(() => {
       load(JSON.parse(key) as F).then(value => {
         if (current) { setData(value); setError(""); }
@@ -31,6 +31,6 @@ export function usePagedWorkspace<T, F>(initial: T, filters: F, load: (filters: 
       }).finally(() => { if (current) setBusy(false); });
     }, typed ? 300 : 0);
     return () => { current = false; clearTimeout(timer); };
-  }, [initial, key, load, filters, textField]);
+  }, [initial, key, load, textField]);
   return { data, busy, error };
 }

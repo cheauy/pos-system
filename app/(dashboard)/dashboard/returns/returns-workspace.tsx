@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter, { dateFilterStyles } from "@/components/date-range-filter";
+
 
 import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import { useEffect, useMemo, useState } from "react";
@@ -172,7 +174,8 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
 
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0 space-y-4">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[minmax(220px,1fr)_160px_160px]">
+          <DateRangeFilter from={fromDate} to={toDate} onApply={(from,to)=>{setFromDate(from);setToDate(to);setDateDraft(null);resetPage();}} />
+          <div className={`${dateFilterStyles.searchRow} grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[minmax(220px,1fr)_160px_160px]`}>
             <label className="relative">
               <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder="Search returns, customers, orders…" className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-blue-400" />
@@ -180,7 +183,7 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
             {/* Phones/tablets: compact date range beside search; it opens the date sheet. */}
             <button type="button" aria-label="Select date range" onClick={() => { setDateDraft(null); setSheet("filter"); }} className={`inline-flex h-10 max-w-[45vw] items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold md:hidden ${fromDate || toDate ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600"}`}><CalendarDays size={16} className="shrink-0" /><span className="truncate">{fromDate || toDate ? `${fromDate ? formatShortDate(fromDate) : "…"} – ${toDate ? formatShortDate(toDate) : "…"}` : "Date"}</span></button>
             {sheet === "filter" && <button type="button" aria-label="Close filters" onClick={closeDateFilter} className="fixed inset-0 z-40 bg-slate-950/40 md:hidden" />}
-            <div role={sheet === "filter" ? "dialog" : undefined} aria-modal={sheet === "filter" || undefined} aria-label="Return filters" data-sheet="bottom" className={`${sheet === "filter" ? "fixed inset-x-0 bottom-0 z-50 grid gap-3 rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-2xl" : "max-md:hidden"} md:contents`}>
+            <div role={sheet === "filter" ? "dialog" : undefined} aria-modal={sheet === "filter" || undefined} aria-label="Return filters" data-sheet="bottom" className={`${dateFilterStyles.legacy} ${sheet === "filter" ? "fixed inset-x-0 bottom-0 z-50 grid gap-3 rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-2xl" : "max-md:hidden"} md:contents`}>
             {sheet === "filter" && <div className="md:hidden"><div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200" /><div className="mt-4 flex items-center justify-between"><h2 className="text-xl font-bold text-slate-900">Filter Returns</h2><button type="button" aria-label="Close filters" onClick={closeDateFilter} className="grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600"><X size={20} /></button></div></div>}
             <input type="date" aria-label="From date" value={shownFrom} onChange={(event) => setDateDraft({ from: event.target.value, to: shownTo })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />
             <input type="date" aria-label="To date" value={shownTo} onChange={(event) => setDateDraft({ from: shownFrom, to: event.target.value })} className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-700" />

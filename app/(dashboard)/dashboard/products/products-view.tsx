@@ -13,6 +13,7 @@ import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode
 import { createClient } from "@/lib/supabase/branch-server";
 import { readAllRows } from "@/lib/supabase/read-all-rows";
 import AddProductModal from "./add-product-modal";
+import styles from "@/components/products-stock-responsive.module.css";
 
 type Category = {
   id: string;
@@ -164,7 +165,7 @@ export default async function ProductsView() {
   return (
     <section aria-label="Product catalog" className="contents">
 
-      <div className="col-start-2 row-start-1 justify-self-end max-sm:fixed max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:left-4 max-sm:right-4 max-sm:z-40 max-sm:justify-self-stretch max-sm:[&>button]:!min-h-14 max-sm:[&>button]:w-full max-sm:[&>button]:rounded-2xl max-sm:[&>button]:text-base max-sm:[&>button]:shadow-lg">
+      <div className={`${styles.bottomAction} col-start-2 row-start-1 justify-self-end max-sm:fixed max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:left-4 max-sm:right-4 max-sm:z-40 max-sm:justify-self-stretch max-sm:[&>button]:!min-h-14 max-sm:[&>button]:w-full max-sm:[&>button]:rounded-2xl max-sm:[&>button]:text-base max-sm:[&>button]:shadow-lg`}>
         {canCreate && <AddProductModal
           categories={categories}
           branches={branches || []}
@@ -179,8 +180,8 @@ export default async function ProductsView() {
         </section>
       )}
 
-      <div className="col-span-2 min-w-0 space-y-4 max-sm:pb-24">
-          <section className="hidden grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white sm:grid xl:grid-cols-4 [&>div]:border-slate-100 [&>div]:border-r">
+      <div className={`${styles.catalogBody} col-span-2 min-w-0 space-y-4 max-sm:pb-24`}>
+          <section className={`${styles.metrics} hidden grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white sm:grid xl:grid-cols-4 [&>div]:border-slate-100 [&>div]:border-r`}>
             <MetricCard
               icon={<Package size={22} />}
               iconClass="bg-blue-50 text-blue-600"

@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter, { dateFilterStyles } from "@/components/date-range-filter";
+import { inCalendarDateRange } from "@/lib/date-range";
 import { useLanguage } from "@/components/providers/language-provider";
 import { formatUiText } from "@/lib/i18n/translations";
 
@@ -39,6 +41,7 @@ import { submitStockAdjustment, submitStockAdjustmentBatch } from "./actions";
 import { compareColorSize } from "@/lib/products/variant-editor";
 import { MAX_STOCK_ADJUSTMENT_ITEMS, STOCK_SELECTION_PREFIX, isUuid, parseStockAdjustmentItems, readStockSelection, stockAfter, type StockMode } from "@/lib/inventory/stock-adjustment";
 import { initialStockAdjustmentState } from "./state";
+import styles from "./stock-adjustment-responsive.module.css";
 import { useBranchSwitchGuard } from "../../workspace-branch-provider";
 
 export type AdjustmentProduct = {
@@ -308,17 +311,18 @@ function ProductVariantPicker({
   }
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className={`relative ${styles.picker}`}>
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className={`flex min-h-[58px] w-full items-center gap-3 rounded-xl border bg-white px-3 py-2 text-left transition ${
+        className={`${styles.pickerTrigger} flex min-h-[58px] w-full items-center gap-3 rounded-xl border bg-white px-3 py-2 text-left transition ${
           open
             ? "border-blue-500 ring-2 ring-blue-100"
             : "border-slate-300 hover:border-slate-400"
         }`}
         aria-expanded={open}
       >
+        <span className={styles.touchOnly}>+ Add products</span>
         <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
           {selected ? (
             <ProductThumb src={selected.imageUrl} name={selected.name} />
@@ -501,16 +505,29 @@ export default function StockAdjustmentClient({
   const router = useRouter();
   const [recovery, setRecovery] = useState<Record<string, string> | null>(null);
   const [ready, setReady] = useState(false);
-  // Phones: Recent Adjustments opens as a full-screen sheet from a link.
+  // Compact web views open history in a full-screen sheet.
   const [recentOpen, setRecentOpen] = useState(false);
+  const [optionalOpen, setOptionalOpen] = useState(false);
+  const optionalExpanded = optionalOpen || Boolean(recovery);
+  const recentRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!recentOpen) return;
+    const opener = document.activeElement as HTMLElement | null;
+    recentRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
     const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setRecentOpen(false); };
-    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setRecentOpen(false); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRecentOpen(false);
+      if (event.key !== "Tab") return;
+      const controls = Array.from(recentRef.current?.querySelectorAll<HTMLElement>("button, input, select, a[href]") ?? []).filter(control => control.getClientRects().length && !control.hasAttribute("disabled"));
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    const wide = window.matchMedia("(min-width: 1200px)"); const onWide = () => { if (wide.matches) setRecentOpen(false); };
     window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
-    return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
+    return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); opener?.focus(); };
   }, [recentOpen]);
+  const submitting = useRef(false);
   const saving = useRef(false);
   const [state, formAction, pending] = useActionState(
     async (previous: typeof initialStockAdjustmentState, data: FormData) => {
@@ -524,6 +541,7 @@ export default function StockAdjustmentClient({
         setRecovery(payload);
       } catch {
         saving.current = false;
+        submitting.current = false;
         return { success: false, message: "Allow browser session storage before saving so interrupted adjustments can be recovered.", submittedAt: Date.now() };
       }
       try {
@@ -534,7 +552,7 @@ export default function StockAdjustmentClient({
         return result;
       } catch {
         return { success: false, uncertain: true, message: "Save result could not be confirmed. Retry this same adjustment to check it safely.", submittedAt: Date.now() };
-      } finally { saving.current = false; }
+      } finally { saving.current = false; submitting.current = false; }
     },
     initialStockAdjustmentState,
   );
@@ -551,6 +569,7 @@ export default function StockAdjustmentClient({
   const [notes, setNotes] = useState("");
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>("30");
+  const [customDates, setCustomDates] = useState<{from:string;to:string}|null>(null);
 
   const selectedProduct = rows.length === 1 ? products.find(product => product.id === rows[0].productId) ?? null : null;
   const productMap = new Map(products.map(product => [product.id, product]));
@@ -611,7 +630,9 @@ export default function StockAdjustmentClient({
     const days = dateRange === "all" ? null : Number(dateRange);
 
     return recentAdjustments.filter((adjustment) => {
-      if (days !== null) {
+      if (customDates) {
+        if (!inCalendarDateRange(adjustment.createdAt, customDates.from, customDates.to)) return false;
+      } else if (days !== null) {
         const time = new Date(adjustment.createdAt).getTime();
         if (!Number.isFinite(time) || time < now - days * 86_400_000) return false;
       }
@@ -628,7 +649,7 @@ export default function StockAdjustmentClient({
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
-  }, [dateRange, recentAdjustments, search]);
+  }, [dateRange, customDates, recentAdjustments, search]);
 
   useEffect(() => {
     if (!state.submittedAt || !state.success) return;
@@ -643,8 +664,8 @@ export default function StockAdjustmentClient({
 
 
   return (
-    <main className="mx-auto w-full max-w-[1680px] space-y-5 pb-10">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <main className={`${styles.workspace} mx-auto w-full max-w-[1680px] space-y-5 pb-10`}>
+      <div className={`${styles.desktopHeader} flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between`}>
         <div className="max-sm:hidden">
           <Link
             href="/dashboard/inventory"
@@ -673,10 +694,14 @@ export default function StockAdjustmentClient({
           {pending ? "Saving…" : recovery ? "Retry / Check Adjustment" : rows.length ? `Save ${rows.length} Adjustment${rows.length === 1 ? "" : "s"}` : "Save Adjustments"}
         </button>
       </div>
+      <div className={`${styles.touchHeader} ${styles.touchOnly}`}>
+        <h1 className="text-lg font-bold text-slate-950">Stock Adjustment</h1>
+        <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate-600"><Store size={16} className="shrink-0" /><span data-i18n-ignore="true">{branchName}</span></span>
+      </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,.8fr)]">
-        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-4">
+      <div className={`${styles.layout} grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,.8fr)]`}>
+        <section className={`${styles.detailsSection} min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm`}>
+          <div className={`${styles.desktopOnly} flex items-start gap-3 border-b border-slate-100 px-5 py-4`}>
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
               <FileText size={18} />
             </div>
@@ -692,20 +717,25 @@ export default function StockAdjustmentClient({
             id="stock-adjustment-form"
             action={formAction}
             noValidate
-            onSubmit={event => { if (!ready || pending || (!canSubmit && !recovery)) event.preventDefault(); }}
-            className="space-y-5 p-5"
+            onSubmit={event => {
+              if (submitting.current || !ready || pending || (!canSubmit && !recovery)) { event.preventDefault(); return; }
+              // Lock before React can queue a second action from the same click frame.
+              submitting.current = true;
+            }}
+            className={`${styles.form} space-y-5 p-5`}
           >
             {recovery && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">An adjustment is awaiting confirmation. Retry checks the same request without adding stock twice.</p>}
-            <fieldset disabled={pending || Boolean(recovery)} className="min-w-0 space-y-5">
+            <fieldset disabled={pending || Boolean(recovery)} className={`${styles.fieldset} min-w-0 space-y-5`}>
             <input type="hidden" name="locationId" value={branchId} />
             <input type="hidden" name="items" value={JSON.stringify(rows.map(row => ({ ...row, quantity: Number(row.quantity) })))} />
             {selectionError && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{selectionError}</p>}
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-slate-700">
+            <div className={`${styles.productsPanel} grid gap-4 lg:grid-cols-2 border-slate-200 bg-white`}>
+              <div className={`${styles.productSelection} block`}>
+                <span className={`${styles.desktopOnly} mb-1.5 block text-xs font-semibold text-slate-700`}>
                   Products / Variants <span className="text-red-500">*</span>
                 </span>
+                <span className={`${styles.touchOnly} text-sm font-semibold text-slate-900`}><span>Products</span> · <span>{rows.length}</span> <span>selected</span></span>
                 <ProductVariantPicker
                   products={products}
                   values={rows.map(row => row.productId)}
@@ -713,7 +743,7 @@ export default function StockAdjustmentClient({
                 />
               </div>
 
-              <div>
+              <div className={styles.desktopOnly}>
                 <span className="mb-1.5 block text-xs font-semibold text-slate-700">
                   Branch
                 </span>
@@ -725,14 +755,36 @@ export default function StockAdjustmentClient({
                   </div>
                 </div>
               </div>
+              <div className={`${styles.selectedRows} ${styles.touchOnly}`}>
+                {rows.length === 0 && <p className="py-3 text-sm text-slate-500">Choose products / variants</p>}
+                {rows.map(row => {
+                  const product = productMap.get(row.productId), valid = rowValid(row);
+                  const label = product ? `${product.name} ${variantText(product)}` : row.productId;
+                  return <article key={row.productId} className={`${styles.productRow} rounded-xl border ${valid ? "border-slate-200 bg-white" : "border-red-200 bg-red-50"}`}>
+                    <details>
+                      <summary className={styles.productSummary} aria-label={`Edit adjustment for ${label}`}>
+                        <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-slate-50"><ProductThumb src={product?.imageUrl ?? null} name={product?.name ?? "Unavailable product"} /></div>
+                        <div className="min-w-0 flex-1"><p className="break-words text-sm font-semibold text-slate-900" data-i18n-ignore={Boolean(product)}>{product?.name ?? "Unavailable product"}</p><p className="break-words text-xs text-slate-500" data-i18n-ignore={Boolean(product?.color || product?.size)}>{product ? variantText(product) : row.productId}</p><p className="break-all text-[11px] text-slate-400" data-i18n-ignore="true">SKU: {product?.sku ?? "—"}</p></div>
+                        <div className="shrink-0 text-right"><p className="text-[10px] text-slate-500">Current Stock</p><p className="text-sm font-bold text-slate-900">{row.expectedQuantity}</p><ChevronDown size={14} className="ml-auto text-slate-400" /></div>
+                      </summary>
+                      <div className={styles.rowEditor} onFocusCapture={event => event.currentTarget.scrollIntoView({ block: "nearest" })}>
+                        <label className="min-w-0 text-xs font-semibold text-slate-700"><span>Adjustment</span><select aria-label={`Adjustment for ${label}`} value={row.mode} onChange={event => updateRow(row.productId, { mode: event.target.value as Mode })} className="mt-1 h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm"><option value="increase">Increase</option><option value="decrease">Decrease</option><option value="set">Set exact</option></select></label>
+                        <label className="min-w-0 text-xs font-semibold text-slate-700"><span>Quantity</span><input aria-label={`Quantity for ${label}`} type="number" min={row.mode === "set" ? 0 : 1} max={2147483647} step={1} value={row.quantity} onChange={event => updateRow(row.productId, { quantity: event.target.value })} className="mt-1 h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm" /></label>
+                      </div>
+                    </details>
+                    <button type="button" aria-label={`Remove ${label} from adjustment`} onClick={() => setRows(current => current.filter(item => item.productId !== row.productId))} className={`${styles.removeRow} text-slate-500 hover:bg-red-50 hover:text-red-600`}><X size={17} /></button>
+                    {!valid && <p className="px-3 pb-3 text-xs text-red-700">{product ? "Check quantity / available stock" : "Remove this unavailable item"}</p>}
+                  </article>;
+                })}
+              </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[1.35fr_.65fr]">
+            <div className={`${styles.bulk} grid gap-4 lg:grid-cols-[1.35fr_.65fr]`}>
               <div>
                 <span className="mb-1.5 block text-xs font-semibold text-slate-700">
                   Apply one adjustment to all selected rows
                 </span>
-                <div className="grid overflow-hidden rounded-xl border border-slate-200 sm:grid-cols-3">
+                <div className={`${styles.segments} grid overflow-hidden rounded-xl border border-slate-200 sm:grid-cols-3`}>
                   <ModeButton
                     active={mode === "increase"}
                     onClick={() => setMode("increase")}
@@ -754,7 +806,7 @@ export default function StockAdjustmentClient({
                 </div>
               </div>
 
-              <label className="block">
+              <label className={`${styles.bulkQuantity} block`}>
                 <span className="mb-1.5 block text-xs font-semibold text-slate-700">
                   Quantity for all rows
                 </span>
@@ -773,11 +825,12 @@ export default function StockAdjustmentClient({
                     className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
-                <button type="button" disabled={!rows.length || !bulkValid} onClick={() => setRows(current => current.map(row => ({ ...row, mode, quantity })))} className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 disabled:opacity-40">Apply to {rows.length} selected rows</button>
+                <button type="button" disabled={!rows.length || !bulkValid} onClick={() => setRows(current => current.map(row => ({ ...row, mode, quantity })))} className={`${styles.apply} mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 disabled:opacity-40`}><span className={styles.desktopOnly}>Apply to {rows.length} selected rows</span><span className={styles.touchOnly}><span>Apply to selected</span> ({rows.length})</span></button>
               </label>
+              <p className={`${styles.touchOnly} text-xs text-slate-500`}>Apply updates the preview. Save confirms changes.</p>
             </div>
 
-            {rows.length > 0 && <div className="overflow-x-auto rounded-xl border border-slate-200">
+            {rows.length > 0 && <div className={`${styles.desktopOnly} overflow-x-auto rounded-xl border border-slate-200`}>
               <table className="w-full min-w-[650px] text-left text-xs">
                 <thead className="bg-slate-50 text-slate-600"><tr><th className="p-3">Product / Variant</th><th className="p-3">Current</th><th className="p-3">Adjustment</th><th className="p-3">Quantity</th><th className="p-3">After</th><th className="p-3"><span className="sr-only">Remove</span></th></tr></thead>
                 <tbody>{rows.map(row => {
@@ -797,7 +850,7 @@ export default function StockAdjustmentClient({
               <p className="border-t border-slate-100 px-3 py-2 text-[11px] text-slate-500">Review every row. One Save applies all {rows.length} rows together; nothing is saved while editing.</p>
             </div>}
 
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className={`${styles.reasonFields} grid gap-4 lg:grid-cols-2`}>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-slate-700">
                   Reason <span className="text-red-500">*</span>
@@ -826,7 +879,8 @@ export default function StockAdjustmentClient({
                 </div>
               </label>
 
-              <label className="block">
+              <button type="button" aria-expanded={optionalExpanded} aria-controls="stock-adjustment-reference stock-adjustment-notes" onClick={() => setOptionalOpen(open => !open)} className={`${styles.optionalToggle} ${styles.touchOnly} rounded-xl bg-slate-50 px-3 text-left text-sm text-slate-600`}><Link2 size={16} /><span>Reference & notes (optional)</span>{optionalExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button>
+              <label id="stock-adjustment-reference" className={`block ${!optionalExpanded ? styles.optionalClosed : ""}`}>
                 <span className="mb-1.5 block text-xs font-semibold text-slate-700">
                   Reference
                 </span>
@@ -846,7 +900,7 @@ export default function StockAdjustmentClient({
               </label>
             </div>
 
-            <label className="block">
+            <label id="stock-adjustment-notes" className={`block ${!optionalExpanded ? styles.optionalClosed : ""}`}>
               <div className="mb-1.5 flex items-center justify-between gap-3">
                 <span className="text-xs font-semibold text-slate-700">Notes</span>
                 <span className="text-[11px] text-slate-400">{notes.length}/500</span>
@@ -862,7 +916,7 @@ export default function StockAdjustmentClient({
               />
             </label>
 
-            <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4">
+            <div className={`${styles.desktopOnly} rounded-xl border border-blue-100 bg-blue-50/70 p-4`}>
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <BarChart3 size={17} className="text-blue-600" />
                 Stock Impact Preview
@@ -883,9 +937,22 @@ export default function StockAdjustmentClient({
                 <ImpactValue label="New Stock" value={newStock.toLocaleString()} />
               </div>
             </div>
+            <div className={`${styles.preview} ${styles.touchOnly} rounded-xl border border-blue-100 bg-blue-50/70 p-3`}>
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900"><BarChart3 size={17} className="text-blue-600" />Stock Impact Preview</h2>
+              <div className={`${styles.previewGrid} pb-2 text-[11px] text-slate-500`}><span>Item</span><span>Current</span><span>Change</span><span>New</span></div>
+              {rows.map(row => {
+                const product = productMap.get(row.productId), valid = rowValid(row);
+                const after = stockAfter(row.expectedQuantity, row.mode, Number(row.quantity) || 0), change = after - row.expectedQuantity;
+                return <div key={row.productId} className={`${styles.previewGrid} mt-1.5 rounded-lg bg-white px-2 py-2 text-sm`}>
+                  <div className="flex min-w-0 items-center gap-2"><div className="h-8 w-8 shrink-0 overflow-hidden rounded bg-slate-50"><ProductThumb src={product?.imageUrl ?? null} name={product?.name ?? "Unavailable product"} /></div><div className="min-w-0"><p className="break-words text-xs font-medium text-slate-900" data-i18n-ignore={Boolean(product)}>{product?.name ?? "Unavailable product"}</p><p className="break-words text-[10px] text-slate-500" data-i18n-ignore={Boolean(product?.color || product?.size)}>{product ? variantText(product) : "—"}</p></div></div>
+                  <span className="font-semibold text-slate-700">{row.expectedQuantity}</span><span className={`rounded px-1 py-1 text-xs font-semibold ${!valid ? "bg-red-50 text-red-700" : change > 0 ? "bg-emerald-50 text-emerald-700" : change < 0 ? "bg-red-50 text-red-700" : "bg-slate-50 text-slate-700"}`}>{valid ? `${change > 0 ? "+" : ""}${change}` : "—"}</span><span className={`font-bold ${valid ? "text-slate-900" : "text-red-700"}`}>{valid ? after : "—"}</span>
+                </div>;
+              })}
+            </div>
 
             {state.message && (
               <div
+                role="status"
                 className={`rounded-xl border px-4 py-3 text-sm font-medium ${
                   state.success
                     ? "border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -904,11 +971,11 @@ export default function StockAdjustmentClient({
             </div>
             </fieldset>
             <p className="text-xs text-slate-500">Stock corrections do not refund payments. Use Orders → Return items for customer refunds.</p>
-            <button type="button" onClick={() => setRecentOpen(true)} className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-blue-600 underline sm:hidden"><Clock3 size={16} />Recent Adjustments</button>
+            <button type="button" onClick={() => setRecentOpen(true)} className={`${styles.recentLink} inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-blue-600 underline sm:hidden`}><Clock3 size={16} />Recent Adjustments</button>
           </form>
         </section>
 
-        <aside className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm max-sm:hidden">
+        <aside className={`${styles.desktopOnly} min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm max-sm:hidden`}>
           <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
               <Box size={18} />
@@ -983,8 +1050,12 @@ export default function StockAdjustmentClient({
         </aside>
       </div>
 
-      <section role={recentOpen ? "dialog" : undefined} aria-modal={recentOpen || undefined} aria-label="Recent adjustments" className={`${recentOpen ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-14" : "max-sm:hidden"} overflow-hidden border border-slate-200 bg-white shadow-sm sm:static sm:block sm:overflow-hidden sm:rounded-2xl sm:pt-0`}>
-        {recentOpen && <button type="button" aria-label="Close recent adjustments" onClick={() => setRecentOpen(false)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-700 sm:hidden"><X size={20} /></button>}
+      <div className={`${styles.actionBar} ${styles.touchOnly} border border-slate-200 bg-white`}>
+        <div className="min-w-0 text-xs font-medium text-slate-700"><p><span>{rows.length}</span> <span>selected</span></p><p className={`mt-1 font-semibold ${delta < 0 ? "text-red-600" : "text-emerald-600"}`}>{rows.every(rowValid) ? `${delta > 0 ? "+" : ""}${delta}` : "—"} <span>units</span></p></div>
+        <button form="stock-adjustment-form" type="submit" disabled={(!canSubmit && !recovery) || pending || !ready} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><PackageCheck size={18} className="shrink-0" />{pending ? "Saving…" : recovery ? "Retry / Check Adjustment" : "Save Adjustments"}</button>
+      </div>
+      <section ref={recentRef} role={recentOpen ? "dialog" : undefined} aria-modal={recentOpen || undefined} aria-label="Recent adjustments" data-sheet="fullscreen" data-open={recentOpen} className={`${styles.history} ${recentOpen ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-14" : "max-sm:hidden"} overflow-hidden border border-slate-200 bg-white shadow-sm sm:static sm:block sm:overflow-hidden sm:rounded-2xl sm:pt-0`}>
+        {recentOpen && <button type="button" aria-label="Close recent adjustments" onClick={() => setRecentOpen(false)} className={`${styles.historyClose} absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-700 sm:hidden`}><X size={20} /></button>}
         <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
@@ -1013,8 +1084,8 @@ export default function StockAdjustmentClient({
             </div>
             <select
               value={dateRange}
-              onChange={(event) => setDateRange(event.target.value as DateRange)}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-500"
+              onChange={(event) => { setDateRange(event.target.value as DateRange); setCustomDates(null); }}
+              className={`${dateFilterStyles.legacy} h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-500`}
             >
               <option value="7">Last 7 days</option>
               <option value="30">Last 30 days</option>
@@ -1024,6 +1095,7 @@ export default function StockAdjustmentClient({
           </div>
         </div>
 
+        <div className="px-5"><DateRangeFilter from={customDates?.from??""} to={customDates?.to??""} onApply={(from,to)=>setCustomDates({from,to})} /></div>
         {filteredAdjustments.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
@@ -1148,6 +1220,7 @@ function ModeButton({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`flex min-h-11 items-center justify-center gap-2 border-b border-slate-200 px-3 py-2.5 text-sm font-semibold transition last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0 ${
         active
           ? "bg-blue-600 text-white"
@@ -1155,7 +1228,7 @@ function ModeButton({
       }`}
     >
       {icon}
-      {label}
+      <span className={styles.desktopOnly}>{label}</span><span className={styles.touchOnly}>{label.replace(" stock", "")}</span>
     </button>
   );
 }

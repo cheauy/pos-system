@@ -4,10 +4,12 @@ import { Package, Plus, Settings2, Shirt, SlidersHorizontal, X } from "lucide-re
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from 'next/dynamic';
+import ContentSkeleton from '@/components/ui/content-skeleton';
+import fashionStyles from './fashion-responsive.module.css';
 
 import { getProductExperience } from "@/lib/business/product-experience";
 import type { ProductMode } from "@/lib/business/types";
-const loading = () => <p role="status" className="py-8 text-center text-sm text-slate-500">Loading product form…</p>;
+const loading = () => <ContentSkeleton kind="form" />;
 const ConfigurableProductForm = dynamic(() => import('./configurable-product-form'), { loading });
 const StandardProductForm = dynamic(() => import('./standard-product-form'), { loading });
 const VariantProductForm = dynamic(() => import('./variant-product-form'), { loading });
@@ -94,14 +96,15 @@ export default function AddProductModal({
 
       {open && (
         <div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/35 p-3 backdrop-blur-[2px] sm:p-5"
+          className={`${businessType === "fashion" ? fashionStyles.overlay : ""} fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/35 p-3 backdrop-blur-[2px] sm:p-5`}
+          data-sheet={businessType === "fashion" ? "fashion" : undefined}
           role="dialog"
           aria-modal="true"
           aria-labelledby="add-product-title"
           onMouseDown={() => setOpen(false)}
         >
           <div
-            className="flex max-h-[92dvh] w-full max-w-[1040px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            className={`${businessType === "fashion" ? fashionStyles.modal : ""} flex max-h-[92dvh] w-full max-w-[1040px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl`}
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -161,7 +164,7 @@ export default function AddProductModal({
               </div>
             )}
 
-            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/80 p-4 sm:p-6">
+            <div className={`${businessType === "fashion" ? fashionStyles.modalBody : ""} min-h-0 flex-1 overflow-y-auto bg-slate-50/80 p-4 sm:p-6`}>
               {isGeneralShop ? (
                 createKind === "simple" ? (
                   <StandardProductForm

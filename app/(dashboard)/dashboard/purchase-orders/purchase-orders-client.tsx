@@ -1,4 +1,6 @@
 "use client";
+import DateRangeFilter, { DateFilterContent, dateFilterStyles } from "@/components/date-range-filter";
+
 
 import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import Link from "next/link";
@@ -7,6 +9,8 @@ import { dateRangeError } from "@/lib/date-range";
 import { loadPurchaseOrders, type PurchaseWorkspace } from "./list-actions";
 import OrderWorkflow from "./order-workflow";
 import NewOrderDialog, { type ChoicesCache } from "./new-order-dialog";
+import CompactPurchaseFilters from "./compact-purchase-filters";
+import styles from "./purchase-orders-responsive.module.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
@@ -188,10 +192,11 @@ export default function PurchaseOrdersClient({
   }
 
   return (
-    <main className="space-y-5" aria-busy={busy}>
+    <main className={`${styles.responsive} space-y-5`} aria-busy={busy}>
+      <DateRangeFilter from={fromDate} to={toDate} busy={busy} onApply={(from,to)=>{setFromDate(from);setToDate(to);setPage(1);setDateDraft(null);}} />
       {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error} The list below still shows the previous filters.</p>}
       {creating && <NewOrderDialog cacheRef={choicesCache} close={() => setCreating(false)} created={id => { setCreating(false); setSearch(""); setSupplierFilter("all"); setStatusFilter("all"); setFromDate(""); setToDate(""); setSortMode("newest"); setPage(1); setSelectedId(id); setDetailTab("overview"); }} />}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className={`${styles.listHeader} flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between`}>
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">
             Purchase Orders
@@ -205,7 +210,7 @@ export default function PurchaseOrdersClient({
           <button
             type="button"
             onClick={() => setFiltersOpen((open) => !open)}
-            className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 max-sm:hidden"
+            className={`${styles.desktopFilterToggle} inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 max-sm:hidden`}
           >
             <Filter size={17} />
             Filters
@@ -213,7 +218,7 @@ export default function PurchaseOrdersClient({
           {canCreate ? (
             <button
               type="button" onClick={() => setCreating(true)}
-              className="inline-flex h-11 items-center gap-2 rounded-xl bg-teal-700 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 max-sm:fixed max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:right-4 max-sm:z-40 max-sm:h-12 max-sm:rounded-full max-sm:shadow-lg"
+              className={`${styles.newOrderAction} ${!busy && !error && !visibleOrders.length ? styles.emptyNewOrder : ""} inline-flex h-11 items-center gap-2 rounded-xl bg-teal-700 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 max-sm:fixed max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:right-4 max-sm:z-40 max-sm:h-12 max-sm:rounded-full max-sm:shadow-lg`}
             >
               <Plus size={18} />
               New Purchase Order
@@ -222,7 +227,7 @@ export default function PurchaseOrdersClient({
         </div>
       </div>
 
-      <section aria-label="Purchase order summary" className="grid grid-cols-2 gap-y-3 rounded-xl border border-slate-200 bg-white py-4 shadow-sm sm:grid-cols-3 xl:grid-cols-6">
+      <section aria-label="Purchase order summary" className={`${styles.listStats} grid grid-cols-2 gap-y-3 rounded-xl border border-slate-200 bg-white py-4 shadow-sm sm:grid-cols-3 xl:grid-cols-6`}>
         <StatCard icon={<ClipboardList size={20} />} label="Total Orders" value={stats.total.toString()} tone="blue" />
         <StatCard icon={<FileText size={20} />} label="Draft" value={stats.draft.toString()} tone="slate" />
         <StatCard icon={<Send size={20} />} label="Sent" value={stats.sent.toString()} tone="blue" />
@@ -233,9 +238,10 @@ export default function PurchaseOrdersClient({
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
         <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <CompactPurchaseFilters search={search} onSearch={value => { setSearch(value); setPage(1); }} filters={{ supplierFilter, statusFilter, sortMode, fromDate, toDate }} suppliers={suppliers} busy={busy} onApply={filters => { setSupplierFilter(filters.supplierFilter); setStatusFilter(filters.statusFilter as StatusFilter); setSortMode(filters.sortMode as SortMode); setFromDate(filters.fromDate); setToDate(filters.toDate); setDateDraft(null); setPage(1); }} />
           {filtersOpen && (
-            <div className="border-b border-slate-200 bg-white p-3">
-              <div className="grid grid-cols-6 gap-2 sm:grid-cols-2 2xl:grid-cols-[minmax(160px,1.5fr)_minmax(110px,.8fr)_minmax(110px,.8fr)_minmax(220px,1.3fr)_minmax(110px,.8fr)]">
+            <div className={`${styles.desktopFilters} border-b border-slate-200 bg-white p-3`}>
+              <div className={`${dateFilterStyles.purchaseControls} grid grid-cols-6 gap-2 sm:grid-cols-2 2xl:grid-cols-[minmax(160px,1.5fr)_minmax(110px,.8fr)_minmax(110px,.8fr)_minmax(220px,1.3fr)_minmax(110px,.8fr)]`}>
                 <label className="relative col-span-2 block max-sm:order-4 max-[39.99rem]:col-span-6 sm:col-span-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input
@@ -272,7 +278,7 @@ export default function PurchaseOrdersClient({
                   <option value="cancelled">Cancelled</option>
                 </select>
 
-                <div className="col-span-4 grid grid-cols-2 gap-2 max-sm:order-5 max-[39.99rem]:col-span-6 sm:col-span-1">
+                <div className={`${dateFilterStyles.legacy} col-span-4 grid grid-cols-2 gap-2 max-sm:order-5 max-[39.99rem]:col-span-6 sm:col-span-1`}>
                   <label className="relative">
                     <CalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                     <input
@@ -323,7 +329,7 @@ export default function PurchaseOrdersClient({
             </div>
           )}
 
-          <div className={`overflow-x-auto transition-opacity ${busy || error ? "opacity-60" : ""}`}>
+          <DateFilterContent busy={busy}><div hidden={Boolean(error)} className={`${styles.listContent} overflow-x-auto transition-opacity ${busy || error ? "opacity-60" : ""}`}>
             <MobileList>{visibleOrders.map((order) => <MobileListCard key={order.id} selected={order.id === selectedOrder?.id} onClick={() => { setSelectedId(order.id); setDetailTab("overview"); if (window.matchMedia("(max-width: 639px)").matches) setDetailOpen(true); }} media={<FileText size={24} />} title={order.po_number} date={formatDate(order.order_date)} primary={order.supplier_name || "No supplier"} secondary={`${order.item_count} items · Expected ${formatDate(order.expected_date)}`} amount={money(order.total)} status={{ label: statusLabel(order.status) }} />)}</MobileList>
             <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[760px] text-xs">
               <thead className="border-b border-slate-200 bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -392,8 +398,8 @@ export default function PurchaseOrdersClient({
             </table>
           </div>
 
-          {visibleOrders.length === 0 && (
-            <div className="flex min-h-80 flex-col items-center justify-center px-6 py-12 text-center">
+          </DateFilterContent>{!busy && !error && visibleOrders.length === 0 && (
+            <div className={`${styles.emptyState} flex min-h-80 flex-col items-center justify-center px-6 py-12 text-center`}>
               <div className="relative mb-2"><FileText className="text-slate-200" size={64} /><span className="absolute -bottom-1 -right-1 rounded-full border-4 border-white bg-teal-600 p-1 text-white"><Plus size={18} /></span></div>
               <p className="mt-3 font-semibold text-slate-700">No purchase orders found</p>
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">{orders.length ? "No orders match these filters. Try changing your search or filters." : "You don’t have any purchase orders yet. Create a new purchase order to get started."}</p>
@@ -467,7 +473,7 @@ function PurchaseOrderDetails({
 }) {
   if (!order) {
     return (
-      <aside className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <aside className={`${styles.emptyDetails} rounded-2xl border border-slate-200 bg-white p-6 shadow-sm`}>
         <ClipboardList className="text-slate-300" size={36} />
         <p className="mt-3 font-semibold text-slate-800">Select a purchase order</p>
         <p className="mt-2 text-sm leading-6 text-slate-500">Choose an order from the list to see its details, including items, receiving status, and notes.</p>

@@ -16,8 +16,9 @@ test('promotion picker adds PO variants once and preserves edited quantities and
   const Form=loadTs('app/(dashboard)/dashboard/purchase-orders/new/purchase-order-form.tsx',{
     'react/jsx-runtime':jsx,'next/link':()=>null,'lucide-react':icons,
     'next/navigation':{useRouter:()=>({push(){}})},'react-dom':{useFormStatus:()=>({pending:false})},sonner:{toast:{success(){}}},
-    react:{useMemo:fn=>fn(),useRef:()=>({current:null}),useState:initial=>{const i=cursor++;if(!(i in state))state[i]=initial;return[state[i],value=>{state[i]=typeof value==='function'?value(state[i]):value;}];}},
+    react:{useEffect(){},useMemo:fn=>fn(),useRef:()=>({current:null}),useState:initial=>{const i=cursor++;if(!(i in state))state[i]=initial;return[state[i],value=>{state[i]=typeof value==='function'?value(state[i]):value;}];}},
     '../actions':{createPurchaseOrder(){}},'@/components/product-picker':{default:Picker},
+    '@/components/product-photo':{default:()=>null},'../purchase-orders-responsive.module.css':{default:{}},
   }).default;
   const products=[{id:'small',name:'Shirt',sku:'S',size:'S',color:'Blue',cost_price:5,variant_image_url:'blue.jpg'}, {id:'large',name:'Shirt',sku:'L',size:'L',color:'Blue',cost_price:6,image_url:'shirt.jpg'}];
   const render=()=>{cursor=0;return Form({suppliers:[],products});};

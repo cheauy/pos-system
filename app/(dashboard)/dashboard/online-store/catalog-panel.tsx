@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import ContentSkeleton from "@/components/ui/content-skeleton";
 
 import CatalogManager from "./catalog-manager";
 import { loadOnlineCatalog } from "./catalog-actions";
@@ -40,11 +40,12 @@ export default function CatalogPanel({ currency, canEdit }: { currency: string; 
       </div>
     );
   }
+  if (!error || loading) return <ContentSkeleton kind="catalog" />;
   return (
     <div role={error ? "alert" : "status"} className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
       {error
         ? <><p>{error}</p><button type="button" disabled={loading} onClick={load} className="min-h-11 rounded-lg border border-slate-200 bg-white px-4 py-2 font-semibold text-blue-600 disabled:opacity-50">Retry</button></>
-        : <><Loader2 size={20} className="animate-spin" />Loading products…</>}
+        : null}
     </div>
   );
 }

@@ -4,6 +4,8 @@ const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 const { loadTs } = require('./helpers/load-ts.cjs');
 const { default: StockOverview } = loadTs('app/(dashboard)/dashboard/inventory/inventory-client.tsx', {
+  '@/components/product-stock-drawer': { default: 'drawer-shell' },
+  '@/components/products-stock-responsive.module.css': { default: {} },
     '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
     '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
   react: React,
@@ -49,19 +51,21 @@ test('empty branch has a valid empty chart and no fabricated alerts', () => {
 
 test('stock selection never opens details and sort keeps the selection', () => {
   let cursor = 0;
-  const states = [];
+  const states = [], destinations = [], selections = [];
   const { default: Inventory } = loadTs('app/(dashboard)/dashboard/inventory/inventory-client.tsx', {
+    '@/components/product-stock-drawer': { default: 'drawer-shell' },
+    '@/components/products-stock-responsive.module.css': { default: {} },
     '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
     '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
     react: { useState: initial => { const id = cursor++; if (!(id in states)) states[id] = initial; return [states[id], value => { states[id] = typeof value === 'function' ? value(states[id]) : value; }]; }, useMemo: fn => fn(), useEffect() {} },
     'react/jsx-runtime': require('react/jsx-runtime'),
-    'next/link': { default: 'a' }, 'next/navigation': { useRouter: () => ({}) },
+    'next/link': { default: 'a' }, 'next/navigation': { useRouter: () => ({ push: url => destinations.push(url) }) },
     sonner: { toast: { error() {} } }, 'lucide-react': require('lucide-react'),
     '@/components/product-photo': { default: 'img' },
     '@/components/anchored-action-menu': { default: 'action-menu' },
-    '@/lib/inventory/stock-adjustment': { stockAdjustmentLink: () => '' }, '../products/actions': {},
+    '@/lib/inventory/stock-adjustment': { stockAdjustmentLink: (ids, branch) => { selections.push({ ids, branch }); return '/fixture-selected-adjustment'; } }, '../products/actions': {},
   });
-  const render = () => { cursor = 0; return Inventory(props); };
+  const render = () => { cursor = 0; return Inventory({ ...props, canAdjustStock: true }); };
   const nodes = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(nodes) : [node, ...nodes(node.props?.children)];
   const find = (tree, predicate) => nodes(tree).find(predicate);
   const row = find(render(), node => typeof node.type === 'function' && node.props.onToggle);
@@ -75,12 +79,20 @@ test('stock selection never opens details and sort keeps the selection', () => {
   assert.equal(find(render(), node => node.props.selectedBranchRows), undefined);
   assert.equal(find(render(), node => node.props.onClose && node.props.product), undefined, 'checkbox must not open detail drawer');
   assert.equal(find(render(), node => node.type === 'action-menu' && node.props.label.startsWith('Actions')).props.label, 'Actions (1)');
+  const adjust = tree => find(tree, node => node.type === 'button' && node.props.children?.at?.(-1) === 'Adjust Stock');
+  adjust(render()).props.onClick();
+  assert.equal(destinations.at(-1), '/fixture-selected-adjustment');
+  assert.deepEqual(selections.at(-1), { ids: ['empty'], branch: 'main' });
+  cursor = 0;
+  assert.equal(adjust(Inventory({ ...props, canAdjustStock: false })), undefined, 'restricted staff have no bottom adjustment action');
   find(render(), node => node.props['aria-label'] === 'Sort stock').props.onChange({ target: { value: 'stock' } });
   assert.equal(find(render(), node => typeof node.type === 'function' && node.props.onToggle).props.product.displayStock, 0);
   find(render(), node => node.props['aria-label'] === 'Select products on this page').props.onChange();
   assert.equal(find(render(), node => node.type === 'action-menu' && node.props.label.startsWith('Actions')).props.label, 'Actions (3)');
   find(render(), node => node.props['aria-label'] === 'Select products on this page').props.onChange();
   assert.equal(find(render(), node => node.type === 'action-menu' && node.props.label.startsWith('Actions')), undefined);
+  adjust(render()).props.onClick();
+  assert.equal(destinations.at(-1), '/dashboard/inventory/adjustments', 'without bulk selection the existing generic adjustment route remains available');
   row.props.onSelect();
   assert.ok(find(render(), node => node.props.onClose && node.props.product), 'row click still opens details');
 });

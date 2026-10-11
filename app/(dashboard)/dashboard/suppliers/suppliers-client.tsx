@@ -4,6 +4,9 @@ import { formatUiText } from "@/lib/i18n/translations";
 
 import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import { ButtonSpinner } from "@/components/pending-submit-button";
+import ContentSkeleton from "@/components/ui/content-skeleton";
+import CompactSupplierFilters from "./compact-supplier-filters";
+import styles from "./suppliers-responsive.module.css";
 import Link from "next/link";
 import { usePagedWorkspace } from "@/lib/use-paged-workspace";
 import { loadSuppliers, type SupplierWorkspace, type SupplierMetric } from "./list-actions";
@@ -64,13 +67,15 @@ const PAGE_SIZE = 15;
 export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace}) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  // Phones: Add Supplier and Supplier Details open as full-screen sheets.
+  // Keep the Add draft mounted after its first visit; supplier details retain their existing phone sheet.
   const [sheet, setSheet] = useState<"add" | "detail" | null>(null);
+  const [addVisited, setAddVisited] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
   useEffect(() => {
     if (!sheet) return;
     const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !document.querySelector("dialog[open]")) setSheet(null); };
-    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setSheet(null); };
+    const wide = window.matchMedia(sheet === "add" ? "(min-width: 1280px) and (hover: hover) and (pointer: fine)" : "(min-width: 640px)"); const onWide = () => { if (wide.matches) setSheet(null); };
     window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
     return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
   }, [sheet]);
@@ -108,7 +113,10 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
   const endRecord=Math.min(safePage*PAGE_SIZE,data.total);
 
   return (
-    <main className="space-y-5" aria-busy={busy}>
+    <main className={`${styles.responsive} space-y-5`} aria-busy={busy}>
+      {addVisited && <SupplierDialog title="Add Supplier" compact open={sheet === "add"} side busy={addBusy} close={() => setSheet(null)}>
+        <SupplierForm compact onBusyChange={setAddBusy} />
+      </SupplierDialog>}
       {editing && <SupplierDialog title="Edit Supplier" side busy={editingBusy} close={() => setEditing(null)}>
         <SupplierForm supplier={editing} onBusyChange={setEditingBusy} onSaved={() => setEditing(null)} />
       </SupplierDialog>}
@@ -126,14 +134,14 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
           }} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{deletingBusy ? "Deleting…" : "Delete supplier"}</button>
         </div>
       </SupplierDialog>}
-      <header>
+      <header className={styles.pageHeading}>
         <h1 className="text-3xl font-bold tracking-tight text-slate-950">Suppliers</h1>
         <p className="mt-1 text-sm text-slate-500">
           Manage companies and contacts who supply your products.
         </p>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className={`${styles.summaryGrid} grid gap-3 sm:grid-cols-2 xl:grid-cols-4`}>
         <SummaryCard
           icon={<UsersRound size={22} />}
           title="Total Suppliers"
@@ -168,23 +176,22 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
         </div>
       ) : null}
 
-      <section className="grid items-start gap-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
-        <div role={sheet === "add" ? "dialog" : undefined} aria-modal={sheet === "add" || undefined} aria-label="Add supplier" data-sheet="full" className={`${sheet === "add" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-100 p-3 pt-16" : "max-sm:hidden"} sm:contents`}>
-          {sheet === "add" && <button type="button" aria-label="Close add supplier" onClick={() => setSheet(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-white text-slate-700 shadow sm:hidden"><X size={20} /></button>}
+      <section className={`${styles.workspace} grid items-start gap-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]`}>
+        <div aria-label="Add supplier" className={styles.desktopAdd}>
           <AddSupplierPanel />
         </div>
 
-        <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-4 py-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className={`${styles.listCard} min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm`}>
+          <div className={`${styles.listHeader} border-b border-slate-200 px-4 py-4`}>
+            <div className={`${styles.listToolbar} flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between`}>
               <div>
                 <h2 className="text-lg font-bold text-slate-950">
                   Supplier List ({data.total})
                 </h2>
-                <p className="text-sm text-slate-500">View and manage your suppliers.</p>
+                <p className={`${styles.listDescription} text-sm text-slate-500`}>View and manage your suppliers.</p>
               </div>
 
-              <div className="flex flex-row gap-2">
+              <div className={`${styles.desktopFilters} flex flex-row gap-2`}>
                 <label className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
                   <Search
                     size={16}
@@ -208,11 +215,12 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
                   <option value="inactive">Inactive</option>
                 </select>
               </div>
+              <div className={styles.compactOnly}><CompactSupplierFilters search={query} onSearch={value => { setQuery(value); setPage(1); }} status={statusFilter} onApply={value => { setStatusFilter(value); setPage(1); }} /></div>
             </div>
           </div>
 
-          {suppliers.length === 0 ? (
-            <div className="px-6 py-16 text-center">
+          {busy ? <div className="p-4"><ContentSkeleton kind="table" /></div> : loadError ? null : suppliers.length === 0 ? (
+            <div className={`${styles.emptyState} px-6 py-16 text-center`}>
               <Building2 size={42} className="mx-auto text-slate-300" />
               <p className="mt-3 font-semibold text-slate-700">No suppliers yet</p>
               <p className="mt-1 text-sm text-slate-500">
@@ -289,7 +297,8 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
             </div>
           )}
 
-          <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className={`${styles.compactOnly} ${styles.addAction}`}><button type="button" onClick={() => { setAddVisited(true); setSheet("add"); }}><Plus size={18} />Add Supplier</button></div>
+          <div data-single-page={pageCount <= 1} className={`${styles.pagination} ${busy || loadError ? "hidden" : "flex"} flex-col gap-3 border-t border-slate-200 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between`}>
             <p className="text-slate-500">
               Showing {startRecord} to {endRecord} of {data.total} suppliers
             </p>
@@ -322,7 +331,7 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
           </div>
         </div>
 
-        <div role={sheet === "detail" ? "dialog" : undefined} aria-modal={sheet === "detail" || undefined} aria-label="Supplier details" data-sheet="full" className={`${sheet === "detail" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-100 p-3 pt-16" : "max-sm:hidden"} sm:contents`}>
+        <div data-empty={!selectedSupplier} role={sheet === "detail" ? "dialog" : undefined} aria-modal={sheet === "detail" || undefined} aria-label="Supplier details" data-sheet="full" className={`${styles.detailRegion} ${sheet === "detail" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-100 p-3 pt-16" : "max-sm:hidden"} sm:contents`}>
         {sheet === "detail" && <button type="button" aria-label="Close supplier details" onClick={() => setSheet(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-white text-slate-700 shadow sm:hidden"><X size={20} /></button>}
         <SupplierDetailsPanel
           onEdit={() => { setSheet(null); if (selectedSupplier) setEditing(selectedSupplier); }}
@@ -331,7 +340,6 @@ export default function SuppliersClient({workspace}:{workspace:SupplierWorkspace
         />
         </div>
       </section>
-      {!sheet && <button type="button" onClick={() => setSheet("add")} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg sm:hidden"><Plus size={18} />Add Supplier</button>}
     </main>
   );
 }
@@ -349,7 +357,8 @@ function AddSupplierPanel() {
   );
 }
 
-function SupplierForm({ supplier, onSaved, onBusyChange }: { supplier?: Supplier; onSaved?: () => void; onBusyChange?: (busy: boolean) => void }) {
+function SupplierForm({ supplier, compact = false, onSaved, onBusyChange }: { supplier?: Supplier; compact?: boolean; onSaved?: () => void; onBusyChange?: (busy: boolean) => void }) {
+  const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const lock = useRef(false);
@@ -366,21 +375,26 @@ function SupplierForm({ supplier, onSaved, onBusyChange }: { supplier?: Supplier
     } catch (error) { setError(error instanceof Error ? error.message : "Unable to save supplier. Please try again."); }
     finally { lock.current = false; setBusy(false); onBusyChange?.(false); }
   }
-  return <form onSubmit={submit} className="mt-5 space-y-4" aria-busy={busy}>
+  const phoneAndEmail = <>
+    <FormField label="Phone" required><input name="phone" required type="tel" defaultValue={supplier?.phone ?? ""} placeholder="e.g. 012 345 678" className={inputClass} /></FormField>
+    <FormField label="Email"><input name="email" type="email" defaultValue={supplier?.email ?? ""} placeholder="supplier@example.com" className={inputClass} /></FormField>
+  </>;
+  const notes = <FormField label="Notes"><textarea name="notes" defaultValue={supplier?.notes ?? ""} rows={3} placeholder="Optional notes" className={`${inputClass} resize-none`} /></FormField>;
+  const submitButton = <button type="submit" disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700">
+    {supplier ? <Pencil size={17} /> : <Plus size={17} />}
+    {busy ? <span className="inline-flex items-center justify-center gap-2"><ButtonSpinner />{supplier ? "Saving…" : "Creating…"}</span> : supplier ? "Save Changes" : "Create Supplier"}
+  </button>;
+  const errorMessage = error && <p role="alert" className="text-sm text-red-600">{error}</p>;
+  return <form onSubmit={submit} className={compact ? styles.compactForm : "mt-5 space-y-4"} aria-busy={busy}>
       {supplier && <input type="hidden" name="supplierId" value={supplier.id} />}
-      <fieldset disabled={busy} className="space-y-4">
+      <fieldset disabled={busy} className={compact ? styles.formFields : "space-y-4"}>
         <FormField label="Supplier name" required>
           <input name="name" required defaultValue={supplier?.name ?? ""} placeholder="e.g. ABC Trading Co." className={inputClass} />
         </FormField>
         <FormField label="Contact person" required>
           <input name="contactPerson" required defaultValue={supplier?.contact_person ?? ""} placeholder="e.g. Dara Lim" className={inputClass} />
         </FormField>
-        <FormField label="Phone" required>
-          <input name="phone" required type="tel" defaultValue={supplier?.phone ?? ""} placeholder="e.g. 012 345 678" className={inputClass} />
-        </FormField>
-        <FormField label="Email">
-          <input name="email" type="email" defaultValue={supplier?.email ?? ""} placeholder="supplier@example.com" className={inputClass} />
-        </FormField>
+        {compact ? <div className={styles.phoneEmail}>{phoneAndEmail}</div> : phoneAndEmail}
         <FormField label="Address" required>
           <textarea
             name="address" required
@@ -390,24 +404,10 @@ function SupplierForm({ supplier, onSaved, onBusyChange }: { supplier?: Supplier
             className={`${inputClass} resize-none`}
           />
         </FormField>
-        <FormField label="Notes">
-          <textarea
-            name="notes"
-            defaultValue={supplier?.notes ?? ""}
-            rows={3}
-            placeholder="Optional notes"
-            className={`${inputClass} resize-none`}
-          />
-        </FormField>
-        <button
-          type="submit"
-          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
-        >
-          {supplier ? <Pencil size={17} /> : <Plus size={17} />}
-          {busy ? <span className="inline-flex items-center justify-center gap-2"><ButtonSpinner />{supplier ? "Saving…" : "Creating…"}</span> : supplier ? "Save Changes" : "Create Supplier"}
-        </button>
+        {compact ? <details className={styles.notes}><summary>{t("Notes")}<ChevronRight size={17} aria-hidden="true" /></summary>{notes}</details> : notes}
+        {compact ? errorMessage : submitButton}
       </fieldset>
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {compact ? <div className={styles.formActions}>{submitButton}</div> : errorMessage}
     </form>;
 }
 
@@ -602,16 +602,30 @@ function SupplierActionMenu({ supplier, onEdit, onDelete }: { supplier: Supplier
   );
 }
 
-function SupplierDialog({ title, side = false, busy = false, close, children }: { title: string; side?: boolean; busy?: boolean; close: () => void; children: ReactNode }) {
+function SupplierDialog({ title, side = false, compact = false, open = true, busy = false, close, children }: { title: string; side?: boolean; compact?: boolean; open?: boolean; busy?: boolean; close: () => void; children: ReactNode }) {
+  const { t } = useLanguage();
   const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => { const dialog = ref.current; dialog?.showModal(); return () => dialog?.close(); }, []);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!open) { dialog?.close(); return; }
+    dialog?.showModal();
+    const viewport = compact ? window.visualViewport : undefined;
+    const update = () => {
+      dialog?.style.setProperty("--supplier-viewport-height", `${viewport?.height ?? window.innerHeight}px`);
+      dialog?.style.setProperty("--supplier-viewport-top", `${viewport?.offsetTop ?? 0}px`);
+      if (dialog?.contains(document.activeElement)) (document.activeElement as HTMLElement)?.scrollIntoView({ block: "nearest" });
+    };
+    if (compact) update();
+    viewport?.addEventListener("resize", update); viewport?.addEventListener("scroll", update);
+    return () => { viewport?.removeEventListener("resize", update); viewport?.removeEventListener("scroll", update); dialog?.close(); };
+  }, [open, compact]);
   return createPortal(<dialog ref={ref} role={side ? "dialog" : "alertdialog"} aria-label={title}
     onCancel={event => { event.preventDefault(); if (!busy) close(); }}
     onClick={event => { if (busy || event.target !== event.currentTarget) return; const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) close(); }}
-    style={side ? { position: "fixed", inset: "0 0 0 auto", margin: 0, width: "min(520px, 100vw)", maxWidth: "100vw", height: "100dvh", maxHeight: "100dvh", borderRadius: 0 } : { width: "min(420px, calc(100vw - 2rem))" }}
-    className="m-auto overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/30">
-    <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4"><h2 className="text-lg font-bold">{title}</h2><button type="button" disabled={busy} onClick={close} aria-label="Close dialog" className="rounded-lg p-2 hover:bg-slate-100 disabled:opacity-50"><X size={20} /></button></header>
-    <div className="p-5">{children}</div>
+    style={compact ? undefined : side ? { position: "fixed", inset: "0 0 0 auto", margin: 0, width: "min(520px, 100vw)", maxWidth: "100vw", height: "100dvh", maxHeight: "100dvh", borderRadius: 0 } : { width: "min(420px, calc(100vw - 2rem))" }}
+    className={`${compact ? `${styles.compactDialog} workspace-theme` : ""} m-auto overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/30`}>
+    <header className={`${compact ? styles.dialogHeader : ""} flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4`}><div><h2 className="text-lg font-bold">{title}</h2>{compact && <p className="mt-1 text-sm text-slate-500">{t("Create a new supplier record.")}</p>}</div><button type="button" disabled={busy} onClick={close} aria-label={compact ? t("Close add supplier") : "Close dialog"} className="rounded-lg p-2 hover:bg-slate-100 disabled:opacity-50"><X size={20} /></button></header>
+    <div className={compact ? styles.dialogBody : "p-5"}>{children}</div>
   </dialog>, document.body);
 }
 
@@ -636,9 +650,9 @@ function SummaryCard({
   } as const;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-3">
-        <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${tones[tone]}`}>{icon}</div>
+    <div className={`${styles.summaryCard} rounded-2xl border border-slate-200 bg-white p-4 shadow-sm`}>
+      <div className={`${styles.summaryContent} flex items-center gap-3`}>
+        <div data-tone={tone} className={`${styles.summaryIcon} grid h-11 w-11 shrink-0 place-items-center rounded-xl ${tones[tone]}`}>{icon}</div>
         <div className="min-w-0">
           <p className="text-xs font-medium text-slate-500">{title}</p>
           <p className="mt-0.5 break-words text-xl font-bold text-slate-950">{value}</p>

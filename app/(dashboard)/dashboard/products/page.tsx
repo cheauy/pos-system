@@ -1,41 +1,30 @@
-import Link from "next/link";
-import { Boxes, Package, SlidersHorizontal } from "lucide-react";
+import { getBranchContext } from "@/lib/branches/context";
+import VisitedProductViews from "./visited-product-views";
 import { requireAnyPermission } from "@/lib/auth/require-permission";
-import { businessHasPermission } from "@/lib/auth/effective-permissions";
+import { businessHasPermission, getEffectivePermissions } from "@/lib/auth/effective-permissions";
 
 export default async function ProductsPage({ searchParams }: {
   searchParams: Promise<{ view?: string }>;
 }) {
+  const branchRequest = getBranchContext();
+  // Preserve the permission redirect if the independent branch lookup also fails.
+  void branchRequest.catch(() => {});
   const business = await requireAnyPermission(["products.view", "inventory.view"]);
-  const [params, canViewProducts, canViewStock] = await Promise.all([
+  const context = await branchRequest;
+  const [params, canViewProducts, canViewStock, permissions] = await Promise.all([
     searchParams,
     businessHasPermission(business, "products.view"),
     businessHasPermission(business, "inventory.view"),
+    getEffectivePermissions(business.id, business.role),
   ]);
   const stock = canViewStock && (params.view === "stock" || !canViewProducts);
-  const canAdjustStock = stock && await businessHasPermission(business, "products.stock_adjust");
+  const canAdjustStock = await businessHasPermission(business, "products.stock_adjust");
   // Load only the selected view. Catalog navigation must not query sales analytics.
   const View = stock
     ? (await import("../inventory/inventory-view")).default
     : (await import("./products-view")).default;
-  return <main className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-5">
-    <header className="col-start-1 row-start-1">
-      <h1 className="text-lg font-bold tracking-tight text-slate-950">Products &amp; Stock</h1>
-      <p className="mt-1 text-sm text-slate-500">Manage your products, variants and branch stock in one place.</p>
-    </header>
-    {canAdjustStock && <Link href="/dashboard/inventory/adjustments" className="col-start-2 row-start-1 inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-800 max-sm:fixed max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:left-4 max-sm:right-4 max-sm:z-40 max-sm:min-h-14 max-sm:rounded-2xl max-sm:text-base max-sm:shadow-lg">
-      <SlidersHorizontal size={17} /> Adjust Stock
-    </Link>}
-    <nav aria-label="Products and stock views" className="col-span-2 row-start-2 flex gap-1 border-b border-slate-200 max-lg:grid max-lg:auto-cols-fr max-lg:grid-flow-col max-lg:gap-0">
-      {canViewProducts && <Link href="/dashboard/products" prefetch={false} aria-current={!stock ? "page" : undefined}
-        className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold max-lg:justify-center max-lg:text-base ${!stock ? "border-teal-600 text-teal-700 max-lg:border-blue-600 max-lg:text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
-        <Package size={18} />Products
-      </Link>}
-      {canViewStock && <Link href="/dashboard/products?view=stock" prefetch={false} aria-current={stock ? "page" : undefined}
-        className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold max-lg:justify-center max-lg:text-base ${stock ? "border-teal-600 text-teal-700 max-lg:border-blue-600 max-lg:text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
-        <Boxes size={18} />Stock
-      </Link>}
-    </nav>
-    {stock ? <div className="col-span-2 min-w-0"><View /></div> : <View />}
-  </main>;
+  return <VisitedProductViews key={JSON.stringify([business.id, context.userId, context.branchId, permissions])}
+    view={stock ? "stock" : "products"} canViewProducts={canViewProducts} canViewStock={canViewStock} canAdjustStock={canAdjustStock}>
+    <View />
+  </VisitedProductViews>;
 }

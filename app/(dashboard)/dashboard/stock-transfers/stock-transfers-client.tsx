@@ -5,6 +5,7 @@ import MobileListCard, { MobileList } from "@/components/mobile-list-card";
 import ProductPicker from "@/components/product-picker";
 import ProductPhoto from "@/components/product-photo";
 import { Modal } from "../pos/pos-workspace-components";
+import styles from "./stock-transfers-responsive.module.css";
 
 import {
   ArrowLeft,
@@ -16,6 +17,7 @@ import {
   ChevronRight,
   CircleX,
   FileText,
+  Filter,
   Loader2,
   MapPin,
   MoreVertical,
@@ -31,7 +33,9 @@ import {
   X,
 } from "lucide-react";
 import {
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -162,6 +166,41 @@ function productSubtitle(product: TransferProduct) {
   return [product.color, product.size].filter(Boolean).join(" / ") || product.sku || "Variant";
 }
 
+function CompactTransferFilters({ statuses, locations, status, branch, onApply }: {
+  statuses: string[]; locations: TransferLocation[]; status: string; branch: string;
+  onApply: (status: string, branch: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return <div className={styles.compactOnly}>
+    <button type="button" aria-label="Filters" aria-haspopup="dialog" aria-expanded={open}
+      className={`${inputClass} ${styles.filterButton}`} onClick={() => setOpen(true)}>
+      <Filter size={18} />{(status !== "all" || branch !== "all") && <span className="h-2 w-2 rounded-full bg-blue-600" />}
+    </button>
+    {open && <Modal title="Filters" onClose={() => setOpen(false)}>
+      <form className={styles.filterForm} onSubmit={event => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        const nextStatus = String(data.get("status"));
+        const nextBranch = String(data.get("branch"));
+        if ((nextStatus !== "all" && !statuses.includes(nextStatus)) || (nextBranch !== "all" && !locations.some(location => location.id === nextBranch))) return;
+        onApply(nextStatus, nextBranch);
+        setOpen(false);
+      }}>
+        <label className="space-y-1.5"><span className="text-sm font-semibold">Filter by status</span>
+          <select name="status" defaultValue={status} className={inputClass}><option value="all">All Statuses</option>{statuses.map(value => <option key={value} value={value}>{transferStatusLabel(value)}</option>)}</select>
+        </label>
+        <label className="space-y-1.5"><span className="text-sm font-semibold">Filter by branch</span>
+          <select name="branch" defaultValue={branch} className={inputClass}><option value="all">All Branches</option>{locations.map(location => <option key={location.id} value={location.id} data-i18n-ignore="true">{location.name}</option>)}</select>
+        </label>
+        <div className="flex justify-end gap-2">
+          <button type="button" className={inputClass} onClick={event => { const form = event.currentTarget.form!; (form.elements.namedItem("status") as HTMLSelectElement).value = "all"; (form.elements.namedItem("branch") as HTMLSelectElement).value = "all"; }}>Reset</button>
+          <button type="submit" className={`${primaryButton} h-11`}>Apply</button>
+        </div>
+      </form>
+    </Modal>}
+  </div>;
+}
+
 export default function StockTransfersClient({
   locations,
   products,
@@ -178,6 +217,7 @@ export default function StockTransfersClient({
   const [destinationLocationId, setDestinationLocationId] = useState("");
   const [draftItems, setDraftItems] = useState<DraftBuilderItem[]>([]);
   const [note, setNote] = useState("");
+  const [noteExpanded, setNoteExpanded] = useState(false);
   const [editingTransferId, setEditingTransferId] = useState<string | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<TransferRow | null>(null);
@@ -192,6 +232,28 @@ export default function StockTransfersClient({
   const [statusFilter, setStatusFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const createForm = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    const form = createForm.current;
+    const dialog = form?.closest("dialog");
+    const viewport = window.visualViewport;
+    if (!dialog || !viewport) return;
+    // iOS keyboards resize the visual viewport without changing CSS viewport units.
+    const update = () => {
+      dialog.style.setProperty("--transfer-viewport-height", `${viewport.height}px`);
+      dialog.style.setProperty("--transfer-viewport-top", `${viewport.offsetTop}px`);
+      dialog.dataset.shortViewport = String(viewport.height < 520);
+      if (window.innerWidth < 1200 && form?.contains(document.activeElement)) {
+        requestAnimationFrame(() => (document.activeElement as HTMLElement)?.scrollIntoView({ block: "nearest" }));
+      }
+    };
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => { viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update); };
+  }, [createOpen]);
 
   const locationMap = useMemo(
     () => new Map(locations.map((location) => [location.id, location.name])),
@@ -398,10 +460,24 @@ export default function StockTransfersClient({
     setDetailsOpen(true);
   }
 
+  function openNewTransfer() {
+    resetDraftBuilder();
+    setEditingTransferId(null);
+    setCreateError(null);
+    setCreateOpen(true);
+  }
+
+  const noteField = (
+    <label className="space-y-1.5">
+      <span className="text-xs font-semibold text-slate-700">Reference / Note (Optional)</span>
+      <input value={note} onChange={(event) => setNote(event.target.value)} className={inputClass} placeholder="e.g. Stock for new store opening..." />
+    </label>
+  );
+
   return (
     <>
-      <main className="min-w-0 space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+      <main className={`${styles.page} min-w-0 space-y-4`}>
+        <div className={`${styles.pageHeading} flex flex-wrap items-start justify-between gap-4`}>
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">Stock Transfers</h1>
             <p className="mt-1 text-sm text-slate-500">
@@ -412,12 +488,7 @@ export default function StockTransfersClient({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => {
-                resetDraftBuilder();
-                setEditingTransferId(null);
-                setCreateError(null);
-                setCreateOpen(true);
-              }}
+              onClick={openNewTransfer}
               className={primaryButton}
             >
               <Plus size={17} />
@@ -426,7 +497,7 @@ export default function StockTransfersClient({
           </div>
         </div>
 
-        <section aria-label="Transfer summary" className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+        <section aria-label="Transfer summary" className={`${styles.summary} flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm`}>
           <div className="flex items-center gap-3 border-r border-slate-200 pr-6">
             <span className="rounded-xl bg-blue-50 p-2.5 text-blue-600"><ArrowRightLeft size={22} /></span>
             <div><p className="text-xs text-slate-500">Total</p><p className="text-xl font-bold text-slate-950">{totals.total}</p></div>
@@ -461,7 +532,8 @@ export default function StockTransfersClient({
               setCreateOpen(false);
             }}
           >
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className={styles.builder}>
+            <div className={`${styles.builderIntro} flex flex-wrap items-center justify-between gap-3`}>
               <p className="text-sm text-slate-500">
                 {editingTransferId
                   ? "Update branches, items or note before the transfer is sent."
@@ -477,9 +549,11 @@ export default function StockTransfersClient({
               </button>
             </div>
 
-            <form onSubmit={handleCreate} className="mt-4">
-              <fieldset disabled={createPending} className="min-w-0">
-              <div className="grid gap-4 lg:grid-cols-2">
+            <form ref={createForm} onSubmit={handleCreate} className={`${styles.draftForm} mt-4`}>
+              <fieldset disabled={createPending} className={`${styles.draftFields} min-w-0`}>
+              <div className={styles.draftScroll}>
+              <div className={styles.branchAndPicker}>
+              <div className={`${styles.branches} grid gap-4 lg:grid-cols-2`}>
                 <label className="space-y-1.5">
                   <span className="text-xs font-semibold text-slate-700">From Branch</span>
                   <select
@@ -503,6 +577,7 @@ export default function StockTransfersClient({
                       </option>
                     ))}
                   </select>
+                  <span className={styles.branchName} data-i18n-ignore="true">{locationMap.get(sourceLocationId)}</span>
                   <span className="block text-[11px] text-slate-400">
                     Available stock is checked from this branch.
                   </span>
@@ -528,11 +603,13 @@ export default function StockTransfersClient({
                         </option>
                       ))}
                   </select>
+                  <span className={styles.branchName} data-i18n-ignore="true">{locationMap.get(destinationLocationId)}</span>
                 </label>
               </div>
 
-              <div className="mt-4 space-y-2">
+              <div className={`${styles.picker} mt-4 space-y-2`}>
                 <p className="text-xs font-semibold text-slate-700">Product / Variant</p>
+                <div className={styles.pickerControl} data-source-selected={Boolean(sourceLocationId)}>
                 <ProductPicker
                   products={products.filter(product => stockForProduct(product) > 0).map(product => ({
                     id: product.id, name: product.name, image: product.imageUrl, sku: product.sku,
@@ -544,11 +621,14 @@ export default function StockTransfersClient({
                     setCreateError(null);
                   }}
                 />
+                {!sourceLocationId && <div className={styles.chooseSource}><Box size={30} /><p>Choose From Branch to load available products.</p></div>}
+                </div>
                 <p className="text-xs text-slate-500">{sourceLocationId ? "Select products or individual sizes/colors, then adjust quantities below." : "Choose From Branch to load available products."}</p>
+              </div>
               </div>
 
               {draftItems.length > 0 && (
-                <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+                <div className={`${styles.selectedItems} mt-4 overflow-hidden rounded-xl border border-slate-200`}>
                   <div className="flex items-center justify-between bg-slate-50 px-4 py-2.5">
                     <p className="text-sm font-semibold text-slate-800">
                       Transfer items ({draftItems.length})
@@ -629,20 +709,15 @@ export default function StockTransfersClient({
                   </div>
                 </div>
               )}
+              <div className={styles.optional}>
+                <button type="button" className={styles.optionalToggle} aria-expanded={noteExpanded} aria-controls="transfer-note" onClick={() => setNoteExpanded(value => !value)}>Reference / Note (Optional)<ChevronRight size={17} className={noteExpanded ? "rotate-90" : ""} /></button>
+                <div id="transfer-note" className={noteExpanded ? "" : styles.optionalClosed}>{noteField}</div>
+              </div>
+              </div>
 
-              <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto]">
-                <label className="space-y-1.5">
-                  <span className="text-xs font-semibold text-slate-700">
-                    Reference / Note (Optional)
-                  </span>
-                  <input
-                    value={note}
-                    onChange={(event) => setNote(event.target.value)}
-                    className={inputClass}
-                    placeholder="e.g. Stock for new store opening..."
-                  />
-                </label>
-                <div className="flex items-end gap-2">
+              <div className={`${styles.noteAndActions} mt-4 grid gap-4 lg:grid-cols-[1fr_auto]`}>
+                <div className={styles.desktopNote}>{noteField}</div>
+                <div className={`${styles.draftActions} flex items-end gap-2`}>
                   <button
                     type="button"
                     onClick={() => {
@@ -666,6 +741,7 @@ export default function StockTransfersClient({
                     {createPending ? (editingTransferId ? "Saving Draft..." : "Creating Draft...") : editingTransferId ? "Save Draft" : "Create Draft"}
                     <ArrowRight size={16} />
                   </button>
+                  <span className={styles.selectedCount}>{formatUiText(translateLabel("{0} products / variants selected"), [draftItems.length])}</span>
                 </div>
               </div>
 
@@ -676,10 +752,11 @@ export default function StockTransfersClient({
               )}
               </fieldset>
             </form>
+            </div>
           </Modal>
         )}
 
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <section className={`${styles.listing} overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm`}>
           <nav aria-label="Transfer status" className="flex overflow-x-auto border-b border-slate-200 px-3">
             {[
               { value: "all", label: "All", icon: ArrowRightLeft },
@@ -694,7 +771,7 @@ export default function StockTransfersClient({
             </button>)}
           </nav>
 
-          <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-[1.5fr_180px_180px]">
+          <div className={`${styles.toolbar} grid gap-3 border-b border-slate-200 p-4 md:grid-cols-[1.5fr_180px_180px]`}>
             <label className="relative">
               <Search
                 size={16}
@@ -718,7 +795,7 @@ export default function StockTransfersClient({
                 setStatusFilter(event.target.value);
                 setPage(1);
               }}
-              className={inputClass}
+              className={`${inputClass} ${styles.desktopFilter}`}
             >
               <option value="all">All Statuses</option>
               {Array.from(new Set(transfers.map(transfer => transfer.status))).sort().map(status => (
@@ -733,7 +810,7 @@ export default function StockTransfersClient({
                 setBranchFilter(event.target.value);
                 setPage(1);
               }}
-              className={inputClass}
+              className={`${inputClass} ${styles.desktopFilter}`}
             >
               <option value="all">All Branches</option>
               {locations.map((location) => (
@@ -742,6 +819,8 @@ export default function StockTransfersClient({
                 </option>
               ))}
             </select>
+            <CompactTransferFilters statuses={Array.from(new Set(transfers.map(transfer => transfer.status))).sort()} locations={locations} status={statusFilter} branch={branchFilter}
+              onApply={(status, branch) => { setStatusFilter(status); setBranchFilter(branch); setPage(1); setActionMenuId(null); }} />
           </div>
 
           <div className="overflow-x-auto">
@@ -814,11 +893,12 @@ export default function StockTransfersClient({
             )}
           </div>
 
-          <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3">
+          <div className={`${styles.pagination} flex items-center justify-between border-t border-slate-200 px-5 py-3`}>
             <p className="text-xs text-slate-500">{filteredTransfers.length} transfer records</p>
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                aria-label="Previous page"
                 disabled={safePage <= 1}
                 onClick={() => setPage((current) => Math.max(1, current - 1))}
                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-40"
@@ -830,6 +910,7 @@ export default function StockTransfersClient({
               </span>
               <button
                 type="button"
+                aria-label="Next page"
                 disabled={safePage >= totalPages}
                 onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-40"
@@ -839,6 +920,7 @@ export default function StockTransfersClient({
             </div>
           </div>
         </section>
+        {!createOpen && <div className={styles.listingBar}><button type="button" className={`${primaryButton} h-11 w-full`} onClick={openNewTransfer}><Plus size={18} />New Transfer</button></div>}
       </main>
 
       {actionMenuId && (() => {

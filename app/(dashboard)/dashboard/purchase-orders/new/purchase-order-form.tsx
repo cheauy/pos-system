@@ -6,7 +6,6 @@ import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
 import {
   Barcode,
-  Building2,
   CalendarDays,
   CircleDollarSign,
   FileText,
@@ -28,6 +27,7 @@ import {
 import {
   ChangeEvent,
   FormEvent,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -35,6 +35,8 @@ import {
 
 import { createPurchaseOrder } from "../actions";
 import ProductPicker from "@/components/product-picker";
+import ProductPhoto from "@/components/product-photo";
+import styles from "../purchase-orders-responsive.module.css";
 
 type Supplier = {
   id: string;
@@ -85,10 +87,30 @@ export default function PurchaseOrderForm({
   onBusyChange?: (busy: boolean) => void;
 }) {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    const node = formRef.current!;
+    // React resets during commit, when synthetic handlers are disabled; success closes the form.
+    const preserveDraft = (event: Event) => event.preventDefault();
+    node.addEventListener("reset", preserveDraft);
+    const viewport = window.visualViewport;
+    if (!viewport) return () => node.removeEventListener("reset", preserveDraft);
+    const sheet = node.closest("dialog") ?? node;
+    const update = () => {
+      sheet.style.setProperty("--po-viewport-height", `${viewport.height}px`);
+      sheet.style.setProperty("--po-viewport-top", `${viewport.offsetTop}px`);
+      requestAnimationFrame(() => { if (node.contains(document.activeElement)) (document.activeElement as HTMLElement)?.scrollIntoView({ block: "nearest" }); });
+    };
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => { node.removeEventListener("reset", preserveDraft); viewport.removeEventListener("resize", update); viewport.removeEventListener("scroll", update); };
+  }, []);
   const [saveError, setSaveError] = useState("");
   const saveLock = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [supplierId, setSupplierId] = useState("");
+  const today = new Date().toISOString().slice(0, 10);
   const [items, setItems] = useState<OrderItem[]>([blankItem(1)]);
   const [nextRowId, setNextRowId] = useState(2);
   const [barcodeOpen, setBarcodeOpen] = useState(false);
@@ -96,6 +118,7 @@ export default function PurchaseOrderForm({
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const pickerProducts = useMemo(() => products.map(product => ({ id: product.id, name: product.name, sku: product.sku, variant: [product.size, product.color].filter(Boolean).join(" / "), image: product.variant_image_url || product.image_url || null })), [products]);
+  const productDetails = useMemo(() => new Map(pickerProducts.map(product => [product.id, product])), [pickerProducts]);
 
   const selectedSupplier = useMemo(
     () => suppliers.find((supplier) => supplier.id === supplierId) ?? null,
@@ -116,7 +139,6 @@ export default function PurchaseOrderForm({
     [validItems],
   );
 
-  const today = new Date().toISOString().slice(0, 10);
 
   function chooseProducts(ids: string[]) {
     const selected = new Set(ids);
@@ -305,17 +327,16 @@ export default function PurchaseOrderForm({
   }
 
   return (
-    <form action={async data => {
+    <form ref={formRef} onSubmit={() => onBusyChange?.(true)} action={async data => {
       if (saveLock.current) return;
-      saveLock.current = true; onBusyChange?.(true); setSaveError("");
+      saveLock.current = true; setSaveError("");
       try {
         const id = await createPurchaseOrder(data, false);
         toast.success(data.get("submissionStatus") === "sent" ? "Purchase order created and marked as sent." : "Purchase order saved as Draft.");
         if (onCreated) onCreated(id); else router.push("/dashboard/purchase-orders");
       } catch (error) { setSaveError(error instanceof Error ? error.message : "Unable to save purchase order. Please try again."); }
       finally { saveLock.current = false; onBusyChange?.(false); }
-    }} className="space-y-4">
-      {saveError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{saveError}</p>}
+    }} className={`${styles.responsive} ${styles.form}`}>
       <input
         type="hidden"
         name="items"
@@ -328,7 +349,9 @@ export default function PurchaseOrderForm({
         )}
       />
 
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className={`${styles.formContent} space-y-4`}>
+      {saveError && <p role="alert" className={`${styles.saveError} rounded-xl bg-red-50 p-3 text-sm text-red-700`}>{saveError}</p>}
+      <header className={`${styles.formHeader} flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between`}>
         <div>
           <h1 className="text-xl font-bold tracking-tight text-slate-950">
             New Purchase Order
@@ -342,13 +365,13 @@ export default function PurchaseOrderForm({
         <CreateButtons disabled={!supplierId || !validItems.length} />
       </header>
 
-      <div>
+      <div className={styles.information}>
         <SectionCard
           icon={<ShoppingCart size={19} />}
           title="Order Information"
           subtitle="Basic information about this purchase order."
         >
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className={`${styles.informationGrid} grid gap-3 sm:grid-cols-2`}>
             <Field label="Supplier" required>
               <div className="flex gap-2">
                 <div className="relative min-w-0 flex-1">
@@ -428,6 +451,7 @@ export default function PurchaseOrderForm({
       </div>
 
       <SectionCard
+        className={styles.itemsCard}
         icon={<PackagePlus size={19} />}
         title="Order Items"
         subtitle="Add products to this purchase order."
@@ -507,7 +531,8 @@ export default function PurchaseOrderForm({
             value={validItems.map(item => item.productId)} onChange={chooseProducts} />
         </div>}
         <div className="overflow-x-auto">
-          <table className="min-w-[660px] w-full border-collapse text-sm">
+          {!validItems.length && <p className={styles.itemsEmpty}>No products added</p>}
+          <table data-phone-layout="custom" className={`${styles.itemsTable} min-w-[660px] w-full border-collapse text-sm`}>
             <thead>
               <tr className="border-y border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <th className="w-12 px-3 py-3 text-center">#</th>
@@ -521,12 +546,15 @@ export default function PurchaseOrderForm({
             </thead>
             <tbody>
               {items.map((item, index) => (
-                <tr key={item.rowId} className="border-b border-slate-100">
+                <tr key={item.rowId} className={`${!item.productId ? styles.emptyItem : ""} border-b border-slate-100`}>
                   <td className="px-3 py-3 text-center font-medium text-slate-600">
                     {index + 1}
                   </td>
                   <td className="px-3 py-3">
-                    <p className="font-semibold text-slate-900" data-i18n-ignore={Boolean(item.name)}>{item.name || "Select products above"}</p>
+                    <div className={styles.itemIdentity}>
+                      {productDetails.get(item.productId)?.image ? <ProductPhoto src={productDetails.get(item.productId)!.image!} alt="" width={88} height={96} sizes="44px" className={styles.itemPhoto} /> : <PackagePlus className={styles.itemPhoto} size={40} />}
+                      <div><p className={`${styles.desktopProductName} font-semibold text-slate-900`} data-i18n-ignore={Boolean(item.name)}>{item.name || "Select products above"}</p><p className={`${styles.mobileProductName} font-semibold text-slate-900`} data-i18n-ignore={Boolean(item.productId)}>{productDetails.get(item.productId)?.name || "Select products above"}</p><small className={styles.itemVariant} data-i18n-ignore="true">{productDetails.get(item.productId)?.variant}</small><small className={styles.mobileSku} data-i18n-ignore="true">{item.sku || "—"}</small></div>
+                    </div>
                   </td>
                   <td className="px-3 py-3">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-600" data-i18n-ignore="true">
@@ -534,6 +562,7 @@ export default function PurchaseOrderForm({
                     </div>
                   </td>
                   <td className="px-3 py-3">
+                    <span className={styles.itemLabel}>Cost Price</span>
                     <div className="relative">
                       <CircleDollarSign
                         size={15}
@@ -544,6 +573,7 @@ export default function PurchaseOrderForm({
                         min={0}
                         step="0.01"
                         value={item.unitCost}
+                        aria-label="Cost Price"
                         disabled={!item.productId}
                         onChange={(event) =>
                           updateCost(item.rowId, Number(event.target.value))
@@ -553,11 +583,13 @@ export default function PurchaseOrderForm({
                     </div>
                   </td>
                   <td className="px-3 py-3">
+                    <span className={styles.itemLabel}>Quantity</span>
                     <input
                       type="number"
                       min={1}
                       step={1}
                       value={item.quantity}
+                      aria-label="Quantity"
                       disabled={!item.productId}
                       onChange={(event) =>
                         updateQuantity(item.rowId, Number(event.target.value))
@@ -566,6 +598,7 @@ export default function PurchaseOrderForm({
                     />
                   </td>
                   <td className="px-3 py-3 text-right font-semibold text-slate-950">
+                    <span className={styles.itemLabel}>Subtotal</span>
                     {item.productId
                       ? money(item.quantity * item.unitCost)
                       : money(0)}
@@ -589,8 +622,9 @@ export default function PurchaseOrderForm({
 
       </SectionCard>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className={`${styles.additional} grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]`}>
         <SectionCard
+          className={styles.notesCard}
           icon={<FileText size={19} />}
           title="Additional Information"
           subtitle="Optional information for this purchase order."
@@ -610,7 +644,7 @@ export default function PurchaseOrderForm({
           </div>
         </SectionCard>
 
-        <section className="h-fit rounded-xl border border-slate-200 bg-white shadow-sm">
+        <section className={`${styles.summary} h-fit rounded-xl border border-slate-200 bg-white shadow-sm`}>
           <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-4">
             <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
               <ShoppingCart size={19} />
@@ -632,6 +666,11 @@ export default function PurchaseOrderForm({
           </div>
         </section>
       </div>
+      </div>
+      <footer className={styles.bottomBar}>
+        <div className={styles.bottomTotals}><small>{validItems.length} · <span>Items</span> / {validItems.reduce((sum, item) => sum + item.quantity, 0)} · <span>Total Quantity</span></small><strong><span>Total</span> {money(subtotal)}</strong></div>
+        <CreateButtons disabled={!supplierId || !validItems.length} />
+      </footer>
     </form>
   );
 }
@@ -705,12 +744,14 @@ function DetailRow({
 }
 
 function SectionCard({
+  className = "",
   icon,
   title,
   subtitle,
   actions,
   children,
 }: {
+  className?: string;
   icon: React.ReactNode;
   title: string;
   subtitle: string;
@@ -718,13 +759,13 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+    <section className={`${className} rounded-xl border border-slate-200 bg-white shadow-sm`}>
       <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-blue-50 p-2 text-blue-600">{icon}</div>
           <div>
             <h2 className="font-semibold text-slate-950">{title}</h2>
-            <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
+            <p className={`${styles.sectionSubtitle} mt-0.5 text-xs text-slate-500`}>{subtitle}</p>
           </div>
         </div>
         {actions ? <div>{actions}</div> : null}

@@ -6,12 +6,13 @@ import { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useSt
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
+import ContentSkeleton from '@/components/ui/content-skeleton';
 import AnchoredActionMenu from '@/components/anchored-action-menu';
 import ProductPhoto from '@/components/product-photo';
 import { List, Grid2X2, Boxes, Gift, Globe, Monitor, MoreHorizontal, PackageCheck, Pencil, Plus, Search, Store, Trash2, X } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import type { ComponentProduct } from '../products/bundle-product-form';
-const BundleProductForm = dynamic(() => import('../products/bundle-product-form'), { loading: () => <p role="status" className="py-8 text-center text-sm text-slate-500">Loading bundle form…</p> });
+const BundleProductForm = dynamic(() => import('../products/bundle-product-form'), { loading: () => <ContentSkeleton kind="form" /> });
 import { manageBundle, packBundle } from '../products/bundle-actions';
 
 type Bundle = {

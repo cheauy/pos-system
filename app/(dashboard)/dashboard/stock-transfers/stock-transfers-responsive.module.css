@@ -1,0 +1,106 @@
+.compactOnly, .listingBar, .branchName, .chooseSource, .selectedCount, .optional, .optionalToggle { display: none; }
+.builder, .draftScroll, .branchAndPicker, .desktopNote, .pickerControl { display: contents; }
+.pickerControl > div:first-child { margin-bottom: .5rem; }
+
+@media (max-width: 1199px) {
+  .page { --transfer-border: var(--color-slate-200); }
+  [class~="dark"] .page { --transfer-border: var(--color-slate-700); }
+  [class~="dark"] .page :is(.chooseSource, .selectedCount) { color: var(--color-slate-400); }
+  .page { padding-bottom: calc(86px + env(safe-area-inset-bottom)); }
+  .pageHeading, .desktopFilter, .desktopNote, .optionalClosed { display: none !important; }
+  .page > .summary { margin-top: 0; }
+  .page :is(input, select) { min-width: 0; font-size: 1rem; }
+  .page :is(button, input, select) { min-height: 44px; }
+  .page :is([class~="bg-blue-600"]) { background-color: var(--app-accent, #2563eb); }
+  .page :is([class~="text-blue-600"], [class~="text-blue-700"]) { color: var(--app-accent, #2563eb); }
+  .page [class~="border-blue-600"] { border-color: var(--app-accent, #2563eb); }
+  .page :is(input, select):focus { border-color: var(--app-accent, #2563eb); }
+  .summary { display: grid; grid-template-columns: minmax(70px, .7fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px 12px; padding: 12px; }
+  .summary > div:first-child { grid-row: span 2; padding-right: 10px; gap: 8px; }
+  .summary > div:not(:first-child):not(:last-child) { gap: 6px; flex-wrap: wrap; }
+  .summary strong { font-size: 1rem; }
+  .summary > div:last-child { grid-column: 1 / -1; margin: 4px 0 0; padding: 10px 0 0; border-left: 0; border-top: 1px solid var(--transfer-border, var(--color-slate-200)); justify-content: space-between; }
+  .summary > div:last-child svg { order: 2; width: 40%; height: 34px; }
+  .summary > div:last-child > div { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; flex: 1; }
+  .summary > div:last-child > div > p:last-child { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+  .listing nav { padding-inline: 6px; }
+  .listing nav button { padding: 10px 12px; gap: 6px; white-space: nowrap; }
+  .toolbar { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px; }
+  .toolbar > label { min-width: 0; }
+  .compactOnly { display: block; }
+  .filterButton { width: auto; display: flex; align-items: center; justify-content: center; gap: 4px; padding-inline: 12px; }
+  .filterForm { display: grid; gap: 16px; }
+  .listing > div > ul { display: block; }
+  .listing table { display: none; }
+  .pagination { padding: 12px; gap: 8px; }
+  .pagination button { width: 44px; }
+  .listingBar { display: block; position: fixed; bottom: 0; left: 0; right: 0; z-index: 35; margin: 0 !important; border-top: 1px solid var(--transfer-border, var(--color-slate-200)); background: var(--workspace-panel, #fff); padding: 12px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+
+  /* Scope the existing Modal to this builder; its shared header stays intact. */
+  .page.page dialog:has(.builder) { bottom: auto; width: min(960px, calc(100vw - 24px)); max-width: calc(100vw - 24px) !important; height: auto; max-height: calc(var(--transfer-viewport-height, 100dvh) - var(--workspace-header-h, 69px) - 24px) !important; margin: calc(var(--transfer-viewport-top, 0px) + var(--workspace-header-h, 69px) + 12px) auto 12px; border-radius: 16px; }
+  .page dialog:has(.builder)::backdrop { backdrop-filter: none; background: linear-gradient(to bottom, transparent 0 var(--workspace-header-h, 69px), rgb(19 35 63 / .42) var(--workspace-header-h, 69px)); }
+  .page dialog:has(.builder) > div { max-height: calc(var(--transfer-viewport-height, 100dvh) - var(--workspace-header-h, 69px) - 24px); }
+  .page dialog:has(.builder) > div > div:last-child { display: flex; flex-direction: column; overflow: hidden; min-height: 0; padding: 14px; }
+  .builder { display: flex; flex-direction: column; min-height: 0; }
+  .builderIntro { flex-wrap: nowrap; gap: 8px; }
+  .builderIntro p { flex: 1; min-width: 0; }
+  .builderIntro button { flex-shrink: 0; }
+  .draftForm { display: flex; flex-direction: column; min-height: 0; }
+  /* Chromium's anonymous fieldset box does not shrink with the scroll area. */
+  .draftFields { display: contents; }
+  .page dialog header button { min-width: 44px; color: inherit; }
+  .page dialog[data-short-viewport="true"] .selectedCount { display: none; }
+  .draftForm { margin-top: 12px; }
+  .draftScroll { display: block; overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding: 2px; scroll-padding: 12px; }
+  .branchAndPicker { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); align-items: start; gap: 12px; }
+  .branches { grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 12px; border: 1px solid var(--transfer-border, var(--color-slate-200)); border-radius: 12px; }
+  .branches label { display: block; min-width: 0; }
+  .branchName:empty { display: none; }
+  .branchName { display: block; font-size: .75rem; overflow-wrap: anywhere; line-height: 1.6; }
+  .picker { min-width: 0; margin-top: 0; }
+  .pickerControl { display: block; position: relative; }
+  .pickerControl > div:first-child { margin-bottom: 0; }
+  .pickerControl[data-source-selected="false"] > div:first-child > ul { display: none; }
+  .pickerControl[data-source-selected="false"] { border: 1px solid var(--transfer-border, var(--color-slate-200)); border-radius: 12px; overflow: hidden; }
+  .pickerControl[data-source-selected="false"] > div:first-child { border: 0; }
+  .chooseSource { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 170px; padding: 20px; text-align: center; color: var(--color-slate-500); }
+  .chooseSource p { max-width: 230px; }
+  .pickerControl[data-source-selected="false"] + p { display: none; }
+  .pickerControl button { min-height: 44px; white-space: normal; overflow-wrap: anywhere; }
+  .pickerControl input[type="checkbox"] { width: 24px; min-height: 24px; height: 24px; margin: 10px 0; accent-color: var(--app-accent, #2563eb); }
+  .pickerControl button > span > span:first-child { white-space: normal; overflow-wrap: anywhere; }
+  .pickerControl ul { max-height: 280px; }
+  .selectedItems > div:first-child { gap: 8px; padding: 10px; flex-wrap: wrap; }
+  .selectedItems > div:last-child > div { grid-template-columns: minmax(0, 1fr) 72px 44px; gap: 8px; padding: 10px; }
+  .selectedItems p { white-space: normal; overflow-wrap: anywhere; }
+  .selectedItems button { width: 44px; }
+  .noteAndActions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; flex-shrink: 0; margin-top: 12px; }
+  .optional { display: block; margin-top: 12px; border: 1px solid var(--transfer-border, var(--color-slate-200)); border-radius: 10px; padding: 0 12px; }
+  .optionalToggle { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; font-weight: 600; }
+  .optional label { display: block; padding-bottom: 12px; }
+  .optional label > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .draftActions { align-items: center; border-top: 1px solid var(--transfer-border, var(--color-slate-200)); padding-top: 12px; padding-bottom: env(safe-area-inset-bottom); flex-wrap: wrap; }
+  .selectedCount { display: block; font-size: .75rem; margin-left: auto; color: var(--color-slate-500); }
+  .draftScroll :is(input, select, button) { scroll-margin-block: 12px; }
+}
+
+@media (max-width: 759px), (max-width: 1199px) and (max-height: 519px) {
+  .page.page dialog:has(.builder) { width: 100%; max-width: 100% !important; margin: calc(var(--transfer-viewport-top, 0px) + var(--workspace-header-h, 69px)) auto 0; border-radius: 0; max-height: calc(var(--transfer-viewport-height, 100dvh) - var(--workspace-header-h, 69px)) !important; }
+  .page dialog:has(.builder) > div { max-height: calc(var(--transfer-viewport-height, 100dvh) - var(--workspace-header-h, 69px)); }
+  .page dialog:has(.builder) > div > div:last-child { padding: 12px; }
+  .branchAndPicker { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .branches { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; border: 0; gap: 10px; }
+  .selectedCount { flex-basis: 100%; margin: 0; }
+  .builderIntro p { font-size: .75rem; }
+}
+
+@media (max-width: 1199px) and (max-height: 519px) {
+  .selectedCount { display: none; }
+}
+
+@media (max-width: 359px) {
+  .summary { grid-template-columns: minmax(60px, .7fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .summary > div:first-child > span { display: none; }
+  .branches { grid-template-columns: minmax(0, 1fr); }
+  .selectedItems > div:last-child > div > div > div:first-child { display: none; }
+}

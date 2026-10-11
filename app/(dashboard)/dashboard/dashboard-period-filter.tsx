@@ -5,6 +5,7 @@ import {useRouter} from "next/navigation";
 import { CalendarDays, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { dateRangeError } from "@/lib/date-range";
+import { NavigationDateRange, dateFilterStyles } from "@/components/date-range-filter";
 
 type DashboardRange =
   | "today"
@@ -19,10 +20,12 @@ export default function DashboardPeriodFilter({
   selectedFrom,
   selectedTo,
   branchId,
+  today,
 }: {
   activeRange: DashboardRange;
   selectedFrom: string;
   selectedTo: string;
+  today: string;
   canViewReports: boolean; branches:{id:string;name:string;is_active:boolean}[]; branchId:string;
 }) {
   const router=useRouter();
@@ -67,6 +70,8 @@ export default function DashboardPeriodFilter({
 
   return (
     <div className="w-full">
+      <NavigationDateRange path="/dashboard" query={{ branch: branchId || "all" }} from={selectedFrom} to={selectedTo} today={today} maxSpanDays={365} />
+      <div className={dateFilterStyles.legacy}>
       <p className="mb-2 flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">
         <CalendarDays size={14} />
         Filter period
@@ -170,6 +175,7 @@ export default function DashboardPeriodFilter({
         </div>
 
 
+      </div>
       </div>
     </div>
   );

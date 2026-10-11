@@ -7,6 +7,7 @@ import { TEAM_ROLE_LABELS,type TeamRow } from '@/lib/users/team-model';
 import { resetRolePermissions,saveRolePermissions } from './users-workspace-actions';
 import { loadMemberPermissions,saveMemberPermissions } from './member-permission-actions';
 import { useLanguage } from '@/components/providers/language-provider';
+import ContentSkeleton from '@/components/ui/content-skeleton';
 
 type Snapshot=Awaited<ReturnType<typeof loadMemberPermissions>>;
 const groupIcons = [Settings, ShoppingCart, Users, Box, ReceiptText, UserRound, Truck, ChartNoAxesColumnIncreasing];
@@ -66,7 +67,7 @@ export default function RolePermissionsEditor({businessId,branchId,actorRole,mat
   </div>
   <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><p className="text-slate-500">{mode==='user'?`${member?.name??'User'} · ${snapshot?TEAM_ROLE_LABELS[snapshot.role]:''} · ${snapshot?.custom?'Custom access':'Role default'}`:'Applies to users inheriting this role.'}</p><span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-700">{busy?'Loading…':`${selected.length} enabled${dirty?' · Unsaved':''}`}</span></div>
   {mode==='user'&&snapshot?.role==='owner'&&<p className="text-sm text-slate-500">Owner always has full access.</p>}
-  <div className="grid gap-3 md:grid-cols-2">{permissionGroups.map((group,index)=>{
+  <div className="grid gap-3 md:grid-cols-2">{mode==='user'&&busy&&!snapshot?<div className="col-span-full"><ContentSkeleton kind="form" /></div>:permissionGroups.map((group,index)=>{
    const Icon=groupIcons[index]??ShieldCheck;
    const visible=group.permissions.filter(p=>`${group.label} ${permissionLabels[p]}`.toLowerCase().includes(search.toLowerCase()));
    if(!visible.length)return null;

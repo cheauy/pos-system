@@ -28,7 +28,11 @@ export default function NavigationForm({ children, className, reset, maxSpanDays
   useActivity(pending);
   // Phone filter sheets close through a #hash link; closing discards unapplied edits.
   useEffect(() => {
-    const discard = () => { if (form.current) restore(form.current); };
+    const discard = () => {
+      const popup = form.current?.closest<HTMLElement>("[data-date-filter-display]");
+      if (popup) { popup.style.display = popup.dataset.dateFilterDisplay ?? ""; delete popup.dataset.dateFilterDisplay; }
+      if (form.current) restore(form.current);
+    };
     window.addEventListener("hashchange", discard);
     return () => window.removeEventListener("hashchange", discard);
   }, []);
@@ -68,6 +72,14 @@ export default function NavigationForm({ children, className, reset, maxSpanDays
       // Ignore a repeat Apply of the same filters; a different selection replaces the pending one.
       if (pending && lastQuery.current === String(query)) return;
       lastQuery.current = String(query);
+      const popup = e.currentTarget.closest<HTMLElement>(":target");
+      if (popup) {
+        // replaceState clears the hash but browsers retain the CSS :target until another fragment navigation.
+        popup.dataset.dateFilterDisplay ??= popup.style.display;
+        popup.style.display = "none";
+        window.history.replaceState(window.history.state, "", location.pathname + location.search);
+        Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]")).find(link => link.getAttribute("href") === `#${popup.id}`)?.focus({preventScroll:true});
+      }
       startTransition(() => router.push(`${path}?${query}`, { scroll: false }));
     }}>{children}</form>;
 }

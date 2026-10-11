@@ -47,7 +47,7 @@ function renderer(fn, props) {
       this.tree = this.fn(this.props); current = null;
       if (this.dirty) return this.render();
       for (const node of elements(this.tree, node => node.type === 'dialog' && node.props.ref)) {
-        node.props.ref.current ??= {showModal() {}, close() {}};
+        node.props.ref.current ??= {showModal() {}, close() {}, querySelector() {return null;}};
       }
       this.effects.forEach(effect => effect()); return this.tree;
     },
@@ -75,10 +75,10 @@ function clock() {
     }, pending: () => timers.size};
 }
 const row = (id = 'selected', updatedAt = 'v1') => ({id, updatedAt, orderNumber: id, customerId: null, customerName: 'Sample', customerPhone: null, source: 'pos', fulfillment: 'walk_in', status: 'pending', onlineStatus: null, paymentState: 'unpaid', paymentMethod: 'cash', total: 10, amountPaid: 0, createdAt: '2026-10-04T00:00:00Z', branchId: 'branch', branchName: 'Branch', itemCount: 1, deleteBlocked: false});
-function fixture({receiveAll = false, baseline = false, delayDetail = false, statusSucceeds = false} = {}) {
+function fixture({receiveAll = false, baseline = false, delayDetail = false, statusSucceeds = false, narrow = false, openDetail = true} = {}) {
   const time = clock(); const saved = {};
-  const document = new EventTarget(); document.visibilityState = 'visible'; document.activeElement = null; document.body = {};
-  const window = new EventTarget(); window.localStorage = {getItem: () => '0'}; window.matchMedia = () => ({matches: false, addEventListener() {}, removeEventListener() {}});
+  const document = new EventTarget(); document.visibilityState = 'visible'; document.activeElement = null; document.body = {style: {overflow: ""}};
+  const window = new EventTarget(); window.confirm = () => true; window.localStorage = {getItem: () => '0'}; window.matchMedia = () => ({matches: narrow, addEventListener() {}, removeEventListener() {}});
   for (const [name, value] of Object.entries({window, document, HTMLElement: class HTMLElement {}, localStorage: window.localStorage, setTimeout: time.setTimeout, clearTimeout: time.clearTimeout, setInterval: time.setInterval, clearInterval: time.clearInterval})) {
     saved[name] = global[name]; global[name] = value;
   }
@@ -100,9 +100,10 @@ function fixture({receiveAll = false, baseline = false, delayDetail = false, sta
   // Synthetic success: models Next applying the action's revalidatePath payload 20ms later. No real mutation.
   const statusAction = async () => {counts.mutations++; rows = rows.map(r => r.id === 'selected' ? {...r, status: 'in_progress', updatedAt: 'v2'} : r); time.setTimeout(() => workspace.update({...workspace.props, data: data()}), 20); return {success: true, data: undefined};};
   const deps = {
+    '@/components/date-range-filter': {default: function DateRangeFilter() {}, DateFilterContent: function DateFilterContent() {}, dateFilterStyles: {legacy: 'legacy'}},
     '@/components/providers/language-provider': {useLanguage: () => ({language: 'en', t: text => text})},
     '@/lib/i18n/translations': loadTs('lib/i18n/translations.ts'),
-    react: hooks, 'react/jsx-runtime': jsx, 'react-dom': {createPortal: child => child}, 'next/link': {default: () => null}, 'next/navigation': {useRouter: () => router},
+    react: hooks, 'react/jsx-runtime': jsx, 'react-dom': {createPortal: child => child}, 'next/link': {default: () => null}, '@/components/ui/activity-link': {default: () => null}, 'next/navigation': {useRouter: () => router},
     'lucide-react': new Proxy({}, {get: () => () => null}), './orders-workspace.module.css': new Proxy({}, {get: (_obj, key) => key}),
     './[id]/return-items-form': {default: function ReturnItemsForm() {}}, './[id]/order-detail-controls': {CancelOrderItem: () => null},
     '@/components/order-print-menu': {default: () => null}, '@/components/product-photo': {default: () => null}, '@/components/order-print-preview': {default: () => null}, '@/components/cancel-order-form': {default: () => null},
@@ -119,11 +120,12 @@ function fixture({receiveAll = false, baseline = false, delayDetail = false, sta
     const code = ts.transpileModule(source, {fileName: file, compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX}}).outputText;
     const m = {exports: {}}; new Function('require', 'module', 'exports', code)(id => {assert.ok(id in deps, id); return deps[id];}, m, m.exports); return m.exports;
   }
-  const orderModule = load('app/(dashboard)/dashboard/orders/orders-workspace.tsx', '\nexport {DetailPanel,ManageOrderDialog};');
+  const orderModule = load('app/(dashboard)/dashboard/orders/orders-workspace.tsx', '\nexport {DetailPanel,ManageOrderDialog,Modal};');
   workspace = renderer(orderModule.default, {businessId: 'business', branchId: 'branch', businessName: 'Sample', data: data(), filters: types.parseFilters({}), permissions: {edit: true, cancel: true, refund: true, create: true, delete: true}});
   const listener = renderer(load('components/online-order-listener.tsx').default, {businessId: 'business', branchId: 'branch', receiveAll});
-  return {time, counts, workspace, orderModule, deps, get detail() {return component(workspace.tree, 'DetailPanel').props.detail;},
-    async ready() {await time.advance(25);},
+  return {time, counts, workspace, orderModule, deps, get detail() {return component(workspace.tree, 'DetailPanel')?.props.detail;},
+    async ready() {await time.advance(25); if (openDetail) {this.openRow(); await settle();}},
+    openRow(index = 0) {elements(workspace.tree, node => node.type === 'button' && node.props['aria-haspopup'] === 'dialog')[index].props.onClick({stopPropagation() {}, currentTarget: null});},
     emit(event = 'UPDATE', id = 'other', source = 'pos', location = 'branch') {
       for (const s of subscriptions) for (const h of s.handlers) if (h.filter.event === '*' || h.filter.event === event) h.fn({eventType: event, new: {id, order_source: source, location_id: location}, old: {id}});
     },
@@ -135,11 +137,24 @@ function fixture({receiveAll = false, baseline = false, delayDetail = false, sta
     manual() {elements(workspace.tree, node => node.type === 'button' && node.props.onClick?.name === 'refresh')[0].props.onClick();},
     visibility(value) {document.visibilityState = value; document.dispatchEvent(new Event('visibilitychange'));},
     resolveDetails() {pendingDetail.splice(0).forEach(fn => fn());},
+    resolveDetail(index) {pendingDetail.splice(index, 1)[0]();},
     dispose() {workspace.dispose(); listener.dispose(); for (const r of [...renderers]) r.dispose(); for (const [name, value] of Object.entries(saved)) {if (value === undefined) delete global[name]; else global[name] = value;}},
   };
 }
 async function withFixture(fn, options) {const f = fixture(options); try {await f.ready(); await fn(f);} finally {f.dispose();}}
 const delta = (counts, initial) => ({route: counts.route - initial.route, detail: counts.detail - initial.detail});
+test('desktop, tablet and phone skip initial detail and open only the selected order', async () => {
+  for (const narrow of [false, true])
+  await withFixture(async f => {
+    assert.equal(f.counts.detail, 0);
+    assert.equal(component(f.workspace.tree, 'Modal'), undefined);
+    assert.equal(elements(f.workspace.tree, node => node.type === 'aside').length, 0);
+    f.openRow();
+    await settle();
+    assert.equal(f.counts.detail, 1);
+    assert.equal(component(f.workspace.tree, 'DetailPanel').props.detail.id, 'selected');
+  }, {narrow, openDetail:false});
+});
 
 test('unrelated rows and identical route payloads do not reload selected detail', () => withFixture(async f => {
   const initial = {...f.counts};
@@ -177,8 +192,53 @@ test('no idle auto refresh; manual refresh, hidden tabs and visibility catch-up 
 test('a closed detail panel skips fetching until explicitly reopened', () => withFixture(async f => {
   component(f.workspace.tree, 'DetailPanel').props.onClose(); await settle(); const initial = {...f.counts};
   f.emit('UPDATE', 'selected'); await f.time.advance(31000); assert.equal(f.counts.detail, initial.detail);
-  elements(f.workspace.tree, node => node.type === 'button' && node.props.children === 'Show details')[0].props.onClick(); await settle();
+  f.openRow(); await settle();
   assert.equal(f.counts.detail, initial.detail + 1);
+}));
+test('row controls do not open the drawer; closing preserves filters and bulk selection', () => withFixture(async f => {
+  const checkbox = elements(f.workspace.tree, node => node.type === 'input' && node.props['aria-label'] === 'Select order selected')[0];
+  checkbox.props.onChange(); await settle();
+  const selectedBefore = elements(f.workspace.tree, node => node.type === 'input' && node.props['aria-label'] === 'Select order selected')[0].props.checked;
+  const listRow = elements(f.workspace.tree, node => node.type === 'tr' && node.props.onClick)[0];
+  listRow.props.onClick({target: {closest: () => ({})}}); await settle();
+  assert.equal(component(f.workspace.tree, 'Modal'), undefined);
+  assert.equal(f.counts.detail, 0);
+  const filters = f.workspace.props.filters;
+  f.openRow(); await settle();
+  component(f.workspace.tree, 'Modal').props.onClose(); await settle();
+  assert.equal(component(f.workspace.tree, 'Modal'), undefined);
+  assert.equal(f.workspace.props.filters, filters);
+  assert.equal(elements(f.workspace.tree, node => node.type === 'input' && node.props['aria-label'] === 'Select order selected')[0].props.checked, selectedBefore);
+  assert.equal(f.counts.route, 0);
+}, {openDetail:false}));
+test('native drawer Close, Escape and backdrop dismiss and restore opener without scrolling', () => withFixture(async f => {
+  for (const via of ['close', 'escape', 'backdrop']) {
+    let dismissed = 0, restored;
+    const opener = {isConnected: true, focus: options => {restored = options;}};
+    const modal = renderer(f.orderModule.Modal, {title: 'Order details', drawer: true, returnFocus: opener, onClose: () => dismissed++, children: null});
+    const node = elements(modal.tree, node => node.type === 'dialog')[0];
+    node.props.ref.current.getBoundingClientRect = () => ({left: 100, right: 640, top: 0, bottom: 800});
+    if (via === 'close') elements(modal.tree, n => n.type === 'button')[0].props.onClick();
+    if (via === 'escape') node.props.onCancel({preventDefault() {}});
+    if (via === 'backdrop') node.props.onClick({target: node.props.ref.current, clientX: 20, clientY: 100});
+    assert.equal(dismissed, 1);
+    assert.equal(document.body.style.overflow, 'hidden');
+    modal.dispose();
+    assert.deepEqual(restored, {preventScroll:true});
+    assert.equal(document.body.style.overflow, '');
+  }
+}, {openDetail:false}));
+test('dirty edit dismissal requires confirmation and protects the draft on refusal', () => withFixture(async f => {
+  let closed = 0, asked = 0;
+  let discard;
+  const onDiscardRequest = action => {asked++; discard = action;};
+  const dialog = renderer(f.orderModule.ManageOrderDialog, {action: {type:'edit', order:row()}, businessId:'business', permissions:f.workspace.props.permissions, onClose:()=>closed++, onDiscardRequest, onSuccess() {}});
+  await settle();
+  const note = () => elements(dialog.tree, n => n.type === 'textarea' && n.props.placeholder?.startsWith('Add a note for this order'))[0];
+  note().props.onChange({target: {value:'Keep my draft'}}); await settle();
+  component(dialog.tree, 'Modal').props.onClose();
+  assert.equal(closed, 0); assert.equal(asked, 1); assert.equal(note().props.value, 'Keep my draft');
+  discard(); assert.equal(closed, 1);
 }));
 test('receive-all summary polling and branch/source alert guards remain', async () => {
   await withFixture(async f => {f.setIncoming([{id: 'incoming'}]); await f.time.advance(60100); assert.equal(f.counts.summary, 4); assert.equal(f.counts.announcements, 1);}, {receiveAll: true});
@@ -187,13 +247,12 @@ test('receive-all summary polling and branch/source alert guards remain', async 
 test('teardown cancels timers and stale detail responses cannot overwrite a new selection', async () => {
   await withFixture(async f => {f.emit(); f.workspace.dispose(); await f.time.advance(40000); assert.equal(f.counts.route, 0);});
   await withFixture(async f => {
-    const panel = component(f.workspace.tree, 'DetailPanel'); panel.props.onAction('edit', row());
+    assert.equal(f.detail, null);
     f.workspace.update({...f.workspace.props, data: {...f.workspace.props.data, rows: [row(), row('second')]}}); await settle();
-    const secondButton = elements(f.workspace.tree, node => node.type === 'button' && node.props['aria-label'] === 'View order second')[0];
-    // The row button's accessible name includes the order number in this UI.
-    const secondRow = elements(f.workspace.tree, node => node.type === 'tr' && node.props.onClick)[1];
-    assert.ok(secondButton || secondRow); (secondButton?.props.onClick ?? secondRow.props.onClick)(); await settle();
-    f.resolveDetails(); await settle(); assert.equal(f.detail.id, 'second');
+    f.openRow(1); await settle();
+    assert.equal(f.detail, null, 'previous order must not be shown while switching');
+    f.resolveDetail(1); await settle(); assert.equal(f.detail.id, 'second');
+    f.resolveDetail(0); await settle(); assert.equal(f.detail.id, 'second', 'older response arriving last must be ignored');
   }, {delayDetail: true});
 });
 test('a selected order pushed off the list keeps its detail/return component identity', () => withFixture(async f => {
@@ -212,7 +271,8 @@ test('dirty edit and return state survives unrelated refreshes in the same verif
   const returnForm = loadTs('app/(dashboard)/dashboard/orders/[id]/return-items-form.tsx', {
     '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
     '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),react: hooks, 'react/jsx-runtime': jsx, 'react-dom': {createPortal: child => child}, sonner: {toast: {success() {}}}, 'next/navigation': {useRouter: () => ({refresh() {}})}, 'lucide-react': f.deps['lucide-react'], './return-actions': {createOrderReturn() {throw Error('No real returns');}}, '@/components/product-photo': {default: () => null}}).default;
-  const props = {orderId: 'selected', orderNumber: 'selected', items: [{id: 'item', product_name: 'Item', quantity: 5, returned_quantity: 0, unit_price: 2}]};
+  let discardReturn;
+  const props = {orderId: 'selected', orderNumber: 'selected', onDiscardRequest: action => {discardReturn = action;}, items: [{id: 'item', product_name: 'Item', quantity: 5, returned_quantity: 0, unit_price: 2}]};
   const returns = renderer(returnForm, props);
   elements(returns.tree, node => node.type === 'button')[0].props.onClick(); await settle();
   const returnNote = elements(returns.tree, node => node.type === 'textarea' && node.props.placeholder?.startsWith('Add a note'))[0]; returnNote.props.onChange({target: {value: 'Unsaved return'}}); await settle();
@@ -220,6 +280,11 @@ test('dirty edit and return state survives unrelated refreshes in the same verif
   assert.equal(elements(dialog.tree, node => node.type === 'textarea' && node.props.placeholder?.startsWith('Add a note for this order'))[0].props.value, 'Unsaved edit');
   assert.equal(elements(returns.tree, node => node.type === 'textarea' && node.props.placeholder?.startsWith('Add a note'))[0].props.value, 'Unsaved return');
   assert.equal(elements(returns.tree, node => node.type === 'dialog').length, 1);
+  elements(returns.tree, node => node.type === 'button' && node.props['aria-label'] === 'Close return form')[0].props.onClick(); await settle();
+  assert.equal(typeof discardReturn, 'function');
+  assert.equal(elements(returns.tree, node => node.type === 'dialog').length, 1, 'refusing discard keeps the return draft');
+  discardReturn(); await settle();
+  assert.equal(elements(returns.tree, node => node.type === 'dialog').length, 0);
 }));
 test('retained details keep currency units across viewing filters, deletion and empty-list selection', () => withFixture(async f => {
   const before = component(f.workspace.tree, 'DetailPanel').props;
@@ -230,14 +295,15 @@ test('retained details keep currency units across viewing filters, deletion and 
   assert.equal(panel.currencyFormat, before.currencyFormat);
   panel.onAction('delete', row()); await settle();
   component(f.workspace.tree, 'ManageOrderDialog').props.onSuccess('Deleted', 'selected'); await settle();
+  assert.equal(component(f.workspace.tree, 'Modal'), undefined, 'delete must not select another order');
+  f.openRow(); await settle();
   panel = component(f.workspace.tree, 'DetailPanel').props;
   assert.equal(panel.detail.id, 'branch-B'); assert.equal(panel.currency, 'KHR');
   // Model a new workspace whose initial list has no selected order.
   f.workspace.dispose();
   const empty = renderer(f.orderModule.default, {...f.workspace.props, filters: {...f.workspace.props.filters, branch: 'branch-A'}, data: {...nextData, rows: [], currency: 'USD'}});
   empty.update({...empty.props, filters: {...empty.props.filters, branch: 'branch-B'}, data: nextData}); await settle();
-  panel = component(empty.tree, 'DetailPanel').props;
-  assert.equal(panel.detail.id, 'branch-B'); assert.equal(panel.currency, 'KHR');
+  assert.equal(component(empty.tree, 'DetailPanel'), undefined, 'newly populated lists must not auto-open');
 }));
 test('shared refresh dispatch falls back outside Orders and cannot cross its branch/business scope', () => withFixture(async f => {
   const initial = {...f.counts};

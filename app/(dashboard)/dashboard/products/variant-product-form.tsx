@@ -3,6 +3,7 @@ import { useLanguage } from "@/components/providers/language-provider";
 import { formatUiText } from "@/lib/i18n/translations";
 
 import {
+  ChevronDown,
   Loader2,
   PackagePlus,
   Plus,
@@ -11,9 +12,12 @@ import {
   Upload,
   Zap,
 } from "lucide-react";
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import ProductGalleryInput from "@/components/product-gallery-input";
+import AnchoredActionMenu from "@/components/anchored-action-menu";
+import fashionStyles from "./fashion-responsive.module.css";
+import quickStyles from "./quick-fashion.module.css";
 import { generateInternalBarcode } from "@/lib/barcode/generate";
 
 import {
@@ -68,6 +72,18 @@ const fashionSizeRuns = [
   { label: "Men 28 – 38", sizes: ["28", "30", "32", "34", "36", "38"] },
 ];
 
+const compactQuery = "(max-width: 1279px), (max-width: 1366px) and (pointer: coarse)";
+const fashionFields = [
+  { key: "size", label: "Size" },
+  { key: "color", label: "Colour" },
+  { key: "sku", label: "SKU" },
+  { key: "barcode", label: "Barcode" },
+  { key: "costPrice", label: "Cost", type: "number", step: "0.01" },
+  { key: "sellingPrice", label: "Selling price", type: "number", step: "0.01" },
+  { key: "stockQuantity", label: "Stock", type: "number", step: "1" },
+  { key: "lowStockQuantity", label: "Alert", type: "number", step: "1" },
+] as const;
+
 function createVariant(
   overrides: Partial<Omit<VariantRow, "id">> = {},
   id = crypto.randomUUID(),
@@ -120,10 +136,84 @@ export default function VariantProductForm({
   const [quickCost, setQuickCost] = useState("0");
   const [quickPrice, setQuickPrice] = useState("0");
   const [quickStock, setQuickStock] = useState("0");
+  const [sizePreset, setSizePreset] = useState(0);
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [runImageSlots, setRunImageSlots] = useState<RunImageSlot[]>(() => [createRunImageSlot("initial-run")]);
 
   const activeRunImageSlot =
     runImageSlots.find((slot) => !slot.locked) ?? runImageSlots[runImageSlots.length - 1];
+  const [compact, setCompact] = useState(false);
+  const [phone, setPhone] = useState(false);
+  const compactFashion = isFashion && compact;
+  const [activeTab, setActiveTab] = useState("details");
+  const [selectedVariant, setSelectedVariant] = useState<string | null>("initial-variant");
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [validationError, setValidationError] = useState("");
+  const invalidFocus = useRef(false);
+  const [focusTarget, setFocusTarget] = useState<{ variantId?: string; field?: string; target?: HTMLElement } | null>(null);
+
+  useEffect(() => {
+    if (!focusTarget) return;
+    const frame = requestAnimationFrame(() => {
+      const { variantId, field, target } = focusTarget;
+      const editor = variantId ? formRef.current?.querySelector(`[data-editor-id="${CSS.escape(variantId)}"]`) : null;
+      const node = editor?.querySelector<HTMLElement>(`[data-field="${field}"]`) ?? target ?? formRef.current?.querySelector<HTMLElement>(field ? `[name="${field}"]` : '[data-section="photos"] input[type="file"]:not([aria-hidden="true"])');
+      node?.focus({ preventScroll: true }); node?.scrollIntoView({ block: "nearest" });
+      invalidFocus.current = false;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusTarget]);
+
+  useEffect(() => {
+    if (!isFashion) return;
+    const media = window.matchMedia(compactQuery);
+    const small = window.matchMedia("(max-width: 767px), (max-height: 500px) and (max-width: 1023px)");
+    const update = () => { setCompact(media.matches); setPhone(small.matches); };
+    update(); media.addEventListener("change", update); small.addEventListener("change", update);
+    return () => { media.removeEventListener("change", update); small.removeEventListener("change", update); };
+  }, [isFashion]);
+
+  useEffect(() => {
+    if (!compactFashion) return;
+    const modal = formRef.current?.closest<HTMLElement>('[role="dialog"]');
+    if (!modal) return;
+    const viewport = window.visualViewport;
+    const previous = document.activeElement as HTMLElement | null;
+    const footer = formRef.current?.querySelector('button[type="submit"]')?.parentElement;
+    const reserveFooter = () => modal.style.setProperty("--fashion-footer-height", `${footer?.getBoundingClientRect().height ?? 92}px`);
+    const footerObserver = new ResizeObserver(reserveFooter);
+    if (footer) footerObserver.observe(footer);
+    const update = () => {
+      const height = viewport?.height ?? window.innerHeight;
+      modal.style.setProperty("--fashion-viewport-height", `${height}px`);
+      modal.style.setProperty("--fashion-viewport-top", `${viewport?.offsetTop ?? 0}px`);
+      modal.dataset.shortViewport = String(height < 320);
+    };
+    const controls = () => Array.from(modal.querySelectorAll<HTMLElement>('button:not(:disabled),input:not([type="hidden"]):not([aria-hidden="true"]),select,textarea,[tabindex="0"]')).filter(node => !node.closest('[inert]') && node.getClientRects().length);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        const menu = modal.querySelector<HTMLElement>(":popover-open");
+        if (menu) { menu.hidePopover(); event.stopImmediatePropagation(); }
+        else if (formRef.current?.getAttribute("aria-busy") === "true") event.stopImmediatePropagation();
+      }
+      if (event.key !== "Tab") return;
+      const nodes = controls(), first = nodes[0], last = nodes.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    update(); controls()[0]?.focus({ preventScroll: true });
+    viewport?.addEventListener("resize", update); viewport?.addEventListener("scroll", update);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      footerObserver.disconnect();
+      viewport?.removeEventListener("resize", update); viewport?.removeEventListener("scroll", update);
+      window.removeEventListener("keydown", onKey, true);
+      modal.style.removeProperty("--fashion-viewport-height"); modal.style.removeProperty("--fashion-viewport-top");
+      modal.style.removeProperty("--fashion-footer-height");
+      delete modal.dataset.shortViewport;
+      previous?.focus({ preventScroll: true });
+    };
+  }, [compactFashion]);
 
 
 
@@ -139,6 +229,8 @@ export default function VariantProductForm({
       setQuickCost("0");
       setQuickPrice("0");
       setQuickStock("0");
+      setSizePreset(0);
+      setSelectedSizes([]);
         for (const slot of runImageSlots) {
         if (slot.preview) URL.revokeObjectURL(slot.preview);
       }
@@ -146,6 +238,16 @@ export default function VariantProductForm({
       onCreated?.();
     } else {
       toast.error(state.message);
+      if (compactFashion) {
+        const message = state.message.toLowerCase();
+        const field = message.includes("branch") ? "locationId" : message.includes("category") ? "categoryId" : message.includes("product name") ? "name" : null;
+        if (field) showField("details", undefined, field);
+        else if (/gallery|photo/.test(message)) showField("photos");
+        else {
+          const row = variants.find(variant => variant.sku && message.includes(variant.sku.toLowerCase())) ?? variants.find(variant => variant.id === selectedVariant) ?? variants[0];
+          showField("variants", row?.id, message.includes("barcode") ? "barcode" : message.includes("size") ? "size" : "sku");
+        }
+      }
     }
   }, [state, onCreated]);
 
@@ -206,6 +308,11 @@ export default function VariantProductForm({
         }),
       );
 
+    if (generated.length && compactFashion) {
+      setSelectedVariant(generated[0].id);
+      setQuickOpen(false);
+    }
+
     setVariants((current) => {
       const onlyBlank =
         current.length === 1 &&
@@ -252,9 +359,71 @@ export default function VariantProductForm({
     if (variantId) setVariants(rows => rows.map(row => row.id === variantId ? { ...row, imageSlot: slotId } : row));
   }
 
+  function showField(section: string, variantId?: string, field?: string, target?: HTMLElement) {
+    setActiveTab(section);
+    if (variantId) setSelectedVariant(variantId);
+    if (target?.closest('[data-quick-run]')) setQuickOpen(true);
+    setFocusTarget({ variantId, field, target });
+  }
+
+  function revealInvalid(event: React.FormEvent<HTMLFormElement>) {
+    if (!compactFashion) return;
+    event.preventDefault();
+    if (invalidFocus.current) return;
+    invalidFocus.current = true;
+    const target = event.target as HTMLInputElement;
+    const row = target.closest<HTMLElement>('[data-variant-id]');
+    setValidationError(translateLabel("Check the highlighted field before creating this product."));
+    showField(row ? "variants" : target.closest<HTMLElement>('[data-section]')?.dataset.section ?? "details", row?.dataset.variantId, target.dataset.field, row ? undefined : target);
+  }
+
+  function addVariant() {
+    const row = createVariant();
+    setVariants(current => [...current, row]); setSelectedVariant(row.id);
+  }
+
+  function removeVariant(id: string) {
+    if (variants.length === 1) return;
+    const remaining = variants.filter(row => row.id !== id);
+    setVariants(remaining);
+    if (selectedVariant === id) setSelectedVariant(remaining[0]?.id ?? null);
+  }
+
+  function generateMissingBarcodes() {
+    setVariants(rows => rows.map(row => row.barcode.trim() ? row : { ...row, barcode: generateInternalBarcode() }));
+  }
+
+  function variantImage(variant: VariantRow) {
+    return (<label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg p-1 text-teal-700 hover:bg-teal-50" title="Upload or replace this size's image">
+                        {runImageSlots.find(slot => slot.id === variant.imageSlot)?.preview ? (
+                          <img src={runImageSlots.find(slot => slot.id === variant.imageSlot)?.preview ?? ""} alt={formatUiText(translateLabel("{0} {1}"), [variant.color || (translateLabel("Variant")), variant.size || (translateLabel("image"))])} className="h-10 w-10 rounded-lg border border-slate-200 object-contain"  data-i18n-ignore-attributes="alt"/>
+                        ) : <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-dashed border-teal-300 bg-teal-50"><Upload size={16} /></span>}
+                        <span className="text-[10px] font-semibold">{variant.imageSlot ? "Replace" : "Upload"}</span>
+                        <input type="file" accept=".jpg,.jpeg,.png,.webp" aria-label={formatUiText(translateLabel("Upload image for {0} {1}"), [variant.color || (translateLabel("variant")), variant.size || (translateLabel("new size"))])} className="sr-only" onChange={event => { handleRunImageChange(`size-${variant.id}`, event, variant.id); event.target.value = ""; }}  data-i18n-ignore-attributes="aria-label"/>
+                      </label>);
+  }
+
+  function variantEditor(variant: VariantRow) {
+    return <div className={fashionStyles.variantEditor} data-editor-id={variant.id} data-variant-id={variant.id}>
+      <div className={fashionStyles.editorHeading}><h4>Variant details</h4><button type="button" disabled={variants.length === 1 || pending} onClick={() => removeVariant(variant.id)} aria-label={translateLabel("Remove variant")}><Trash2 size={18}/></button></div>
+      <div className={fashionStyles.variantImage}>{variantImage(variant)}</div>
+      <div className={fashionStyles.editorFields}>{fashionFields.map(field => <Field key={field.key} label={field.label} required={field.key !== "barcode"}>
+        <input data-field={field.key} value={variant[field.key]} type={"type" in field ? field.type : "text"} min={"type" in field ? "0" : undefined} step={"step" in field ? field.step : undefined} required={compactFashion && field.key !== "barcode"} placeholder={field.key === "barcode" ? "Scan, type or generate" : undefined} onChange={event => updateVariant(variant.id, field.key, event.target.value)} className={inputClass}/>
+      </Field>)}</div>
+    </div>;
+  }
+
   return (
-    <form ref={formRef} action={formAction} className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-      <label className="col-span-full flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 sm:flex-row sm:items-center sm:justify-between">Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm sm:max-w-xs"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id} data-i18n-ignore="true">{b.name}</option>)}</select></label>
+    <form ref={formRef} action={formAction} aria-busy={pending} onInvalidCapture={revealInvalid} onChangeCapture={() => setValidationError("")} onSubmit={compactFashion ? event => { event.preventDefault(); const data = new FormData(event.currentTarget); startTransition(() => formAction(data)); } : undefined} className={`${isFashion ? fashionStyles.fashion : ""} grid grid-cols-1 gap-5 lg:grid-cols-3`}>
+      {isFashion && <div className={fashionStyles.tabs} role="tablist" aria-label={translateLabel("Product sections")}>
+        {(["details", "photos", "variants"] as const).map((tab, index) => <button key={tab} type="button" role="tab" id={`fashion-tab-${tab}`} aria-controls={`fashion-panel-${tab}`} aria-selected={activeTab === tab} tabIndex={activeTab === tab ? 0 : -1} onClick={() => setActiveTab(tab)} onKeyDown={event => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault(); const next=event.key === "Home" ? 0 : event.key === "End" ? 2 : (index + (event.key === "ArrowRight" ? 1 : -1) + 3) % 3;
+          const tabs=["details", "photos", "variants"]; setActiveTab(tabs[next]); event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
+        }}>{translateLabel(tab === "details" ? "Details" : tab === "photos" ? "Photos" : "Variants")}</button>)}
+      </div>}
+      <div className={isFashion ? fashionStyles.formBody : "contents"} data-active-tab={activeTab} inert={compactFashion && pending}>
+      <label data-section="details" className={`${isFashion ? fashionStyles.branch : ""} col-span-full flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 sm:flex-row sm:items-center sm:justify-between`}>Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm sm:max-w-xs"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id} data-i18n-ignore="true">{b.name}</option>)}</select></label>
       <input
         type="hidden"
         name="variants"
@@ -282,11 +451,11 @@ export default function VariantProductForm({
           type="file"
           accept=".jpg,.jpeg,.png,.webp"
           onChange={(event) => handleRunImageChange(slot.id, event)}
-          className="sr-only"
+          className="sr-only" tabIndex={isFashion ? -1 : undefined} aria-hidden={isFashion || undefined}
         />
       ))}
 
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 lg:col-span-2">
+      <section id="fashion-panel-details" data-section="details" className={`${isFashion ? fashionStyles.information : ""} space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 lg:col-span-2`}>
         <div><h2 className="text-sm font-bold text-slate-900">Product information</h2><p className="mt-1 text-xs text-slate-500">Add the name, category and details customers will see.</p></div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label={isShoes ? "Shoe / Model name" : isFashion ? "Style / Model name" : "Product name"} required>
@@ -328,7 +497,7 @@ export default function VariantProductForm({
       </Field>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><ProductGalleryInput /></section>
+      <section id="fashion-panel-photos" data-section="photos" className={`${isFashion ? fashionStyles.photos : ""} rounded-2xl border border-slate-200 bg-white p-4 sm:p-5`}><ProductGalleryInput /></section>
 
 
 
@@ -348,20 +517,38 @@ export default function VariantProductForm({
       )}
 
       {isSpecialVariant && (
-        <section className="col-span-full rounded-2xl border border-teal-200 bg-teal-50/50 p-4 sm:p-5">
-          <div className="flex items-start gap-2">
+        <section data-section="variants" data-quick-run className={`${isFashion ? fashionStyles.quickRun : ""} col-span-full rounded-2xl border border-teal-200 bg-teal-50/50 p-4 sm:p-5`}>
+          <div className={isFashion ? fashionStyles.quickHeading : ""}><div className="flex items-start gap-2">
             <Zap size={17} className="mt-0.5 shrink-0 text-blue-600" />
             <div>
               <h3 className="text-sm font-bold text-slate-900">
                 {isShoes ? "Quick shoe size run" : "Quick fashion size run"}
               </h3>
-              <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+              <p className={`mt-0.5 text-[11px] leading-4 text-slate-500 ${isFashion ? quickStyles.legacy : ""}`}>
                 Enter a colour, SKU prefix, prices and starting stock, then add a common size run in one tap.
               </p>
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {isFashion && <button type="button" className={fashionStyles.quickToggle} aria-expanded={quickOpen} aria-controls="fashion-quick-body" aria-label={translateLabel("Quick fashion size run")} onClick={() => setQuickOpen(open => !open)}><ChevronDown size={18}/></button>}</div>
+          <div id="fashion-quick-body" className={isFashion ? fashionStyles.quickBody : ""} data-open={quickOpen}>
+          {isFashion && <div className={`${quickStyles.desktop} ${fashionStyles.sizeSelector}`}>
+            <p className="mt-1 text-xs text-slate-500">{translateLabel("Select sizes first, then click Add.")}</p>
+            <div role="tablist" aria-label={translateLabel("Size presets")} className="mt-4 flex flex-wrap gap-2">
+              {fashionSizeRuns.map((run, index) => <button key={run.label} type="button" role="tab" tabIndex={sizePreset === index ? 0 : -1} aria-selected={sizePreset === index} aria-controls="fashion-size-chips" id={`fashion-size-preset-${index}`} onClick={() => { setSizePreset(index); setSelectedSizes([]); }} onKeyDown={event => {
+                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                event.preventDefault();
+                const next = event.key === "Home" ? 0 : event.key === "End" ? fashionSizeRuns.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + fashionSizeRuns.length) % fashionSizeRuns.length;
+                setSizePreset(next); setSelectedSizes([]);
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
+              }} className={`min-h-10 rounded-lg border px-3 text-xs font-semibold transition-colors ${sizePreset === index ? "border-blue-600 bg-blue-600 text-white" : "border-blue-200 bg-white text-blue-700 hover:bg-blue-100"}`}>{translateLabel(run.label.replace("â€“", "–"))}</button>)}
+            </div>
+            <div id="fashion-size-chips" role="tabpanel" aria-labelledby={`fashion-size-preset-${sizePreset}`} className="mt-3 flex flex-wrap gap-2">
+              {fashionSizeRuns[sizePreset].sizes.map(size => <button key={size} type="button" aria-pressed={selectedSizes.includes(size)} onClick={() => setSelectedSizes(current => current.includes(size) ? current.filter(value => value !== size) : [...current, size])} className={`min-h-10 min-w-12 rounded-lg border px-3 text-xs font-semibold transition-colors ${selectedSizes.includes(size) ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:bg-blue-50"}`} data-i18n-ignore="true">{size}</button>)}
+            </div>
+          </div>}
+
+          <div className={`${isFashion ? fashionStyles.quickFields : ""} mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3`}>
             <MiniField label="Colour" value={quickColor} placeholder="Black" onChange={setQuickColor} />
             <MiniField label="SKU prefix" value={quickSkuPrefix} placeholder="TEE01" onChange={setQuickSkuPrefix} />
             <MiniField label="Cost price" value={quickCost} type="number" min="0" step="0.01" onChange={setQuickCost} />
@@ -391,7 +578,7 @@ export default function VariantProductForm({
             </label>
           </div>
 
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className={`mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 ${isFashion ? `${quickStyles.legacy} ${fashionStyles.quickLegacy}` : ""}`}>
             {(isShoes ? shoeSizeRuns : fashionSizeRuns).map((run) => (
               <button
                 key={run.label}
@@ -403,11 +590,18 @@ export default function VariantProductForm({
               </button>
             ))}
           </div>
+          {isFashion && <div className={`${quickStyles.desktop} ${fashionStyles.quickSummary}`}>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-teal-200 pt-4">
+              <p className="text-xs text-slate-600" aria-live="polite">{translateLabel("Selected sizes")}: <span data-i18n-ignore="true">{selectedSizes.join(", ") || "—"}</span><span className={fashionStyles.selectedUnits}>{formatUiText(translateLabel("{0} sizes selected · {1} units"), [selectedSizes.length, selectedSizes.length * Number(quickStock || 0)])}</span></p>
+              <button type="button" disabled={!selectedSizes.length || pending} onClick={() => { addSizeRun(fashionSizeRuns[sizePreset].sizes.filter(size => selectedSizes.includes(size))); setSelectedSizes([]); }} className="min-h-11 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50">{formatUiText(translateLabel("Add {0} sizes"), [selectedSizes.length])}</button>
+            </div>
+          </div>}
+          </div>
         </section>
       )}
 
-      <section className="col-span-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4">
+      <section id="fashion-panel-variants" data-section="variants" className={`${isFashion ? fashionStyles.variants : ""} col-span-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white`}>
+        <div className={`${isFashion ? fashionStyles.legacyVariantHeading : ""} flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4`}>
           <div className="flex min-w-0 items-start gap-2">
             {isGeneral ? (
               <PackagePlus size={17} className="mt-0.5 shrink-0 text-slate-600" />
@@ -430,7 +624,7 @@ export default function VariantProductForm({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <button type="button" onClick={() => setVariants(rows => rows.map(row => row.barcode.trim() ? row : { ...row, barcode: generateInternalBarcode() }))} className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700">Generate missing barcodes</button>
+            <button type="button" onClick={generateMissingBarcodes} className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700">Generate missing barcodes</button>
             {variants.length > 0 && (
               <button
                 type="button"
@@ -442,7 +636,7 @@ export default function VariantProductForm({
             )}
             <button
               type="button"
-              onClick={() => setVariants((current) => [...current, createVariant()])}
+              onClick={addVariant}
               className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
             >
               <Plus size={14} /> {isSpecialVariant ? "Add Size" : "Add Variant"}
@@ -456,7 +650,26 @@ export default function VariantProductForm({
           </div>
         )}
 
-        <div className="overflow-x-auto">
+        {isFashion && <div className={fashionStyles.compactVariants}>
+          <div className={fashionStyles.variantToolbar}><button type="button" disabled={pending} onClick={addVariant}><Plus size={16}/>Add Size</button><AnchoredActionMenu label={translateLabel("Actions")} disabled={pending}>
+            <button type="button" onClick={generateMissingBarcodes}>Generate missing barcodes</button>
+            <button type="button" disabled={!variants.length} className="text-red-600" onClick={() => { if (window.confirm(translateLabel("Delete all variants from this draft?"))) { setVariants([]); setSelectedVariant(null); } }}>Delete All</button>
+          </AnchoredActionMenu></div>
+          <p className={fashionStyles.variantHint}>Tap a variant to edit.</p>
+          <div className={fashionStyles.variantWorkspace}>
+            <div className={fashionStyles.variantList}>{variants.map(variant => <div key={variant.id} className={fashionStyles.variantRow} data-selected={selectedVariant === variant.id}>
+              <button type="button" aria-expanded={selectedVariant === variant.id} aria-controls={`fashion-editor-${variant.id}`} onClick={() => setSelectedVariant(current => current === variant.id ? null : variant.id)}>
+                <span className={fashionStyles.thumbnail}>{runImageSlots.find(slot => slot.id === variant.imageSlot)?.preview ? <img src={runImageSlots.find(slot => slot.id === variant.imageSlot)?.preview ?? ""} alt=""/> : <Shirt size={22}/>}</span>
+                <span className={fashionStyles.rowIdentity}><strong data-i18n-ignore="true">{[variant.size,variant.color].filter(Boolean).join(" · ") || translateLabel("New size")}</strong><span data-i18n-ignore="true">{variant.sku || "—"}</span></span>
+                <span className={fashionStyles.rowInventory}><strong data-i18n-ignore="true">{new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(Number(variant.sellingPrice || 0))}</strong><span>{translateLabel("Stock")} <span data-i18n-ignore="true">{variant.stockQuantity || "0"}</span></span></span><ChevronDown size={16}/>
+              </button>
+              {phone && selectedVariant === variant.id && <div id={`fashion-editor-${variant.id}`} className={fashionStyles.mobileEditor}>{variantEditor(variant)}</div>}
+            </div>)}</div>
+            {!phone && <div id={selectedVariant ? `fashion-editor-${selectedVariant}` : undefined} className={fashionStyles.tabletEditor}>{variants.find(variant => variant.id === selectedVariant) ? variantEditor(variants.find(variant => variant.id === selectedVariant)!) : <p>Tap a variant to edit.</p>}</div>}
+          </div>
+          {!variants.length && <p className="p-4 text-sm text-slate-500">No sizes or variants added</p>}
+        </div>}
+        <div className={isFashion ? fashionStyles.desktopVariantTable : ""} aria-hidden={compactFashion || undefined}><div className="overflow-x-auto">
           <table className="w-full min-w-[730px] text-xs">
             <thead className="bg-white text-[10px] uppercase tracking-wide text-slate-400">
               <tr className="border-b border-slate-200">
@@ -489,45 +702,39 @@ export default function VariantProductForm({
                 const pairKey = `${variant.color.trim().toLowerCase()}|${variant.size.trim().toLowerCase()}`;
                 const duplicate = duplicateCombinations.has(pairKey);
                 return (
-                  <tr key={variant.id} className={duplicate ? "bg-amber-50" : "bg-white"}>
+                  <tr key={variant.id} data-variant-id={variant.id} className={duplicate ? "bg-amber-50" : "bg-white"}>
                     <td className="w-20 px-2 py-2">
-                      <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg p-1 text-teal-700 hover:bg-teal-50" title="Upload or replace this size's image">
-                        {runImageSlots.find(slot => slot.id === variant.imageSlot)?.preview ? (
-                          <img src={runImageSlots.find(slot => slot.id === variant.imageSlot)?.preview ?? ""} alt={formatUiText(translateLabel("{0} {1}"), [variant.color || (translateLabel("Variant")), variant.size || (translateLabel("image"))])} className="h-10 w-10 rounded-lg border border-slate-200 object-contain"  data-i18n-ignore-attributes="alt"/>
-                        ) : <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-dashed border-teal-300 bg-teal-50"><Upload size={16} /></span>}
-                        <span className="text-[10px] font-semibold">{variant.imageSlot ? "Replace" : "Upload"}</span>
-                        <input type="file" accept=".jpg,.jpeg,.png,.webp" aria-label={formatUiText(translateLabel("Upload image for {0} {1}"), [variant.color || (translateLabel("variant")), variant.size || (translateLabel("new size"))])} className="sr-only" onChange={event => { handleRunImageChange(`size-${variant.id}`, event, variant.id); event.target.value = ""; }}  data-i18n-ignore-attributes="aria-label"/>
-                      </label>
+                      {variantImage(variant)}
                     </td>
                     <CellInput
-                      value={variant.size}
+                      field="size" value={variant.size}
                       placeholder={isGeneral ? "500ml / 128GB / Large" : isShoes ? "41" : "M"}
                       required={isSpecialVariant}
                       onChange={(value) => updateVariant(variant.id, "size", value)}
                     />
                     <CellInput
-                      value={variant.color}
+                      field="color" value={variant.color}
                       placeholder={isGeneral ? "Optional" : "Black"}
                       required={isSpecialVariant}
                       onChange={(value) => updateVariant(variant.id, "color", value)}
                     />
                     <CellInput
-                      value={variant.sku}
+                      field="sku" value={variant.sku}
                       placeholder={isGeneral ? "ITEM-001-BLK" : "TEE01-BLK-M"}
                       required
                       onChange={(value) => updateVariant(variant.id, "sku", value)}
                       wide
                     />
-                    <CellInput value={variant.barcode} placeholder="Scan, type or generate" wide onChange={(value) => updateVariant(variant.id, "barcode", value)} />
-                    <CellInput value={variant.costPrice} type="number" min="0" step="0.01" required onChange={(value) => updateVariant(variant.id, "costPrice", value)} />
-                    <CellInput value={variant.sellingPrice} type="number" min="0" step="0.01" required onChange={(value) => updateVariant(variant.id, "sellingPrice", value)} />
-                    <CellInput value={variant.stockQuantity} type="number" min="0" required onChange={(value) => updateVariant(variant.id, "stockQuantity", value)} />
-                    <CellInput value={variant.lowStockQuantity} type="number" min="0" required onChange={(value) => updateVariant(variant.id, "lowStockQuantity", value)} />
+                    <CellInput field="barcode" value={variant.barcode} placeholder="Scan, type or generate" wide onChange={(value) => updateVariant(variant.id, "barcode", value)} />
+                    <CellInput field="costPrice" value={variant.costPrice} type="number" min="0" step="0.01" required onChange={(value) => updateVariant(variant.id, "costPrice", value)} />
+                    <CellInput field="sellingPrice" value={variant.sellingPrice} type="number" min="0" step="0.01" required onChange={(value) => updateVariant(variant.id, "sellingPrice", value)} />
+                    <CellInput field="stockQuantity" value={variant.stockQuantity} type="number" min="0" required onChange={(value) => updateVariant(variant.id, "stockQuantity", value)} />
+                    <CellInput field="lowStockQuantity" value={variant.lowStockQuantity} type="number" min="0" required onChange={(value) => updateVariant(variant.id, "lowStockQuantity", value)} />
                     <td className="px-2 py-2 text-right">
                       <button
                         type="button"
                         disabled={variants.length === 1}
-                        onClick={() => setVariants((current) => current.filter((row) => row.id !== variant.id))}
+                        onClick={() => removeVariant(variant.id)}
                         className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
                         aria-label="Remove variant"
                       >
@@ -539,10 +746,12 @@ export default function VariantProductForm({
               })}
             </tbody>
           </table>
-        </div>
+        </div></div>
       </section>
 
-      <div className="sticky -bottom-4 col-span-full flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:-bottom-6 sm:flex-row sm:items-center sm:justify-between">
+      </div>
+      {isFashion && (validationError || (!state.success && state.message)) && <p role="alert" className={fashionStyles.formError}>{validationError || state.message}</p>}
+      <div className={`${isFashion ? fashionStyles.footer : ""} sticky -bottom-4 col-span-full flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:-bottom-6 sm:flex-row sm:items-center sm:justify-between`}>
         <p className="text-xs text-slate-500"><span className="font-semibold text-slate-800">{variants.length} variants</span> · {totalStock} units ready to create</p>
       <button
         type="submit"
@@ -623,6 +832,7 @@ function MiniField({
 }
 
 function CellInput({
+  field,
   value,
   placeholder,
   type = "text",
@@ -632,6 +842,7 @@ function CellInput({
   wide,
   onChange,
 }: {
+  field?: string;
   value: string;
   placeholder?: string;
   type?: string;
@@ -644,6 +855,7 @@ function CellInput({
   return (
     <td className={`px-2 py-2 ${wide ? "min-w-32" : "min-w-20"}`}>
       <input
+        data-field={field}
         value={value}
         placeholder={placeholder}
         type={type}

@@ -1,0 +1,128 @@
+.formBody, .payment, .optionalFields, .moreDetails, .upload, .saveArea { display: contents; }
+.moreDetails > summary, .compactToolbar, .periodCaption, .selectedTotal { display: none; }
+
+/* Match the web workspace's compact phone/tablet breakpoint. */
+@media (max-width: 1279px), (max-width: 1366px) and (pointer: coarse) {
+  .responsive { min-width: 0; padding-bottom: 80px; }
+  .responsive .desktopHeader, .desktopFilters, .historyFilters, .overviewDates { display: none !important; }
+  .responsive :is(input, select, button, summary):focus-visible {
+    outline: 2px solid var(--app-accent);
+    outline-offset: 2px;
+  }
+  .responsive :is(input, select):focus {
+    border-color: var(--app-accent);
+    --tw-ring-color: color-mix(in srgb, var(--app-accent) 20%, transparent);
+  }
+  .responsive :is([class~="bg-blue-50"], [class~="bg-blue-100"]) {
+    background-color: color-mix(in srgb, var(--app-accent) 10%, var(--workspace-panel));
+  }
+  .responsive [class~="bg-blue-600"] { background-color: var(--app-accent); }
+  .responsive button[class*="hover:bg-blue-50"]:hover {
+    background-color: color-mix(in srgb, var(--app-accent) 10%, var(--workspace-panel));
+    color: var(--app-accent);
+  }
+  .responsive [class~="bg-blue-600"]:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--app-accent) 88%, black);
+  }
+  .responsive [class~="border-blue-200"] { border-color: var(--app-accent); }
+  .compactToolbar { display: flex; align-items: center; gap: 8px; }
+  .compactSearch { display: flex; align-items: center; position: relative; min-width: 0; flex: 1; }
+  .compactSearch svg { position: absolute; left: 12px; color: var(--color-slate-400); pointer-events: none; }
+  .compactSearch input {
+    width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px 10px 38px;
+    border: 1px solid var(--color-slate-200); border-radius: 12px;
+    background: var(--workspace-panel); font-size: 1rem;
+  }
+  .compactToolbar > button {
+    display: flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0;
+    min-height: 44px; padding: 10px 12px; border: 1px solid var(--color-slate-200);
+    border-radius: 12px; font-size: .875rem; font-weight: 600; background: var(--workspace-panel);
+  }
+  .compactToolbar > .activeFilter {
+    color: var(--app-accent); border-color: var(--app-accent);
+    background: color-mix(in srgb, var(--app-accent) 10%, var(--workspace-panel));
+  }
+  .responsive .popup { display: none; }
+  .responsive .popup.open, .responsive .filterOverlay {
+    display: flex; position: fixed; inset: var(--expense-viewport-top, 0px) 0 auto;
+    height: var(--expense-viewport-height, 100dvh); align-items: center; justify-content: center;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+  .responsive .addPanel, .responsive .overviewPanel {
+    width: 100%; max-width: 680px; max-height: 100%; padding: 14px;
+    min-height: 0; overscroll-behavior: contain;
+  }
+  .responsive .addPanel { display: flex; flex-direction: column; overflow: hidden; }
+  .addPanel > div:first-of-type, .overviewPanel > div:first-of-type { padding-right: 44px; flex-shrink: 0; }
+  .addPanel h2, .overviewPanel h2 { line-height: 1.5; }
+  .addPanel > div:first-of-type > span, .overviewPanel > div:first-of-type > div > span { padding: 10px; }
+  .responsive .close { display: grid; width: 44px; height: 44px; right: 10px; top: 10px; }
+  .responsive .form { display: flex; flex-direction: column; gap: 0; min-height: 0; margin-top: 14px; }
+  .formBody {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
+    min-height: 0; overflow-y: auto; padding: 2px 3px 14px;
+    overscroll-behavior: contain; scroll-padding-block: 12px;
+  }
+  .formBody > label { align-self: start; }
+  .formBody label { line-height: 1.5; overflow-wrap: anywhere; }
+  .formBody :is(input, select) { min-height: 44px; padding: 8px 10px; font-size: 1rem; }
+  .formBody input[type="date"] { width: 100%; max-width: 100%; }
+  .payment, .upload { display: block; grid-column: 1 / -1; min-width: 0; }
+  .moreDetails {
+    display: block; grid-column: 1 / -1; min-width: 0; border: 1px solid var(--color-slate-200); border-radius: 10px;
+  }
+  .moreDetails > summary {
+    display: list-item; min-height: 44px; padding: 11px 12px; font-size: .75rem; font-weight: 600;
+    cursor: pointer; background: color-mix(in srgb, var(--app-accent) 7%, var(--workspace-panel)); border-radius: 9px;
+  }
+  .optionalFields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 12px; }
+  .optionalFields > label { grid-column: auto; }
+  .upload input[type="file"] { padding: 8px; background: var(--workspace-panel); font-size: .75rem; }
+  .upload input::file-selector-button {
+    border: 0; border-radius: 6px; padding: 6px 8px; margin-right: 8px;
+    background: color-mix(in srgb, var(--app-accent) 10%, var(--workspace-panel)); color: var(--app-accent);
+  }
+  .upload label > span:last-child { margin-top: 4px; }
+  .saveArea {
+    display: flex; flex-shrink: 0; border-top: 1px solid var(--color-slate-200);
+    padding: 10px 3px 0; background: var(--workspace-panel);
+  }
+  .saveArea button { width: 100%; margin: 0; min-height: 44px; padding: 10px 12px; }
+  .responsive .overviewPanel { overflow-y: auto; }
+  .overviewPanel > div:first-of-type { display: flex; flex-direction: column; gap: 12px; }
+  .responsive .overviewBranch { display: flex; width: calc(100% + 44px); }
+  .overviewBranch > svg { display: none; }
+  .periodCaption { display: block; margin-top: 10px; font-size: .75rem; color: var(--color-slate-500); text-align: center; }
+  .breakdown { grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 12px; }
+  .doughnut { width: 168px; height: 168px; background: var(--expense-chart) !important; }
+  .doughnut > div { width: 116px; height: 116px; padding: 8px; }
+  .doughnut strong { max-width: 100%; overflow-wrap: anywhere; font-size: 1rem; }
+  .doughnut span { text-align: center; line-height: 1.5; }
+  .desktopTotal { display: none; }
+  .selectedTotal { display: inline; }
+  .categoryRows { max-height: none; overflow: visible; padding: 0; }
+  .categoryRow { grid-template-columns: 10px minmax(0, 1fr) auto; gap: 4px 8px; padding-block: 8px; margin-top: 0; }
+  .categoryRow > span:first-child { background: var(--expense-category-color) !important; grid-row: 1 / 3; }
+  .categoryRow > span:nth-child(2) { overflow-wrap: anywhere; line-height: 1.6; grid-row: 1 / 3; }
+  .categoryRow > span:nth-child(3) { grid-column: 3; grid-row: 2; }
+  .categoryRow > strong { grid-column: 3; grid-row: 1; overflow-wrap: anywhere; max-width: 9rem; }
+  .responsive .launchers { display: flex; }
+  .responsive .filterPanel { max-width: 560px; max-height: 100%; border-radius: 16px; }
+}
+
+@media (min-width: 600px) and (max-width: 1279px), (min-width: 600px) and (max-width: 1366px) and (pointer: coarse) {
+  .formBody > label { grid-column: auto; }
+  .formBody > label:nth-of-type(1) { grid-column: 1; grid-row: 1; }
+  .formBody > label:nth-of-type(2) { grid-column: 1; grid-row: 2; }
+  .formBody > label:nth-of-type(3) { grid-column: 1; grid-row: 3; }
+  .formBody > label:nth-of-type(4) { grid-column: 2; grid-row: 1; }
+  .formBody > label:nth-of-type(5) { grid-column: 2; grid-row: 2; }
+  .payment { grid-column: 2; grid-row: 3; }
+  .optionalFields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .breakdown { grid-template-columns: 168px minmax(0, 1fr); gap: 20px; }
+}
+
+@media (max-width: 359px) {
+  .formBody { grid-template-columns: minmax(0, 1fr); }
+  .formBody > label { grid-column: 1 / -1; }
+}

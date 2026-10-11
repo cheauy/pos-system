@@ -9,6 +9,8 @@ import { getCurrentBusinessMode } from '@/lib/business/get-current-business-mode
 import { getBranchContext } from '@/lib/branches/context';
 
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const branchRequest = getBranchContext();
+  void branchRequest.catch(() => {});
   const business = await requirePermission("orders.view");
   const filters = parseFilters(await searchParams);
   const modeRequest = getCurrentBusinessMode({ businessId: business.id, productMode: business.productMode });
@@ -18,7 +20,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   let workspace;
   let context;
   let showTableQr;
-  try { [workspace, context, showTableQr] = await Promise.all([loadWorkspace(business.id, filters), getBranchContext(), modeRequest.then(tableQr)]); }
+  try { [workspace, context, showTableQr] = await Promise.all([loadWorkspace(business.id, filters), branchRequest, modeRequest.then(tableQr)]); }
   catch (error) {
     return <section className="rounded-xl border border-amber-200 bg-white p-6 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
       <h1 className="text-2xl font-bold">Orders</h1>

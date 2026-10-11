@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import ContentSkeleton from "@/components/ui/content-skeleton";
 import { useRouter } from "next/navigation";
 import { LockKeyhole, ShieldCheck } from "lucide-react";
 
@@ -91,9 +92,7 @@ export default function MfaChallengePage() {
         </p>
 
         {loading ? (
-          <div className="mt-7 rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-slate-800">
-            Loading security settings...
-          </div>
+          <div className="mt-7"><ContentSkeleton kind="form" /></div>
         ) : (
           <form onSubmit={verify} className="mt-7 space-y-4">
             <div className="relative">

@@ -28,6 +28,7 @@ type ReturnItemsFormProps = {
   triggerClassName?: string;
   onReturned?: () => void;
   currency?: string;
+  onDiscardRequest?: (discard: () => void) => void;
 };
 
 const initialState: CreateReturnState = { success: false, message: "" };
@@ -35,7 +36,7 @@ const REASONS = ["Incorrect Size or Fit", "Defective or Damaged", "Not as Descri
 const NOTE_LIMIT = 200;
 const field = "w-full appearance-none rounded-xl border border-slate-300 bg-white py-3 pl-12 pr-10 text-sm text-slate-900 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-100 disabled:bg-slate-100";
 
-export default function ReturnItemsForm({ orderId, orderNumber, items, triggerClassName, onReturned, currency = "USD" }: ReturnItemsFormProps) {
+export default function ReturnItemsForm({ orderId, orderNumber, items, triggerClassName, onReturned, currency = "USD", onDiscardRequest }: ReturnItemsFormProps) {
   const { t: translateLabel } = useLanguage();
 
   const router = useRouter();
@@ -88,6 +89,12 @@ export default function ReturnItemsForm({ orderId, orderNumber, items, triggerCl
 
   function closeModal() {
     if (isPending) return;
+    const dirty = selectedItems.length > 0 || reason || otherReason || note || dialog.current?.querySelector<HTMLSelectElement>("[name='refundMethod']")?.value;
+    if (onDiscardRequest && dirty) { onDiscardRequest(resetDraft); return; }
+    resetDraft();
+  }
+
+  function resetDraft() {
     setIsOpen(false);
     setQuantities({});
     setReason("");

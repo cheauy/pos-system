@@ -77,6 +77,8 @@ test('changing the branch cookie while a catalog confirmation is open mutates ne
   try {
     const f=fixture(); let cursor=0,pending; const states=[];
     const Catalog=loadTs('components/product-list.tsx',{
+      '@/components/product-stock-drawer':{default:'drawer-shell'},
+      '@/components/products-stock-responsive.module.css':{default:{}},
       '@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},
       '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
       react:{useState:initial=>{const k=cursor++;if(!(k in states))states[k]=typeof initial==='function'?initial():initial;return[states[k],value=>{states[k]=typeof value==='function'?value(states[k]):value;}];},useMemo:fn=>fn(),useEffect(){},useTransition:()=>[false,fn=>{pending=fn();}]},

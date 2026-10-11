@@ -17,6 +17,9 @@ test('size uploads override only their own row and submit the selected file', ()
     'lucide-react': require('lucide-react'),
     sonner: { toast: { error: message => errors.push(message) } },
     '@/components/product-gallery-input': { default: 'gallery' },
+    '@/components/anchored-action-menu': { default: 'actions' },
+    './fashion-responsive.module.css': { default: {} },
+    './quick-fashion.module.css': { default: {} },
     '@/lib/barcode/generate': { generateInternalBarcode: () => '123456789012345' },
     './actions': { createVariantProduct() {} },
   });
@@ -26,7 +29,8 @@ test('size uploads override only their own row and submit the selected file', ()
   const rows = () => JSON.parse(find(node => node.type === 'input' && node.props.name === 'variants').props.value);
   const photo = new File(['photo'], 'black.png', { type: 'image/png' });
   find(node => node.props?.name === 'runImage_initial-run').props.onChange({ target: { files: [photo] } });
-  find(node => node.type === 'button' && nodes(node).some(child => child.props?.children === 'XS – XXL')).props.onClick();
+  for (const size of ['XS','S','M','L','XL','XXL']) find(node => node.type === 'button' && node.props.children === size).props.onClick();
+  find(node => node.type === 'button' && node.props.children === 'Add 6 sizes').props.onClick();
   assert.equal(rows().length, 6);
   assert.ok(rows().every(row => row.imageSlot === 'initial-run'));
   const picker = () => find(node => node.type === 'input' && node.props['aria-label'] === 'Upload image for Black XS');

@@ -4,21 +4,42 @@ const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 const { loadTs } = require('./helpers/load-ts.cjs');
 const h = React.createElement;
-function pageFor(allowed) {
+function pageFor(allowed, scope = {userId:'user',branchId:'branch'}) {
   const loaded = [], permissions = [];
   const view = name => { loaded.push(name); return { default: () => h('section', null, name + ' content') }; };
   const deps = {
     'react/jsx-runtime': require('react/jsx-runtime'),
-    'next/link': { default: ({prefetch, ...props}) => h('a', props) },
+    '@/components/ui/activity-link': { default: ({prefetch, ...props}) => h('a', props) },
+    '@/lib/branches/context': { getBranchContext: async () => scope },
+    './visited-product-views': { default: props => {
+      const Client = loadTs('app/(dashboard)/dashboard/products/visited-product-views.tsx', {
+        '@/components/products-stock-responsive.module.css': { default: {} },
+        '@/components/ui/content-skeleton': { default: () => null },
+        react: React, 'react/jsx-runtime': require('react/jsx-runtime'),
+        'next/navigation': {useRouter: () => ({}),useSearchParams: () => new URLSearchParams(props.view === 'stock' ? 'view=stock' : '')},
+        '@/components/ui/activity-link': {default: ({prefetch,...rest}) => h('a',rest)},
+        'lucide-react': {Boxes:()=>null,Package:()=>null,SlidersHorizontal:()=>null},
+      }).default;
+      return h(Client,props);
+    } },
     'lucide-react': { Boxes: () => null, Package: () => null, SlidersHorizontal: () => null },
-    '@/lib/auth/require-permission': { requireAnyPermission: async required => { permissions.push(required); if (!allowed.length) throw Error('Denied'); return {id:'shop',role:'staff'}; } },
-    '@/lib/auth/effective-permissions': { businessHasPermission: async (_, permission) => allowed.includes(permission) },
+    '@/lib/auth/require-permission': { requireAnyPermission: async required => { permissions.push(required); if (!allowed.length) throw Error('Denied'); return {id:scope.businessId ?? 'shop',role:'staff'}; } },
+    '@/lib/auth/effective-permissions': { businessHasPermission: async (_, permission) => allowed.includes(permission), getEffectivePermissions: async () => allowed },
   };
   Object.defineProperty(deps, './products-view', { get: () => view('products') });
   Object.defineProperty(deps, '../inventory/inventory-view', { get: () => view('stock') });
   const Page = loadTs('app/(dashboard)/dashboard/products/page.tsx', deps).default;
-  return { loaded, permissions, render: async params => renderToStaticMarkup(await Page({searchParams:Promise.resolve(params)})) };
+  return { loaded, permissions, element: params => Page({searchParams:Promise.resolve(params)}), render: async params => renderToStaticMarkup(await Page({searchParams:Promise.resolve(params)})) };
 }
+test('visited views retain one scope across tabs and reset for user, branch or permission changes', async () => {
+  const allowed = ['products.view','inventory.view','products.stock_adjust'];
+  const first = await pageFor(allowed).element({});
+  assert.equal(first.key, (await pageFor(allowed).element({view:'stock'})).key);
+  assert.notEqual(first.key, (await pageFor(allowed,{userId:'other',branchId:'branch'}).element({})).key);
+  assert.notEqual(first.key, (await pageFor(allowed,{userId:'user',branchId:'other'}).element({})).key);
+  assert.notEqual(first.key, (await pageFor(allowed,{businessId:'other',userId:'user',branchId:'branch'}).element({})).key);
+  assert.notEqual(first.key, (await pageFor(allowed.slice(0,2)).element({})).key);
+});
 test('merged workspace loads only the selected view and exposes both tabs without prefetching analytics', async () => {
   for (const [params, expected] of [[{},'products'],[{view:'stock'},'stock']]) {
     const c = pageFor(['products.view','inventory.view']); const html = await c.render(params);

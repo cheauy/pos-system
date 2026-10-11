@@ -7,6 +7,8 @@ import { stockAdjustmentLink } from "@/lib/inventory/stock-adjustment";
 import AnchoredActionMenu from "@/components/anchored-action-menu";
 import ProductPhoto from '@/components/product-photo';
 import ProductPhotoViewer from '@/components/product-photo-viewer';
+import ProductStockDrawer from '@/components/product-stock-drawer';
+import styles from '@/components/products-stock-responsive.module.css';
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -18,13 +20,10 @@ import {
   Grid2X2,
   List,
   MoreHorizontal,
-  Layers,
   Package,
   Pencil,
   Search,
-  Shirt,
   SlidersHorizontal,
-  Tag,
   Trash2,
   X,
   ArrowUpDown,
@@ -395,15 +394,15 @@ export default function ProductList({
   }
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm max-sm:overflow-visible max-sm:border-0 max-sm:bg-transparent max-sm:shadow-none">
-      <nav aria-label="Catalog filters" className="flex gap-4 overflow-x-auto border-b border-slate-200 px-4 max-lg:gap-2 max-lg:[scrollbar-width:none] max-lg:border-0 max-lg:pb-3 max-lg:pt-3 max-sm:px-0 max-sm:pt-0">
+    <section className={`${styles.listPanel} overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm max-sm:overflow-visible max-sm:border-0 max-sm:bg-transparent max-sm:shadow-none`}>
+      <nav aria-label="Catalog filters" className={`${styles.statusTabs} flex gap-4 overflow-x-auto border-b border-slate-200 px-4 max-lg:gap-2 max-lg:[scrollbar-width:none] max-lg:border-0 max-lg:pb-3 max-lg:pt-3 max-sm:px-0 max-sm:pt-0`}>
         {([{ id: "all", label: "All Products", icon: Package }, { id: "low", label: "Low Stock", icon: SlidersHorizontal }, { id: "out", label: "Out of Stock", icon: Package }, { id: "hidden", label: "Hidden", icon: EyeOff }]).map(({ id, label, icon: Icon }) => (
           <button key={id} type="button" aria-pressed={catalogTab === id} onClick={() => { setCatalogTab(id); resetPage(); }} className={`inline-flex shrink-0 items-center gap-2 border-b-2 py-3 text-xs font-semibold max-lg:rounded-full max-lg:border max-lg:px-4 max-lg:py-2.5 max-lg:text-sm ${catalogTab === id ? "border-teal-600 text-teal-700 max-lg:border-blue-100 max-lg:bg-blue-50 max-lg:text-blue-700" : "border-transparent text-slate-500 hover:text-slate-800 max-lg:border-slate-200 max-lg:bg-white"}`}><Icon size={15} />{label}</button>
         ))}
       </nav>
 
-      <div className="flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 max-lg:border-0 max-lg:bg-transparent max-lg:pb-3 max-lg:pt-0 max-sm:px-0">
-          <select value={category} onChange={(event) => { setCategory(event.target.value); resetPage(); }} className={filterInputClass + " !w-auto max-w-36 shrink-0 max-lg:hidden"}>
+      <div className={`${styles.toolbar} flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 max-lg:border-0 max-lg:bg-transparent max-lg:pb-3 max-lg:pt-0 max-sm:px-0`}>
+          <select value={category} onChange={(event) => { setCategory(event.target.value); resetPage(); }} className={styles.desktopOnly + " " + filterInputClass + " !w-auto max-w-36 shrink-0 max-lg:hidden"}>
             <option value="all">All Categories</option>
             {categories.map((name) => <option key={name} value={name} data-i18n-ignore="true">{name}</option>)}
           </select>
@@ -420,14 +419,14 @@ export default function ProductList({
           />
         </div>
         {/* Phones/tablets: Filter and Sort pills; the transparent native select opens the picker. */}
-        <label className="relative inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 lg:hidden">
-          <SlidersHorizontal size={15} /><span className="max-w-24 truncate">{category === "all" ? "Filter" : category}</span><ChevronDown size={14} className="text-slate-400" />
+        <label data-active={category !== "all"} className={`${styles.compactOnly} ${styles.pill} relative inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 lg:hidden`}>
+          <SlidersHorizontal size={15} /><span className="max-w-24 truncate" data-i18n-ignore={category !== "all"}>{category === "all" ? "Filter" : category}</span><ChevronDown size={14} className="text-slate-400" />
           <select aria-label="Filter by category" value={category} onChange={(event) => { setCategory(event.target.value); resetPage(); }} className="absolute inset-0 cursor-pointer opacity-0">
             <option value="all">All Categories</option>
             {categories.map((name) => <option key={name} value={name} data-i18n-ignore="true">{name}</option>)}
           </select>
         </label>
-        <label className="relative inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 lg:hidden">
+        <label className={`${styles.compactOnly} ${styles.pill} relative inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 lg:hidden`}>
           <ArrowUpDown size={15} />Sort<ChevronDown size={14} className="text-slate-400" />
           <select aria-label="Sort products" value={sort} onChange={(event) => setSort(event.target.value)} className="absolute inset-0 cursor-pointer opacity-0">
             <option value="newest">Newest</option>
@@ -439,7 +438,7 @@ export default function ProductList({
         </label>
 
         <div className="contents">
-          <div className="flex w-fit shrink-0 rounded-lg border border-slate-200 p-1 max-sm:hidden">
+        <div className={`${styles.desktopOnly} flex w-fit shrink-0 rounded-lg border border-slate-200 p-1 max-sm:hidden`}>
             <button type="button" onClick={() => setView("list")} className={`rounded-md p-2 ${view === "list" ? "bg-teal-50 text-teal-700" : "text-slate-400 hover:bg-slate-50"}`} aria-label="List view">
               <List size={16} />
             </button>
@@ -447,7 +446,7 @@ export default function ProductList({
               <Grid2X2 size={16} />
             </button>
           </div>
-          <div className="relative shrink-0 max-lg:hidden">
+        <div className={`${styles.desktopOnly} relative shrink-0 max-lg:hidden`}>
             <SlidersHorizontal size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <select value={sort} onChange={(event) => setSort(event.target.value)} className={filterInputClass + " pl-8"}>
               <option value="newest">Sort: Newest</option>
@@ -458,13 +457,27 @@ export default function ProductList({
             </select>
           </div>
         </div>
-        {selectedTargets.length > 0 && <AnchoredActionMenu label={`Actions (${selectedCount})`}>
+        {selectedTargets.length > 0 && <div className={`${styles.bulkActions} contents`}><AnchoredActionMenu label={`Actions (${selectedCount})`}>
           <button type="button" disabled={actionPending} onClick={() => setConfirmState({ kind: "delete", group: selectedTargets[0], groups: selectedTargets })} className="rounded-lg px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50">Delete selected</button>
           <button type="button" disabled={actionPending} onClick={() => setConfirmState({ kind: "hide", group: selectedTargets[0], groups: selectedTargets })} className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Hide selected</button>
           <button type="button" disabled={!canAdjustStock || actionPending} onClick={() => adjustSelectedStock(selectedTargets)} className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-45">Adjust stock — {selectedCount} items</button>
-        </AnchoredActionMenu>}
+        </AnchoredActionMenu></div>}
       </div>
 
+      <p className={styles.recordCount}>{filtered.length} products</p>
+      {pageRows.length > 0 && <ul className={styles.compactRows} aria-label={translateLabel("Products")}>
+        {pageRows.map((group, index) => <li key={group.key} className={styles.productRow} data-selected={selectedGroups.has(group.key)} onClick={event => { if (!(event.target as HTMLElement).closest("button, input, a, label")) openDetails(group); }}>
+          <label className={styles.checkTarget} onClick={event => event.stopPropagation()}><input type="checkbox" aria-label={formatUiText(translateLabel("Select {0}"), [group.name])} disabled={actionPending} checked={selectedGroups.has(group.key)} onChange={() => toggleSelected(group.key)} data-i18n-ignore-attributes="aria-label" /></label>
+          {group.imageUrl ? <ProductPhoto loading={index < 3 ? 'eager' : 'lazy'} src={group.imageUrl} alt={group.name} sizes="56px" className={styles.thumbnail} data-i18n-ignore-attributes="alt" /> : <div className={`${styles.thumbnail} ${styles.missingPhoto}`}><Package size={22} /></div>}
+          <div className={styles.rowMain}>
+            <button type="button" className={styles.rowName} onClick={() => openDetails(group)} aria-label={formatUiText(translateLabel("View {0}"), [group.name])} data-i18n-ignore-attributes="aria-label"><span data-i18n-ignore="true">{group.name}</span></button>
+            <p className={styles.price}>{formatMoney(group.minPrice)}</p>
+            <p className={styles.rowMeta}><span>{group.variants} {translateLabel(isVariantMode ? "Variants" : "Options")}</span><span>· {translateLabel("Total stock")} {group.totalStock}</span></p>
+          </div>
+          <div className={styles.rowMenu}><button type="button" onClick={event => openActionMenu(event, group)} aria-label={formatUiText(translateLabel("Actions for {0}"), [group.name])} aria-haspopup="menu" data-i18n-ignore-attributes="aria-label"><MoreHorizontal size={18} /></button></div>
+          <div className={styles.rowStatus}><StatusBadge group={group} /></div>
+        </li>)}
+      </ul>}
       {pageRows.length === 0 ? (
         <div className="p-12 text-center">
           <Package size={38} className="mx-auto text-slate-300" />
@@ -472,42 +485,14 @@ export default function ProductList({
           <p className="mt-1 text-xs text-slate-500">Try changing your search or filters.</p>
         </div>
       ) : view === "grid" ? (
-        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className={`${styles.desktopOnly} grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3`}>
           {pageRows.map((group, index) => (
             <ProductCard eager={index < 3} key={group.key} group={group} selected={selectedGroups.has(group.key)} onToggle={() => toggleSelected(group.key)} onMenu={openActionMenu} onView={() => openDetails(group)} isGeneralShop={isGeneralShop} isVariantMode={isVariantMode} />
           ))}
         </div>
       ) : (
         <>
-        {/* Phones: product cards with variants / price / stock / sizes. */}
-        <p className="pb-2 pt-4 text-sm text-slate-500 sm:hidden">{filtered.length} products</p>
-        <ul className="grid gap-3 pb-24 sm:hidden">
-          {pageRows.map((group, index) => (
-            <li key={group.key} onClick={(event) => { if (!(event.target as HTMLElement).closest("button, input, a, label")) openDetails(group); }} className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-              <div className="flex items-start gap-3">
-                <input type="checkbox" aria-label={formatUiText(translateLabel("Select {0}"), [group.name])} disabled={actionPending} checked={selectedGroups.has(group.key)} onChange={() => toggleSelected(group.key)} className="mt-1 h-5 w-5 shrink-0"  data-i18n-ignore-attributes="aria-label"/>
-                {group.imageUrl ? <ProductPhoto loading={index < 3 ? 'eager' : 'lazy'} src={group.imageUrl} alt={group.name} sizes="64px" className="h-16 w-16 shrink-0 rounded-xl border border-slate-200 object-cover"  data-i18n-ignore-attributes="alt"/> : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><Package size={22} /></div>}
-                <div className="min-w-0 flex-1">
-                  <button type="button" onClick={() => openDetails(group)} aria-label={formatUiText(translateLabel("View {0}"), [group.name])} className="block w-full truncate text-left text-[15px] font-bold text-slate-900" data-i18n-ignore-attributes="aria-label"><span data-i18n-ignore="true">{group.name}</span></button>
-                  <p className="break-all text-[11px] text-slate-400" data-i18n-ignore={Boolean(group.sku)}>{group.sku || "No SKU"}</p>
-                  <p className="mt-0.5 flex items-center gap-1 break-words text-xs text-slate-600"><Tag size={13} className="shrink-0 text-slate-400" />{group.category}</p>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-1">
-                  <button type="button" onClick={(event) => openActionMenu(event, group)} aria-label={formatUiText(translateLabel("Actions for {0}"), [group.name])} aria-haspopup="menu" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500" data-i18n-ignore-attributes="aria-label"><MoreHorizontal size={17} /></button>
-                  <StatusBadge group={group} />
-                  <span className="text-[11px] text-slate-500">{formatUpdated(group.updatedAt)}</span>
-                </div>
-              </div>
-              <dl className="mt-3 grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 pt-3 text-[11px]">
-                <div className="min-w-0 pr-2"><dt className="flex items-center gap-1 text-slate-500"><Layers size={12} />{isVariantMode ? "Variants" : "Options"}</dt><dd className="mt-0.5 break-words text-[13px] font-bold text-slate-900">{group.variants}</dd></div>
-                <div className="min-w-0 px-2"><dt className="flex items-center gap-1 text-slate-500"><Tag size={12} />Price</dt><dd className="mt-0.5 break-words text-[13px] font-bold text-slate-900">{formatMoney(group.minPrice)}</dd></div>
-                <div className="min-w-0 px-2"><dt className="flex items-center gap-1 text-slate-500"><Package size={12} />Stock</dt><dd className="mt-0.5 break-words text-[13px] font-bold text-slate-900">{group.totalStock}</dd></div>
-                <div className="min-w-0 pl-2"><dt className="flex items-center gap-1 text-slate-500"><Shirt size={12} />Sizes</dt><dd className="mt-0.5 break-words text-slate-600">{group.sizes.length ? group.sizes.join(" · ") : "—"}</dd></div>
-              </dl>
-            </li>
-          ))}
-        </ul>
-        <div className="overflow-x-auto max-sm:hidden">
+        <div className={`${styles.desktopOnly} overflow-x-auto max-sm:hidden`}>
           <table className="w-full min-w-[920px] text-sm">
             <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
               <tr className="border-b border-slate-200">
@@ -598,7 +583,7 @@ export default function ProductList({
         <button type="button" onClick={() => setSelectedGroups(new Set())} className="text-slate-500">Clear</button>
 
       </div>}
-      <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+      <div className={`${styles.pagination} flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between`}>
         <p>
           Showing {filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filtered.length)} of {filtered.length} products
         </p>
@@ -663,10 +648,7 @@ export default function ProductList({
 
       {detailGroup && typeof document !== "undefined" &&
         createPortal(
-          <div
-            className="fixed inset-0 z-[95] bg-slate-950/30"
-            onMouseDown={() => setDetailGroup(null)}
-          >
+          <ProductStockDrawer label={formatUiText(translateLabel("{0} details"), [detailGroup.name])} close={() => setDetailGroup(null)} desktopClassName="fixed inset-0 z-[95] bg-slate-950/30">
             <aside
               role="dialog"
               aria-modal="true"
@@ -940,7 +922,7 @@ export default function ProductList({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 border-t border-slate-200 bg-white px-5 py-4">
+              <div className={`${styles.detailActions} flex items-center gap-2 border-t border-slate-200 bg-white px-5 py-4`}>
                 <Link
                   href={`/dashboard/products/${detailGroup.representative.id}/edit`}
                   className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700"
@@ -956,7 +938,7 @@ export default function ProductList({
                 </button>
               </div>
             </aside>
-          </div>,
+          </ProductStockDrawer>,
           document.body,
         )}
 

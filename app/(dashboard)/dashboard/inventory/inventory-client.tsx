@@ -9,8 +9,11 @@ import { stockAdjustmentLink } from "@/lib/inventory/stock-adjustment";
 import { deleteProductVariants, setProductVariantsActive } from "../products/actions";
 import Link from "next/link";
 import ProductPhoto from "@/components/product-photo";
+import ProductStockDrawer from "@/components/product-stock-drawer";
+import styles from "@/components/products-stock-responsive.module.css";
 import {
   AlertTriangle,
+  ArrowUpDown,
   EyeOff,
   Trash2,
   TrendingUp,
@@ -302,6 +305,12 @@ export default function InventoryClient({ products, categories, locations, locat
   const alertProducts = resolvedProducts.filter(product => product.displayStatus !== "in").sort((a, b) => a.displayStock - b.displayStock).slice(0, 3);
 
   const selectedRows = resolvedProducts.filter(row => selectedIds.has(row.id));
+  function adjustSelectedStock() {
+    if (!canAdjustStock || busy) return;
+    try {
+      router.push(selectedRows.length ? stockAdjustmentLink(selectedRows.map(row => row.id), defaultBranchId, selectedRows.length > 30 ? sessionStorage : undefined) : "/dashboard/inventory/adjustments");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to open stock adjustment."); }
+  }
   async function confirmBulkAction() {
     if (!confirmation || busy) return;
     setBusy(true);
@@ -325,34 +334,35 @@ export default function InventoryClient({ products, categories, locations, locat
   return (
     <section aria-label="Stock overview" className="min-w-0">
       {confirmation && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/35 p-4"><div role="alertdialog" aria-modal="true" aria-labelledby="stock-confirm-title" className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl"><h2 id="stock-confirm-title" className="font-bold">{confirmation.kind === "delete" ? "Delete" : "Hide"} {confirmation.ids.length} selected items?</h2><p className="mt-2 text-sm text-slate-600">{confirmation.kind === "delete" ? "Only the selected variants in this branch will be removed. Remaining stock is cleared and recorded; sales history is kept." : "Selected variants will be hidden from POS and online."}</p>{confirmation.error && <p role="alert" className="mt-2 text-sm text-red-600">{confirmation.error}</p>}<div className="mt-4 flex justify-end gap-2"><button type="button" disabled={busy} onClick={() => setConfirmation(null)} className="rounded-lg border px-3 py-2 text-sm">Cancel</button><button type="button" disabled={busy} onClick={confirmBulkAction} className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white">{busy ? "Working…" : "Confirm"}</button></div></div></div>}
-      <section className="mb-5 hidden grid-cols-2 overflow-hidden sm:grid rounded-xl border border-slate-200 bg-white xl:grid-cols-4 [&>div]:border-r [&>div]:border-slate-100">
+      <section className={`${styles.metrics} mb-5 hidden grid-cols-2 overflow-hidden sm:grid rounded-xl border border-slate-200 bg-white xl:grid-cols-4 [&>div]:border-r [&>div]:border-slate-100`}>
         <MetricCard icon={<Boxes size={24} />} tone="blue" label="Total Items" value={resolvedProducts.length.toLocaleString()} helper="Active product variants" />
         <MetricCard icon={<Coins size={24} />} tone="green" label="Total Inventory Value" value={money(totalInventoryValue)} helper="Current cost value" />
         <MetricCard icon={<AlertTriangle size={24} />} tone="amber" label="Low Stock Items" value={counts.low.toLocaleString()} helper="Needs attention" />
         <MetricCard icon={<CircleX size={24} />} tone="red" label="Out of Stock" value={counts.out.toLocaleString()} helper={counts.out === 0 ? "All good" : "Unavailable now"} />
       </section>
 
-      <div className="grid min-w-0 items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_280px]">
-      <section className="min-w-0 rounded-xl border border-slate-200 bg-white max-sm:border-0 max-sm:bg-transparent">
-        <nav aria-label="Stock views" className="flex gap-1 overflow-x-auto border-b border-slate-200 px-3 max-sm:gap-2 max-sm:border-0 max-sm:px-0 max-sm:pb-3 max-sm:[scrollbar-width:none]">
+      <div className={`${styles.stockWorkspace} grid min-w-0 items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_280px]`}>
+      <section className={`${styles.listPanel} min-w-0 rounded-xl border border-slate-200 bg-white max-sm:border-0 max-sm:bg-transparent`}>
+        <nav aria-label="Stock views" className={`${styles.statusTabs} flex gap-1 overflow-x-auto border-b border-slate-200 px-3 max-sm:gap-2 max-sm:border-0 max-sm:px-0 max-sm:pb-3 max-sm:[scrollbar-width:none]`}>
           {tabItems.map(({ id, label, count, icon: Icon }) => <button key={id} type="button" aria-pressed={tab === id} onClick={() => { setTab(id); setStatusFilter("all"); setPage(1); }} className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-xs font-semibold max-sm:rounded-full max-sm:border max-sm:px-4 max-sm:py-2.5 max-sm:text-sm ${tab === id ? "border-teal-600 text-teal-700 max-sm:border-blue-100 max-sm:bg-blue-50 max-sm:text-blue-700" : "border-transparent text-slate-500 hover:text-slate-800 max-sm:border-slate-200 max-sm:bg-white"}`}><Icon size={15} />{label}{count === undefined ? "" : ` (${count})`}</button>)}
         </nav>
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200 p-3 max-sm:rounded-2xl max-sm:border max-sm:bg-white max-sm:p-2 max-sm:shadow-sm">
+        <div className={`${styles.toolbar} flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-slate-200 p-3 max-sm:rounded-2xl max-sm:border max-sm:bg-white max-sm:p-2 max-sm:shadow-sm`}>
           <label className="relative min-w-20 flex-1 max-sm:min-w-0"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Search products…" aria-label="Search stock" className="h-10 w-full min-w-0 rounded-lg border border-slate-200 pl-9 pr-3 text-sm" /></label>
-          <select aria-label="Category" value={categoryId} onChange={event => { setCategoryId(event.target.value); setPage(1); }} className={`${selectClass} !w-auto max-w-36 shrink-0 max-sm:!max-w-[7.5rem] max-sm:!text-xs`}><option value="all">All Categories</option>{categories.map(category => <option key={category.id} value={category.id} data-i18n-ignore="true">{category.name}</option>)}</select>
-          <select aria-label="Sort stock" value={sort} onChange={event => { setSort(event.target.value); setPage(1); }} className={`${selectClass} !w-auto shrink-0 max-sm:!w-[6.5rem] max-sm:!text-xs`}><option value="newest">Sort: Newest</option><option value="oldest">Sort: Oldest</option><option value="name">Sort: Name</option><option value="stock">Sort: Stock</option><option value="price">Sort: Price</option></select>
-          <span className="contents max-sm:hidden"><AnchoredActionMenu label="Customize Columns">{(Object.keys(visibleColumns) as ColumnKey[]).map(key => <label key={key} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-sm"><input type="checkbox" checked={visibleColumns[key]} onChange={event => setVisibleColumns(current => ({ ...current, [key]: event.target.checked }))} /><span className="capitalize">{key === "cost" ? "Unit Cost" : key}</span></label>)}</AnchoredActionMenu></span>
-          {selectedRows.length > 0 && <AnchoredActionMenu label={`Actions (${selectedRows.length})`}>
+          <select aria-label="Category" value={categoryId} onChange={event => { setCategoryId(event.target.value); setPage(1); }} className={`${styles.desktopOnly} ${selectClass} !w-auto max-w-36 shrink-0 max-sm:!max-w-[7.5rem] max-sm:!text-xs`}><option value="all">All Categories</option>{categories.map(category => <option key={category.id} value={category.id} data-i18n-ignore="true">{category.name}</option>)}</select>
+          <select aria-label="Sort stock" value={sort} onChange={event => { setSort(event.target.value); setPage(1); }} className={`${styles.desktopOnly} ${selectClass} !w-auto shrink-0 max-sm:!w-[6.5rem] max-sm:!text-xs`}><option value="newest">Sort: Newest</option><option value="oldest">Sort: Oldest</option><option value="name">Sort: Name</option><option value="stock">Sort: Stock</option><option value="price">Sort: Price</option></select>
+          <label className={`${styles.compactOnly} ${styles.pill}`} data-active={categoryId !== "all"}><SlidersHorizontal size={15} /><span>{translateLabel("Filter")}</span><select aria-label={translateLabel("Category")} value={categoryId} onChange={event => { setCategoryId(event.target.value); setPage(1); }}><option value="all">{translateLabel("All Categories")}</option>{categories.map(category => <option key={category.id} value={category.id} data-i18n-ignore="true">{category.name}</option>)}</select></label>
+          <label className={`${styles.compactOnly} ${styles.pill}`}><ArrowUpDown size={15} /><span>{translateLabel("Sort")}</span><select aria-label={translateLabel("Sort stock")} value={sort} onChange={event => { setSort(event.target.value); setPage(1); }}><option value="newest">{translateLabel("Newest")}</option><option value="oldest">{translateLabel("Oldest")}</option><option value="name">{translateLabel("Name")}</option><option value="stock">{translateLabel("Stock")}</option><option value="price">{translateLabel("Price")}</option></select></label>
+          <span className={`${styles.desktopOnly} contents max-sm:hidden`}><AnchoredActionMenu label="Customize Columns">{(Object.keys(visibleColumns) as ColumnKey[]).map(key => <label key={key} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-sm"><input type="checkbox" checked={visibleColumns[key]} onChange={event => setVisibleColumns(current => ({ ...current, [key]: event.target.checked }))} /><span className="capitalize">{key === "cost" ? "Unit Cost" : key}</span></label>)}</AnchoredActionMenu></span>
+          {selectedRows.length > 0 && <div className={`${styles.bulkActions} contents`}><AnchoredActionMenu label={`Actions (${selectedRows.length})`}>
             <button type="button" disabled={!canDisable || busy} onClick={() => setConfirmation({ kind: "delete", ids: selectedRows.map(row => row.id) })} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-red-600 disabled:opacity-45"><Trash2 size={14} />Delete selected</button>
             <button type="button" disabled={!canDisable || busy} onClick={() => setConfirmation({ kind: "hide", ids: selectedRows.map(row => row.id) })} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-45"><EyeOff size={14} />Hide selected</button>
-            <button type="button" disabled={!canAdjustStock || busy} onClick={() => { try { router.push(stockAdjustmentLink(selectedRows.map(row => row.id), defaultBranchId, selectedRows.length > 30 ? sessionStorage : undefined)); } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to open stock adjustment."); } }} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-45"><SlidersHorizontal size={14} />Adjust stock — {selectedRows.length} items</button>
-          </AnchoredActionMenu>}
+            <button type="button" disabled={!canAdjustStock || busy} onClick={adjustSelectedStock} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-45"><SlidersHorizontal size={14} />Adjust stock — {selectedRows.length} items</button>
+          </AnchoredActionMenu></div>}
         </div>
 
-        {/* Phones: rows render as product-style cards (CSS only). */}
-        <p className="pb-2 pt-4 text-sm text-slate-500 sm:hidden">{filtered.length} items</p>
-        <div className="overflow-x-auto max-sm:overflow-visible max-sm:pb-24">
-          <table data-phone-layout="custom" className="w-full min-w-[840px] text-sm max-sm:block max-sm:min-w-0">
+        <p className={styles.recordCount}>{filtered.length} items</p>
+        <div className={`${styles.stockTableWrap} overflow-x-auto max-sm:overflow-visible max-sm:pb-24`}>
+          <table data-phone-layout="custom" className={`${styles.stockTable} w-full min-w-[840px] text-sm max-sm:block max-sm:min-w-0`}>
             <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 max-sm:hidden">
               <tr>
                 <th className="w-10 px-4 py-3"><input type="checkbox" aria-label="Select products on this page" disabled={busy} checked={paginated.length > 0 && paginated.every(row => selectedIds.has(row.id))} onChange={() => setSelectedIds(current => { const next = new Set(current); const all = paginated.every(row => next.has(row.id)); paginated.forEach(row => all ? next.delete(row.id) : next.add(row.id)); return next; })} /></th>
@@ -396,7 +406,7 @@ export default function InventoryClient({ products, categories, locations, locat
           </table>
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+        <div className={`${styles.pagination} flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between`}>
           <span>
             Showing {filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filtered.length)} of {filtered.length} products
           </span>
@@ -423,7 +433,7 @@ export default function InventoryClient({ products, categories, locations, locat
         </div>
       </section>
 
-      <aside aria-label="Stock insights" className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-1">
+      <aside aria-label="Stock insights" className={`${styles.insights} grid gap-3 sm:grid-cols-2 2xl:grid-cols-1`}>
         <section className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Bell size={17} className="text-teal-700" />Low stock alerts</h3>
@@ -462,11 +472,13 @@ export default function InventoryClient({ products, categories, locations, locat
       </aside>
       </div>
 
+      {canAdjustStock && <div className={`${styles.compactOnly} ${styles.bottomAction}`}><button type="button" disabled={busy} onClick={adjustSelectedStock}><SlidersHorizontal size={18} />{translateLabel("Adjust Stock")}</button></div>}
       {selectedProduct && (
         <InventoryDetailDrawer
           product={selectedProduct}
           branchRows={selectedBranchRows}
           selectedLocationId={locationId}
+          canAdjustStock={canAdjustStock}
           onClose={() => setSelectedProductId(null)}
         />
       )}
@@ -498,10 +510,12 @@ function InventoryRow({
 
   return (
     <tr
-      className={`cursor-pointer transition hover:bg-blue-50/50 max-sm:relative max-sm:grid max-sm:grid-cols-4 max-sm:gap-x-2 max-sm:gap-y-1 max-sm:rounded-2xl max-sm:border max-sm:border-slate-200 max-sm:bg-white max-sm:p-3 max-sm:shadow-sm ${selected ? "bg-blue-50/70" : ""}`}
+      data-selected={selected}
+      className={`${styles.stockRow} cursor-pointer transition hover:bg-blue-50/50 max-sm:relative max-sm:grid max-sm:grid-cols-4 max-sm:gap-x-2 max-sm:gap-y-1 max-sm:rounded-2xl max-sm:border max-sm:border-slate-200 max-sm:bg-white max-sm:p-3 max-sm:shadow-sm ${selected ? "bg-blue-50/70" : ""}`}
       onClick={onSelect}
     >
-      <td className="px-4 py-3 max-sm:absolute max-sm:left-3 max-sm:top-3 max-sm:p-0" onClick={event => event.stopPropagation()}>
+      <td className={`${styles.stockCheckbox} px-4 py-3 max-sm:absolute max-sm:left-3 max-sm:top-3 max-sm:p-0`} onClick={event => event.stopPropagation()}>
+        <label className={styles.checkTarget}>
         <input
           type="checkbox"
           className="h-4 w-4 rounded border-slate-300"
@@ -510,8 +524,9 @@ function InventoryRow({
           onClick={(event) => event.stopPropagation()}
           aria-label={formatUiText(translateLabel("Select {0}"), [product.name])}
          data-i18n-ignore-attributes="aria-label"/>
+        </label>
       </td>
-      <td className="px-3 py-3 max-sm:col-span-3 max-sm:row-start-1 max-sm:min-w-0 max-sm:p-0 max-sm:pl-7">
+      <td className={`${styles.stockProduct} px-3 py-3 max-sm:col-span-3 max-sm:row-start-1 max-sm:min-w-0 max-sm:p-0 max-sm:pl-7`}>
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 max-sm:h-16 max-sm:w-16 max-sm:rounded-xl">
             {image ? (
@@ -521,20 +536,22 @@ function InventoryRow({
             )}
           </div>
           <div className="min-w-0">
-            <p className="break-words font-semibold text-slate-900 max-sm:text-[15px] max-sm:font-bold">
+            <p className={`${styles.desktopOnly} break-words font-semibold text-slate-900 max-sm:text-[15px] max-sm:font-bold`}>
               <span data-i18n-ignore="true">{product.name}</span><span data-i18n-ignore="true">{product.color ? ` - ${product.color}` : ""}</span><span data-i18n-ignore="true">{product.size ? ` / ${product.size}` : ""}</span>
             </p>
-            <p className="break-words text-xs text-slate-500">
+            <button type="button" className={`${styles.compactOnly} ${styles.rowName}`} onClick={event => { event.stopPropagation(); onSelect(); }} aria-label={formatUiText(translateLabel("View {0}"), [[product.name, product.color, product.size].filter(Boolean).join(" / ")])} data-i18n-ignore-attributes="aria-label"><span data-i18n-ignore="true">{product.name}</span></button>
+            <p className={`${styles.desktopOnly} break-words text-xs text-slate-500`}>
               {[product.color, product.size ? `Size ${product.size}` : null].filter(Boolean).join(" · ") || "Standard product"}
             </p>
+            <p className={`${styles.compactOnly} ${styles.variant}`} data-i18n-ignore={Boolean(product.color || product.size)}>{[product.color, product.size].filter(Boolean).join(" / ") || translateLabel("Standard product")}</p>
           </div>
         </div>
       </td>
       {visibleColumns.sku && <td className="px-3 py-3 text-slate-600 max-sm:col-span-3 max-sm:row-start-2 max-sm:break-all max-sm:p-0 max-sm:pl-[6.25rem] max-sm:text-[11px] max-sm:text-slate-400" data-i18n-ignore="true">{product.sku || "—"}</td>}
       {visibleColumns.category && <td className="px-3 py-3 text-slate-600 max-sm:col-span-3 max-sm:row-start-3 max-sm:break-words max-sm:p-0 max-sm:pl-[6.25rem] max-sm:text-xs">{product.categoryName}</td>}
-      {visibleColumns.stock && (
-        <td className="px-3 py-3 max-sm:row-start-4 max-sm:mt-2 max-sm:border-t max-sm:border-slate-100 max-sm:p-0 max-sm:pt-2 max-sm:before:content-['Stock'] max-sm:before:block max-sm:before:text-[11px] max-sm:before:font-normal max-sm:before:text-slate-500">
+        <td className={`${styles.stockQuantity} ${visibleColumns.stock ? "" : styles.compactOnly} px-3 py-3 max-sm:row-start-4 max-sm:mt-2 max-sm:border-t max-sm:border-slate-100 max-sm:p-0 max-sm:pt-2 max-sm:before:content-['Stock'] max-sm:before:block max-sm:before:text-[11px] max-sm:before:font-normal max-sm:before:text-slate-500`}>
           <div className="w-28 max-sm:w-full">
+            <span className={`${styles.compactOnly} ${styles.quantityLabel}`}>{translateLabel("Stock quantity")}</span>
             <span className={`font-bold ${product.displayStatus === "in" ? "text-emerald-700" : "text-red-600"}`}>{product.displayStock}</span>
             <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200">
               <div
@@ -544,16 +561,13 @@ function InventoryRow({
             </div>
           </div>
         </td>
-      )}
       {visibleColumns.threshold && <td className="px-3 py-3 text-slate-600 max-sm:row-start-4 max-sm:mt-2 max-sm:border-t max-sm:border-slate-100 max-sm:p-0 max-sm:pt-2 max-sm:font-bold max-sm:text-slate-900 max-sm:before:content-['Threshold'] max-sm:before:block max-sm:before:text-[11px] max-sm:before:font-normal max-sm:before:text-slate-500">{product.displayThreshold}</td>}
       {visibleColumns.cost && <td className="px-3 py-3 font-medium text-slate-700 max-sm:row-start-4 max-sm:mt-2 max-sm:border-t max-sm:border-slate-100 max-sm:p-0 max-sm:pt-2 max-sm:font-bold max-sm:text-slate-900 max-sm:before:content-['Unit_Cost'] max-sm:before:block max-sm:before:text-[11px] max-sm:before:font-normal max-sm:before:text-slate-500">{money(Number(product.cost_price || 0))}</td>}
       {visibleColumns.value && <td className="px-3 py-3 font-semibold text-slate-800 max-sm:row-start-4 max-sm:mt-2 max-sm:border-t max-sm:border-slate-100 max-sm:p-0 max-sm:pt-2 max-sm:font-bold max-sm:text-slate-900 max-sm:before:content-['Value'] max-sm:before:block max-sm:before:text-[11px] max-sm:before:font-normal max-sm:before:text-slate-500">{money(value)}</td>}
-      {visibleColumns.status && (
-        <td className="px-3 py-3 max-sm:col-start-4 max-sm:row-start-2 max-sm:row-span-2 max-sm:justify-self-end max-sm:whitespace-nowrap max-sm:p-0">
+        <td className={`${styles.stockStatus} ${visibleColumns.status ? "" : styles.compactOnly} px-3 py-3 max-sm:col-start-4 max-sm:row-start-2 max-sm:row-span-2 max-sm:justify-self-end max-sm:whitespace-nowrap max-sm:p-0`}>
           <StatusBadge status={product.displayStatus} />
         </td>
-      )}
-      <td className="px-3 py-3 text-center max-sm:col-start-4 max-sm:row-start-1 max-sm:justify-self-end max-sm:p-0" onClick={(event) => event.stopPropagation()}>
+      <td className={`${styles.rowMenu} px-3 py-3 text-center max-sm:col-start-4 max-sm:row-start-1 max-sm:justify-self-end max-sm:p-0`} onClick={(event) => event.stopPropagation()}>
         {actions}
       </td>
     </tr>
@@ -564,6 +578,7 @@ function InventoryDetailDrawer({
   product,
   branchRows,
   selectedLocationId,
+  canAdjustStock,
   onClose,
 }: {
   product: ResolvedProduct;
@@ -576,8 +591,10 @@ function InventoryDetailDrawer({
     status: "in" | "low" | "out";
   }>;
   selectedLocationId: string;
+  canAdjustStock: boolean;
   onClose: () => void;
 }) {
+  const { t: translateLabel } = useLanguage();
   const image = product.variant_image_url || product.image_url;
   const value = product.displayStock * Number(product.cost_price || 0);
   const updated = product.updated_at
@@ -585,7 +602,7 @@ function InventoryDetailDrawer({
     : "—";
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/20" onMouseDown={onClose}>
+    <ProductStockDrawer label={formatUiText(translateLabel("{0} details"), [product.name])} close={onClose} desktopClassName="fixed inset-0 z-50 flex justify-end bg-slate-950/20">
       <aside
         className="h-full w-full max-w-[520px] overflow-y-auto border-l border-slate-200 bg-white shadow-2xl"
         onMouseDown={(event) => event.stopPropagation()}
@@ -595,7 +612,7 @@ function InventoryDetailDrawer({
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">Inventory detail</p>
             <h2 className="mt-1 text-xl font-bold text-slate-950" data-i18n-ignore="true">{product.name}</h2>
           </div>
-          <button type="button" onClick={onClose} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
+          <button type="button" onClick={onClose} aria-label={translateLabel("Close dialog")} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
             <X size={18} />
           </button>
         </div>
@@ -663,17 +680,17 @@ function InventoryDetailDrawer({
             </div>
           </section>
 
-          <div className="grid grid-cols-2 gap-3 pb-4">
+          <div className={`${styles.detailActions} grid grid-cols-2 gap-3 pb-4`}>
             <Link href={`/dashboard/products/${product.id}/edit`} className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 font-semibold text-slate-700 hover:bg-slate-50">
               Edit Product
             </Link>
-            <Link href={`/dashboard/inventory/adjustments?product=${product.id}`} className="inline-flex h-11 items-center justify-center rounded-xl bg-teal-700 font-semibold text-white hover:bg-teal-800">
+            <Link href={`/dashboard/inventory/adjustments?product=${product.id}`} className={`${canAdjustStock ? "" : styles.desktopOnly} inline-flex h-11 items-center justify-center rounded-xl bg-teal-700 font-semibold text-white hover:bg-teal-800`}>
               Adjust Stock
             </Link>
           </div>
         </div>
       </aside>
-    </div>
+    </ProductStockDrawer>
   );
 }
 

@@ -1,0 +1,75 @@
+.touchOnly { display: none; }
+
+/* Width-based rules keep web tablets independent of the shared portrait variants. */
+@media (max-width: 1199px) {
+  .workspace { padding-bottom: 0; }
+  .workspace > * { margin-block: 0 !important; }
+  .desktopOnly, .desktopHeader, .optionalClosed { display: none !important; }
+  .touchOnly { display: block; }
+  .touchHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 16px; }
+  .touchHeader > span { max-width: 45%; }
+  .touchHeader > span > span { overflow-wrap: anywhere; }
+  .layout { display: block; }
+  .detailsSection { border: 0 !important; background: transparent !important; box-shadow: none; }
+  .form { padding: 0; }
+  .fieldset { display: flex; flex-direction: column; gap: 16px; }
+  .fieldset > * { margin-block: 0 !important; min-width: 0; }
+  .productsPanel { display: block; padding: 12px; border: 1px solid #e2e8f0; border-radius: 14px; background: var(--workspace-panel); }
+  .productSelection { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .picker { position: static; }
+  .pickerTrigger { min-height: 44px; width: auto; gap: 0; border: 0; padding: 0 6px; background: transparent; font-size: 12px; font-weight: 600; color: var(--app-accent); }
+  .pickerTrigger > :not(.touchOnly) { display: none; }
+  .productsPanel { position: relative; }
+  .picker > div { position: fixed; inset: 12px 12px auto; width: auto; max-width: 640px; max-height: calc(100dvh - 24px); margin: 0 auto; overflow-y: auto; }
+  .picker button, .picker input, .picker select { min-height: 44px; }
+  .selectedRows { margin-top: 8px; display: grid; gap: 8px; }
+  .productRow { position: relative; min-width: 0; }
+  .productSummary { display: flex; align-items: center; gap: 10px; padding: 10px 44px 10px 10px; cursor: pointer; list-style: none; }
+  .productSummary::-webkit-details-marker { display: none; }
+  .productSummary:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; border-radius: 12px; }
+  .removeRow { position: absolute; top: 14px; right: 0; display: grid; place-items: center; height: 44px; width: 44px; border-radius: 8px; }
+  .rowEditor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .65fr); gap: 10px; padding: 0 10px 10px; }
+  .bulk { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .segments { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .segments button { min-width: 0; gap: 5px; padding: 10px 4px; border-bottom: 0; border-right: 1px solid var(--workspace-border, #e2e8f0); font-size: 13px; }
+  .segments button:last-child { border-right: 0; }
+  .segments svg { width: 15px; flex-shrink: 0; }
+  .bulkQuantity { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; align-items: center; }
+  .bulkQuantity > span { grid-column: 1 / -1; margin: 0; }
+  .apply { height: 48px; margin: 0; font-size: 13px; }
+  .reasonFields { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .optionalToggle { display: flex; align-items: center; gap: 8px; min-height: 48px; }
+  .optionalToggle > span { flex: 1; }
+  .previewGrid { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, minmax(40px, .26fr)); gap: 6px; align-items: center; }
+  .previewGrid > :not(:first-child) { text-align: center; overflow-wrap: anywhere; }
+  [class~="dark"] .preview, [class~="dark"] .apply { background: color-mix(in srgb, var(--app-accent) 12%, var(--workspace-panel)); border-color: #334155; }
+  .recentLink { display: inline-flex; }
+  /* In-flow actions reserve their own space, including when the keyboard opens. */
+  .actionBar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px !important; padding: 12px 12px max(12px, env(safe-area-inset-bottom)); border-radius: 14px; }
+  .actionBar button { flex: 0 1 66%; }
+  .form input, .form select, .form textarea { scroll-margin-block: 24px; font-size: 16px; }
+  .history[data-open="false"] { display: none; }
+  .history[data-open="true"] { position: fixed; inset: 0; z-index: 50; display: block; overflow-y: auto; border-radius: 0; padding-top: max(56px, env(safe-area-inset-top)); padding-bottom: env(safe-area-inset-bottom); }
+  .historyClose { display: grid; }
+  .history input, .history button, .history select { min-height: 44px; }
+}
+
+@media (min-width: 760px) and (max-width: 1199px) and (min-height: 520px) {
+  /* Independent columns avoid stretching controls when many products are selected. */
+  .fieldset { display: flow-root; }
+  .fieldset > * { width: calc(50% - 10px); margin-left: calc(50% + 10px) !important; margin-bottom: 16px !important; }
+  .fieldset > input { display: none; }
+  .fieldset > .productsPanel { float: left; margin-left: 0 !important; margin-bottom: 0 !important; }
+  .fieldset > :last-child { margin-bottom: 0 !important; }
+  .selectedRows { max-height: min(65dvh, 650px); overflow-y: auto; }
+  .form > p, .recentLink { margin-left: calc(50% + 10px); }
+  .actionBar button { flex-basis: 40%; }
+}
+
+@media (max-width: 359px) {
+  .productSummary { gap: 6px; }
+  .productSummary > div:first-child { width: 36px; height: 36px; }
+  .segments button { font-size: 12px; }
+  .segments svg { display: none; }
+  .previewGrid { grid-template-columns: minmax(0, 1fr) repeat(3, 38px); gap: 3px; }
+}
