@@ -43,3 +43,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local audit evidence and Supabase CLI temp (never publish)
+/docs/evidence/
+/supabase/.temp/
