@@ -48,6 +48,7 @@ function workspace(overrides = {}) {
       if (name==='tenh_pos_checkout_status') return {data:overrides.savedSale??null,error:null};
       if (name==='tenh_save_currency_format') return {data:{},error:null};
       if (name==='tenh_pos_catalog_scoped') return {data:structuredClone(catalog),error:null};
+      if (name==='tenh_pos_barcode_aliases') {if(overrides.aliasMissing)throw Error('Alias RPC is absent');return {data:overrides.aliasMalformed?null:[],error:null};}
       if (name==='tenh_pos_receipt_update_ready') return {data:true,error:null};
       if (name==='tenh_pos_checkout_registered') {
         if (overrides.transport) throw new Error('connection lost');
@@ -67,6 +68,7 @@ function workspace(overrides = {}) {
     '@/lib/auth/require-permission':{requirePermission:async()=>business},
     '@/lib/auth/effective-permissions':{businessHasPermission:async()=>true},
     '@/lib/currency-format':loadTs('lib/currency-format.ts'),
+    '@/lib/barcode/require-contract':{barcodeCapability:async()=>overrides.barcodeState??(overrides.preservation?'ready':'legacy')},
     '@/lib/promotions/pricing':loadTs('lib/promotions/pricing.ts'),
     '@/lib/supabase/branch-server':{createClient:async()=>{dbCreated++;return db;}},
     '@/lib/receipts/load-receipt-context':{loadReceiptContext:async()=>{if(overrides.receiptError)throw Error('Printer settings unavailable');return {source:'unchanged'};}},
@@ -88,6 +90,13 @@ test('catalog uses operating-branch drawer, even when the catalog returns anothe
   assert.deepEqual(result.data.holds.map(h=>h.id),['here']);assert.deepEqual(result.data.products.map(p=>p.id),['shirt']);
   const query=tables.find(t=>t.table==='cash_register_shifts');
   for(const filter of [['eq','business_id',B],['eq','location_id',A],['eq','status','open'],['limit',2]]) assert.ok(query.steps.some(s=>JSON.stringify(s)===JSON.stringify(filter)));
+});
+test('default-off POS opens without the unapplied barcode schema or alias RPC',async()=>{
+ const {api,rpcCalls}=workspace({preservation:false,aliasMissing:true});const result=await api.loadPosWorkspace(B,A);assert.equal(result.success,true,result.message);
+ assert.ok(!rpcCalls.some(call=>['tenh_barcode_contract_ready','tenh_pos_barcode_aliases'].includes(call.name)));
+});
+test('enabled unavailable or failed aliases keep POS open with barcode scanning disabled',async()=>{
+ for(const override of [{barcodeState:'unavailable',aliasMissing:true},{barcodeState:'ready',aliasMissing:true},{barcodeState:'ready',aliasMalformed:true}]){const {api}=workspace(override);const result=await api.loadPosWorkspace(B,A);assert.equal(result.success,true,result.message);assert.equal(result.data.barcodeScanning,'unavailable');assert.ok(result.data.products.length>0);}
 });
 test('closed/missing operating drawer overrides stale catalog drawer with null', async()=>{
   const {api}=workspace({shifts:[]});const r=await api.loadPosWorkspace(B,A);assert.equal(r.success,true);assert.equal(r.data.shift,null);

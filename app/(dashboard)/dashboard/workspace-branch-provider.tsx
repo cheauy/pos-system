@@ -14,7 +14,7 @@ import { useActivity } from '@/components/ui/activity-link';
 import FixedWorkspaceHeader from '@/components/ui/fixed-workspace-header';
 
 type Guard=(targetId?:string)=>string|null;
-type SwitchContext={requestSwitch:(id:string)=>Promise<void>;registerGuard:(guard:Guard)=>()=>void};
+type SwitchContext={branchId:string;changing:boolean;requestSwitch:(id:string)=>Promise<void>;registerGuard:(guard:Guard)=>()=>void};
 const Context=createContext<SwitchContext|null>(null);
 export function useWorkspaceBranch() {
   const context=useContext(Context);
@@ -112,7 +112,7 @@ export default function WorkspaceBranchProvider(p:Props) {
     window.location.assign(branchDestination(pathname));
   }
   const page=workspacePage(pathname);
-  return <Context.Provider value={{requestSwitch,registerGuard}}>
+  return <Context.Provider value={{branchId:p.branchId,changing:busy||Boolean(stale),requestSwitch,registerGuard}}>
     <div ref={content} inert={busy || Boolean(stale)} onInputCapture={()=>{dirty.current=true;}} onChangeCapture={()=>{dirty.current=true;}}>
       <FixedWorkspaceHeader><div className="workspace-header flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 md:ml-16 dark:border-slate-800 dark:bg-slate-900" data-workspace-branch-header>
         <div className="flex min-w-0 flex-1 items-center gap-3"><button type="button" aria-label="Open dashboard navigation" aria-haspopup="dialog" onClick={()=>window.dispatchEvent(new Event('tenh:open-navigation'))} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-700 dark:border-slate-700 dark:text-slate-200 md:hidden"><Menu size={22}/></button><Store size={22} className="hidden shrink-0 text-blue-600 xl:block"/><div className="min-w-0"><p className="truncate text-[10px] font-bold uppercase tracking-widest text-blue-600"><span className="xl:hidden" data-i18n-ignore="true">{p.businessName}</span><span className="hidden xl:inline">TENH POS workspace</span></p><p title={page.title} className="truncate font-bold text-slate-900 dark:text-white"><span className="xl:hidden">{page.title}</span><span className="hidden xl:inline" data-i18n-ignore="true">{p.businessName}</span></p></div></div>

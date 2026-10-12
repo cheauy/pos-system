@@ -1,12 +1,15 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Node CommonJS test harness. */
 const test=require('node:test'),assert=require('node:assert/strict');
 const React=require('react'),{renderToStaticMarkup}=require('react-dom/server');
 const {loadTs}=require('./helpers/load-ts.cjs');
 const model=loadTs('lib/receipts/receipt-model.ts');
 const contact=loadTs('lib/orders/order-contact.ts');
 const barcode=loadTs('lib/barcode/code39.ts');
+const productLabels=loadTs('lib/barcode/product-label.ts',{'./code39':barcode,'./code128':loadTs('lib/barcode/code128.ts')});
 let language='en';
 const translations=loadTs('lib/i18n/translations.ts');
 const shared={'@/components/providers/language-provider':{useLanguage:()=>({language,t:text=>translations.translateUiText(text,language)})},'react/jsx-runtime':require('react/jsx-runtime'),react:React,'lucide-react':require('lucide-react'),'@/lib/receipts/receipt-model':model,'@/lib/barcode/code39':barcode,'@/lib/printing/prepare-print':loadTs('lib/printing/prepare-print.ts', {'@/lib/receipts/shipping-layout':loadTs('lib/receipts/shipping-layout.ts')})};
+shared['@/lib/barcode/product-label']=productLabels;
 const receipt=loadTs('components/receipts/pos-receipt.tsx',{...shared,'@/app/(dashboard)/dashboard/pos/pos-workspace-helpers':{money:v=>Number(v).toFixed(2)},'./pos-receipt.module.css':{default:new Proxy({},{get:(_,key)=>String(key)})}}).PosReceipt;
 const label=loadTs('app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx',{...shared,'@/lib/i18n/translations':translations,'@/components/product-picker':{default:()=>null}}).LabelCard;
 const layout=loadTs('lib/receipts/shipping-layout.ts');

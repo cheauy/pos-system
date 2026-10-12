@@ -20,6 +20,7 @@ export type GlobalSearchResult = {
   status: string | null;
   createdAt: string | null;
   amount: number | null;
+  imageUrl?: string | null;
   details: Array<{ label: string; value: string }>;
 };
 
@@ -33,8 +34,13 @@ export type GlobalSearchResponse = {
   results: GlobalSearchResult[];
   branches: GlobalSearchBranch[];
   warnings: string[];
+  scanResolution?: 'unique-order' | 'ambiguous' | 'product' | 'not-found';
 };
 
 export type GlobalSearchInput = {
+  expectedBranchId?: string;
   query: string;
+  orderQr?: string;
+  productBarcode?: string;
+  linearBarcode?: string;
 };

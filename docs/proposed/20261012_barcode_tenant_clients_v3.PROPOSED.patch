@@ -22,7 +22,7 @@ diff --git a/lib/supabase/admin.ts b/lib/supabase/admin.ts
 diff --git a/app/(dashboard)/dashboard/products/actions.ts b/app/(dashboard)/dashboard/products/actions.ts
 --- a/app/(dashboard)/dashboard/products/actions.ts
 +++ b/app/(dashboard)/dashboard/products/actions.ts
-@@ -12,7 +12,7 @@ import { createAuditLog } from "@/lib/audit/create-audit-log";
+@@ -15,7 +15,7 @@ import { createAuditLog } from "@/lib/audit/create-audit-log";
  import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
  import { createClient } from "@/lib/supabase/branch-server";
  import { getBranchContext } from "@/lib/branches/context";
@@ -31,7 +31,7 @@ diff --git a/app/(dashboard)/dashboard/products/actions.ts b/app/(dashboard)/das
  import {
    requirePermission,
  } from "@/lib/auth/require-permission";
-@@ -57,7 +57,7 @@ async function assertCategoryBelongsToBusiness(
+@@ -60,7 +60,7 @@ async function assertCategoryBelongsToBusiness(
  ) {
    if (!categoryId) return;
  
@@ -40,12 +40,12 @@ diff --git a/app/(dashboard)/dashboard/products/actions.ts b/app/(dashboard)/das
      .from("categories")
      .select("id")
      .eq("id", categoryId)
-@@ -1442,14 +1442,14 @@ export async function createVariantProduct(
+@@ -1453,14 +1453,14 @@ export async function createVariantProduct(
  
-   const barcodeError = checkProductBarcodes(variants.map(variant => variant.barcode || variant.sku));
+   const barcodeError = checkProductBarcodes(variants.map(variant => variant.barcode), undefined, preservation);
    if (barcodeError) return { success: false, message: barcodeError };
--  const barcodeCheck = await supabaseAdmin.from("products").select("id").eq("business_id", business.id).in("barcode", variants.map(variant => variant.barcode || variant.sku)).limit(1);
-+  const barcodeCheck = await createBusinessAdminClient(business.id).from("products").select("id").eq("business_id", business.id).in("barcode", variants.map(variant => variant.barcode || variant.sku)).limit(1);
+-  const barcodeCheck = await supabaseAdmin.from("products").select("id").eq("business_id", business.id).in("barcode", variants.map(variant => variant.barcode)).limit(1);
++  const barcodeCheck = await createBusinessAdminClient(business.id).from("products").select("id").eq("business_id", business.id).in("barcode", variants.map(variant => variant.barcode)).limit(1);
    if (barcodeCheck.error || barcodeCheck.data?.length) return { success: false, message: barcodeCheck.error?.message ?? "A barcode is already used by another product." };
    const supabase = await createClient();
    const { data: { user } } = await supabase.auth.getUser();
@@ -57,7 +57,7 @@ diff --git a/app/(dashboard)/dashboard/products/actions.ts b/app/(dashboard)/das
      .from("products")
      .select("sku")
      .eq("business_id", business.id)
-@@ -1549,7 +1549,7 @@ export async function createVariantProduct(
+@@ -1560,7 +1560,7 @@ export async function createVariantProduct(
      is_online: isOnline,
    }));
  
@@ -66,16 +66,16 @@ diff --git a/app/(dashboard)/dashboard/products/actions.ts b/app/(dashboard)/das
      .from("products")
      .insert(rows)
      .select("id, name, sku");
-@@ -1714,7 +1714,7 @@ export async function createConfigurableProduct(
-   const { data: { user } } = await supabase.auth.getUser();
+@@ -1726,7 +1726,7 @@ export async function createConfigurableProduct(
    if (!user) redirect("/login");
  
+   if (await barcodeCapability(supabase) === 'unavailable') return { success: false, message: BARCODE_UNAVAILABLE };
 -  const { data: existingSku, error: skuError } = await supabaseAdmin
 +  const { data: existingSku, error: skuError } = await createBusinessAdminClient(business.id)
      .from("products")
      .select("id")
      .eq("business_id", business.id)
-@@ -1746,7 +1746,7 @@ export async function createConfigurableProduct(
+@@ -1758,7 +1758,7 @@ export async function createConfigurableProduct(
        .getPublicUrl(uploadedImagePath).data.publicUrl;
    }
  
@@ -84,7 +84,7 @@ diff --git a/app/(dashboard)/dashboard/products/actions.ts b/app/(dashboard)/das
      .from("products")
      .insert({
        owner_id: user.id,
-@@ -1777,7 +1777,7 @@ export async function createConfigurableProduct(
+@@ -1789,7 +1789,7 @@ export async function createConfigurableProduct(
    try {
      for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
        const group = groups[groupIndex];
@@ -93,7 +93,7 @@ diff --git a/app/(dashboard)/dashboard/products/actions.ts b/app/(dashboard)/das
          .from("product_option_groups")
          .insert({
            business_id: business.id,
-@@ -1796,7 +1796,7 @@ export async function createConfigurableProduct(
+@@ -1808,7 +1808,7 @@ export async function createConfigurableProduct(
          throw new Error(groupError?.message ?? "Unable to create option group.");
        }
  
@@ -102,7 +102,7 @@ diff --git a/app/(dashboard)/dashboard/products/actions.ts b/app/(dashboard)/das
          .from("product_options")
          .insert(
            group.options.map((option, optionIndex) => ({
-@@ -1813,7 +1813,7 @@ export async function createConfigurableProduct(
+@@ -1825,7 +1825,7 @@ export async function createConfigurableProduct(
        if (optionsError) throw new Error(optionsError.message);
      }
    } catch (error) {
@@ -111,7 +111,7 @@ diff --git a/app/(dashboard)/dashboard/products/actions.ts b/app/(dashboard)/das
      if (uploadedImagePath) {
        await supabaseAdmin.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploadedImagePath]);
      }
-@@ -2097,7 +2097,7 @@ async function saveEditedProductGroup(
+@@ -2113,7 +2113,7 @@ async function saveEditedProductGroup(
    }
    if (gallery !== null) {
      // Storefront reads the shared catalog; only explicit gallery edits change its media.
@@ -120,16 +120,16 @@ diff --git a/app/(dashboard)/dashboard/products/actions.ts b/app/(dashboard)/das
        .eq("business_id", business.id).in("id", batchRows.map(row => row.id));
      if (mediaError) return { success: false, refreshRequired: true, message: `Variant changes were saved, but the online store photos were not updated (${mediaError.message}). Reload, then save the gallery again.` };
    }
-@@ -2109,7 +2109,7 @@ async function saveEditedProductGroup(
+@@ -2125,7 +2125,7 @@ async function saveEditedProductGroup(
          : variant.imageAction === "upload" ? uploadedUrls.get(variant.imageSlot!)!
          : null;
        if (!supportsVariants) throw new Error("This product does not support adding variants.");
 -      const { data: created, error } = await supabaseAdmin.from("products").insert({
 +      const { data: created, error } = await createBusinessAdminClient(business.id).from("products").insert({
          owner_id: userId, business_id: business.id, category_id: categoryId, name,
-         sku: variant.sku, barcode: variant.barcode || variant.sku, size: variant.size, color: variant.color,
+         sku: variant.sku, barcode: barcodes[variantIndex], size: variant.size, color: variant.color,
          image_url: newImageUrl, image_urls: gallery ?? current[0]?.image_urls ?? [], variant_image_url: variantImage, description,
-@@ -2145,13 +2145,13 @@ async function initialProductBranch(businessId:string,form:FormData){
+@@ -2161,13 +2161,13 @@ async function initialProductBranch(businessId:string,form:FormData){
  
  async function assignCreatedProducts(businessId:string,branchId:string,ids:string[]):Promise<string>{
   try{

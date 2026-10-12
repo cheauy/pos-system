@@ -7,7 +7,7 @@ import { preparePrint } from '@/lib/printing/prepare-print';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, FileDown, Minus, Plus, Printer, X } from "lucide-react";
 
-import { code39BarsExact, validateCode39 } from "@/lib/barcode/code39";
+import { productLabelGeometry, validateProductLabel } from "@/lib/barcode/product-label";
 import ProductPicker, { type PromotionProduct } from "@/components/product-picker";
 
 type Product = {
@@ -76,11 +76,13 @@ export default function BarcodeLabelsClient({
   products,
   categories,
   settings,
+  barcodePreservation = false,
 }: {
   businessName: string;
   products: Product[];
   categories: Category[];
   settings: Record<string, unknown>;
+  barcodePreservation?: boolean;
 }) {
   const { t: translateLabel } = useLanguage();
 
@@ -121,9 +123,10 @@ export default function BarcodeLabelsClient({
 
   const selectedProducts = useMemo(() => { const ids = new Set(selected); return products.filter((product) => ids.has(product.id)); }, [products, selected]);
   const barcodeErrors = useMemo(() => showElements.barcode ? selectedProducts.flatMap(product => {
-    const error = validateCode39(labelBarcode(product));
+    let error = validateProductLabel(labelBarcode(product), barcodePreservation);
+    if (!error) try { productLabelGeometry(labelBarcode(product), labelSize, Boolean(showElements.image && (product.variant_image_url ?? product.image_url)), false, barcodePreservation); } catch (failure) { error = failure instanceof Error ? failure.message : 'Barcode geometry is unavailable.'; }
     return error ? [`${product.name}: ${error}`] : [];
-  }) : [], [selectedProducts, showElements.barcode]);
+  }) : [], [selectedProducts, showElements.barcode, showElements.image, labelSize, barcodePreservation]);
 
   const currentPreview =
     selectedProducts.length > 0
@@ -243,7 +246,7 @@ export default function BarcodeLabelsClient({
                 <div>
                   <div className="flex min-h-[240px] items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 p-6">
                     {currentPreview ? (
-                      <LabelCard fontSize={settings.font_size} density={settings.density} product={currentPreview} businessName={businessName} size={labelSize} templateId={templateId} elements={showElements} customText="" />
+                      <LabelCard barcodePreservation={barcodePreservation} fontSize={settings.font_size} density={settings.density} product={currentPreview} businessName={businessName} size={labelSize} templateId={templateId} elements={showElements} customText="" />
                     ) : (
                       <p className="text-sm text-slate-500">No product available for preview.</p>
                     )}
@@ -261,7 +264,7 @@ export default function BarcodeLabelsClient({
                   <div className="grid grid-cols-2 gap-2">
                     {(selectedProducts.length ? selectedProducts : filtered.slice(0, 8)).slice(0, 8).map((product) => (
                       <div key={product.id} className="origin-top-left scale-[0.55]">
-                        <LabelCard fontSize={settings.font_size} density={settings.density} product={product} businessName={businessName} size={labelSize} templateId={templateId} elements={showElements} customText="" />
+                        <LabelCard barcodePreservation={barcodePreservation} fontSize={settings.font_size} density={settings.density} product={product} businessName={businessName} size={labelSize} templateId={templateId} elements={showElements} customText="" />
                       </div>
                     ))}
                   </div>
@@ -288,17 +291,19 @@ export default function BarcodeLabelsClient({
       {printing && <p role="status" className="no-print text-sm text-slate-600">Preparing images and fonts…</p>}
       <div id="barcode-print-area" className="hidden print:block">
         {barcodeErrors.length === 0 && printSheet && printedLabels.map(({ product, key }) => (
-          <LabelCard fontSize={settings.font_size} density={settings.density} key={key} product={product} businessName={businessName} size={labelSize} templateId={templateId} elements={showElements} customText="" />
+          <LabelCard barcodePreservation={barcodePreservation} fontSize={settings.font_size} density={settings.density} key={key} product={product} businessName={businessName} size={labelSize} templateId={templateId} elements={showElements} customText="" />
         ))}
       </div>
 
       <style jsx global>{`
         @media print {
-          @page { margin: 4mm; }
+          @page { size: ${labelSize.split('x')[0]}mm ${labelSize.split('x')[1]}mm; margin: 0; }
+          html, body { width: ${labelSize.split('x')[0]}mm !important; min-width: ${labelSize.split('x')[0]}mm !important; }
           body * { visibility: hidden !important; }
           #barcode-print-area, #barcode-print-area * { visibility: visible !important; }
-          #barcode-print-area { display: flex !important; position: absolute; inset: 0 auto auto 0; flex-wrap: wrap; align-content: flex-start; gap: 2mm; }
-          .barcode-label { break-inside: avoid; page-break-inside: avoid; }
+          #barcode-print-area { display: block !important; position: absolute; inset: 0 auto auto 0; }
+          .barcode-label { break-inside: avoid; page-break-inside: avoid; break-after: page; margin: 0; }
+          .barcode-label:last-child { break-after: auto; }
         }
       `}</style>
     </main>
@@ -313,6 +318,7 @@ export function LabelCard({
   elements,
   customText,
   fontSize, density,
+  barcodePreservation = false,
 }: {
   product: Product;
   businessName: string;
@@ -321,13 +327,16 @@ export function LabelCard({
   elements: LabelElements;
   customText: string;
   fontSize?:unknown; density?:unknown;
+  barcodePreservation?: boolean;
 }) {
   const { t: translateLabel } = useLanguage();
 
   const value = labelBarcode(product);
-  const barcodeError = elements.barcode ? validateCode39(value) : null;
+  let barcodeError = elements.barcode ? validateProductLabel(value, barcodePreservation) : null;
+  let data;
+  if (elements.barcode && !barcodeError) try { data = productLabelGeometry(value, size, Boolean(elements.image && (product.variant_image_url ?? product.image_url)), Boolean(elements.customText && customText), barcodePreservation); } catch (failure) { barcodeError = failure instanceof Error ? failure.message : 'Barcode geometry is unavailable.'; }
   if (barcodeError) return <div role="alert" className="no-print rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"><span data-i18n-ignore="true">{product.name}</span>: {barcodeError} Saved barcode values are unchanged.</div>;
-  const data = elements.barcode ? code39BarsExact(value) : { text: value, bars: [], width: 0 };
+  data ??= { text: value, bars: [], width: 0, widthMm: 0, heightMm: 0 };
   const [width, height] = size.split("x").map(Number);
   const image = product.variant_image_url ?? product.image_url;
   const split = templateId === "price";
@@ -340,12 +349,12 @@ export function LabelCard({
     {elements.variant && <div style={{fontSize:9*textScale,lineHeight:1.2}} data-i18n-ignore="true">{[product.color,product.size].filter(Boolean).join(" / ")}</div>}
     {elements.sku && <div style={{fontSize:8*textScale,lineHeight:1.3,overflowWrap:"anywhere"}}>SKU: <span data-i18n-ignore="true">{product.sku || data.text}</span></div>}
   </div>;
-  return <div className="barcode-label border border-slate-200 bg-white text-black" style={{width:`${width}mm`,height:`${height}mm`,boxSizing:"border-box",padding:`${1.5*scale}mm`,display:"flex",flexDirection:"column",justifyContent:"space-between",gap:(density==="compact"?1:2)*scale,overflow:"hidden",textAlign:split?"left":"center",fontFamily:"Arial, sans-serif"}}>
+  return <div data-barcode-preservation={barcodePreservation ? "true" : undefined} className="barcode-label border border-slate-200 bg-white text-black" style={{width:`${width}mm`,height:`${height}mm`,boxSizing:"border-box",padding:`${1.5*scale}mm`,display:"flex",flexDirection:"column",justifyContent:"space-between",gap:(density==="compact"?1:2)*scale,overflow:"hidden",textAlign:split?"left":"center",fontFamily:"Arial, sans-serif"}}>
     <div style={{display:"flex",gap:5*scale,alignItems:"center"}}>
       {details}
       {split && elements.price && <div style={{borderLeft:"1px solid black",paddingLeft:5*scale,flexShrink:0}}><div style={{fontSize:7*textScale,letterSpacing:1}}>PRICE</div><div style={{fontSize:20*textScale,fontWeight:900,lineHeight:1.2}}>{money(product.selling_price)}</div></div>}
     </div>
-    {elements.barcode && <div style={{textAlign:"center",padding:"0 2mm"}}><svg shapeRendering="crispEdges" viewBox={`0 0 ${data.width} 44`} style={{width:"100%",height:`${(split?8:6)*scale}mm`,display:"block"}} preserveAspectRatio="none" aria-label={formatUiText(translateLabel("Barcode {0}"), [data.text])} data-i18n-ignore-attributes="aria-label">{data.bars.map((bar,index)=><rect key={index} x={bar.x} y="0" width={bar.width} height="44" fill="black"/>)}</svg><div style={{fontSize:8*textScale,letterSpacing:1,lineHeight:1.1}} data-i18n-ignore="true">{data.text}</div></div>}
+    {elements.barcode && <div style={{textAlign:"center",padding:"0 2mm",flexShrink:0}}><svg data-print-barcode="true" shapeRendering="crispEdges" viewBox={`0 0 ${data.width} 44`} style={{width:`${data.widthMm}mm`,maxWidth:"none",height:`${data.heightMm}mm`,display:"block",margin:"0 auto"}} preserveAspectRatio="none" aria-label={formatUiText(translateLabel("Barcode {0}"), [data.text])} data-i18n-ignore-attributes="aria-label"><rect width={data.width} height="44" fill="white"/>{data.bars.map((bar,index)=><rect key={index} x={bar.x} y="0" width={bar.width} height="44" fill="black"/>)}</svg><div style={{fontSize:8*textScale,lineHeight:1.1,overflowWrap:"anywhere"}} data-i18n-ignore="true">{data.text}</div></div>}
     {!split && elements.price && <div style={{fontSize:19*textScale,fontWeight:900,lineHeight:1}}>{money(product.selling_price)}</div>}
   </div>;
 }

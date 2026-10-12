@@ -390,7 +390,7 @@ export default function VariantProductForm({
   }
 
   function generateMissingBarcodes() {
-    setVariants(rows => rows.map(row => row.barcode.trim() ? row : { ...row, barcode: generateInternalBarcode() }));
+    setVariants(rows => rows.map(row => row.barcode !== "" ? row : { ...row, barcode: generateInternalBarcode() }));
   }
 
   function variantImage(variant: VariantRow) {

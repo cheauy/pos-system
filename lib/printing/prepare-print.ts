@@ -32,6 +32,7 @@ export function sizeReceiptPage(document:Document,receipt:HTMLElement){
 export async function preparePrint(document:Document,selector:string){
   const content=document.querySelector(selector);
   if(!content)throw new Error('Print preview is unavailable. Reload and try again.');
+  if(content.querySelectorAll('[data-print-barcode-error]').length)throw new Error('The order barcode is unavailable. Reload the saved order receipt before printing; the sale is already saved.');
   if(content.querySelectorAll('[data-print-image-error]').length)throw new Error('A print image could not load. Reload the preview before printing.');
   let timer:ReturnType<typeof setTimeout>|undefined;
   try{
@@ -46,7 +47,33 @@ export async function preparePrint(document:Document,selector:string){
   finally{clearTimeout(timer);}
   const receipt=content.matches?.('.receipt')?content:content.querySelector?.('.receipt');
   if(receipt)sizeReceiptPage(document,receipt as HTMLElement);
+  assertBarcodeLabelsFit(content);
   assertShippingLabelsFit(content);
+  // A previous receipt leaves an !important dynamic @page rule in the document.
+  // Product labels must use their own roll dimensions when printed afterwards.
+  if (!receipt && content.querySelector?.('.barcode-label')) document.getElementById?.('receipt-page-size')?.remove();
+}
+
+// Hidden label sheets need their actual mm layout measured before opening print.
+export function assertBarcodeLabelsFit(content: Element) {
+  const labels = [...content.querySelectorAll<HTMLElement>('.barcode-label[data-barcode-preservation="true"]')];
+  if (!labels.length) return;
+  const sheet = content as HTMLElement, prior = sheet.getAttribute('style');
+  try {
+    sheet.style.setProperty('display', 'block', 'important');
+    sheet.style.setProperty('visibility', 'hidden', 'important');
+    sheet.style.setProperty('position', 'absolute', 'important');
+    for (const label of labels) {
+      if (label.scrollHeight > label.clientHeight + 1 || label.scrollWidth > label.clientWidth + 1) throw new Error('Label content does not fit. Choose a larger label or hide optional details before printing.');
+      const bounds = label.getBoundingClientRect();
+      for (const barcode of label.querySelectorAll('[data-print-barcode]')) {
+        const rect = barcode.getBoundingClientRect();
+        if (!rect.width || rect.left < bounds.left || rect.right > bounds.right || rect.bottom > bounds.bottom) throw new Error('Barcode does not fit the label. Choose a larger label before printing.');
+      }
+    }
+  } finally {
+    if (prior === null) sheet.removeAttribute('style'); else sheet.setAttribute('style', prior);
+  }
 }
 
 /** Fit text, never scale/stretch the QR or change the physical paper dimensions. */

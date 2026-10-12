@@ -3,6 +3,7 @@ import type { CurrencyFormat } from '@/lib/currency-format';
 import type { Campaign } from '@/lib/promotions/pricing';
 export type Product = {
   id: string; name: string; sku: string | null; barcode: string | null;
+  barcodeAliases?: string[];
   image_url: string | null; variant_image_url: string | null;
   selling_price: number; stock_quantity: number; low_stock_quantity: number;
   category_id: string | null; size: string | null; color: string | null;
@@ -28,6 +29,7 @@ export type CartDraft = { couponCode?: string; branchId: string; customerId: str
 export type HeldOrder = { id: string; label: string; version: number; created_at: string; updated_at: string; draft: CartDraft };
 export type PosSettings = { splitPaymentEnabled?: boolean; customerCreditEnabled?: boolean; requireOpenRegister?: boolean; couponsEnabled?: boolean; currency: string; taxRate: number; pointValue: number; loyaltyEnabled: boolean; spendPerPoint: number; loyaltyMinimumOrder: number; dualCurrencyEnabled?: boolean; usdKhrRate?: number; currencyFormat?: CurrencyFormat };
 export type Workspace = {
+  barcodeScanning?: 'legacy' | 'ready' | 'unavailable';
   coupons?: Campaign[];
   receiptContext?: ReceiptContext;
   checkoutVersion?: number; canCreateCustomer?: boolean; inventoryVersion?: number; inventoryLocationCount?: number;

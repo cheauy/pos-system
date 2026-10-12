@@ -54,10 +54,10 @@ function fixture(options={}){
   return {data:{success:true,ids:args.p_rows.map(item=>item.id),versions:{}},error:null};},storage:{from:()=>({upload:async(path,file)=>{uploads.push({path,file});return {error:options.uploadError??null};},getPublicUrl:path=>({data:{publicUrl:`https://images.test/${path}`}}),remove:async paths=>{removedFiles.push(...paths);return {error:null};}})}};
  const business={id:'business',slug:'shop',productMode:'variant',role:'owner'};
  const api=loadTs('app/(dashboard)/dashboard/products/actions.ts',{
-  '@/lib/barcode/code39':loadTs('lib/barcode/code39.ts'),'@/lib/products/variant-editor':helpers,'@/lib/images/compress-photo':{compressPhoto:async file=>file},'@/lib/public-photo-cache':{PUBLIC_PHOTO_CACHE_SECONDS:'3600'},
+  '@/lib/barcode/code128':loadTs('lib/barcode/code128.ts'),'@/lib/barcode/generate':{generateInternalBarcode:()=> '000000123456789'},'@/lib/barcode/require-contract':{barcodeCapability:async()=>options.barcodeState??(options.preservation?'ready':'legacy'),BARCODE_UNAVAILABLE:'Barcode verification is unavailable.'},'@/lib/barcode/code39':loadTs('lib/barcode/code39.ts'),'@/lib/products/variant-editor':helpers,'@/lib/images/compress-photo':{compressPhoto:async file=>file},'@/lib/public-photo-cache':{PUBLIC_PHOTO_CACHE_SECONDS:'3600'},
   'next/cache':{revalidatePath(){}},'next/navigation':{redirect(){throw Error('Unexpected redirect');}},
   '@/lib/subscriptions/branch-limits':{assertBranchOperation:async()=>{}},'@/lib/audit/create-audit-log':{createAuditLog:async()=>{}},
-  '@/lib/business/get-current-business-mode':{getCurrentBusinessMode:async()=>({value:options.general?'general':'fashion'})},
+  '@/lib/business/get-current-business-mode':{getCurrentBusinessMode:async()=>({value:options.general?'general':'fashion',productMode:options.general?'standard':'variant'})},
   '@/lib/supabase/branch-server':{createClient:async()=>db},'@/lib/branches/context':{getBranchContext:async()=>({business,branchId:options.branch??'branch'})},
   '@/lib/supabase/admin':{supabaseAdmin:{...db,from:table=>query(table,true)}},
   '@/lib/auth/require-permission':{requirePermission:async p=>{permissions.push(p);if(options.denied || options.deniedPermissions?.includes(p))throw Error('Permission denied');return business;}},
@@ -154,7 +154,7 @@ test('business switching UI renders only the shared visible choices and disables
 test('gallery order chooses cover and persists all images',async()=>{const f=fixture();const urls=['https://images.test/black.jpg','https://images.test/main.jpg'];const form=f.form([base],{productGallery:JSON.stringify(urls.map(url=>({url})))});const r=await f.api.updateProductGroup({},form);assert.equal(r.success,true);assert.deepEqual(f.writes[0].payload.image_urls,urls);assert.equal(f.writes[0].payload.image_url,urls[0]);});
 test('gallery rejects foreign images and more than eight photos before writes',async()=>{for(const entries of [[{url:'https://foreign.test/photo.jpg'}],Array(9).fill({url:'https://images.test/main.jpg'})]){const f=fixture();const r=await f.api.updateProductGroup({},f.form([base],{productGallery:JSON.stringify(entries)}));assert.equal(r.success,false);assert.equal(f.writes.length,0);assert.equal(f.uploads.length,0);}});
 test('gallery uploads use existing image processing and persist cover',async()=>{const f=fixture();const form=f.form([base],{productGallery:JSON.stringify([{slot:'photo-1'}])});form.set('gallery_photo-1',new File(['png'],'photo.png',{type:'image/png'}));const r=await f.api.updateProductGroup({},form);assert.equal(r.success,true);assert.equal(f.uploads.length,1);assert.deepEqual(f.writes[0].payload.image_urls,[f.writes[0].payload.image_url]);});
-test('existing barcode survives edits from legacy clients',async()=>{const seed=fixture().rows()[0];const f=fixture({rows:[{...seed,barcode:'T123456789ABC'}]});const r=await f.api.updateProductGroup({},f.form());assert.equal(r.success,true);assert.equal(f.writes[0].payload.barcode,'T123456789ABC');});
+test('existing barcode survives edits from legacy clients',async()=>{const seed=fixture().rows()[0];const f=fixture({rows:[{...seed,barcode:'T123456789ABC'}]});const r=await f.api.updateProductGroup({},f.form());assert.equal(r.success,true);assert.ok(!Object.hasOwn(f.writes[0].payload,'barcode'));assert.equal(f.rows()[0].barcode,'T123456789ABC');});
 test('explicit generated barcode persists without changing SKU',async()=>{const f=fixture();const r=await f.api.updateProductGroup({},f.form([{...base,barcode:'T123456789ABC'}]));assert.equal(r.success,true);assert.equal(f.writes[0].payload.barcode,'T123456789ABC');assert.equal(f.writes[0].payload.sku,base.sku);});
 
 test('per-variant online visibility does not hide sibling variants',async()=>{
@@ -177,3 +177,12 @@ test('stock visibility rejects a stale operating branch before writes',async()=>
  const f=fixture({branch:'other'}); const r=await f.api.setProductVariantsActive('v1',['v1'],false,'branch');
  assert.equal(r.success,false); assert.equal(f.writes.length,0);
 });
+
+
+test('explicit generated numeric barcode persists without changing SKU',async()=>{const f=fixture();const r=await f.api.updateProductGroup({},f.form([{...base,barcode:'000000123456789'}]));assert.equal(r.success,true);assert.equal(f.writes[0].payload.barcode,'000000123456789');assert.equal(f.writes[0].payload.sku,base.sku);});
+
+test('default-off edits retain the established Code39 write flow without a new schema dependency',async()=>{const f=fixture({preservation:false});const r=await f.api.updateProductGroup({},f.form([{...base,barcode:'ABC123'}]));assert.equal(r.success,true,r.message);assert.equal(f.writes[0].payload.barcode,'ABC123');assert.ok(!f.rpcCalls.some(call=>call.name==='tenh_barcode_contract_ready'));});
+
+test('enabled replacement rejects alphanumeric codes while unchanged legacy identifiers remain valid',async()=>{const f=fixture({preservation:true});const r=await f.api.updateProductGroup({},f.form([{...base,barcode:'ABC123'}]));assert.equal(r.success,false);assert.match(r.message,/numeric strings/);assert.equal(f.writes.length,0);});
+
+test('enabled but unavailable rejects edits and variant creation before any identifier write/upload',async()=>{const f=fixture({barcodeState:'unavailable'});const edit=await f.api.updateProductGroup({},f.form([{...base,barcode:'ABC123'}]));assert.equal(edit.success,false);assert.match(edit.message,/verification is unavailable/);const form=new FormData();form.set('name','Fixture');form.set('variants',JSON.stringify([{...base,sku:'NEW',id:null}]));const created=await f.api.createVariantProduct({},form);assert.equal(created.success,false);assert.match(created.message,/verification is unavailable/);assert.equal(f.writes.length,0);assert.equal(f.uploads.length,0);});

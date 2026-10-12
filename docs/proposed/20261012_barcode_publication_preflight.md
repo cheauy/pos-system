@@ -1,4 +1,6 @@
-# Barcode publication preflight - draft package only
+# Barcode publication preflight - proposal commit snapshot
+
+This section records proposal-only commit `e823f6df61f890bec3029a8ad80c94f880dc10f3`. The later isolated runtime reconstruction is documented in `20261012_barcode_runtime_release.md` and supersedes the runtime-scope blocker below. Deployment configuration verification remains pending.
 
 The user's commit/deploy request authorizes reviewed application publication, not production SQL, applying the v3 client patch or activating preservation. This isolated branch packages only the task-owned proposal sources, generated manifests/patch, documentation and tests. No files under app/, components/, lib/, mobile/ or supabase/migrations/ are changed. None of the proposals executes automatically. The runtime and feature configuration remain the production baseline.
 

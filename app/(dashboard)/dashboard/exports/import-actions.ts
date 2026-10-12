@@ -7,6 +7,8 @@ import { parseImportBackup } from '@/lib/exports/import-backup';
 import { revalidatePath } from 'next/cache';
 import { exportGroups, selectedExportTables } from '@/lib/exports/catalog';
 import { importColumns } from '@/lib/exports/import-columns';
+import { barcodePreservationEnabled } from '@/lib/barcode/require-contract';
+import { importedBarcodeIssue } from '@/lib/barcode/import-policy';
 
 export async function downloadImportTemplate(selected: string[]) {
   const tables = selectedExportTables(exportGroups.map(group => group.id), selected);
@@ -33,6 +35,14 @@ export async function importBackup(text: string, selected: string[], confirmatio
   if (business.role !== 'owner') throw new Error('Only the business owner can import data.');
   const payload = parseImportBackup(text, business.id, selected);
   const db = await createClient();
+  if ((payload.products || payload.branch_product_details) && await barcodePreservationEnabled(db)) {
+    // Legacy product_variants has no business_id; its changes remain protected by
+    // the existing backup RPC instead of an invalid business-column lookup.
+    for (const table of ['products', 'branch_product_details']) if (payload[table]) {
+      const issue = await importedBarcodeIssue(db, business.id, payload[table], table === 'products' ? 'branch_products' : table, false);
+      if (issue) throw new Error(issue);
+    }
+  }
   const { branchId } = await getBranchContext();
   const { data, error } = await db.rpc('tenh_import_business_safe', {
     p_business_id: business.id, p_kind: 'backup', p_mode: 'update', p_payload: payload,

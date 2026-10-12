@@ -2,8 +2,11 @@
 import DateRangeFilter, { dateFilterStyles } from "@/components/date-range-filter";
 
 import OrderQrScanner from '@/components/order-qr-scanner';
+import { useWorkspaceBranch } from '../workspace-branch-provider';
+import type { SearchScan } from '@/lib/search/scan-code';
 
 import Link from "next/link";
+import { useRouter } from 'next/navigation';
 import {
   ArrowLeftRight,
   Banknote,
@@ -27,6 +30,7 @@ import {
 import {
   FormEvent,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -172,9 +176,12 @@ function useDebouncedValue<T>(value: T, delay: number) {
   return debounced;
 }
 
-export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery?: string }) {
+export default function GlobalSearchClient({ initialQuery = "", initialBarcode = false }: { initialQuery?: string; initialBarcode?: boolean }) {
+  const router = useRouter();
+  const { branchId, changing } = useWorkspaceBranch();
   const [query, setQuery] = useState(initialQuery);
-  const [response, setResponse] = useState<GlobalSearchResponse>({
+  const [response, setResponse] = useState<GlobalSearchResponse & { scope: string }>({
+    scope: branchId,
     query: "",
     results: [],
     branches: [],
@@ -206,37 +213,81 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
     return () => { window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
   }, [filtersOpen]);
   const [error, setError] = useState("");
-  const [isPending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
+  const [, startTransition] = useTransition();
+  const isPending = pending || changing || response.scope !== branchId;
   const inputRef = useRef<HTMLInputElement>(null);
   const debouncedQuery = useDebouncedValue(query.trim(), 450);
   const lastSearched = useRef("");
   const requestSerial = useRef(0);
+  const scopeRef = useRef({ branchId, changing });
+  useLayoutEffect(() => { scopeRef.current = { branchId, changing }; }, [branchId, changing]);
+  const observedBranch = useRef(branchId);
+  const scanRequest = useRef<{ query: string; orderQr?: string; productBarcode?: string; linearBarcode?: string } | null>(initialBarcode ? { query: initialQuery.trim(), linearBarcode: initialQuery } : null);
 
-  async function searchNow(value = query.trim()) {
+  async function searchNow(value = query.trim(), orderQr?: string, productBarcode?: string, linearBarcode?: string) {
     const clean = value.trim();
+    if (changing || (clean && clean === lastSearched.current)) return;
+    if (scanRequest.current?.query === clean) {
+      orderQr ??= scanRequest.current.orderQr; productBarcode ??= scanRequest.current.productBarcode; linearBarcode ??= scanRequest.current.linearBarcode;
+    } else scanRequest.current = null;
     const serial = ++requestSerial.current;
-    setError("");
-    setSelected(null);
+    setError(""); setSelected(null);
     if (!clean) {
-      lastSearched.current = "";
-      setResponse((current) => ({ ...current, query: "", results: [] }));
-      window.history.replaceState(null, "", "/dashboard/search");
-      return;
+      setPending(false); lastSearched.current = "";
+      setResponse(current => ({ ...current, query: "", results: [], warnings: [] }));
+      window.history.replaceState(null, "", "/dashboard/search"); return;
     }
-    lastSearched.current = clean;
-    startTransition(async () => {
-      try {
-        const next = await runGlobalSearch({ query: clean });
-        if (serial !== requestSerial.current) return;
-        setResponse(next);
-        window.history.replaceState(null, "", `/dashboard/search?q=${encodeURIComponent(clean)}`);
-      } catch (searchError) {
-        if (serial !== requestSerial.current) return;
-        lastSearched.current = "";
-        setError(searchError instanceof Error ? searchError.message : "Search could not be completed. Please try again.");
+    lastSearched.current = clean; setPending(true);
+    setResponse(current => ({ ...current, query: clean, results: [], warnings: [] }));
+    try {
+      const next = await new Promise<GlobalSearchResponse>((resolve, reject) => startTransition(async () => { try { resolve(await runGlobalSearch({ query: clean, expectedBranchId: branchId, ...(orderQr ? { orderQr } : {}), ...(productBarcode ? { productBarcode } : {}), ...(linearBarcode ? { linearBarcode } : {}) })); } catch (failure) { reject(failure); } }));
+      if (serial !== requestSerial.current || scopeRef.current.branchId !== branchId || scopeRef.current.changing) return;
+      setResponse({ ...next, scope: branchId });
+      if (linearBarcode && next.scanResolution === 'unique-order' && next.results.length === 1 && next.results[0].kind === 'order') {
+        scanRequest.current = null;
+        router.push(`/dashboard/orders/${next.results[0].id}?scanned=1`);
+         return;
       }
-    });
+      if (!orderQr) window.history.replaceState(null, "", `/dashboard/search?q=${encodeURIComponent(clean)}${productBarcode || linearBarcode ? '&barcode=1' : ''}`);
+    } catch {
+      if (serial !== requestSerial.current || scopeRef.current.branchId !== branchId || scopeRef.current.changing) return;
+      lastSearched.current = "";
+      setResponse(current => ({ ...current, query: clean, results: [], warnings: [] }));
+      setError("Search could not be completed. Please try again.");
+    } finally { if (serial === requestSerial.current) setPending(false); }
   }
+
+  function editQuery(value: string) {
+    ++requestSerial.current; lastSearched.current = '';
+    scanRequest.current = null;
+    setQuery(value); setError(''); setSelected(null);
+    setPending(value.trim().length >= 2 && !changing);
+    if (value.trim().length < 2) { setResponse(current => ({ ...current, query: '', results: [], warnings: [] })); window.history.replaceState(null, '', '/dashboard/search'); }
+  }
+
+  function scanned(scan: SearchScan) {
+    const value = scan.kind === 'order' ? 'TENH POS order' : scan.value;
+    lastSearched.current = '';
+    scanRequest.current = { query: value, ...(scan.kind === 'order' ? { orderQr: scan.value } : scan.kind === 'linear' ? { linearBarcode: scan.value } : { productBarcode: scan.value }) };
+    setQuery(value);
+    void searchNow(value, scan.kind === 'order' ? scan.value : undefined, scan.kind === 'product' ? scan.value : undefined, scan.kind === 'linear' ? scan.value : undefined);
+  }
+
+  useEffect(() => {
+    const invalidate = () => { ++requestSerial.current; };
+    invalidate(); lastSearched.current = '';
+    if (observedBranch.current !== branchId || changing) scanRequest.current = null;
+    observedBranch.current = branchId;
+    const timer = window.setTimeout(() => {
+      setSelected(null); setResponse({ scope: branchId, query: '', results: [], branches: [], warnings: [] });
+      if (changing) { setPending(true); return; }
+      if (query.trim().length >= 2) void searchNow(); else setPending(false);
+    }, 0);
+    return () => { window.clearTimeout(timer); invalidate(); };
+    // A branch change invalidates the previous branch's requests and cached results.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchId, changing]);
 
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
@@ -255,19 +306,16 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
   }, [selected]);
 
   useEffect(() => {
-    if (!initialQuery.trim()) return;
-    void searchNow(initialQuery.trim());
-    // Initial query is intentionally run once from the URL.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (debouncedQuery.length < 2) { if (lastSearched.current) void searchNow(''); return; }
+    if (debouncedQuery !== query.trim()) return;
     if (debouncedQuery === lastSearched.current) return;
-    void searchNow(debouncedQuery);
+    const timer = window.setTimeout(() => {
+      if (debouncedQuery.length < 2) { if (lastSearched.current) void searchNow(''); return; }
+      void searchNow(debouncedQuery);
+    }, 0);
+    return () => window.clearTimeout(timer);
     // searchNow is intentionally omitted to avoid recreating the debounce loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQuery]);
+  }, [debouncedQuery, query]);
 
   const statuses = useMemo(
     () =>
@@ -282,6 +330,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
   );
 
   const filtered = useMemo(() => {
+    if (changing || response.scope !== branchId) return [];
     const min = minPrice === "" ? null : Number(minPrice);
     const max = maxPrice === "" ? null : Number(maxPrice);
     const start = dateFrom ? new Date(`${dateFrom}T00:00:00`) : null;
@@ -305,13 +354,15 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
     if (sort === "oldest") return [...next].sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
     if (sort === "amount-desc") return [...next].sort((a, b) => (b.amount ?? -1) - (a.amount ?? -1));
     return next;
-  }, [activeGroup, branch, dateFrom, dateTo, enabledKinds, maxPrice, minPrice, response.results, sort, status]);
+  }, [activeGroup, branch, branchId, changing, dateFrom, dateTo, enabledKinds, maxPrice, minPrice, response.results, response.scope, sort, status]);
 
   useEffect(() => {
     if (selected && !filtered.some((result) => result.kind === selected.kind && result.id === selected.id)) {
-      setSelected(null);
+      const timer = window.setTimeout(() => setSelected(null), 0);
+      return () => window.clearTimeout(timer);
     }
   }, [filtered, selected]);
+  const selectedResult = selected && filtered.some(result => result.kind === selected.kind && result.id === selected.id) ? selected : null;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -374,7 +425,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
               aria-label="Global search"
               style={{ paddingRight: 96 }}
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => editQuery(event.target.value)}
               autoFocus
               placeholder="Order #, SKU, product name, customer, phone, supplier, purchase order..."
               className="h-12 w-full rounded-xl border border-blue-200 bg-white pl-11 pr-11 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
@@ -383,17 +434,17 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
               <button
                 type="button"
                 onClick={() => {
-                  setQuery("");
+                  editQuery("");
                   void searchNow("");
                   inputRef.current?.focus();
                 }}
                 aria-label="Clear search"
-                className="absolute right-14 xl:right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                className="absolute right-14 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               >
                 <X size={16} />
               </button>
             ) : null}
-            <div className="absolute right-1 top-1/2 -translate-y-1/2"><OrderQrScanner/></div>
+            <div className="absolute right-1 top-1/2 -translate-y-1/2"><OrderQrScanner onScan={scanned}/></div>
           </div>
           <button type="button" onClick={() => setFiltersOpen(true)} aria-label="Filter results" className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm sm:hidden"><SlidersHorizontal size={18} /></button>
         </form>
@@ -406,7 +457,7 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
               type="button"
               key={suggestion}
               onClick={() => {
-                setQuery(suggestion);
+                editQuery(suggestion);
                 void searchNow(suggestion);
               }}
               className="shrink-0 whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 font-medium text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
@@ -537,14 +588,14 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
               <EmptyResults title="No matching results" text="Try a different search or clear some filters." />
             ) : (
               filtered.map((result) => (
-                <ResultRow key={`${result.kind}-${result.id}`} result={result} active={selected?.kind === result.kind && selected?.id === result.id} onClick={() => setSelected(result)} />
+                <ResultRow key={`${result.kind}-${result.id}`} result={result} active={selectedResult?.kind === result.kind && selectedResult?.id === result.id} onClick={() => setSelected(result)} />
               ))
             )}
           </div>
         </section>
 
         <aside className="flex min-h-[560px] flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          {selected ? <ResultDetail result={selected} /> : <SelectResultPanel />}
+          {selectedResult ? <ResultDetail result={selectedResult} /> : <SelectResultPanel />}
           <div className="max-sm:hidden"><SearchTips /></div>
         </aside>
       </section>

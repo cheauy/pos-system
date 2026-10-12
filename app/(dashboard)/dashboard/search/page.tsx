@@ -4,10 +4,10 @@ import GlobalSearchClient from "./global-search-client";
 export default async function SearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; barcode?: string }>;
 }) {
   await requirePermission("business.view");
   const params = await searchParams;
   const query = typeof params.q === "string" ? params.q : "";
-  return <GlobalSearchClient key={query} initialQuery={query} />;
+  return <GlobalSearchClient key={`${query}:${params.barcode ?? ''}`} initialQuery={query} initialBarcode={params.barcode === '1'} />;
 }

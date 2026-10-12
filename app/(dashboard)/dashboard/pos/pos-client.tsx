@@ -270,8 +270,9 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     else chooseProduct(group.variants[0]);
   }
   function scan(code: string): boolean {
+    if (data.barcodeScanning === 'unavailable') { setNotice({kind:'error',text:'Barcode verification is unavailable. Choose products manually; barcode scanning is disabled until verification is restored.'}); return false; }
     const exact = code.trim().toLowerCase();
-    const matched = data.products.filter(p => p.barcode?.toLowerCase() === exact || p.sku?.toLowerCase() === exact);
+    const matched = data.products.filter(p => p.barcode?.toLowerCase() === exact || p.sku?.toLowerCase() === exact || p.barcodeAliases?.some(alias => alias.toLowerCase() === exact));
     if (matched.length !== 1) { if (matched.length > 1) { changeFilter('search', code); setNotice({ kind: 'error', text: 'Several products share this barcode or SKU. Select the correct item manually.' }); } return false; }
     if (matched[0].product_type === 'configurable') { chooseProduct(matched[0]); return true; }
     return addProduct(matched[0]);
