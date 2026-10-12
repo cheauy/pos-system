@@ -1,0 +1,452 @@
+{
+  "protocol": 3,
+  "activation": "BLOCKED",
+  "adapters": [
+    {
+      "name": "tenh_edit_product_rows",
+      "signature": "public.tenh_edit_product_rows(uuid,uuid,uuid,jsonb)",
+      "file": "docs/proposed/20261005_edit_product_rows_v2.PROPOSED.sql",
+      "expectedBodyMd5": "ee9cb3e253d55f64f425a7b374229e9e"
+    },
+    {
+      "name": "tenh_import_business_safe",
+      "signature": "public.tenh_import_business_safe(uuid,text,text,jsonb,uuid,boolean,text,uuid,text)",
+      "file": "supabase/migrations/20260924018000_branch_import_scope.sql",
+      "expectedBodyMd5": "3dcd22dee70046e70f2c0e166ce318c6"
+    },
+    {
+      "name": "tenh_mobile_management",
+      "signature": "public.tenh_mobile_management(uuid,uuid,uuid,text,jsonb)",
+      "file": "supabase/migrations/20260927004000_mobile_management.sql",
+      "expectedBodyMd5": "4e6dd9724d78bcd3d3bde16fa278eff0"
+    },
+    {
+      "name": "tenh_pos_checkout",
+      "signature": "public.tenh_pos_checkout(uuid,jsonb)",
+      "file": "tests/fixtures/order-safety-callers-live-20261008.json",
+      "expectedBodyMd5": "b536b2d45809f896b0417a930522627a"
+    },
+    {
+      "name": "tenh_pos_checkout_registered",
+      "signature": "public.tenh_pos_checkout_registered(uuid,jsonb)",
+      "file": "tests/fixtures/order-safety-callers-live-20261008.json",
+      "expectedBodyMd5": "ca4c54ad9a74efa9ac9011e71747609f"
+    },
+    {
+      "name": "tenh_pos_checkout_before_currency",
+      "signature": "public.tenh_pos_checkout_before_currency(uuid,jsonb)",
+      "file": "tests/fixtures/order-safety-live-20261008.json",
+      "expectedBodyMd5": "a722f295f4947a9d6ad7fd8d916512da"
+    },
+    {
+      "name": "checkout_order_with_options",
+      "signature": "public.checkout_order_with_options(uuid,jsonb,text,numeric,uuid,numeric,numeric)",
+      "file": "tests/fixtures/order-safety-dependencies-live-20261008.json",
+      "expectedBodyMd5": "a0223f048418c754e8135fcbc2c93481"
+    },
+    {
+      "name": "tenh_pos_allocate_stock",
+      "signature": "public.tenh_pos_allocate_stock(uuid,uuid,jsonb)",
+      "file": "tests/fixtures/order-safety-live-20261008.json",
+      "expectedBodyMd5": "d6cb10fff45267982aeb4b1000e79cda"
+    },
+    {
+      "name": "tenh_pos_hold",
+      "signature": "public.tenh_pos_hold(uuid,text,uuid,integer,text,jsonb)",
+      "file": "tests/fixtures/order-safety-live-20261008.json",
+      "expectedBodyMd5": "a610880213a887f603298eb90ffbda0c"
+    },
+    {
+      "name": "place_branch_online_order",
+      "signature": "public.place_branch_online_order(text,jsonb)",
+      "file": "supabase/migrations/20260924007000_shared_online_store.sql",
+      "expectedBodyMd5": "e10de6d385b07efeb9e4c877d7b38b40"
+    },
+    {
+      "name": "place_online_order",
+      "signature": "public.place_online_order(text,jsonb,text,text,text,text,text,uuid,text,text,uuid,timestamp with time zone,text)",
+      "file": "tests/fixtures/shared-storefront-checkout.json",
+      "expectedBodyMd5": "9c884e835041cf16865bb8f9424d1cf2"
+    },
+    {
+      "name": "cancel_order",
+      "signature": "public.cancel_order(uuid,text)",
+      "file": "tests/fixtures/order-safety-live-20261008.json",
+      "expectedBodyMd5": "7964999466ed0937c8c2f63b34809eb4"
+    },
+    {
+      "name": "cancel_purchase",
+      "signature": "public.cancel_purchase(uuid,text)",
+      "file": "tests/fixtures/branch-purchase-functions.sql",
+      "expectedBodyMd5": "2fe26fc12bdfa4401afa0bcff817f8d1"
+    },
+    {
+      "name": "create_order_return",
+      "signature": "public.create_order_return(uuid,text,jsonb)",
+      "file": "tests/fixtures/order-safety-dependencies-live-20261008.json",
+      "expectedBodyMd5": "3f51f6ab42456ef06625efbfd884fe3e"
+    },
+    {
+      "name": "receive_purchase_order",
+      "signature": "public.receive_purchase_order(uuid,jsonb)",
+      "file": "tests/fixtures/order-safety-dependencies-live-20261008.json",
+      "expectedBodyMd5": "f112389bf82a9d322fb58f2baaed9c3b"
+    },
+    {
+      "name": "tenh_create_order_return_accounted",
+      "signature": "public.tenh_create_order_return_accounted(uuid,text,jsonb,text)",
+      "file": "tests/fixtures/order-safety-dependencies-live-20261008.json",
+      "expectedBodyMd5": "f3fdfc7a2c3e044cf5d59236529a0773"
+    },
+    {
+      "name": "tenh_run_branch_stock",
+      "signature": "public.tenh_run_branch_stock(uuid,text,jsonb)",
+      "file": "tests/fixtures/order-safety-live-20261008.json",
+      "expectedBodyMd5": "d55490fcc3e1c70165a9dae1135be217"
+    },
+    {
+      "name": "tenh_cancel_order_item",
+      "signature": "public.tenh_cancel_order_item(uuid,uuid,uuid,timestamp with time zone,text)",
+      "file": "tests/fixtures/order-safety-live-20261008.json",
+      "expectedBodyMd5": "d6cb0965194041cf656e1eaad92998f2"
+    },
+    {
+      "name": "tenh_manage_order",
+      "signature": "public.tenh_manage_order(uuid,uuid,timestamp with time zone,text,jsonb)",
+      "file": "tests/fixtures/order-safety-live-20261008.json",
+      "expectedBodyMd5": "1e17e16f6406b3b18ca8801dd0d8db77"
+    },
+    {
+      "name": "tenh_incoming_order_action",
+      "signature": "public.tenh_incoming_order_action(uuid,uuid,text,text,text)",
+      "file": "tests/fixtures/order-safety-callers-live-20261008.json",
+      "expectedBodyMd5": "135982da7c0bd51b17084ea299fa086d"
+    },
+    {
+      "name": "tenh_update_online_order_status",
+      "signature": "public.tenh_update_online_order_status(uuid,uuid,text,text)",
+      "file": "tests/fixtures/order-safety-live-20261008.json",
+      "expectedBodyMd5": "72c237402afe6c18e9b8bcf87469ca51"
+    },
+    {
+      "name": "assign_pos_order_to_location",
+      "signature": "public.assign_pos_order_to_location(uuid,uuid,uuid,uuid)",
+      "file": "tests/fixtures/order-safety-dependencies-live-20261008.json",
+      "expectedBodyMd5": "1780d2764d9cd517053d4987cd4546ad"
+    },
+    {
+      "name": "post_customer_credit",
+      "signature": "public.post_customer_credit(uuid,uuid,text,numeric,text,text,uuid)",
+      "file": "tests/fixtures/order-safety-dependencies-live-20261008.json",
+      "expectedBodyMd5": "ed1edb67f2d64e57e1709b156d213a4a"
+    },
+    {
+      "name": "tenh_create_packed_bundle",
+      "signature": "public.tenh_create_packed_bundle(uuid,uuid,uuid,jsonb)",
+      "file": "tests/fixtures/packed-bundle-functions.json",
+      "expectedBodyMd5": "d1108ce5d1d82bab81b5d4364ba597b5"
+    },
+    {
+      "name": "tenh_pack_bundle",
+      "signature": "public.tenh_pack_bundle(uuid,uuid,uuid,integer,uuid)",
+      "file": "tests/fixtures/packed-bundle-functions.json",
+      "expectedBodyMd5": "53664d3c494c2a889da60f5dd8ced786"
+    },
+    {
+      "name": "tenh_manage_bundle",
+      "signature": "public.tenh_manage_bundle(uuid,uuid,uuid,text,jsonb,timestamp with time zone)",
+      "file": "tests/fixtures/branch-extra-functions.sql",
+      "expectedBodyMd5": "f2afddc95dde3f67efbcb02f54596785"
+    },
+    {
+      "name": "tenh_edit_bundle_contents",
+      "signature": "public.tenh_edit_bundle_contents(uuid,uuid,uuid,jsonb)",
+      "file": "supabase/migrations/20260924006000_bundle_edit_and_pos_choices.sql",
+      "expectedBodyMd5": "15fa827060a05fe1ce03649f68baba12"
+    },
+    {
+      "name": "import_branch_inventory_safe",
+      "signature": "public.import_branch_inventory_safe(uuid,jsonb)",
+      "file": "tests/fixtures/branch-import-functions.sql",
+      "expectedBodyMd5": "bc2af5052c32770fe6700174a4117718"
+    },
+    {
+      "name": "tenh_create_packed_bundle_with_image",
+      "signature": "public.tenh_create_packed_bundle_with_image(uuid,uuid,uuid,jsonb)",
+      "file": "supabase/migrations/20260924004000_bundle_image.sql",
+      "expectedBodyMd5": "caa2c0c6cb97e3e8e6aff44aeafd3707"
+    },
+    {
+      "name": "tenh_adjust_branch_stock",
+      "signature": "public.tenh_adjust_branch_stock(uuid,uuid,uuid,text,integer,text,text,uuid,integer)",
+      "file": "supabase/migrations/20260924009000_safe_stock_adjustment.sql",
+      "expectedBodyMd5": "f602c395891766a66c3126dbdfec71ff"
+    },
+    {
+      "name": "tenh_adjust_branch_stock_batch",
+      "signature": "public.tenh_adjust_branch_stock_batch(uuid,uuid,jsonb,text,text,uuid)",
+      "file": "supabase/migrations/20260929001000_product_delete_and_batch_stock.sql",
+      "expectedBodyMd5": "2df8f77f6021685330ba89a9716175f0"
+    }
+  ],
+  "unsupported": [],
+  "ownership": [
+    {
+      "name": "businesses",
+      "tenantField": "id",
+      "parent": null
+    },
+    {
+      "name": "business_locations",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "business_storefronts",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "business_receipt_settings",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "business_customer_settings",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "business_delivery_zones",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "business_tables",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "products",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "product_variants",
+      "tenantField": null,
+      "parent": [
+        "products",
+        "product_id"
+      ]
+    },
+    {
+      "name": "categories",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "product_location_stock",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "product_option_groups",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "product_options",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "bundle_items",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "inventory_movements",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "stock_adjustments",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "stock_transfers",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "stock_transfer_items",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "orders",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "order_items",
+      "tenantField": null,
+      "parent": [
+        "orders",
+        "order_id"
+      ]
+    },
+    {
+      "name": "returns",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "return_items",
+      "tenantField": null,
+      "parent": [
+        "returns",
+        "return_id"
+      ]
+    },
+    {
+      "name": "tenh_pos_holds",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "tenh_pos_points_used",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "customers",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "customer_credit_accounts",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "customer_credit_ledger",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "customer_loyalty_transactions",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "business_coupons",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "coupon_redemptions",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "suppliers",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "purchases",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "purchase_items",
+      "tenantField": null,
+      "parent": [
+        "purchases",
+        "purchase_id"
+      ]
+    },
+    {
+      "name": "purchase_orders",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "purchase_order_items",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "expenses",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "cash_register_shifts",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "cash_movements",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "audit_logs",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "business_activity_history",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "branch_product_details",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "branch_receipt_settings",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "branch_customer_settings",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "branch_pos_settings",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "branch_bundle_recipes",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "branch_role_permissions",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "branch_notification_role_settings",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "business_import_requests",
+      "tenantField": "business_id",
+      "parent": null
+    },
+    {
+      "name": "data_transfer_jobs",
+      "tenantField": "business_id",
+      "parent": null
+    }
+  ]
+}
