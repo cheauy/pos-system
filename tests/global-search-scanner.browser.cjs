@@ -1,0 +1,117 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Standalone local fixture harness. */
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http');
+const {webpack}=require('next/dist/compiled/webpack/webpack'),postcss=require('postcss'),tailwind=require('@tailwindcss/postcss');
+const {chromium}=require(require.resolve('playwright',{paths:[process.env.TENH_BROWSER_MODULES||path.join(__dirname,'../node_modules')]}));
+const root=path.resolve(__dirname,'..'),output=path.join(root,'docs/evidence/global-search-scanner-20261011'),temp=fs.mkdtempSync(path.join(os.tmpdir(),'tenh-search-scanner-')),fixture=path.join(__dirname,'fixtures/global-search-scanner.tsx');
+const checks=[],requests=[],errors=[],blocked=[];fs.mkdirSync(output,{recursive:true});
+function css(source,name){const globals=[];source=source.replace(/:global\(([^)]+)\)/g,(_,value)=>'GLOBAL'+(globals.push(value)-1)+'TOKEN');source=source.replace(/\.([a-zA-Z][\w-]*)/g,'.'+name+'-$1');return source.replace(/GLOBAL(\d+)TOKEN/g,(_,i)=>globals[Number(i)]);}
+async function build(){
+ const loader=path.join(temp,'loader.cjs');fs.writeFileSync(loader,'const ts=require('+JSON.stringify(require.resolve('typescript'))+');module.exports=function(source){const file=this.resourcePath;if(file.endsWith(".css")){const name=require("node:path").basename(file,".module.css");return "module.exports="+JSON.stringify(Object.fromEntries([...source.matchAll(/\\.([a-zA-Z][\\w-]*)/g)].map(m=>[m[1],name+"-"+m[1]])));}return ts.transpileModule(source,{fileName:file,compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.ESNext,jsx:ts.JsxEmit.ReactJSX}}).outputText;}');
+ const img=path.join(temp,'image.js');fs.writeFileSync(img,'export {Image as default} from '+JSON.stringify(fixture.replaceAll('\\','/'))+';');
+ const aliases={'@':root,'next/navigation$':fixture,'next/link$':fixture,'next/image$':img,'@zxing/browser$':fixture,'@zxing/library$':fixture};
+ aliases[path.join(root,'app/(dashboard)/dashboard/workspace-branch-provider.tsx')]=fixture;
+ const compiler=webpack({mode:'development',devtool:false,context:root,entry:fixture,output:{path:temp,filename:'fixture.js'},resolve:{extensions:['.tsx','.ts','.js'],alias:aliases},module:{rules:[{test:/\.(tsx?|css)$/,use:loader}]},plugins:[
+ new webpack.DefinePlugin({'process.env':JSON.stringify({NODE_ENV:'development',NEXT_PUBLIC_ROOT_DOMAIN:'tenhpos.com'})}),
+ new webpack.NormalModuleReplacementPlugin(/(?:search-actions|resolve-order-qr|workspace-branch-provider)(?:\.tsx?)?$/,resource=>resource.request=fixture),
+ new webpack.NormalModuleReplacementPlugin(/^\.\/actions$/,resource=>{if(resource.context.includes('stock-transfers'))resource.request=fixture;})
+ ]});
+ await new Promise((resolve,reject)=>compiler.run((error,stats)=>{compiler.close(()=>{});if(error||stats.hasErrors())reject(error||Error(stats.toString({all:false,errors:true})));else resolve();}));
+ const global=await postcss([tailwind()]).process(fs.readFileSync(path.join(root,'app/globals.css'),'utf8'),{from:path.join(root,'app/globals.css')});
+ const modules=['components/date-range-filter.module.css','components/order-qr-scanner.module.css','app/(dashboard)/dashboard/search/global-search.module.css','app/(dashboard)/dashboard/pos/pos-workspace.module.css','app/(dashboard)/dashboard/stock-transfers/stock-transfers-responsive.module.css'].filter(file=>fs.existsSync(path.join(root,file))).map(file=>css(fs.readFileSync(path.join(root,file),'utf8'),path.basename(file,'.module.css')));
+ fs.writeFileSync(path.join(temp,'style.css'),global.css+'\n'+modules.join('\n')+'\n.fixture-header{height:70px;display:flex;align-items:center;gap:16px;padding:12px 18px;border-bottom:1px solid #e2e8f0;background:white;position:sticky;top:0;z-index:10}.fixture-header div{display:flex;flex-direction:column;flex:1}.fixture-header small{font-size:10px;color:#64748b}.fixture-content{padding:16px}.fixture-tools{display:flex;gap:8px;padding:6px 16px;font-size:11px}.navigation-scanner{display:none}body{background:#f8fafc} :root{--app-accent:#2563eb} @media(max-width:1279px){.fixture-content{padding:12px}.fixture-tools{flex-wrap:wrap}}');
+}
+const ID='11111111-1111-4111-8111-111111111111';
+function result(id,kind,title,extra={}){return{id,kind,title,subtitle:'Synthetic fixture · 2026-10-11',href:kind==='order'?'/dashboard/orders/'+id:'/dashboard/products/'+id+'/edit',badge:kind,branchId:'branch-a',branchName:'Main Branch',status:'active',createdAt:'2026-10-11T12:00:00Z',amount:10,details:[{label:'SKU',value:'00ABC123'},{label:'Variant',value:'Black · M'}],...extra};}
+let errorOnce=false;
+function respond(input){
+ const query=input.query;let results=[];
+ if(input.orderQr)results=input.orderQr.includes('123456789012')?[result(ID,'order','Order #1001')]:[];
+ else if((input.linearBarcode||input.productBarcode))results=['0012345678905','00ABC123','A'].includes((input.linearBarcode||input.productBarcode))?[result('product','product','Classic T-shirt',{imageUrl:'/fixture-product.svg',subtitle:'SKU 00ABC123 · Black · M · 8 in stock'})]:[];
+ else if(query!=='nomatch')results=[result('product','product',query+' · Classic T-shirt',{imageUrl:'/fixture-product.svg',subtitle:'SKU 00ABC123 · Black · M · 8 in stock',amount:30}),result(ID,'order',query+' · Order #1001',{amount:15}),result('purchase','purchase_order',query+' · PO-0042',{href:'/dashboard/purchase-orders/purchase',amount:20}),result('long','product','ផលិតផលអាវយឺតឈ្មោះវែង សម្រាប់ការសាកល្បងអក្សរខ្មែរ · Long product name',{createdAt:'2026-10-09T10:00:00Z',amount:5})];
+ return{query,results:results.map(r=>({...r,branchId:input.branchId,branchName:input.branchId})),branches:[{id:input.branchId,name:input.branchId}],warnings:[]};
+}
+async function startServer(){const server=http.createServer(async(req,res)=>{
+ if(req.url==='/fixture/search'){let body='';for await(const chunk of req)body+=chunk;const input=JSON.parse(body);requests.push(input);await new Promise(r=>setTimeout(r,input.query==='slow'?1800:120));if(input.query==='error'&&!errorOnce){errorOnce=true;res.writeHead(500);res.end('synthetic error');return;}res.setHeader('Content-Type','application/json');res.end(JSON.stringify(respond(input)));return;}
+ if(req.url==='/fixture-product.svg'){res.setHeader('Content-Type','image/svg+xml');res.end('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" rx="10" fill="#e2e8f0"/><path d="M25 15 10 30l10 15 7-6v29h26V39l7 6 10-15-15-15-9 6H34z" fill="#334155"/></svg>');return;}
+ const filename=req.url.split('?')[0].slice(1),file=path.join(temp,filename);
+ if(filename&&fs.existsSync(file)&&fs.statSync(file).isFile()){res.setHeader('Content-Type',filename.endsWith('.css')?'text/css; charset=utf-8':'application/javascript; charset=utf-8');res.end(fs.readFileSync(file));return;}
+ res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/style.css"><div id="root"></div><script src="/fixture.js"></script></html>');
+});await new Promise(r=>server.listen(0,'127.0.0.1',r));return server;}
+// Touch emulation exercises the coarse-pointer layout at iPad Pro's 1366px landscape width; this is not a physical iPad/Safari test.
+const views=[{name:'phone-portrait',width:390,height:844},{name:'phone-landscape',width:844,height:390},{name:'tablet-portrait',width:820,height:1180},{name:'tablet-landscape',width:1180,height:820},{name:'ipad-pro-portrait',width:1024,height:1366,hasTouch:true},{name:'ipad-pro-landscape',width:1366,height:1024,hasTouch:true},{name:'desktop',width:1440,height:1000}];
+async function count(page){return page.evaluate(()=>window.searchFixture.requests.length);}
+async function check(name,fn){await fn();checks.push({name,passed:true});}
+async function shot(page,name){const style=await page.addStyleTag({content:'.fixture-tools{display:none!important}'});await page.screenshot({path:path.join(output,name+'.png'),fullPage:false});await style.evaluate(node=>node.remove());}
+function rows(page){return page.locator('button[class*="global-search-row"]').filter({visible:true});}
+async function openScanner(page){await page.getByRole('button',{name:'Scan code',exact:true}).click();await page.getByText('Camera ready',{exact:true}).waitFor();}
+async function closedTracks(page){assert.ok(await page.evaluate(()=>window.searchFixture.tracks.every(track=>track.readyState==='ended')));}
+(async()=>{
+ let browser,server;
+ try{
+  await build();server=await startServer();const base='http://127.0.0.1:'+server.address().port;browser=await chromium.launch({channel:'chrome',headless:true});
+  for(const view of views){
+   const page=await browser.newPage({viewport:{width:view.width,height:view.height},hasTouch:Boolean(view.hasTouch)});page.on('pageerror',e=>errors.push({view:view.name,message:e.message}));
+   await page.route('**/*',route=>route.request().url().startsWith(base)?route.continue():(blocked.push(route.request().url()),route.abort()));
+   await page.goto(base);await page.getByLabel('Global search',{exact:true}).waitFor();
+   if(view.hasTouch)await check(view.name+' coarse-pointer compact toolbar',async()=>{assert.ok(await page.evaluate(()=>matchMedia('(pointer: coarse)').matches));for(const name of ['Scan code','Filter results']){const box=await page.getByRole('button',{name,exact:true}).boundingBox();assert.ok(box&&box.width>=44&&box.height>=44,name+' touch target');}});
+   await check(view.name+' initial state and idle camera',async()=>{assert.equal(await count(page),0);assert.equal(await page.evaluate(()=>window.searchFixture.cameraStarts),0);assert.ok(await page.getByText('Search across your workspace',{exact:true}).isVisible());});
+   await shot(page,view.name+'-initial-en');
+   const input=page.getByLabel('Global search',{exact:true});await input.fill('sample');await page.getByText('sample · Classic T-shirt',{exact:true}).filter({visible:true}).waitFor();
+   await check(view.name+' debounced single request and readable results',async()=>{assert.equal(await count(page),1);assert.equal(await rows(page).count(),4);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));if(view.name!=='desktop')assert.equal(await page.locator('[class*="kindHeading"]').filter({visible:true}).count(),3);});
+   await shot(page,view.name+'-results-en');
+   await rows(page).filter({hasText:'Classic T-shirt'}).click();await check(view.name+' permitted result link',async()=>{assert.equal(await page.getByRole('link',{name:'Open result'}).getAttribute('href'),'/dashboard/products/product/edit');});
+   const sorts=page.locator('select').filter({has:page.locator('option[value="amount-desc"]')});await sorts.selectOption('amount-desc');await check(view.name+' sorting retains quantities and avoids fetching',async()=>{assert.ok((await rows(page).first().innerText()).includes('Classic T-shirt'));assert.equal(await count(page),1);});
+   if(view.name!=='desktop')await page.getByRole('button',{name:'Filter results',exact:true}).click();
+   const panel=page.locator('aside[aria-label="Filter results"]');const dates=view.name==='desktop'?panel.locator('input[placeholder="Min"],input[placeholder="Max"]'):panel.locator('input[type="date"]');await dates.first().fill(view.name==='desktop'?'50':'2026-10-12');await dates.last().fill(view.name==='desktop'?'10':'2026-10-01');
+   await check(view.name+' draft filters and invalid range',async()=>{assert.equal(await count(page),1);assert.equal(await rows(page).count(),4);assert.ok(await panel.getByRole('button',{name:'Apply filters'}).isDisabled());});
+   await shot(page,view.name+'-filters-en');await panel.getByRole('button',{name:'Cancel',exact:true}).click();
+   await check(view.name+' Cancel restores dates',async()=>{if(view.name!=='desktop')await page.getByRole('button',{name:'Filter results',exact:true}).click();assert.equal(await dates.first().inputValue(),'');});
+   await dates.first().fill(view.name==='desktop'?'10':'2026-10-11');await dates.last().fill(view.name==='desktop'?'':'2026-10-11');await panel.getByRole('button',{name:'Apply filters'}).click();await check(view.name+' Apply preserves local filtering without refetch',async()=>{assert.equal(await rows(page).count(),3);assert.equal(await count(page),1);});
+   if(view.name!=='desktop'){
+    await openScanner(page);await shot(page,view.name+'-scanner-en');
+    await check(view.name+' rear preference and single lazy camera start',async()=>{const data=await page.evaluate(()=>({starts:window.searchFixture.cameraStarts,c:window.searchFixture.constraints[0]}));assert.equal(data.starts,1);assert.equal(data.c.video.facingMode.ideal,'environment');assert.equal(data.c.audio,false);});
+    await page.evaluate(()=>{window.searchFixture.decode('0012345678905','EAN_13');window.searchFixture.decode('0012345678905','EAN_13');});
+    await page.getByText('Classic T-shirt',{exact:true}).filter({visible:true}).waitFor();
+    await check(view.name+' duplicate product scan performs one lookup and stops tracks',async()=>{assert.equal(await count(page),2);assert.equal(await input.inputValue(),'0012345678905');assert.equal(await page.locator('dialog[open]').count(),0);await closedTracks(page);assert.equal(await page.evaluate(()=>window.searchFixture.requests.at(-1).linearBarcode),'0012345678905');});
+    await openScanner(page);await page.evaluate(()=>window.searchFixture.decode('https://evil.test/customer-secret','QR_CODE'));
+    await check(view.name+' unsupported QR stays open without network or navigation',async()=>{await page.getByText('Unsupported code. Scan a TENH POS order QR or a supported product barcode.',{exact:true}).waitFor();assert.equal(await count(page),2);assert.equal(await page.evaluate(()=>window.searchFixture.navigation.length),0);});
+    await page.getByRole('button',{name:'Close scanner',exact:true}).click();await closedTracks(page);
+    await page.evaluate(()=>window.searchFixture.cameraMode='NotAllowedError');await page.getByRole('button',{name:'Scan code',exact:true}).click();await page.getByText('Camera access was denied. Allow camera access in your browser and try again.',{exact:true}).waitFor();
+    await shot(page,view.name+'-permission-denied-en');await page.getByRole('button',{name:'Close scanner',exact:true}).click();
+    await page.evaluate(()=>window.searchFixture.cameraMode='ready');await openScanner(page);
+    await page.evaluate(()=>window.searchFixture.decode('https://tenhpos.com/o/123456789012','QR_CODE'));
+    await page.getByText('Order #1001',{exact:true}).filter({visible:true}).waitFor();await check(view.name+' order QR closes scanner and shows authenticated-search result',async()=>{assert.equal(await count(page),3);assert.equal(await rows(page).count(),1);await closedTracks(page);await rows(page).click();assert.equal(await page.getByRole('link',{name:'Open result'}).getAttribute('href'),'/dashboard/orders/'+ID);});
+    await openScanner(page);await page.evaluate(()=>window.dispatchEvent(new PopStateEvent('popstate')));await check(view.name+' Back closes scanner and releases camera',async()=>{await page.waitForTimeout(50);assert.equal(await page.locator('dialog[open]').count(),0);await closedTracks(page);});
+   }else await check('desktop existing layout',async()=>{assert.ok(await page.getByRole('heading',{name:'Global Search',exact:true}).isVisible());assert.ok(await panel.isVisible());assert.ok(!await page.getByRole('button',{name:'Scan code',exact:true}).isVisible());});
+   await input.fill('nomatch');await page.getByText('No matching results',{exact:true}).waitFor();
+   await check(view.name+' no-results distinct from initial',async()=>{assert.equal(await rows(page).count(),0);});
+   await page.getByRole('button',{name:'KM fixture'}).click();await page.waitForTimeout(100);await shot(page,view.name+'-empty-km');await page.getByRole('button',{name:'EN fixture'}).click();await page.waitForTimeout(100);
+   await input.fill('sample');await page.getByText('sample · Classic T-shirt',{exact:true}).filter({visible:true}).waitFor();
+   await page.getByRole('button',{name:'KM fixture'}).click();await page.waitForTimeout(100);await shot(page,view.name+'-results-km');
+   if(view.name!=='desktop'){await page.locator('[class*="scanTrigger"] button').click();await page.waitForFunction(()=>document.querySelector('dialog[open] video')?.readyState>=2);await page.waitForTimeout(100);await shot(page,view.name+'-scanner-km');await page.locator('dialog[open] button').last().click();await closedTracks(page);}
+   await page.close();
+  }
+  const page=await browser.newPage({viewport:{width:390,height:844}});page.on('pageerror',e=>errors.push({view:'advanced',message:e.message}));await page.goto(base);const input=page.getByLabel('Global search',{exact:true});
+  await input.fill('slow');await page.waitForFunction(()=>window.searchFixture.requests.length===1);await input.fill('fast');await page.getByText('fast · Classic T-shirt',{exact:true}).filter({visible:true}).waitFor();await page.waitForTimeout(1500);
+  await check('rapid queries discard older response and URL writes',async()=>{assert.equal(await count(page),2);assert.equal(await page.getByText('slow · Classic T-shirt',{exact:true}).filter({visible:true}).count(),0);assert.equal(new URL(page.url()).searchParams.get('q'),'fast');});
+  await input.fill('error');await page.getByRole('button',{name:'Try again',exact:true}).waitFor();
+  await check('network error hides old data and retry succeeds',async()=>{assert.equal(await rows(page).count(),0);await page.getByRole('button',{name:'Try again',exact:true}).click();await page.getByText('error · Classic T-shirt',{exact:true}).filter({visible:true}).waitFor();assert.equal(await count(page),4);});
+  await page.getByRole('button',{name:'Switch fixture branch'}).click();await page.waitForFunction(()=>window.searchFixture.requests.length===5);await page.getByText('error · Classic T-shirt',{exact:true}).filter({visible:true}).waitFor();await check('branch switching refreshes exactly once in new scope',async()=>{assert.equal(await page.evaluate(()=>window.searchFixture.requests.at(-1).branchId),'branch-b');});
+  await page.evaluate(()=>{window.searchFixture.cameraDelay=300;});await page.getByRole('button',{name:'Scan code',exact:true}).click();await page.getByRole('button',{name:'Close scanner',exact:true}).click();await page.waitForTimeout(400);await check('closing during delayed getUserMedia stops late stream',()=>closedTracks(page));
+  await page.evaluate(()=>{window.searchFixture.cameraDelay=0;window.searchFixture.cameraMode='NotFoundError';});await page.getByRole('button',{name:'Scan code',exact:true}).click();await page.getByText('No camera is available on this device.',{exact:true}).waitFor();await check('camera unavailable and Try again',async()=>{await page.evaluate(()=>window.searchFixture.cameraMode='ready');await page.getByRole('button',{name:'Try again',exact:true}).click();await page.getByText('Camera ready',{exact:true}).waitFor();});
+  await page.evaluate(()=>window.searchFixture.decode('','QR_CODE','UnexpectedDecoderError'));await page.getByText('The scanner could not decode this frame. Please try again.',{exact:true}).waitFor();await check('decoder error releases stream and remains closable',async()=>{await closedTracks(page);await page.getByRole('button',{name:'Close scanner',exact:true}).click();});
+  await openScanner(page);await page.evaluate(()=>window.searchFixture.navigate('/dashboard/other'));await check('route navigation releases camera and does not reopen on return',async()=>{await page.waitForTimeout(50);await closedTracks(page);assert.equal(await page.locator('dialog[open]').count(),0);});
+  await page.goto(base);await openScanner(page);await page.evaluate(()=>window.searchFixture.tracks.at(-1).dispatchEvent(new Event('ended')));await page.getByText('Camera is unavailable or in use. Close other camera apps and try again.',{exact:true}).waitFor();await check('camera track ending releases decoder and reports unavailability',()=>closedTracks(page));await page.getByRole('button',{name:'Close scanner',exact:true}).click();
+  await openScanner(page);await page.keyboard.press('Escape');await check('Escape closes scanner and returns focus to Scan',async()=>{await closedTracks(page);assert.equal(await page.locator('dialog[open]').count(),0);assert.ok(await page.getByRole('button',{name:'Scan code',exact:true}).evaluate(button=>document.activeElement===button));});
+  await openScanner(page);await page.evaluate(()=>window.dispatchEvent(new Event('pagehide')));await check('pagehide releases tracks immediately',()=>closedTracks(page));
+  await page.goto(base+'/dashboard/stock-transfers?transfer=transfer');await page.getByRole('button',{name:'All transfers',exact:true}).waitFor();
+  await check('transfer result deep link opens only a loaded authorized transfer',async()=>{assert.ok(await page.getByText('TR-0007',{exact:true}).filter({visible:true}).count());await page.goto(base+'/dashboard/stock-transfers?transfer=wrong-business-id');assert.equal(await page.getByRole('button',{name:'All transfers',exact:true}).count(),0);});
+  await page.goto(base+'/dashboard/search?q=0012345678905&barcode=1');await page.getByText('Classic T-shirt',{exact:true}).filter({visible:true}).waitFor();await check('scanned deep link restores the exact lookup mode once',async()=>{assert.equal(await count(page),1);assert.equal(await page.evaluate(()=>window.searchFixture.requests[0].linearBarcode),'0012345678905');});
+  await openScanner(page);await page.evaluate(()=>window.searchFixture.decode('A','CODE_128'));await page.getByText('Classic T-shirt',{exact:true}).filter({visible:true}).waitFor();await page.waitForTimeout(600);await check('a one-character legacy SKU scan is retained without a second debounce fetch',async()=>{assert.equal(await page.getByLabel('Global search',{exact:true}).inputValue(),'A');assert.equal(await count(page),2);});
+  await page.setViewportSize({width:390,height:420});await page.getByRole('button',{name:'Filter results',exact:true}).click();const focusPanel=page.locator('aside[role="dialog"]');await focusPanel.locator('input[placeholder="Min"]').focus();await page.getByRole('button',{name:'Apply filters',exact:true}).scrollIntoViewIfNeeded();await check('reduced viewport keeps focused controls and Apply reachable',async()=>{assert.ok(await focusPanel.getByRole('button',{name:'Apply filters',exact:true}).isVisible());assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));});await page.keyboard.press('Escape');assert.equal(await focusPanel.count(),0);
+  await page.close();assert.deepEqual(errors,[]);assert.deepEqual(blocked,[]);
+  fs.rmSync(path.join(output,'browser-failure.json'),{force:true});fs.writeFileSync(path.join(output,'browser-results.json'),JSON.stringify({checks,requests,errors,blocked},null,2));console.log(JSON.stringify({passed:checks.length,screenshots:fs.readdirSync(output).filter(n=>n.endsWith('.png')).length,errors,blocked}));
+ }catch(error){fs.writeFileSync(path.join(output,'browser-failure.json'),JSON.stringify({error:String(error),stack:error.stack,checks,requests,errors},null,2));console.error(error);process.exitCode=1;}
+ finally{await browser?.close();if(server)await new Promise(r=>server.close(r));}
+})();
+

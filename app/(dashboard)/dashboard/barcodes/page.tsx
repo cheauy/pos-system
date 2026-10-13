@@ -3,6 +3,7 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { createClient } from "@/lib/supabase/branch-server";
 import { readAllRows } from "@/lib/supabase/read-all-rows";
 import BarcodeLabelsClient from "./barcode-labels-client";
+import { barcodeCapability, BARCODE_UNAVAILABLE } from '@/lib/barcode/require-contract';
 
 type ProductRow = {
   id: string;
@@ -28,6 +29,9 @@ type CategoryRow = {
 export default async function BarcodeLabelsPage() {
   const business = await requirePermission("products.view");
   const [supabase, {branchId}] = await Promise.all([createClient(), getBranchContext()]);
+  const barcodeState = await barcodeCapability(supabase);
+  if (barcodeState === 'unavailable') return <div role="alert" className="rounded-xl bg-red-50 p-5 text-red-600">{BARCODE_UNAVAILABLE}</div>;
+  const barcodePreservation = barcodeState === 'ready';
 
   // Branch stock, products, categories and settings are independent: read them
   // together, paging the lists so large catalogs are not truncated.
@@ -81,6 +85,7 @@ export default async function BarcodeLabelsPage() {
       products={((productResult.data ?? []) as ProductRow[]).filter(p=>assigned.has(p.id)).map(p=>({...p,stock_quantity:assigned.get(p.id) ?? 0}))}
       categories={(categoryResult.data ?? []) as CategoryRow[]}
       settings={settingsResult.data ?? {}}
+      barcodePreservation={barcodePreservation}
     />
   );
 }

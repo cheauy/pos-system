@@ -2,9 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   ArrowLeft,
-  CalendarDays,
   ChevronRight,
-  CircleUserRound,
   Info,
   KeyRound,
   LockKeyhole,
@@ -16,6 +14,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
 
 import ProfileForm from "./profile-form";
+import styles from "./profile-responsive.module.css";
 
 type ProfileRow = {
   full_name: string | null;
@@ -69,8 +68,8 @@ export default async function ProfilePage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-[1600px] space-y-5 pb-8">
-      <section>
+    <main className={`mx-auto w-full max-w-[1600px] space-y-5 pb-8 ${styles.page}`}>
+      <section className={styles.intro}>
         <Link
           href="/dashboard/settings"
           className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
@@ -86,44 +85,15 @@ export default async function ProfilePage() {
         </p>
       </section>
 
-      <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex min-w-0 items-center gap-4">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300">
-            {typeof user.user_metadata?.avatar_url === 'string' && user.user_metadata.avatar_url.startsWith('https://') ? <img src={user.user_metadata.avatar_url} alt="Profile" className="h-16 w-16 rounded-full object-cover" /> : <CircleUserRound className="h-9 w-9" />}
-          </div>
-          <div className="min-w-0">
-            <h2 className="break-words text-lg font-bold text-slate-950 dark:text-white" data-i18n-ignore={Boolean(profile.full_name)}>
-              {profile.full_name || "Unnamed User"}
-            </h2>
-            <p className="truncate text-sm text-slate-500 dark:text-slate-400" data-i18n-ignore={Boolean(user.email)}>
-              {user.email ?? "No email"}
-            </p>
-            <span className="mt-2 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold capitalize text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
-              {profile.role}
-            </span>
-          </div>
-        </div>
-
-        <div className="min-w-[190px] border-t border-slate-100 pt-4 text-sm sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0 dark:border-slate-800">
-          <p className="inline-flex items-center gap-2 font-semibold text-emerald-600 dark:text-emerald-400">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-            Account active
-          </p>
-          <p className="mt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <CalendarDays className="h-4 w-4" />
-            {formatLastUpdated(profile.updated_at)}
-          </p>
-        </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.75fr)_minmax(300px,0.95fr)]">
-        <ProfileForm
-          defaultFullName={profile.full_name ?? ""}
-          email={user.email ?? ""}
-          role={profile.role}
-        />
-
-        <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900">
+      <ProfileForm
+        defaultFullName={profile.full_name ?? ""}
+        email={user.email ?? ""}
+        role={profile.role}
+        showIdentity
+        avatarUrl={typeof user.user_metadata?.avatar_url === 'string' && user.user_metadata.avatar_url.startsWith('https://') ? user.user_metadata.avatar_url : undefined}
+        lastUpdated={formatLastUpdated(profile.updated_at)}
+        security={(
+        <aside id="profile-security" aria-labelledby="profile-security-tab" className={`${styles.security} rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900`}>
           <div className="flex items-start gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300">
               <ShieldCheck className="h-5 w-5" />
@@ -161,7 +131,8 @@ export default async function ProfilePage() {
             </div>
           </div>
         </aside>
-      </section>
+        )}
+      />
     </main>
   );
 }

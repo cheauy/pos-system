@@ -48,7 +48,7 @@ export function missingVariantCombinations(rows: Pick<EditableVariant, "color" |
   }
   return additions;
 }
-export function validateEditableVariants(rows: EditableVariant[], requireOptions: boolean): string | null {
+export function validateEditableVariants(rows: EditableVariant[], requireOptions: boolean, checkOptionPairs = requireOptions): string | null {
   if (!rows.length || rows.length > MAX_EDIT_VARIANTS) return `Keep between 1 and ${MAX_EDIT_VARIANTS} variants.`;
   const skus = new Set<string>(), pairs = new Set<string>(), ids = new Set<string>();
   for (let i = 0; i < rows.length; i++) {
@@ -60,7 +60,8 @@ export function validateEditableVariants(rows: EditableVariant[], requireOptions
     skus.add(sku);
     if (row.id) { if (ids.has(row.id)) return "The same saved variant was submitted twice."; ids.add(row.id); }
     if (requireOptions && (!row.size.trim() || !row.color.trim())) return `${label}: enter both colour and size.`;
-    if (requireOptions) {
+    // General permits SKU-only rows; non-empty option combinations still stay unique.
+    if (checkOptionPairs && (row.size.trim() || row.color.trim())) {
       const pair = variantPairKey(row);
       if (pairs.has(pair)) return `${label}: this colour and size combination already exists.`;
       pairs.add(pair);

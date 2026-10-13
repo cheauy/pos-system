@@ -2,8 +2,15 @@
 import DateRangeFilter, { dateFilterStyles } from "@/components/date-range-filter";
 
 import OrderQrScanner from '@/components/order-qr-scanner';
+import { useWorkspaceBranch } from '../workspace-branch-provider';
+import type { SearchScan } from '@/lib/search/scan-code';
+import { ProductImage } from '../pos/pos-workspace-components';
+import styles from './global-search.module.css';
+import usePanelFocus from '@/components/use-panel-focus';
+import { useLanguage } from '@/components/providers/language-provider';
 
 import Link from "next/link";
+import { useRouter } from 'next/navigation';
 import {
   ArrowLeftRight,
   Banknote,
@@ -30,7 +37,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useTransition,
   type ElementType,
 } from "react";
 
@@ -172,9 +178,13 @@ function useDebouncedValue<T>(value: T, delay: number) {
   return debounced;
 }
 
-export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery?: string }) {
+export default function GlobalSearchClient({ initialQuery = "", initialBarcode = false }: { initialQuery?: string; initialBarcode?: boolean }) {
+  const router = useRouter();
+  const { branchId, changing } = useWorkspaceBranch();
+  const { t } = useLanguage();
   const [query, setQuery] = useState(initialQuery);
-  const [response, setResponse] = useState<GlobalSearchResponse>({
+  const [response, setResponse] = useState<GlobalSearchResponse & { scope: string }>({
+    scope: branchId,
     query: "",
     results: [],
     branches: [],
@@ -198,45 +208,85 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
     || (panel.minPrice !== "" && panel.maxPrice !== "" && Number(panel.minPrice) > Number(panel.maxPrice) ? "Minimum price must not be above the maximum." : "");
   // Phones: Filter Results opens as a bottom sheet from the button beside the search bar.
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const filterRef = useRef<HTMLElement>(null);
+  usePanelFocus(filterRef, filtersOpen, closePanel);
   useEffect(() => {
-    if (!filtersOpen) return;
+    if (!filtersOpen && !draft) return;
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { setDraft(null); setFiltersOpen(false); } };
-    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setFiltersOpen(false); };
+    const wide = window.matchMedia("(min-width: 1280px)"); const onWide = () => { if (wide.matches) setFiltersOpen(false); };
     window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
     return () => { window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
-  }, [filtersOpen]);
+  }, [filtersOpen, draft]);
   const [error, setError] = useState("");
-  const [isPending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
+  const isPending = pending || changing || response.scope !== branchId;
   const inputRef = useRef<HTMLInputElement>(null);
   const debouncedQuery = useDebouncedValue(query.trim(), 450);
   const lastSearched = useRef("");
   const requestSerial = useRef(0);
+  const scanRequest = useRef<{ query: string; orderQr?: string; productBarcode?: string; linearBarcode?: string } | null>(initialBarcode ? { query: initialQuery.trim(), linearBarcode: initialQuery } : null);
 
-  async function searchNow(value = query.trim()) {
+  async function searchNow(value = query.trim(), orderQr?: string, productBarcode?: string, linearBarcode?: string) {
     const clean = value.trim();
+    if (changing || (clean && clean === lastSearched.current)) return;
+    if (scanRequest.current?.query === clean) {
+      orderQr ??= scanRequest.current.orderQr; productBarcode ??= scanRequest.current.productBarcode; linearBarcode ??= scanRequest.current.linearBarcode;
+    } else scanRequest.current = null;
     const serial = ++requestSerial.current;
-    setError("");
-    setSelected(null);
+    setError(""); setSelected(null);
     if (!clean) {
-      lastSearched.current = "";
-      setResponse((current) => ({ ...current, query: "", results: [] }));
-      window.history.replaceState(null, "", "/dashboard/search");
-      return;
+      setPending(false); lastSearched.current = "";
+      setResponse(current => ({ ...current, query: "", results: [], warnings: [] }));
+      window.history.replaceState(null, "", "/dashboard/search"); return;
     }
-    lastSearched.current = clean;
-    startTransition(async () => {
-      try {
-        const next = await runGlobalSearch({ query: clean });
-        if (serial !== requestSerial.current) return;
-        setResponse(next);
-        window.history.replaceState(null, "", `/dashboard/search?q=${encodeURIComponent(clean)}`);
-      } catch (searchError) {
-        if (serial !== requestSerial.current) return;
-        lastSearched.current = "";
-        setError(searchError instanceof Error ? searchError.message : "Search could not be completed. Please try again.");
+    lastSearched.current = clean; setPending(true);
+    setResponse(current => ({ ...current, query: clean, results: [], warnings: [] }));
+    try {
+      const next = await runGlobalSearch({ query: clean, ...(orderQr ? { orderQr } : {}), ...(productBarcode ? { productBarcode } : {}), ...(linearBarcode ? { linearBarcode } : {}) });
+      if (serial !== requestSerial.current) return;
+      setResponse({ ...next, scope: branchId });
+      if (linearBarcode && next.scanResolution === 'unique-order' && next.results.length === 1 && next.results[0].kind === 'order') {
+        scanRequest.current = null;
+        router.push(`/dashboard/orders/${next.results[0].id}?scanned=1`);
+         return;
       }
-    });
+      if (!orderQr) window.history.replaceState(null, "", `/dashboard/search?q=${encodeURIComponent(clean)}${productBarcode || linearBarcode ? '&barcode=1' : ''}`);
+    } catch {
+      if (serial !== requestSerial.current) return;
+      lastSearched.current = "";
+      setResponse(current => ({ ...current, query: clean, results: [], warnings: [] }));
+      setError("Search could not be completed. Please try again.");
+    } finally { if (serial === requestSerial.current) setPending(false); }
   }
+
+  function editQuery(value: string) {
+    ++requestSerial.current; lastSearched.current = '';
+    scanRequest.current = null;
+    setQuery(value); setError(''); setSelected(null);
+    setPending(value.trim().length >= 2 && !changing);
+    if (value.trim().length < 2) { setResponse(current => ({ ...current, query: '', results: [], warnings: [] })); window.history.replaceState(null, '', '/dashboard/search'); }
+  }
+
+  function scanned(scan: SearchScan) {
+    const value = scan.kind === 'order' ? 'TENH POS order' : scan.value;
+    lastSearched.current = '';
+    scanRequest.current = { query: value, ...(scan.kind === 'order' ? { orderQr: scan.value } : scan.kind === 'linear' ? { linearBarcode: scan.value } : { productBarcode: scan.value }) };
+    setQuery(value);
+    void searchNow(value, scan.kind === 'order' ? scan.value : undefined, scan.kind === 'product' ? scan.value : undefined, scan.kind === 'linear' ? scan.value : undefined);
+  }
+
+  useEffect(() => {
+    const invalidate = () => { ++requestSerial.current; };
+    invalidate(); lastSearched.current = '';
+    const timer = window.setTimeout(() => {
+      setSelected(null); setResponse({ scope: branchId, query: '', results: [], branches: [], warnings: [] });
+      if (changing) { setPending(true); return; }
+      if (query.trim().length >= 2) void searchNow(); else setPending(false);
+    }, 0);
+    return () => { window.clearTimeout(timer); invalidate(); };
+    // A branch change invalidates the previous branch's requests and cached results.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchId, changing]);
 
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
@@ -255,19 +305,16 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
   }, [selected]);
 
   useEffect(() => {
-    if (!initialQuery.trim()) return;
-    void searchNow(initialQuery.trim());
-    // Initial query is intentionally run once from the URL.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (debouncedQuery.length < 2) { if (lastSearched.current) void searchNow(''); return; }
+    if (debouncedQuery !== query.trim()) return;
     if (debouncedQuery === lastSearched.current) return;
-    void searchNow(debouncedQuery);
+    const timer = window.setTimeout(() => {
+      if (debouncedQuery.length < 2) { if (lastSearched.current) void searchNow(''); return; }
+      void searchNow(debouncedQuery);
+    }, 0);
+    return () => window.clearTimeout(timer);
     // searchNow is intentionally omitted to avoid recreating the debounce loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQuery]);
+  }, [debouncedQuery, query]);
 
   const statuses = useMemo(
     () =>
@@ -309,9 +356,11 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
 
   useEffect(() => {
     if (selected && !filtered.some((result) => result.kind === selected.kind && result.id === selected.id)) {
-      setSelected(null);
+      const timer = window.setTimeout(() => setSelected(null), 0);
+      return () => window.clearTimeout(timer);
     }
   }, [filtered, selected]);
+  const selectedResult = selected && filtered.some(result => result.kind === selected.kind && result.id === selected.id) ? selected : null;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -345,8 +394,8 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
   const suggestions = ["Order #1001", "SKU ABC123", "Customer phone", "Supplier name", "Purchase Order", "Transfer", "Low stock products"];
 
   return (
-    <main className="mx-auto w-full max-w-[1550px] space-y-5 pb-10">
-      <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <main className={`${styles.page} mx-auto w-full max-w-[1550px] space-y-5 pb-10`}>
+      <section className={`${styles.intro} flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between`}>
         <div className="flex items-start gap-3">
           <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 max-sm:hidden">
             <Search size={23} />
@@ -366,16 +415,15 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
       </section>
 
       <section className="space-y-3">
-        <form onSubmit={submit} className="flex gap-3 max-sm:gap-2">
+        <form onSubmit={submit} className={`${styles.toolbar} flex gap-3 max-sm:gap-2`}>
           <div className="relative min-w-0 flex-1">
             <Search size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               ref={inputRef}
               aria-label="Global search"
-              style={{ paddingRight: 96 }}
+              style={{ paddingRight: 42 }}
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              autoFocus
+              onChange={(event) => editQuery(event.target.value)}
               placeholder="Order #, SKU, product name, customer, phone, supplier, purchase order..."
               className="h-12 w-full rounded-xl border border-blue-200 bg-white pl-11 pr-11 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
             />
@@ -388,18 +436,19 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
                   inputRef.current?.focus();
                 }}
                 aria-label="Clear search"
-                className="absolute right-14 xl:right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               >
                 <X size={16} />
               </button>
             ) : null}
-            <div className="absolute right-1 top-1/2 -translate-y-1/2"><OrderQrScanner/></div>
+
           </div>
-          <button type="button" onClick={() => setFiltersOpen(true)} aria-label="Filter results" className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm sm:hidden"><SlidersHorizontal size={18} /></button>
+          <div className={styles.scanTrigger}>{!changing && <OrderQrScanner key={branchId} onScan={scanned}/>}</div>
+          <button type="button" onClick={() => { setDraft(null); setFiltersOpen(true); }} aria-label="Filter results" className={`${styles.filterTrigger} grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm sm:hidden`}><SlidersHorizontal size={18} /></button>
         </form>
 
-        <DateRangeFilter from={dateFrom} to={dateTo} onApply={(from,to)=>{setDateFrom(from);setDateTo(to);setDraft(current=>current?{...current,dateFrom:from,dateTo:to}:null);}} />
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 max-sm:-mx-1 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-1 max-sm:pb-1 max-sm:[scrollbar-width:none]">
+        <div className={styles.standaloneDate}><DateRangeFilter from={dateFrom} to={dateTo} onApply={(from,to)=>{setDateFrom(from);setDateTo(to);setDraft(current=>current?{...current,dateFrom:from,dateTo:to}:null);}} /></div>
+        <div className={`${styles.suggestions} flex flex-wrap items-center gap-2 text-xs text-slate-500 max-sm:-mx-1 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-1 max-sm:pb-1 max-sm:[scrollbar-width:none]`} data-initial={!hasSearched && !isPending}>
           <span className="max-sm:hidden">Try searching:</span>
           {suggestions.map((suggestion) => (
             <button
@@ -417,14 +466,14 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
         </div>
       </section>
 
-      {error ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
-      {response.warnings.length ? (
+      {!isPending && error ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+      {!isPending && response.warnings.length ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           {response.warnings.join(" ")}
         </div>
       ) : null}
 
-      <section className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm max-sm:hidden sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 dark:border-slate-800 dark:bg-slate-900">
+      <section className={`${styles.groups} grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm max-sm:hidden sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 dark:border-slate-800 dark:bg-slate-900`}>
         {groups.map((group) => {
           const count = group.key === "all" ? response.results.length : resultCount(response.results, group.kinds);
           const active = activeGroup === group.key;
@@ -451,10 +500,10 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
         })}
       </section>
 
-      <section className="grid min-h-[560px] gap-4 xl:grid-cols-[300px_minmax(0,1fr)_360px]">
-        {filtersOpen ? <button type="button" aria-label="Close filters" onClick={closePanel} className="fixed inset-0 z-40 bg-slate-950/40 sm:hidden" /> : null}
-        <aside role={filtersOpen ? "dialog" : undefined} aria-modal={filtersOpen || undefined} aria-label="Filter results" data-sheet="bottom" className={`${filtersOpen ? "fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto rounded-t-3xl pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-14" : "max-sm:hidden"} rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:static sm:max-h-none sm:overflow-visible dark:border-slate-800 dark:bg-slate-900`}>
-          {filtersOpen ? <button type="button" aria-label="Close filter results" onClick={closePanel} className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600 sm:hidden"><X size={20} /></button> : null}
+      <section className={`${styles.workspace} grid min-h-[560px] gap-4 xl:grid-cols-[300px_minmax(0,1fr)_360px]`}>
+        {filtersOpen ? <button type="button" aria-label="Close filters" onClick={closePanel} className={`${styles.backdrop} fixed inset-0 z-40 bg-slate-950/40 sm:hidden`} /> : null}
+        <aside ref={filterRef} role={filtersOpen ? "dialog" : undefined} aria-modal={filtersOpen || undefined} aria-label="Filter results" data-sheet="bottom" data-open={filtersOpen} className={`${styles.filters} ${filtersOpen ? "fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto rounded-t-3xl pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-14" : "max-sm:hidden"} rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:static sm:max-h-none sm:overflow-visible dark:border-slate-800 dark:bg-slate-900`}>
+          {filtersOpen ? <button type="button" aria-label="Close filter results" onClick={closePanel} className={`${styles.filterClose} absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600 sm:hidden`}><X size={20} /></button> : null}
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-slate-900 dark:text-white">Filter Results</h2>
             <button type="button" onClick={clearFilters} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Clear all</button>
@@ -515,10 +564,10 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
           </div>}
         </aside>
 
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <section className={`${styles.results} overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900`} aria-busy={isPending}>
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
             <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
-              {hasSearched ? `${filtered.length} ${filtered.length === 1 ? "result" : "results"} found` : "Search results"}
+              {isPending ? "Searching TENH POS…" : hasSearched && !error ? `${filtered.length} ${filtered.length === 1 ? "result" : "results"} found` : "Search results"}
             </p>
             <select value={sort} onChange={(event) => setSort(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
               <option value="relevant">Most relevant</option>
@@ -528,23 +577,27 @@ export default function GlobalSearchClient({ initialQuery = "" }: { initialQuery
             </select>
           </div>
 
-          <div className="max-h-[650px] overflow-y-auto">
-            {isPending && !response.results.length ? (
+          <div className={`${styles.resultList} max-h-[650px] overflow-y-auto`}>
+            {isPending ? (
               <div className="flex min-h-[420px] flex-col items-center justify-center text-slate-500"><Loader2 size={30} className="animate-spin text-blue-600" /><p className="mt-3 text-sm">Searching TENH POS…</p></div>
-            ) : !hasSearched ? (
+            ) : error ? <div className="p-6 text-center"><p>Search could not be completed. Please try again.</p><button type="button" onClick={() => void searchNow()} className="mt-3 min-h-11 rounded-xl border px-4">Try again</button></div> : !hasSearched ? (
               <EmptyResults title="Search across your workspace" text="Enter an order number, SKU, barcode, customer, supplier, purchase order, transfer or keyword." />
             ) : !filtered.length ? (
               <EmptyResults title="No matching results" text="Try a different search or clear some filters." />
-            ) : (
-              filtered.map((result) => (
+            ) : (<>
+              <div className={styles.desktopRows}>{filtered.map((result) => (
                 <ResultRow key={`${result.kind}-${result.id}`} result={result} active={selected?.kind === result.kind && selected?.id === result.id} onClick={() => setSelected(result)} />
-              ))
-            )}
+              ))}</div>
+              <div className={styles.compactRows}>{Array.from(new Set(filtered.map(result => result.kind))).map(kind => <div key={kind}>
+                <h3 className={styles.kindHeading}>{t(kindMeta[kind].label)} · {filtered.filter(result => result.kind === kind).length}</h3>
+                {filtered.filter(result => result.kind === kind).map(result => <ResultRow key={result.id} result={result} active={selected?.kind === result.kind && selected?.id === result.id} onClick={() => setSelected(result)}/>)}</div>)}</div>
+            </>)}
+            {!hasSearched && !isPending && !error && <div className={styles.initialSuggestions}>{suggestions.slice(0,4).map(suggestion => <button type="button" key={suggestion} onClick={() => { setQuery(suggestion); void searchNow(suggestion); }}>{suggestion}</button>)}</div>}
           </div>
         </section>
 
-        <aside className="flex min-h-[560px] flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          {selected ? <ResultDetail result={selected} /> : <SelectResultPanel />}
+        <aside className={`${styles.details} flex min-h-[560px] flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900`} data-selected={Boolean(selectedResult) && !isPending && !error}>
+          {selectedResult && !isPending && !error ? <ResultDetail result={selectedResult} /> : <SelectResultPanel />}
           <div className="max-sm:hidden"><SearchTips /></div>
         </aside>
       </section>
@@ -560,8 +613,9 @@ function ResultRow({ result, active, onClick }: { result: GlobalSearchResult; ac
   const meta = kindMeta[result.kind];
   const Icon = meta.Icon;
   return (
-    <button type="button" onClick={onClick} className={`flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-left transition dark:border-slate-800 ${active ? "bg-blue-50/80 dark:bg-blue-950/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/60"}`}>
+    <button type="button" onClick={onClick} className={`${styles.row} flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-left transition dark:border-slate-800 ${active ? "bg-blue-50/80 dark:bg-blue-950/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/60"}`}>
       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${meta.iconClass}`}><Icon size={19} /></span>
+      {result.kind === 'product' && result.imageUrl && <span className={styles.compactRows}><ProductImage src={result.imageUrl} alt={result.title} className={styles.rowImage}/></span>}
       <span className="min-w-0 flex-1">
         <strong className="block truncate text-sm text-slate-900 dark:text-white">{result.title}</strong>
         <small className="mt-0.5 block truncate text-xs text-slate-500">{result.subtitle}</small>
@@ -573,7 +627,7 @@ function ResultRow({ result, active, onClick }: { result: GlobalSearchResult; ac
 }
 
 function EmptyResults({ title, text }: { title: string; text: string }) {
-  return <div className="flex min-h-[440px] flex-col items-center justify-center px-8 text-center"><span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-50 text-slate-400"><PackageSearch size={31} /></span><h3 className="mt-4 font-semibold text-slate-900 dark:text-white">{title}</h3><p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">{text}</p></div>;
+  return <div className={`${styles.empty} flex min-h-[440px] flex-col items-center justify-center px-8 text-center`}><span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-50 text-slate-400"><PackageSearch size={31} /></span><h3 className="mt-4 font-semibold text-slate-900 dark:text-white">{title}</h3><p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">{text}</p></div>;
 }
 
 function SelectResultPanel() {

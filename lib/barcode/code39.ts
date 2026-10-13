@@ -27,6 +27,26 @@ export function code39Bars(value: string) {
   return encodeCode39(normalizeBarcode(value));
 }
 
+/** Exact receipt output: ratio 2:1, two dots per narrow bar at 203 dpi, 10X quiet zones. */
+export function code39PrintGeometry(value: string, availableMm: number) {
+  const issue = validateCode39(value);
+  if (issue) throw new Error(issue);
+  const bars: { x: number; width: number }[] = [];
+  let x = 20;
+  const characters = [...`*${value}*`];
+  characters.forEach((char, index) => {
+    [...CODE39[char]].forEach((part, position) => {
+      const width = part === 'w' ? 4 : 2;
+      if (position % 2 === 0) bars.push({ x, width });
+      x += width;
+    });
+    if (index < characters.length - 1) x += 2;
+  });
+  const width = x + 20, widthMm = width * 25.4 / 203;
+  if (widthMm > availableMm) throw new Error('Order barcode needs a wider receipt. The numeric identifier will not be shortened.');
+  return { text: value, bars, width, widthMm, heightMm: 8 };
+}
+
 function encodeCode39(value: string) {
   const text = `*${value}*`;
   const bars: {x:number;width:number}[] = []; let x = 0; const narrow=2, wide=5, gap=2;

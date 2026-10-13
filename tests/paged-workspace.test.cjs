@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Standalone Node regression fixture. */
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript');
 test('equivalent filter objects during rerenders do not cancel the active load or leave loading stuck',async()=>{
  let slots=[],cursor=0,effects=[],timers=new Set(),requests=[];
  const initial={rows:['saved']};
- const react={useState(v){const i=cursor++;if(!(i in slots))slots[i]=v;return[slots[i],v=>slots[i]=v];},useRef(v){const i=cursor++;return slots[i]??(slots[i]={current:v});},useEffect(fn,deps){const i=cursor++,old=slots[i];if(!old||deps.some((x,n)=>!Object.is(old.deps[n],x))){slots[i]={deps};effects.push(()=>{old?.cleanup?.();slots[i].cleanup=fn();});}}};
+ const react={useState(v){const i=cursor++;if(!(i in slots))slots[i]=v;return[slots[i],v=>slots[i]=typeof v==='function'?v(slots[i]):v];},useRef(v){const i=cursor++;return slots[i]??(slots[i]={current:v});},useEffect(fn,deps){const i=cursor++,old=slots[i];if(!old||deps.some((x,n)=>!Object.is(old.deps[n],x))){slots[i]={deps};effects.push(()=>{old?.cleanup?.();slots[i].cleanup=fn();});}}};
  const m={exports:{}};const js=ts.transpileModule(fs.readFileSync('lib/use-paged-workspace.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  new Function('require','module','exports','setTimeout','clearTimeout',js)(()=>react,m,m.exports,fn=>{timers.add(fn);return fn;},fn=>timers.delete(fn));
  const load=f=>new Promise(resolve=>requests.push({filters:f,resolve}));
@@ -16,7 +17,7 @@ test('equivalent filter objects during rerenders do not cancel the active load o
 test('management pages debounce searches, retain rows and ignore obsolete responses',async()=>{
  let slots=[],cursor=0,effects=[],timers=new Set(),requests=[],result;
  const initial={rows:['saved']};let filters={page:1,query:''};
- const react={useState(v){const i=cursor++;if(!(i in slots))slots[i]=v;return[slots[i],v=>slots[i]=v];},useRef(v){const i=cursor++;return slots[i]??(slots[i]={current:v});},useEffect(fn,deps){const i=cursor++,old=slots[i];if(!old||deps.some((x,n)=>!Object.is(old.deps[n],x))){slots[i]={deps};effects.push(()=>{old?.cleanup?.();slots[i].cleanup=fn();});}}};
+ const react={useState(v){const i=cursor++;if(!(i in slots))slots[i]=v;return[slots[i],v=>slots[i]=typeof v==='function'?v(slots[i]):v];},useRef(v){const i=cursor++;return slots[i]??(slots[i]={current:v});},useEffect(fn,deps){const i=cursor++,old=slots[i];if(!old||deps.some((x,n)=>!Object.is(old.deps[n],x))){slots[i]={deps};effects.push(()=>{old?.cleanup?.();slots[i].cleanup=fn();});}}};
  const m={exports:{}};const js=ts.transpileModule(fs.readFileSync('lib/use-paged-workspace.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  new Function('require','module','exports','setTimeout','clearTimeout',js)(()=>react,m,m.exports,fn=>{timers.add(fn);return fn;},fn=>timers.delete(fn));
  const load=f=>new Promise((resolve,reject)=>requests.push({filters:f,resolve,reject}));
@@ -29,10 +30,11 @@ test('management pages debounce searches, retain rows and ignore obsolete respon
  requests[1].resolve({rows:['page-two']});assert.deepEqual((await settle()).data.rows,['page-two']);
  requests[0].resolve({rows:['obsolete']});assert.deepEqual((await settle()).data.rows,['page-two']);
  render({page:3,query:'shirt'});tick();requests[2].reject(Error('Network unavailable'));const failed=await settle();assert.equal(failed.error,'Network unavailable');assert.deepEqual(failed.data.rows,['page-two']);assert.equal(failed.busy,false);
+ failed.retry();render();tick();assert.equal(requests.length,4,'explicit Retry makes one request for the same applied filters');assert.deepEqual(requests[3].filters,{page:3,query:'shirt'});requests[3].resolve({rows:['recovered']});assert.deepEqual((await settle()).data.rows,['recovered']);
 });
 test('only typing is debounced and a refreshed default page needs no second request',()=>{
  let slots=[],cursor=0,effects=[],delays=[],requests=[],result;
- const react={useState(v){const i=cursor++;if(!(i in slots))slots[i]=v;return[slots[i],v=>slots[i]=v];},useRef(v){const i=cursor++;return slots[i]??(slots[i]={current:v});},useEffect(fn,deps){const i=cursor++,old=slots[i];if(!old||deps.some((x,n)=>!Object.is(old.deps[n],x))){slots[i]={deps};effects.push(()=>{old?.cleanup?.();slots[i].cleanup=fn();});}}};
+ const react={useState(v){const i=cursor++;if(!(i in slots))slots[i]=v;return[slots[i],v=>slots[i]=typeof v==='function'?v(slots[i]):v];},useRef(v){const i=cursor++;return slots[i]??(slots[i]={current:v});},useEffect(fn,deps){const i=cursor++,old=slots[i];if(!old||deps.some((x,n)=>!Object.is(old.deps[n],x))){slots[i]={deps};effects.push(()=>{old?.cleanup?.();slots[i].cleanup=fn();});}}};
  const m={exports:{}};const js=ts.transpileModule(fs.readFileSync('lib/use-paged-workspace.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  new Function('require','module','exports','setTimeout','clearTimeout',js)(()=>react,m,m.exports,(fn,ms)=>{delays.push(ms);fn();return fn;},()=>{});
  const load=f=>{requests.push(f);return new Promise(()=>{});};

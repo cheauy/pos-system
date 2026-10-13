@@ -27,7 +27,7 @@
 .bs-panel[data-active=product] [data-section]:not([data-section~=product]),
 .bs-panel[data-active=seo] [data-section]:not([data-section~=seo]),
 .bs-panel[data-active=social] [data-section]:not([data-section~=social]){display:none}
-@media (max-width:1024px){
+@media (max-width:1279px), (max-width:1366px) and (pointer:coarse){
 .bs-layout{grid-template-columns:minmax(0,1fr);gap:12px}
 /* Sidebar becomes a horizontal tab strip. Edge shadows (background-attachment: local covers)
    appear only on a side with more tabs, so hidden tabs are always signposted. */

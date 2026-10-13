@@ -32,7 +32,7 @@ export default function CompactPurchaseFilters({ search, onSearch, filters, supp
     const next = Object.fromEntries(data) as Filters;
     const validation = dateRangeError(next.fromDate, next.toDate);
     if (validation) { setError(validation); return; }
-    onApply(next);
+    if (Object.entries(next).some(([key, value]) => value !== filters[key as keyof Filters])) onApply(next);
     setOpen(false);
   }
 
@@ -50,7 +50,7 @@ export default function CompactPurchaseFilters({ search, onSearch, filters, supp
         <label>Sort by<select name="sortMode" defaultValue={filters.sortMode}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="highest">Highest total</option><option value="lowest">Lowest total</option></select></label>
         <div className={styles.filterDates}><label>From<input name="fromDate" type="date" defaultValue={filters.fromDate} /></label><label>To<input name="toDate" type="date" defaultValue={filters.toDate} /></label></div>
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-        <div className={styles.filterActions}><button type="button" onClick={event => { const form = event.currentTarget.form!; for (const [name, value] of Object.entries({ supplierFilter: "all", statusFilter: "all", sortMode: "newest", fromDate: "", toDate: "" })) (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value = value; setError(""); }}>Reset</button><button type="submit" className={styles.primary} disabled={busy}>Apply</button></div>
+        <div className={styles.filterActions}><button type="button" onClick={event => { const form = event.currentTarget.form!; for (const [name, value] of Object.entries({ supplierFilter: "all", statusFilter: "all", sortMode: "newest", fromDate: "", toDate: "" })) (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value = value; setError(""); }}>Reset</button><button type="submit" className={styles.primary} aria-busy={busy || undefined}>Apply</button></div>
       </form>
     </dialog>}
   </div>;

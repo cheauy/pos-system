@@ -1,0 +1,66 @@
+.registerLabel { display:none; }
+/* Touch layouts include iPad Pro landscape without changing fine-pointer desktop. */
+@media (max-width:1279px), (max-width:1366px) and (pointer:coarse) {
+  .appearance, .securityPage, .support { min-width:0; padding-bottom:max(24px,env(safe-area-inset-bottom))!important; }
+  .appearance *, .securityPage *, .support * { min-width:0; }
+  .appearance :is(h1,h2,p,label), .securityPage :is(h1,h2,p,label), .support :is(h1,h2,p,label,summary) { overflow-wrap:anywhere; }
+  .appearance :is(button,input,select), .securityPage :is(button,input), .support :is(button,input,select,textarea) { min-height:44px; }
+  .appearance :is(input,select), .securityPage input, .support :is(input,select,textarea) { font-size:16px; max-width:100%; }
+  .appearance :is(button,input,select):focus-visible, .securityPage :is(button,input,a):focus-visible, .support :is(button,input,select,textarea):focus-visible { outline:2px solid var(--app-accent); outline-offset:2px; }
+  .appearance :global(.settings-save-primary), .securityPage button[type=submit]:not(.danger button), .support button[type=submit] { background:var(--app-accent)!important; color:var(--app-accent-contrast,#fff)!important; }
+  .appearance { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
+  .appearance > *, .preferences > *, .preferenceGrid > * { margin-top:0!important; }
+  .preferences, .preferenceGrid { display:contents; }
+  .appearance section { padding:16px; border-radius:14px; }
+  .appearance h2 { font-size:18px; line-height:1.4; }
+  .appearance section :global(.mt-4) { margin-top:12px; }
+  .appearance :global(#customer-fields) label { padding-block:10px; }
+  .register h2 { margin-bottom:12px; }
+  .register > div { align-items:center; }
+  .registerLabel { display:block; font-size:14px; font-weight:600; }
+  .register p { line-height:1.5; }
+  .register button[aria-checked=true] > span:first-child, .appearance input:checked + span { background:var(--app-accent); }
+  .displayOptions { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
+  .appearance :global(.settings-save-bar) { margin:0; gap:8px; padding:10px 12px max(10px,env(safe-area-inset-bottom)); border-radius:12px; }
+  .appearance :global(.settings-save-bar) > span { flex:1 1 100%; font-size:12px; }
+  .appearance :global(.settings-save-bar) button { white-space:normal; }
+  .securityPage > section { padding:16px; gap:12px; }
+  .securityPage > section:first-child { padding:0; }
+  .securityPage > section:first-child > div:last-child { display:none; }
+  .securityPage > section:nth-child(2) p { white-space:normal; overflow-wrap:anywhere; }
+  .security { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; align-items:start; }
+  .securityPage > .security { padding:0; }
+  .security > div, .security > aside { display:contents; }
+  .security > div > :is(form,section), .security > aside > section { padding:16px; margin:0!important; border-radius:14px; }
+  .security form > div { display:block; margin-top:14px; }
+  .security h2 { line-height:1.4; }
+  .security :global(.settings-save-bar) { position:static; margin-top:12px; padding:0; border:0; box-shadow:none; background:transparent; justify-content:flex-start; }
+  .security :global(.mt-5) { margin-top:14px; }
+  .security :global(.sm\:flex-row) { flex-wrap:wrap; }
+  .security button { white-space:normal; flex-shrink:0; }
+  .security button[class~="bg-blue-600"] { background:var(--app-accent); color:var(--app-accent-contrast,#fff); }
+  .security button[class~="border-blue-200"] { border-color:var(--app-accent); color:var(--app-accent); }
+  .security :global(.md\:grid-cols-\[220px_minmax\(0\,1fr\)\]) { grid-template-columns:minmax(0,1fr); }
+  .security img { max-width:220px; }
+  .danger { grid-column:1/-1; }
+  .support { gap:12px; }
+  .support > * { margin-top:12px!important; }
+  .support > header { margin-top:0!important; }
+  .supportColumns { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; align-items:start; }
+  .supportColumns > section { padding:16px; border-radius:14px; }
+  .supportColumns > section:last-child { padding:0; }
+  .supportColumns > section:last-child > :is(div,details,p) { padding:16px; }
+  .support form { margin-top:14px; }
+  .support textarea { min-height:100px; }
+  .support summary { line-height:1.6; }
+  .support button[type=submit] { width:100%; justify-content:center; }
+  .support input[type=file] { white-space:normal; overflow:hidden; }
+}
+@media (min-width:768px) and (max-width:1279px), (min-width:768px) and (max-width:1366px) and (pointer:coarse) {
+  .appearance { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
+  .appearance > section:first-child, .preferenceGrid > section:first-child, .displayOptions, .appearance :global(.settings-save-bar) { grid-column:1/-1; }
+  .displayOptions { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .appearance :global(.settings-save-bar) > span { flex:0 1 auto; }
+  .security { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .supportColumns { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+}

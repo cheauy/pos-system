@@ -1,9 +1,23 @@
 .formBody, .payment, .optionalFields, .moreDetails, .upload, .saveArea { display: contents; }
 .moreDetails > summary, .compactToolbar, .periodCaption, .selectedTotal { display: none; }
+.compactHistory, .historyList { display: none; }
 
 /* Match the web workspace's compact phone/tablet breakpoint. */
 @media (max-width: 1279px), (max-width: 1366px) and (pointer: coarse) {
   .responsive { min-width: 0; padding-bottom: 80px; }
+  /* Cards and history use the same compact breakpoint as the toolbar and launchers. */
+  .responsive .summary { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; }
+  .responsive .workspace { grid-template-columns: minmax(0, 1fr); }
+  .responsive .metric { flex-direction: column; gap: .375rem; padding: .625rem; text-align: center; }
+  .metric > span { padding: .625rem; }
+  .metric > span > svg { width: 1.25rem; height: 1.25rem; }
+  .metric > div > p { display: none; }
+  .metric > div > strong { margin-top: 0; font-size: .875rem; line-height: 1.25rem; }
+  .metric > div > .metricShort { display: block; }
+  .responsive .history { padding: 1rem; }
+  .responsive .desktopHistory, .responsive .historyTable { display: none; }
+  .responsive .compactHistory { display: flex; }
+  .responsive .historyList { display: block; }
   .responsive .desktopHeader, .desktopFilters, .historyFilters, .overviewDates { display: none !important; }
   .responsive :is(input, select, button, summary):focus-visible {
     outline: 2px solid var(--app-accent);
@@ -125,4 +139,9 @@
 @media (max-width: 359px) {
   .formBody { grid-template-columns: minmax(0, 1fr); }
   .formBody > label { grid-column: 1 / -1; }
+}
+
+/* Preserve the existing two-column summary on narrow landscape viewports. */
+@media (min-width: 640px) and (max-width: 1023px) and (orientation: landscape) {
+  .responsive .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

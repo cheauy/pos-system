@@ -1,4 +1,5 @@
 "use client";
+import touch from "../settings-touch.module.css";
 import { ButtonSpinner } from "@/components/pending-submit-button";
 import { PASSWORD_HELP } from "@/lib/auth/password-policy";
 
@@ -312,7 +313,7 @@ export default function SecurityForm({
         </div>
       )}
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.82fr)]">
+      <section className={`${touch.security} grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.82fr)]`}>
         <div className="space-y-5">
           <form
             action={passwordAction}
@@ -578,7 +579,7 @@ export default function SecurityForm({
             </div>
           </section>
 
-          <section className="rounded-2xl border border-red-200 bg-red-50/80 p-5 shadow-sm dark:border-red-900/50 dark:bg-red-950/15">
+          <section className={`${touch.danger} rounded-2xl border border-red-200 bg-red-50/80 p-5 shadow-sm dark:border-red-900/50 dark:bg-red-950/15`}>
             <div className="flex items-start gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-300">
                 <Trash2 className="h-5 w-5" />

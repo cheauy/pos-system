@@ -1,4 +1,5 @@
 import { requirePermission } from "@/lib/auth/require-permission";
+import { getBranchContext } from "@/lib/branches/context";
 import { createClient } from "@/lib/supabase/server";
 import { readAllRows } from "@/lib/supabase/read-all-rows";
 
@@ -39,8 +40,14 @@ type TransferDbRow = {
     | null;
 };
 
-export default async function StockTransfersPage() {
+export default async function StockTransfersPage({ searchParams }: { searchParams: Promise<{ transfer?: string }> }) {
+  const params = await searchParams;
   const [business, supabase] = await Promise.all([requirePermission("transfers.manage"), createClient()]);
+  const context = await getBranchContext();
+  let transferQuery = supabase.from("stock_transfers")
+    .select("id, transfer_number, status, source_location_id, destination_location_id, note, created_at, created_by, stock_transfer_items(product_id, quantity)")
+    .eq("business_id", business.id);
+  if (business.role !== 'owner') transferQuery = transferQuery.or(`source_location_id.eq.${context.branchId},destination_location_id.eq.${context.branchId}`);
 
   const [
     locationsResult,
@@ -71,12 +78,7 @@ export default async function StockTransfersPage() {
       .select("id, name")
       .eq("business_id", business.id)
       .order("name", { ascending: true }),
-    supabase
-      .from("stock_transfers")
-      .select(
-        "id, transfer_number, status, source_location_id, destination_location_id, note, created_at, created_by, stock_transfer_items(product_id, quantity)",
-      )
-      .eq("business_id", business.id)
+    transferQuery
       .order("created_at", { ascending: false })
       .limit(200),
     // Display-only availability for every branch; sending re-reads stock on the
@@ -167,6 +169,7 @@ export default async function StockTransfersPage() {
 
   return (
     <StockTransfersClient
+      initialTransferId={typeof params.transfer === 'string' ? params.transfer : undefined}
       locations={locations}
       products={products}
       locationStock={locationStock}

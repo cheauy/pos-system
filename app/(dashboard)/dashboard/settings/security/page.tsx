@@ -8,6 +8,7 @@ import {
 
 import { createClient } from "@/lib/supabase/server";
 
+import touch from "../settings-touch.module.css";
 import SecurityForm from "./security-form";
 
 type ProfileRow = {
@@ -57,7 +58,7 @@ export default async function SecurityPage() {
     user.identities?.some((identity) => identity.provider === "email") ?? false;
 
   return (
-    <main className="mx-auto w-full max-w-[1600px] space-y-5 pb-8">
+    <main className={`${touch.securityPage} mx-auto w-full max-w-[1600px] space-y-5 pb-8`}>
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <Link

@@ -5,14 +5,14 @@ const { renderToStaticMarkup } = require('react-dom/server');
 const { BitArray, Code39Reader } = require('@zxing/library');
 const { loadTs } = require('./helpers/load-ts.cjs');
 const barcode = loadTs('lib/barcode/code39.ts');
-function fixture({ denied = false, legacyBarcode = '0000123456789' } = {}) {
+function fixture({ denied = false, legacyBarcode = '0000123456789', preservation = true, barcodeState } = {}) {
   const business = { id:'business', slug:'shop', role:'owner', productMode:'standard' };
   const context = { business, branchId:'branch-a' };
   const rows = new Map(['branch-a','branch-b'].map(branch => [branch, [{ id:'p1', business_id:'business', name:'Product', sku:'SKU1', barcode:legacyBarcode, product_type:'standard', variant_group_id:null, stock_quantity:3, low_stock_quantity:1, updated_at:'version', is_active:true, is_online:false }]]));
   const writes = [], clients = [], permissions = [];
   function query(table, branch) {
     let payload, operation = 'read'; const filters = [], q = {};
-    for (const method of ['select','order','limit']) q[method] = () => q;
+    for (const method of ['select','order','limit','upsert']) q[method] = () => q;
     q.eq = (key,value) => { filters.push(row=>row[key]===value); return q; };
     q.neq = (key,value) => { filters.push(row=>row[key]!==value); return q; };
     q.in = (key,values) => { filters.push(row=>values.includes(row[key])); return q; };
@@ -21,6 +21,7 @@ function fixture({ denied = false, legacyBarcode = '0000123456789' } = {}) {
     q.single = q.maybeSingle = () => { q.one=true; return q; };
     q.then = (ok,fail) => Promise.resolve().then(() => {
       const found = (rows.get(branch) || []).filter(row=>filters.every(filter=>filter(row)));
+      if (operation === 'insert') { const created={...payload,id:'new-product'};writes.push({branch,table,operation,payload});rows.get(branch).push(created);return {data:q.one?created:[created],error:null}; }
       if (operation !== 'read') { writes.push({ branch,table,operation,payload }); found.forEach(row=>Object.assign(row,payload)); }
       return { data:q.one ? found[0] || null : found, error:null };
     }).then(ok,fail);
@@ -28,13 +29,17 @@ function fixture({ denied = false, legacyBarcode = '0000123456789' } = {}) {
   }
   // The edit RPC writes all saved rows of the request branch in one transaction.
   const rpc = branch => async (name,args) => {
+    if (name === 'tenh_barcode_contract_ready') return { data:true, error:null };
     if (name !== 'tenh_edit_product_rows') return { data:null, error:null };
     for (const item of args.p_rows) { writes.push({ branch,table:'branch_products',operation:'update',payload:item.values }); Object.assign((rows.get(branch)||[]).find(row=>row.id===item.id&&row.updated_at===item.expectedUpdatedAt)||{},item.values); }
     return { data:{ success:true, ids:args.p_rows.map(item=>item.id) }, error:null };
   };
   const db = branch => ({ auth:{getUser:async()=>({data:{user:{id:'user'}}})}, from:table=>query(table,branch), rpc:rpc(branch) });
   const api = loadTs('app/(dashboard)/dashboard/products/actions.ts', {
+    '@/lib/barcode/code128':loadTs('lib/barcode/code128.ts'),
     '@/lib/barcode/code39':barcode,
+    '@/lib/barcode/generate':{generateInternalBarcode:()=> '000000123456789'},
+    '@/lib/barcode/require-contract':{barcodeCapability:async()=>barcodeState??(preservation?'ready':'legacy'),BARCODE_UNAVAILABLE:'Barcode verification is unavailable.'},
     '@/lib/products/variant-editor':loadTs('lib/products/variant-editor.ts'),
     '@/lib/images/compress-photo':{}, '@/lib/public-photo-cache':{},
     'next/cache':{revalidatePath(){}}, 'next/navigation':{redirect(){throw Error('redirect');}},
@@ -116,19 +121,33 @@ test('independent ZXing Code39 scanner fixture round-trips exact labels and lead
   }
 });
 test('new or changed invalid product barcodes reject before writes; unchanged legacy codes are preserved', async () => {
-  for(const value of ['abc123','SKU_1','1'.repeat(41)]) {
+  for(const value of ['é','123\n4','1'.repeat(81)]) {
     const changed=fixture(); const result=await changed.api.updateProductGroup({},changed.form(value));
-    assert.equal(result.success,false); assert.match(result.message,/Code 39/); assert.equal(changed.writes.length,0);
+    assert.equal(result.success,false); assert.match(result.message,/Code 128/); assert.equal(changed.writes.length,0);
     const create=fixture();const form=new FormData();for(const[k,v]of Object.entries({name:'Product',sku:'SKU1',barcode:value,locationId:'branch-a'}))form.set(k,v);
-    const created=await create.api.createProduct({},form);assert.equal(created.success,false);assert.match(created.message,/Code 39/);assert.equal(create.writes.length,0);
+    const created=await create.api.createProduct({},form);assert.equal(created.success,false);assert.match(created.message,/Code 128/);assert.equal(create.writes.length,0);
     const legacy=fixture({legacyBarcode:value}); const saved=await legacy.api.updateProductGroup({},legacy.form(value));
-    assert.equal(saved.success,true); assert.equal(legacy.rows.get('branch-a')[0].barcode,value);assert.ok(!Object.hasOwn(legacy.writes[0].payload,'stock_quantity'));
+    assert.equal(saved.success,true,saved.message); assert.equal(legacy.rows.get('branch-a')[0].barcode,value);assert.ok(!Object.hasOwn(legacy.writes[0].payload,'stock_quantity'));
   }
 });
-const labelDeps={react:React,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},'@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),'@/lib/barcode/code39':barcode,'@/lib/receipts/receipt-model':{printTextScale:()=>1},'@/lib/printing/prepare-print':{},'@/components/product-picker':{default:()=>null}};
+test('default-off product creation retains established SKU fallback; enabled creation generates numeric codes',async()=>{
+ for(const preservation of [false,true]){
+  const f=fixture({preservation}),form=new FormData();for(const[k,v]of Object.entries({name:'New product',sku:'NEW-SKU',barcode:'',locationId:'branch-a',sellingPrice:'5'}))form.set(k,v);
+  const result=await f.api.createProduct({},form);assert.equal(result.success,true,result.message);const created=f.writes.find(write=>write.operation==='insert');assert.equal(created.payload.barcode,preservation?'000000123456789':'NEW-SKU');
+ }
+ for(const barcode of ['ABC123','SKU_1']){const f=fixture(),form=new FormData();for(const[k,v]of Object.entries({name:'New product',sku:'NEW-SKU',barcode,locationId:'branch-a',sellingPrice:'5'}))form.set(k,v);const result=await f.api.createProduct({},form);assert.equal(result.success,false);assert.match(result.message,/numeric strings/);assert.equal(f.writes.length,0);}
+});
+test('enabled-but-unavailable standard creation cannot fall back to a legacy SKU barcode',async()=>{
+ const f=fixture({barcodeState:'unavailable'}),form=new FormData();for(const[k,v]of Object.entries({name:'Fixture',sku:'NEW-SKU',barcode:'',locationId:'branch-a',sellingPrice:'5'}))form.set(k,v);
+ const result=await f.api.createProduct({},form);assert.equal(result.success,false);assert.match(result.message,/verification is unavailable/);assert.equal(f.writes.length,0);
+});
+const labelDeps={react:React,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'@/components/providers/language-provider':{useLanguage:()=>({language:'en',t:text=>text})},'@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),'@/lib/barcode/code128':loadTs('lib/barcode/code128.ts'),'@/lib/receipts/receipt-model':{printTextScale:()=>1},'@/lib/printing/prepare-print':{},'@/components/product-picker':{default:()=>null}};
+labelDeps['@/components/management-responsive.module.css']={default:{}};
+labelDeps['@/lib/use-management-viewport']={useManagementViewport:()=>false,MANAGEMENT_COMPACT_QUERY:'(max-width: 1024px)'};
+labelDeps['@/lib/barcode/product-label']=loadTs('lib/barcode/product-label.ts',{'./code39':barcode,'./code128':loadTs('lib/barcode/code128.ts')});
 test('unsupported saved labels show an explanation instead of a transformed barcode or render crash', () => {
   const {LabelCard}=loadTs('app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx',labelDeps);
-  for(const value of ['abc123','SKU_1','1'.repeat(41),'',' SKU1 ','   ']) {
+  for(const value of ['é','123\n4','1'.repeat(81),'',' SKU1 ','   ']) {
     const html=renderToStaticMarkup(React.createElement(LabelCard,{product:{id:'product',name:'Legacy',barcode:value,sku:''},businessName:'Fixture',size:'50x30',templateId:'product',elements:{barcode:true,name:true},customText:''}));
     assert.match(html,/role="alert"/);assert.match(html,/unchanged/);assert.ok(!html.includes('<svg'));
   }
@@ -155,18 +174,18 @@ test('name-only edits preserve NULL and empty legacy barcode columns with the un
 });
 
 test('intentional identifier changes validate raw padding and whitespace before any writes', async () => {
-  for(const value of ['NEW_CODE','lowercase','1'.repeat(41),' SKU1','SKU1 ','   ','\tSKU1']) {
+  for(const value of ['é','123\n4','1'.repeat(81),' SKU1','SKU1 ','   ','\tSKU1']) {
     const f=fixture({legacyBarcode:null});
     for(const rows of f.rows.values())rows[0].sku='LEGACY_1';
     const form=f.form(value);const variants=JSON.parse(form.get('variants'));variants[0].sku='LEGACY_1';form.set('variants',JSON.stringify(variants));
     const result=await f.api.updateProductGroup({},form);
-    assert.equal(result.success,false);assert.match(result.message,/Code 39/);assert.equal(f.writes.length,0);
+    assert.equal(result.success,false);assert.match(result.message,/Code 128|whitespace/);assert.equal(f.writes.length,0);
     assert.equal(f.rows.get('branch-a')[0].barcode,null);
     const create=fixture();const input=new FormData();for(const[k,v]of Object.entries({name:'Product',sku:'SKU1',barcode:value,locationId:'branch-a'}))input.set(k,v);
     const created=await create.api.createProduct({},input);
-    assert.equal(created.success,false);assert.match(created.message,/Code 39/);assert.equal(create.writes.length,0);
+    assert.equal(created.success,false);assert.match(created.message,/Code 128|whitespace/);assert.equal(create.writes.length,0);
   }
-  for(const value of ['0000009','A B']) {
+  for(const value of ['0000009','000123']) {
     const f=fixture({legacyBarcode:null});const saved=await f.api.updateProductGroup({},f.form(value));
     assert.equal(saved.success,true,saved.message);assert.equal(f.rows.get('branch-a')[0].barcode,value);
   }
@@ -194,13 +213,15 @@ test('scanner fixtures are accepted by the actual POS scan callback, retaining l
     let adds=0;
     const scan=new Function('data','addProduct','chooseProduct','changeFilter','setNotice',compiled+'\nreturn scan;')({products:[{id:'product',barcode:value,sku:'OTHER-SKU',product_type:'standard'}]},()=>{adds++;return true;},()=>{},()=>{},()=>{});
     assert.equal(scan(decoded),true);assert.equal(adds,1);
+    let notice;const blocked=new Function('data','addProduct','chooseProduct','changeFilter','setNotice',compiled+'\nreturn scan;')({barcodeScanning:'unavailable',products:[{id:'product',barcode:value,sku:'OTHER',barcodeAliases:[value]}]},()=>{assert.fail('Blocked scans must not add an item');},()=>{assert.fail('Blocked scans must not choose an item');},()=>{},value=>{notice=value;});
+    assert.equal(blocked(decoded),false);assert.match(notice.text,/scanning is disabled/);
   }
   for(const value of [' SKU1 ','   '])assert.match(barcode.validateCode39(value),/POS lookup/);
 });
 test('invalid selected labels disable every print entry and never prepare or print, including a mixed selection', async () => {
-  for(const invalid of ['bad_code',' SKU1 ','   ']) {
+  for(const invalid of ['é',' SKU1 ','   ']) {
   let cursor=0, preparations=0;const states=[];
-  const react={useState:initial=>{const k=cursor++;if(!(k in states))states[k]=k===0?['valid','legacy']:initial;return[states[k],value=>{states[k]=value;}];},useMemo:fn=>fn(),useRef:value=>({current:value}),useEffect:()=>{}};
+  const react={useState:initial=>{const k=cursor++;if(!(k in states))states[k]=Array.isArray(initial)?['valid','legacy']:initial;return[states[k],value=>{states[k]=value;}];},useMemo:fn=>fn(),useRef:value=>({current:value}),useEffect:()=>{}};
   const Client=loadTs('app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx',{...labelDeps,react,'@/lib/printing/prepare-print':{preparePrint:()=>{preparations++;throw Error('must not prepare');}}}).default;
   const props={products:[{id:'valid',name:'Good',barcode:'000123',sku:'GOOD',selling_price:1},{id:'legacy',name:'Legacy',barcode:invalid,sku:'BAD',selling_price:1}],categories:[],settings:{},businessName:'Fixture'};
   const tree=Client(props);const buttons=nodes(tree).filter(node=>node.type==='button'&&node.props.onClick?.constructor.name==='AsyncFunction');
@@ -219,13 +240,16 @@ test('variant create serializer and action preserve raw barcode input until vali
       '@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),
       react,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),sonner:{toast:{error(){},success(){}}},
       '@/components/product-gallery-input':{default:()=>null},'@/lib/barcode/generate':{generateInternalBarcode:()=> 'GENERATED'},'./actions':f.api,
+      '@/components/anchored-action-menu':{default:()=>null},
+      './fashion-responsive.module.css':{default:{}},
+      './quick-fashion.module.css':{default:{}},
     }).default;
     const tree=Component({categories:[],branches:[{id:'branch-a',name:'A'}]});
     const variants=nodes(tree).find(node=>node.type==='input'&&node.props.name==='variants').props.value;
     assert.equal(JSON.parse(variants)[0].barcode,value);
     const form=new FormData();form.set('name','Product');form.set('locationId','branch-a');form.set('variants',variants);
     const result=await f.api.createVariantProduct({},form);
-    assert.equal(result.success,false);assert.match(result.message,/POS lookup/);assert.equal(f.writes.length,0);
+    assert.equal(result.success,false);assert.match(result.message,/whitespace/);assert.equal(f.writes.length,0);
   }
 });
 

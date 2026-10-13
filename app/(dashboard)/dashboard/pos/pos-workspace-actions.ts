@@ -11,6 +11,7 @@ import { uuid, validateCheckout } from './pos-workspace-helpers';
 import { loadReceiptContext } from '@/lib/receipts/load-receipt-context';
 import { promotionalPrice, type Campaign } from '@/lib/promotions/pricing';
 import { currencyFormat, validCurrencyFormat, type CurrencyFormat } from '@/lib/currency-format';
+import { barcodeCapability } from '@/lib/barcode/require-contract';
 import type { ActionResult, CartDraft, CheckoutInput, SaleReceipt, Workspace } from './pos-workspace-types';
 
 function errorMessage(error: unknown): string {
@@ -47,10 +48,11 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
       return { success: false, message: 'The operating branch changed in another tab. Copy your unsaved cart details before reloading; no sale has been submitted.' };
     }
     const db = await createClient();
+    const barcodeState = await barcodeCapability(db);
     // Settled so an early validation return never leaves an unhandled rejection.
     const receiptRequest = includeReceipt ? loadReceiptContext(business.id, business.name).then(value => ({ value }), error => ({ error })) : null;
     // These reads share the validated scope but do not depend on one another.
-    const [catalog, formatting, campaigns, ready, customers, categories, openShifts] = await Promise.all([
+    const [catalog, formatting, campaigns, ready, customers, categories, openShifts, barcodeAliases] = await Promise.all([
       db.rpc('tenh_pos_catalog_scoped', { p_business_id: business.id }),
       db.from('branch_pos_settings').select('currency_format,enable_coupons,require_open_register,split_payment_enabled,customer_credit_enabled').eq('business_id',business.id).eq('location_id',branchId).maybeSingle(),
       db.from('business_coupons').select('*').eq('business_id',business.id).eq('location_id',branchId).eq('apply_pos',true).eq('is_active',true),
@@ -60,10 +62,16 @@ export async function loadPosWorkspace(expectedBusinessId?: string, expectedBran
         : Promise.resolve({ data: [], error: null }),
       db.from('categories').select('id,name,branch_ids').eq('business_id',business.id),
       db.from('cash_register_shifts').select('id,location_id').eq('business_id',business.id).eq('location_id',branchId).eq('status','open').limit(2),
+      barcodeState === 'ready' ? Promise.resolve(db.rpc('tenh_pos_barcode_aliases', { p_business: business.id })).catch(() => ({data: null, error: {message: 'Alias lookup unavailable'}})) : Promise.resolve({ data: [], error: null }),
     ]);
     const { data, error } = catalog;
     if (error) return { success: false, message: errorMessage(error) };
     if (!data || data.businessId !== business.id || !Array.isArray(data.products)) return { success: false, message: 'The POS catalog returned incomplete data. Please refresh.' };
+    const aliasDataValid = Array.isArray(barcodeAliases.data) && barcodeAliases.data.every((row: {product_id?: unknown; identifier?: unknown}) => typeof row?.product_id === 'string' && typeof row?.identifier === 'string');
+    data.barcodeScanning = barcodeState === 'ready' && (barcodeAliases.error || !aliasDataValid) ? 'unavailable' : barcodeState;
+    const aliases = new Map<string, string[]>();
+    if (data.barcodeScanning === 'ready') for (const row of barcodeAliases.data ?? []) aliases.set(row.product_id, [...(aliases.get(row.product_id) ?? []), row.identifier]);
+    if (data.barcodeScanning === 'ready') data.products = data.products.map((product: { id: string }) => ({ ...product, barcodeAliases: aliases.get(product.id) ?? [] }));
     if (formatting.error) return {success:false,message:'Unable to load currency settings. Please refresh.'};
     data.settings.currencyFormat = currencyFormat(formatting.data?.currency_format, data.settings.currency);
     data.settings.splitPaymentEnabled = formatting.data?.split_payment_enabled !== false;

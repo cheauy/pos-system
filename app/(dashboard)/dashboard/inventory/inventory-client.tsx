@@ -394,7 +394,7 @@ export default function InventoryClient({ products, categories, locations, locat
                 />
               ))}
               {filtered.length === 0 && (
-                <tr>
+                <tr className={styles.stockEmptyRow}>
                   <td colSpan={colSpan} className="px-4 py-16 text-center text-slate-500">
                     <PackageSearch className="mx-auto mb-3 text-slate-300" size={32} />
                     <p className="font-semibold text-slate-700">No inventory items match these filters</p>

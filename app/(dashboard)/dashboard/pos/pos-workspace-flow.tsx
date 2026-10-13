@@ -1,4 +1,5 @@
 'use client';
+import { compareVariantSizes } from '@/lib/products/variant-editor';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Check, CreditCard, MapPin, Package, Plus, RefreshCw, ShoppingCart, Trash2 } from 'lucide-react';
 import type { CurrencyQuote, CartLine, PaymentMethod, Product, ProductGroup, ShippingDetails, Tender, Workspace } from './pos-workspace-types';
@@ -27,7 +28,7 @@ export function VariantPicker({ group, data, branchId, lines, onAdd, onAllocate,
   const [color, setColor] = useState(colorOptions.includes(initialColor) ? initialColor : colorOptions[0] || 'Standard');
   const [size, setSize] = useState(initialSize === 'all' ? '' : initialSize);
   const [chosenId, setChosenId] = useState('');
-  const allSizes = Array.from(new Set(variants.map(p => p.size || 'Standard'))).sort((a,b) => a.localeCompare(b, undefined, { numeric: true }));
+  const allSizes = Array.from(new Set(variants.map(p => p.size || 'Standard'))).sort(compareVariantSizes);
   const matching = variants.filter(p => (p.color || 'Standard') === color && (p.size || 'Standard') === size);
   const selected = matching.length === 1 ? matching[0] : matching.find(p => p.id === chosenId);
   const cartQty = selected ? lines.filter(l => l.productId === selected.id).reduce((sum,l) => sum+l.quantity,0) : 0;

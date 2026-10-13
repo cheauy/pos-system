@@ -1,0 +1,53 @@
+/* Flatten only this form on touch layouts; desktop keeps its existing structure. */
+@media (max-width: 1279px), (max-width: 1366.98px) and (pointer: coarse) {
+  .page { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
+  .page .intro { grid-column:1/-1; padding:0; }
+  .intro > :is(h1,p) { display:none; }
+  .page .form, .page .form > fieldset, .page .displayOptions { display:contents; }
+  .page > *, .form > *, .form > fieldset > *, .displayOptions > * { margin-block:0!important; }
+  .page section { min-width:0; padding:16px; }
+  .page * { min-width:0; }
+  .page h2 { font-size:18px; line-height:1.4; }
+  .page input:not([type=checkbox]) { min-height:44px; max-width:100%; font-size:16px; }
+  .page :global(#customer-fields) label { padding-block:10px; }
+  .page :is(h2,p,button,label,span) { overflow-wrap:anywhere; }
+  .page p { line-height:1.5; }
+  .page section :is([class~="text-[9px]"],[class~="text-[10px]"],[class~="text-[11px]"]) { font-size:12px; }
+  .page :is(button,label) { min-height:44px; }
+  .page :is(button,input):focus-visible { outline-color:var(--app-accent); }
+  .page button[aria-pressed=true] { border-color:var(--app-accent); background:color-mix(in srgb,var(--app-accent) 8%,var(--workspace-panel,#fff)); --tw-ring-color:color-mix(in srgb,var(--app-accent) 18%,transparent); }
+  .page button[aria-pressed=true] > span:last-child:has(svg) { background:var(--app-accent); color:#fff; }
+  .page button[aria-pressed=true] > svg { color:var(--app-accent); }
+  .page button:hover:not(:disabled) { border-color:var(--app-accent); }
+  .page section > div:first-child > span:has(svg) { color:var(--app-accent); background:color-mix(in srgb,var(--app-accent) 10%,transparent); }
+  .page input:checked + span { background:var(--app-accent); }
+  .register > div { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:12px; row-gap:4px; }
+  .register > div > div { display:contents; }
+  .page .register h2 { grid-column:1/-1; margin:0 0 8px; font-weight:600; }
+  .register [id="register-requirement-label"] { grid-column:1; align-self:center; }
+  .register p { grid-column:1; margin:0; }
+  .register button { grid-column:2; grid-row:2 / span 2; align-self:start; }
+  .branchName { display:none; }
+  .page .colorChoices { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .colorChoices button { padding:10px; }
+  .colorChoices button > span:first-child { width:40px; height:36px; margin-bottom:8px; }
+  .colorChoices button:last-child { grid-column:1/-1; display:grid; grid-template-columns:40px minmax(0,1fr); column-gap:10px; align-items:center; padding-right:32px; }
+  .colorChoices button:last-child > span:first-child { grid-row:1 / span 2; margin:0; }
+  .page .modeChoices { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .modeChoices button { flex-wrap:wrap; gap:6px; padding:10px 24px 10px 10px; }
+  .modeChoices button > span { min-width:0; }
+  .page .displayOptions > section:last-child { grid-column:1/-1; }
+  .page .footer { grid-column:1/-1; position:static; margin:0; border-radius:12px; padding:12px 12px max(12px,env(safe-area-inset-bottom)); }
+  .page .footer button { min-height:44px; }
+  .page .footer :global(.settings-save-primary) { background:var(--app-accent)!important; color:#fff!important; }
+  .page .footer > span { flex:1 1 100%; }
+  .page .form > fieldset:disabled > section, .page .form > fieldset:disabled .displayOptions > section { opacity:.6; }
+}
+@media (min-width: 768px) and (max-width: 1279px), (min-width: 768px) and (max-width: 1366.98px) and (pointer: coarse) {
+  .page { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:stretch; }
+  .page .register, .page :global(#customer-fields), .page > [role=alert] { grid-column:1/-1; }
+  .page:has(.register):has(:global(#customer-fields)):has(.colors) .register,
+  .page:has(.register):has(:global(#customer-fields)):has(.colors) :global(#customer-fields) { grid-column:1; }
+  .page:has(.register):has(:global(#customer-fields)) .colors { grid-column:2; grid-row:2 / span 2; }
+  .page .footer > span { flex:0 1 auto; }
+}

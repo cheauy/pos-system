@@ -41,6 +41,14 @@ export default function EditProductClient({ product, categories, initialVariants
   const { t: translateText } = useLanguage();
   const router = useRouter();
   const supportsVariants = product.productType === "variant" && Boolean(product.variantGroupId);
+  const isGeneralShop = businessType === "general";
+  const isRetail = isGeneralShop || businessType === "grocery";
+  const sizedVariants = supportsVariants && (businessType === "fashion" || businessType === "shoes");
+  const requireOptions = supportsVariants && !isGeneralShop;
+  // Keep saved attributes editable, including products inherited from another mode.
+  const showAttributes = !isRetail || isGeneralShop || supportsVariants || initialVariants.some(row => Boolean(row.size.trim() || row.color.trim()));
+  const sizeLabel = isGeneralShop ? "Size / option (optional)" : "Size";
+  const colourLabel = isGeneralShop ? "Colour (optional)" : "Colour";
   const [draft, setDraft] = useState(() => createDraft(product, initialVariants));
   const [savedFingerprint, setSavedFingerprint] = useState(() => fingerprint(createDraft(product, initialVariants)));
   const [assets, setAssets] = useState<ImageAsset[]>(() => initialAssets(product, initialVariants));
@@ -104,13 +112,18 @@ export default function EditProductClient({ product, categories, initialVariants
   const assetMap = useMemo(() => new Map(assets.map(asset => [asset.key, asset])), [assets]);
   const imageUrl = (key: string | null) => key ? assetMap.get(key)?.url ?? null : null;
   const mainImageUrl = imageUrl(draft.mainImageKey);
-  const validation = useMemo(() => validateEditableVariants(draft.variants, supportsVariants), [draft.variants, supportsVariants]);
+  const validation = useMemo(() => validateEditableVariants(draft.variants, requireOptions, supportsVariants), [draft.variants, requireOptions, supportsVariants]);
   const sortedVariants = useMemo(() => [...draft.variants].sort(compareColorSize), [draft.variants]);
   const pageSize = 10, pageCount = Math.max(1, Math.ceil(sortedVariants.length / pageSize)), safePage = Math.min(page, pageCount);
   const visible = sortedVariants.slice((safePage - 1) * pageSize, safePage * pageSize);
   const selectedRows = draft.variants.filter(row => selected.has(row.localId));
   const allVisible = visible.length > 0 && visible.every(row => selected.has(row.localId));
   const sectionTitle = supportsVariants ? businessType === "fashion" ? "Clothing sizes & colours" : businessType === "shoes" ? "Shoe sizes & colours" : "Variants" : "Inventory & pricing";
+  const sectionDescription = isRetail ? supportsVariants ? "Edit product options, SKUs and prices below." : "Edit SKU, barcode, pricing and stock settings." : "Edit sizes, colours and prices below.";
+  const groupByColour = !isRetail || (supportsVariants && draft.variants.some(row => Boolean(row.color.trim())));
+  const tableColumns = showAttributes ? 11 : 9;
+  const emptyRowsText = sizedVariants ? "No variants yet. Add a size or use Quick size run above." : "No product rows yet.";
+  const rowLabel = (row: Variant) => isRetail ? [row.color.trim(), row.size.trim()].filter(Boolean).join(" / ") || row.sku || draft.name : `${row.color || "New colour"} ${row.size || "New size"}`;
   const combinations = useMemo(() => missingVariantCombinations(draft.variants, splitVariantValues(add.colors), splitVariantValues(add.sizes)), [draft.variants, add.colors, add.sizes]);
 
   function updateRow(localId: string, field: keyof Variant, value: string | boolean | null) {
@@ -137,7 +150,7 @@ export default function EditProductClient({ product, categories, initialVariants
     if (draft.variants.length >= MAX_EDIT_VARIANTS) { toast.error(`Maximum ${MAX_EDIT_VARIANTS} variants.`); return; }
     setDraft(current => ({ ...current, variants: [...current.variants, row] }));
     setPage(1); selectRows([row.localId]);
-    toast.info("New row added. Enter its colour, size and unique SKU before saving.");
+    toast.info(isGeneralShop ? "New row added. Enter its unique SKU and any optional attributes before saving." : "New row added. Enter its colour, size and unique SKU before saving.");
   }
   function generateVariants() {
     if (!combinations.length || draft.variants.length + combinations.length > MAX_EDIT_VARIANTS) return;
@@ -206,7 +219,7 @@ export default function EditProductClient({ product, categories, initialVariants
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busyRef.current || mustReload || stale || !dirty) return;
-    const invalid = validateEditableVariants(draft.variants, supportsVariants);
+    const invalid = validateEditableVariants(draft.variants, requireOptions, supportsVariants);
     if (invalid) { setError(invalid); toast.error(invalid); return; }
     if (draft.name.trim().length < 2) { setError("Enter a product name with at least two characters."); return; }
     busyRef.current = true; setBusy(true); setError("");
@@ -276,11 +289,11 @@ export default function EditProductClient({ product, categories, initialVariants
                   <div className="sm:col-span-2"><Field label="Description"><textarea value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} rows={2} className={`${inputClass} h-auto py-2`} /></Field></div>
                 </div>
               </section>
-      {supportsVariants && canCreateVariants && <details className="group rounded-xl border border-slate-200 bg-white px-4 py-3"><summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 text-sm font-bold text-slate-900 lg:list-item"><span className="row-span-2 lg:hidden"><IconTile><Tag size={17} /></IconTile></span>Quick size run<span className="col-start-2 row-start-2 text-xs font-normal text-slate-500 lg:ml-2">Add several sizes together</span><ChevronRight size={18} className="col-start-3 row-span-2 row-start-1 text-slate-400 transition group-open:rotate-90 lg:hidden" /></summary>
+      {sizedVariants && canCreateVariants && <details className="group rounded-xl border border-slate-200 bg-white px-4 py-3"><summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 text-sm font-bold text-slate-900 lg:list-item"><span className="row-span-2 lg:hidden"><IconTile><Tag size={17} /></IconTile></span>Quick size run<span className="col-start-2 row-start-2 text-xs font-normal text-slate-500 lg:ml-2">Add several sizes together</span><ChevronRight size={18} className="col-start-3 row-span-2 row-start-1 text-slate-400 transition group-open:rotate-90 lg:hidden" /></summary>
         <p className="text-sm text-slate-500">Enter colours and sizes separated by commas. Every colour gets every size; existing combinations are skipped.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2"><Field label="Colours"><input value={add.colors} placeholder="Black, White, Blue" onChange={e => setAdd({ ...add, colors: e.target.value })} className={inputClass} /></Field><Field label="Sizes"><input value={add.sizes} placeholder={businessType === "shoes" ? "36, 37, 38, 39" : "S, M, L, XL"} onChange={e => setAdd({ ...add, sizes: e.target.value })} className={inputClass} /></Field></div>
         <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-teal-300 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700">{runImageKey && imageUrl(runImageKey) ? <img src={imageUrl(runImageKey)!} alt="Quick size run" className="h-8 w-8 rounded object-contain" /> : <Upload size={16} />} {runImageKey ? "Replace run image" : "Upload run image"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label="Quick size run image" onChange={event => uploadImage(event, "run")} /></label>
-        <div className="mt-2 flex flex-wrap gap-2">{[{ label: "XS–XXL", sizes: "XS, S, M, L, XL, XXL" }, { label: "Shoes 35–40", sizes: "35, 36, 37, 38, 39, 40" }, { label: "Shoes 40–45", sizes: "40, 41, 42, 43, 44, 45" }].map(run => <button key={run.label} type="button" onClick={() => setAdd({ ...add, sizes: run.sizes })} className={buttonClass}>{run.label}</button>)}</div>
+        <div className="mt-2 flex flex-wrap gap-2">{(businessType === "shoes" ? [{ label: "Shoes 35–40", sizes: "35, 36, 37, 38, 39, 40" }, { label: "Shoes 40–45", sizes: "40, 41, 42, 43, 44, 45" }] : [{ label: "XS–XXL", sizes: "XS, S, M, L, XL, XXL" }]).map(run => <button key={run.label} type="button" onClick={() => setAdd({ ...add, sizes: run.sizes })} className={buttonClass}>{run.label}</button>)}</div>
         <div className="mt-3 grid gap-3 sm:grid-cols-3"><Field label="SKU prefix (optional)"><input value={add.prefix} placeholder={skuPart(draft.name) || "ITEM"} onChange={e => setAdd({ ...add, prefix: e.target.value })} className={inputClass} /></Field>{([["cost", "Cost price"], ["price", "Selling price"]] as const).map(([key, label]) => <Field key={key} label={label}><input type="number" min="0" step="0.01" value={add[key]} onChange={e => setAdd({ ...add, [key]: e.target.value })} className={inputClass} /></Field>)}</div>
         <div className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-900"><strong>{combinations.length} new variants</strong><p className="mt-1 text-xs">New sizes start at zero stock. Save first, then use Adjust stock.</p>{combinations.length > 0 && <p className="mt-2 text-xs"><span data-i18n-ignore="true">{combinations.slice(0, 10).map(pair => `${pair.color} / ${pair.size}`).join(" · ")}</span>{combinations.length > 10 ? " …" : ""}</p>}{combinations.length + draft.variants.length > MAX_EDIT_VARIANTS && <p className="mt-2 font-semibold">Maximum {MAX_EDIT_VARIANTS} total variants. Add fewer combinations.</p>}</div>
         <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={!combinations.length || combinations.length + draft.variants.length > MAX_EDIT_VARIANTS} onClick={generateVariants} className={primaryClass}>Add {combinations.length} to draft</button></div>
@@ -289,13 +302,13 @@ export default function EditProductClient({ product, categories, initialVariants
 
               <section className="order-4 col-span-full min-w-0 rounded-xl border border-slate-200 bg-white">
                 <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 px-3 py-2.5">
-                  <div className="hidden lg:block"><h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Shirt size={17} /> {sectionTitle}</h2><p className="mt-1 text-xs text-slate-500">Edit sizes, colours and prices below.</p></div>
-                  <div className="lg:hidden"><CardTitle icon={<Shirt size={17} />} title={sectionTitle} subtitle="Edit sizes, colours and prices below." flush /></div>
+                  <div className="hidden lg:block"><h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">{isRetail ? <Package size={17} /> : <Shirt size={17} />} {sectionTitle}</h2><p className="mt-1 text-xs text-slate-500">{sectionDescription}</p></div>
+                  <div className="lg:hidden"><CardTitle icon={isRetail ? <Package size={17} /> : <Shirt size={17} />} title={sectionTitle} subtitle={sectionDescription} flush /></div>
                   {supportsVariants && canCreateVariants && <div className="flex flex-wrap gap-2"><button type="button" onClick={addOne} className={buttonClass}><Plus size={14} /> {businessType === "fashion" || businessType === "shoes" ? "Add Size" : "Add Variant"}</button></div>}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-2.5 py-1.5 text-xs max-lg:flex-nowrap max-lg:overflow-x-auto max-lg:[scrollbar-width:none] max-lg:[&>*]:shrink-0 max-lg:[&>button]:whitespace-nowrap">
                   <button type="button" onClick={() => selectRows(selectedRows.length ? [] : draft.variants.map(row => row.localId))} className={buttonClass}>{selectedRows.length ? "Clear" : "Select All"}</button>
-                  <button type="button" onClick={() => setDraft(current => ({ ...current, variants: current.variants.map(row => row.barcode?.trim() ? row : { ...row, barcode: generateInternalBarcode() }) }))} className={buttonClass}><Barcode size={14} className="lg:hidden" />Generate missing barcodes</button>
+                  <button type="button" onClick={() => setDraft(current => ({ ...current, variants: current.variants.map(row => row.barcode != null && row.barcode !== "" ? row : { ...row, barcode: generateInternalBarcode() }) }))} className={buttonClass}><Barcode size={14} className="lg:hidden" />Generate missing barcodes</button>
                   <ActionMenu label="Actions" disabled={!selectedRows.length}>
                     {canAdjustStock && <button type="button" onClick={() => openStockAdjustment(selectedRows)} className={buttonClass}><SlidersHorizontal size={13} /> Adjust stock ({selectedRows.length})</button>}
                     <label className={`${buttonClass} cursor-pointer`}><Upload size={13} /> Upload for selected<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label="Upload image for selected variants" onChange={event => uploadImage(event, selectedRows.map(row => row.localId))} /></label>
@@ -307,9 +320,9 @@ export default function EditProductClient({ product, categories, initialVariants
                 {/* Phones and tablets: one card per variant, grouped by colour. Desktop keeps the table below. */}
                 <div className="space-y-2 p-2 lg:hidden">
                   {visible.map((row, index) => {
-                    const label = `${row.color || "New colour"} ${row.size || "New size"}`, preview = imageUrl(row.imageKey) ?? mainImageUrl;
-                    const colorKey = normalizeVariantText(row.color), first = index === 0 || normalizeVariantText(visible[index - 1].color) !== colorKey;
-                    const groupCount = visible.filter(item => normalizeVariantText(item.color) === colorKey).length, open = !collapsed.has(colorKey);
+                    const label = rowLabel(row), preview = imageUrl(row.imageKey) ?? mainImageUrl;
+                    const colorKey = normalizeVariantText(row.color), first = groupByColour && (index === 0 || normalizeVariantText(visible[index - 1].color) !== colorKey);
+                    const groupCount = visible.filter(item => normalizeVariantText(item.color) === colorKey).length, open = !groupByColour || !collapsed.has(colorKey);
                     return <Fragment key={row.localId}>
                       {first && <div className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5">
                         <span className="h-8 w-8 shrink-0 rounded-full border border-slate-200 bg-slate-200" style={{ backgroundColor: row.color.trim().toLowerCase() || undefined }} aria-hidden />
@@ -320,7 +333,7 @@ export default function EditProductClient({ product, categories, initialVariants
                       {open && <div className={`rounded-xl border p-3 ${selected.has(row.localId) ? "border-blue-200 bg-blue-50/30" : "border-slate-200 bg-white"}`}>
                         <div className="flex items-center gap-2">
                           <input type="checkbox" checked={selected.has(row.localId)} onChange={() => toggleRow(row.localId)} aria-label={`Select ${label}`} className="h-4 w-4" />
-                          <strong className="min-w-0 flex-1 break-words text-sm text-slate-900">Size <span data-i18n-ignore={Boolean(row.size)}>{row.size || "New size"}</span> · <span data-i18n-ignore={Boolean(row.color)}>{row.color || "New colour"}</span></strong>
+                          <strong className="min-w-0 flex-1 break-words text-sm text-slate-900">{isRetail ? <span data-i18n-ignore="true">{label}</span> : <>Size <span data-i18n-ignore={Boolean(row.size)}>{row.size || "New size"}</span> · <span data-i18n-ignore={Boolean(row.color)}>{row.color || "New colour"}</span></>}</strong>
                           <button type="button" disabled={!canDisable} aria-label={`Toggle status for ${label}`} onClick={() => updateRow(row.localId, "isActive", !row.isActive)} className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{row.isActive ? "Active" : "Hidden"}</button>
                           <ActionMenu label={`More actions for ${label}`} iconOnly>
                             <button type="button" disabled={!canDisable} onClick={() => updateRow(row.localId, "isActive", !row.isActive)} className={buttonClass}>{row.isActive ? "Hide variant" : "Show variant"}</button>
@@ -338,8 +351,8 @@ export default function EditProductClient({ product, categories, initialVariants
                             </label>
                             {row.imageKey && <button type="button" aria-label={`Remove image override for ${label}`} title="Use main product image" onClick={() => updateRow(row.localId, "imageKey", null)} className="absolute -right-1.5 -top-1.5 grid h-6 min-h-0! w-6 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm"><X size={12} /></button>}
                           </div>
-                          <MobileField label="Size"><Cell label={`Size ${label}`} value={row.size} onChange={value => updateRow(row.localId, "size", value)} /></MobileField>
-                          <MobileField label="Colour"><Cell label={`Colour ${label}`} value={row.color} onChange={value => updateRow(row.localId, "color", value)} /></MobileField>
+                          {showAttributes && <MobileField label={sizeLabel}><Cell label={`${sizeLabel} ${label}`} value={row.size} onChange={value => updateRow(row.localId, "size", value)} /></MobileField>}
+                          {showAttributes && <MobileField label={colourLabel}><Cell label={`${colourLabel} ${label}`} value={row.color} onChange={value => updateRow(row.localId, "color", value)} /></MobileField>}
                           <MobileField label="SKU"><Cell label={`SKU ${label}`} value={row.sku} onChange={value => updateRow(row.localId, "sku", value)} /></MobileField>
                           <MobileField label="Barcode"><Cell label={`Barcode for ${label}`} value={row.barcode ?? ""} onChange={value => updateRow(row.localId, "barcode", value)} /></MobileField>
                           <div className="col-start-2"><MobileField label="Cost"><Cell label={`Cost ${label}`} number value={row.costPrice} onChange={value => updateRow(row.localId, "costPrice", value)} /></MobileField></div>
@@ -356,16 +369,16 @@ export default function EditProductClient({ product, categories, initialVariants
                       </div>}
                     </Fragment>;
                   })}
-                  {!visible.length && <p className="p-6 text-center text-sm text-slate-500">No variants yet. Add a size or use Quick size run above.</p>}
+                  {!visible.length && <p className="p-6 text-center text-sm text-slate-500">{emptyRowsText}</p>}
                 </div>
                 <div className="hidden overflow-x-auto lg:block">
                   <table className="w-full min-w-[1000px] text-left text-xs">
-                    <thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="p-3"><input type="checkbox" checked={allVisible} onChange={togglePage} aria-label="Select this page" /></th><th className="p-2">Image</th><th className="p-2">Size</th><th className="p-2">Colour</th><th className="p-2">SKU</th><th className="p-2">Cost</th><th className="p-2">Price</th><th className="p-2">Inventory</th><th className="p-2">Low stock</th><th className="p-2">Status</th><th className="p-2">Action</th></tr></thead>
+                    <thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="p-3"><input type="checkbox" checked={allVisible} onChange={togglePage} aria-label="Select this page" /></th><th className="p-2">Image</th>{showAttributes && <><th className="p-2">{sizeLabel}</th><th className="p-2">{colourLabel}</th></>}<th className="p-2">SKU</th><th className="p-2">Cost</th><th className="p-2">Price</th><th className="p-2">Inventory</th><th className="p-2">Low stock</th><th className="p-2">Status</th><th className="p-2">Action</th></tr></thead>
                     <tbody>
                       {visible.map((row, index) => {
-                        const label = `${row.color || "New colour"} ${row.size || "New size"}`, preview = imageUrl(row.imageKey) ?? mainImageUrl;
+                        const label = rowLabel(row), preview = imageUrl(row.imageKey) ?? mainImageUrl;
                         return <Fragment key={row.localId}>
-                          {(index === 0 || normalizeVariantText(visible[index - 1].color) !== normalizeVariantText(row.color)) && <tr className="bg-blue-50/50"><td colSpan={11} className="px-3 py-2"><span className="font-bold text-slate-700" data-i18n-ignore={Boolean(row.color.trim())}>{row.color.trim() || "New / unassigned colour"}</span><button type="button" onClick={() => selectRows(draft.variants.filter(item => normalizeVariantText(item.color) === normalizeVariantText(row.color)).map(item => item.localId))} className="ml-3 text-blue-700 underline">Select this colour</button></td></tr>}
+                          {groupByColour && (index === 0 || normalizeVariantText(visible[index - 1].color) !== normalizeVariantText(row.color)) && <tr className="bg-blue-50/50"><td colSpan={tableColumns} className="px-3 py-2"><span className="font-bold text-slate-700" data-i18n-ignore={Boolean(row.color.trim())}>{row.color.trim() || "New / unassigned colour"}</span><button type="button" onClick={() => selectRows(draft.variants.filter(item => normalizeVariantText(item.color) === normalizeVariantText(row.color)).map(item => item.localId))} className="ml-3 text-blue-700 underline">Select this colour</button></td></tr>}
                           <tr className={`border-t border-slate-100 ${selected.has(row.localId) ? "bg-blue-50/30" : "bg-white"}`}>
                             <td className="p-3"><input type="checkbox" checked={selected.has(row.localId)} onChange={() => toggleRow(row.localId)} aria-label={`Select ${label}`} /></td>
                             <td className="p-2"><div className="relative w-16"><label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg p-1 text-teal-700 hover:bg-teal-50">
@@ -373,8 +386,8 @@ export default function EditProductClient({ product, categories, initialVariants
                               <span className="text-[10px] font-semibold">{preview ? "Replace" : "Upload"}</span>
                               <input type="file" accept="image/jpeg,image/png,image/webp" aria-label={`Upload image for ${label}`} className="sr-only" onChange={event => uploadImage(event, [row.localId])} />
                             </label>{row.imageKey && <button type="button" aria-label={`Remove image override for ${label}`} title="Use main product image" onClick={() => updateRow(row.localId, "imageKey", null)} className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full border border-slate-200 bg-white text-red-600"><X size={12} /></button>}</div></td>
-                            <td className="p-2"><Cell label={`Size ${label}`} value={row.size} onChange={value => updateRow(row.localId, "size", value)} /></td>
-                            <td className="p-2"><Cell label={`Colour ${label}`} value={row.color} onChange={value => updateRow(row.localId, "color", value)} /></td>
+                            {showAttributes && <td className="p-2"><Cell label={`${sizeLabel} ${label}`} value={row.size} onChange={value => updateRow(row.localId, "size", value)} /></td>}
+                            {showAttributes && <td className="p-2"><Cell label={`${colourLabel} ${label}`} value={row.color} onChange={value => updateRow(row.localId, "color", value)} /></td>}
                             <td className="min-w-36 p-2"><Cell label={`SKU ${label}`} value={row.sku} onChange={value => updateRow(row.localId, "sku", value)} />{!row.id && <span className="text-[10px] font-semibold text-blue-600">New · not saved</span>}<input aria-label={`Barcode for ${label}`} placeholder="Barcode" value={row.barcode ?? ""} onChange={e => updateRow(row.localId, "barcode", e.target.value)} className={`${inputClass} mt-1 text-xs`} /></td>
                             <td className="p-2"><Cell label={`Cost ${label}`} number value={row.costPrice} onChange={value => updateRow(row.localId, "costPrice", value)} /></td>
                             <td className="p-2"><Cell label={`Price ${label}`} number value={row.sellingPrice} onChange={value => updateRow(row.localId, "sellingPrice", value)} /></td>
@@ -385,7 +398,7 @@ export default function EditProductClient({ product, categories, initialVariants
                           </tr>
                         </Fragment>;
                       })}
-                      {!visible.length && <tr><td colSpan={11} className="p-8 text-center text-slate-500">No variants yet. Add a size or use Quick size run above.</td></tr>}
+                      {!visible.length && <tr><td colSpan={tableColumns} className="p-8 text-center text-slate-500">{emptyRowsText}</td></tr>}
                     </tbody>
                   </table>
                 </div>

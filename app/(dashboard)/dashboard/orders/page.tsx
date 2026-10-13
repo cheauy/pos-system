@@ -7,6 +7,7 @@ import { parseFilters } from "./order-workspace-types";
 import OrdersWorkspace from "./orders-workspace";
 import { getCurrentBusinessMode } from '@/lib/business/get-current-business-mode';
 import { getBranchContext } from '@/lib/branches/context';
+import { supportsDineIn } from '@/lib/storefront/profile';
 
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const branchRequest = getBranchContext();
@@ -14,7 +15,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const business = await requirePermission("orders.view");
   const filters = parseFilters(await searchParams);
   const modeRequest = getCurrentBusinessMode({ businessId: business.id, productMode: business.productMode });
-  const tableQr = (mode: Awaited<typeof modeRequest>) => !['fashion', 'shoes', 'general'].includes(mode.value);
+  const tableQr = (mode: Awaited<typeof modeRequest>) => supportsDineIn(mode.value);
   // Only the QR source filter depends on the mode; otherwise both load together.
   if (filters.source === 'qr' && !tableQr(await modeRequest)) filters.source = 'all';
   let workspace;

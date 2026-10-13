@@ -28,6 +28,7 @@ import { promotionalPrice, type Campaign } from '@/lib/promotions/pricing';
 import StorefrontContact from "./storefront-contact";
 import { supportsDineIn } from "@/lib/storefront/profile";
 import "./storefront.css";
+import "./storefront-shopping.css";
 
 type StorefrontPageProps = {
   params: Promise<{

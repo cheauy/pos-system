@@ -28,8 +28,11 @@ test('register toggle saves immediately, prevents duplicate saves and keeps its 
   const {createRequire}=await import('node:module');const require=createRequire(import.meta.url);
   const state=[],refs=[],calls=[];let cursor=0,refCursor=0,finish;
   const Component=loadTs('app/(dashboard)/dashboard/settings/register-setting.tsx',{
+    './system/system-responsive.module.css':{default:{}},
     react:{useState:initial=>{const i=cursor++;if(!(i in state))state[i]=initial;return[state[i],v=>{state[i]=v;}];},useRef:initial=>{const i=refCursor++;return refs[i]??(refs[i]={current:initial});}},
     'react/jsx-runtime':require('react/jsx-runtime'),sonner:{toast:{success(){},error(){}}},
+    './settings-touch.module.css':{default:{}},
+    './system/system-responsive.module.css':{default:{}},
     './register-setting-actions':{saveRegisterRequirement:(...args)=>{calls.push(args);return new Promise((resolve,reject)=>{finish={resolve,reject};});}},
   }).default;
   const walk=node=>!node||typeof node!=='object'?[]:Array.isArray(node)?node.flatMap(walk):[node,...walk(node.props?.children)];

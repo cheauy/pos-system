@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/branch-server";
+import { requirePermission } from "@/lib/auth/require-permission";
 
 import { updateSupplier } from "@/app/(dashboard)/dashboard/suppliers/actions";
 
@@ -20,6 +21,7 @@ export default async function SupplierEditPage({
   params,
 }: SupplierEditPageProps) {
   const { id } = await params;
+  const business = await requirePermission('suppliers.manage');
 
   const supabase = await createClient();
 
@@ -36,6 +38,7 @@ export default async function SupplierEditPage({
         notes
       `)
       .eq("id", id)
+    .eq('business_id', business.id)
       .single();
 
   if (error || !supplier) {

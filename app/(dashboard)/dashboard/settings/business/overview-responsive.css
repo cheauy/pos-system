@@ -1,0 +1,58 @@
+.overview-credit-compact { display: none; }
+.bs-panel-content { display: contents; }
+.bs-panel-content > form { display: contents; }
+.business-save-feedback { display: none; }
+.overview-secondary { display: contents; }
+.overview-secondary > section { margin-top: 24px; }
+@media (max-width: 1279px), (max-width: 1366px) and (pointer: coarse) {
+  .bs-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .business-overview { display: grid; gap: 12px; min-width: 0; }
+  .business-overview > * { margin: 0; min-width: 0; }
+  .overview-secondary > section { margin: 0; min-width: 0; }
+  .overview-identity { background: var(--workspace-panel, white); }
+  .overview-identity > img, .overview-identity > .pointer-events-none { display: none; }
+  .overview-identity > .relative { min-height: 0; padding: 16px; gap: 12px; }
+  .overview-identity h2 { font-size: 20px; overflow-wrap: anywhere; }
+  .business-overview:has(.overview-store-status) .overview-duplicate-identity { display: none; }
+  .overview-store-status { padding: 12px; }
+  .overview-store-status > .grid { display: flex; flex-direction: column; margin-top: 12px; gap: 8px; }
+  .overview-store-url { order: -1; }
+  .business-overview [aria-label="Status summary"] > div { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .business-overview [aria-label="Status summary"] a { padding: 12px; gap: 8px; flex-direction: row; align-items: start; }
+  .business-overview .overview-status-duplicate { display: none; }
+  .overview-credit-balances { display: block; }
+  .overview-credit-balances > :not(.overview-credit-compact) { display: none; }
+  .overview-credit-compact { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .overview-team > div { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .overview-team > div > div { padding: 10px; }
+  .overview-team > div > div > div { flex-wrap: wrap; gap: 6px; }
+  .overview-team p { overflow-wrap: anywhere; }
+  .overview-team .text-lg { font-size: 14px; }
+  .bs-layout .settings-save-bar { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .bs-layout .settings-save-bar button[type=submit] { background: var(--app-accent) !important; min-height: 44px; flex: 1 1 220px; white-space: normal; }
+  .bs-layout .settings-save-bar button:focus-visible { outline-color: var(--app-accent); }
+  .bs-layout .bs-panel { max-height: var(--settings-panel-height, 80dvh); grid-template-rows: minmax(0, 1fr) auto; gap: 0; }
+  .bs-layout .bs-panel-content { display: grid; gap: 12px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 12px; scroll-padding: 12px; }
+  .bs-layout .settings-save-bar { position: static; margin-top: 0; }
+  .bs-layout .business-save-feedback { display: block; flex-basis: 100%; margin: 0; }
+  .bs-layout .business-info-notice { display: none; }
+  .bs-layout .bs-nav a[aria-current=page] { color: var(--app-accent); background: color-mix(in srgb, var(--app-accent) 10%, transparent); box-shadow: inset 0 -3px 0 var(--app-accent); }
+  .bs-layout .bs-nav a:focus-visible { outline-color: var(--app-accent); }
+  .bs-layout input[role=switch]:checked { background: var(--app-accent); }
+}
+@media (min-width: 768px) and (max-width: 1279px), (min-width: 768px) and (max-width: 1366px) and (pointer: coarse) {
+  .business-overview { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; }
+  .overview-identity { grid-column: 1; grid-row: 1; }
+  .overview-store-status { grid-column: 1; grid-row: 2; }
+  .business-overview [aria-label="Status summary"] { grid-column: 1; grid-row: 3; }
+  .overview-secondary { display: flex; flex-direction: column; gap: 12px; grid-column: 2; grid-row: 1 / span 3; }
+  .overview-team > div { grid-template-columns: minmax(0, 1fr); }
+  .overview-team > div > div > div { flex-wrap: nowrap; }
+  .business-overview > :not(section):not(.overview-secondary) { grid-column: 1 / -1; }
+  .business-overview:has(> :not(section):not(.overview-secondary)) .overview-identity { grid-row: 2; }
+  .business-overview:has(> :not(section):not(.overview-secondary)) .overview-store-status { grid-row: 3; }
+  .business-overview:has(> :not(section):not(.overview-secondary)) [aria-label="Status summary"] { grid-row: 4; }
+  .business-overview:has(> :not(section):not(.overview-secondary)) .overview-secondary { grid-row: 2 / span 3; }
+  .overview-identity > .relative { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .overview-identity a { font-size: 12px; padding: 8px; }
+}

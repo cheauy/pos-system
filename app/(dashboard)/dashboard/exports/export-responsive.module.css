@@ -1,0 +1,91 @@
+.tabs, .mobileOnly, .selectedHeading, .formatOptions, .guidanceToggle, .beforeImport, .mobileNotice { display: none; }
+.groupSelect { display: contents; }
+.exportFields .desktopNotice { margin-block-end: 0; }
+.exportArea, .importArea, .guidanceContent { display: contents; }
+.historyArea { display: none; }
+.root[data-tab='history'] .workspace { display: none; }
+.root[data-tab='history'] .historyArea { display: block; }
+
+@media (max-width: 1279px), (max-width: 1366px) and (pointer: coarse) {
+  .root { min-width: 0; display: grid; gap: 14px; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .root > * { margin-block: 0; min-width: 0; }
+  .pageIntro { display: none; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid #e2e8f0; }
+  .tabs button { flex: 1; min-width: 0; min-height: 48px; padding: 10px 8px; border-bottom: 3px solid transparent; font-size: 15px; overflow-wrap: anywhere; }
+  .tabs button[aria-selected='true'] { color: var(--app-accent, #2563eb); border-color: var(--app-accent, #2563eb); font-weight: 600; }
+  .root .workspace { display: contents; }
+  .root .exportArea, .root .importArea, .root .historyArea { display: none; }
+  .root[data-tab='export'] .exportArea, .root[data-tab='import'] .importArea, .root[data-tab='history'] .historyArea { display: block; min-width: 0; }
+  .root[data-tab='history'] .guidance { display: none; }
+  .mobileOnly { display: block; }
+  .exportCard, .importCard { min-width: 0; padding: 16px; border-radius: 14px; }
+  .exportCard { display: flex; flex-direction: column; max-height: var(--export-height, calc(100dvh - 160px)); overflow: hidden; }
+  .exportCard > h2, .exportSteps { display: none; }
+  .exportFields, .importFields { display: grid; gap: 12px; margin-top: 16px; min-width: 0; }
+  .exportFields { display: contents; }
+  .exportScroll { display: grid; grid-auto-rows: max-content; gap: 12px; flex: 1; min-height: 0; overflow-y: auto; align-content: start; overscroll-behavior: contain; padding-right: 2px; margin-top: 16px; }
+  .exportScroll > * { margin-block: 0; min-width: 0; }
+  .exportFields > *, .importFields > * { margin-block: 0; min-width: 0; }
+  .exportFields label { overflow-wrap: anywhere; }
+  .exportFields input[type='checkbox'] { width: 20px; height: 20px; accent-color: var(--app-accent, #2563eb); }
+  .branchOption { min-height: 44px; }
+  .selectedHeading { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 16px; font-weight: 700; }
+  .selectedHeading span { padding: 5px 10px; border-radius: 20px; background: color-mix(in srgb, var(--app-accent, #2563eb) 10%, white); color: var(--app-accent, #2563eb); font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .selectionActions { gap: 20px; }
+  .selectionActions button { min-height: 36px; }
+  .groups { display: grid; grid-auto-rows: max-content; gap: 0; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+  .groups > section { border: 0; border-radius: 0; margin: 0; }
+  .groups > section + section { border-top: 1px solid #e2e8f0; }
+  .groupRow { gap: 10px; padding-inline: 12px; }
+  .groupSelect { display: flex; align-items: center; justify-content: center; width: 36px; min-height: 44px; flex-shrink: 0; cursor: pointer; }
+  .groupRow button { min-height: 58px; gap: 10px; padding-block: 8px; min-width: 0; }
+  .groupRow button > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }
+  .groupRow small { font-size: 12px; }
+  .datasetList label { min-height: 44px; padding-block: 8px; }
+  .formatSelect { display: none; }
+  .formatOptions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+  .formatOptions label { display: flex; align-items: center; gap: 6px; min-height: 50px; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px; font-size: 13px; font-weight: 500; }
+  .formatOptions label:has(input:checked) { border-color: var(--app-accent, #2563eb); background: color-mix(in srgb, var(--app-accent, #2563eb) 7%, white); }
+  .formatOptions input { flex: 0 0 auto; accent-color: var(--app-accent, #2563eb); }
+  .desktopNotice { display: none; }
+  .mobileNotice { display: block; font-size: 12px; line-height: 1.6; color: #64748b; }
+  .mobileNotice summary { min-height: 44px; padding-block: 10px; cursor: pointer; font-weight: 600; }
+  .mobileNotice p { margin-top: 8px; }
+  .exportActions { flex-shrink: 0; display: grid; gap: 8px; margin: 12px -16px -16px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid #e2e8f0; background: white; }
+  .exportActions button { justify-content: center; min-height: 46px; font-size: 14px; }
+  .exportCard :is(input, select, button), .importCard :is(input, select, button, summary) { scroll-margin-block: 80px 150px; }
+  .importCard select, .importCard button, .importCard summary { min-height: 44px; font-size: 14px; }
+  .importCard select { width: 100%; min-width: 0; }
+  .templateActions { display: grid; grid-template-columns: minmax(70px, .25fr) minmax(0, 1fr); gap: 8px; }
+  .uploadZone { padding: 18px 12px; }
+  .uploadZone p { white-space: normal; overflow-wrap: anywhere; }
+  .reviewActions { flex-wrap: wrap; }
+  .importSteps { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 18px; font-size: 12px; color: #64748b; }
+  .importSteps span { display: flex; align-items: center; gap: 6px; }
+  .importSteps b { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border-radius: 50%; background: #f1f5f9; }
+  .importSteps [aria-current='step'] { color: var(--app-accent, #2563eb); }
+  .importSteps [aria-current='step'] b { background: var(--app-accent, #2563eb); color: white; }
+  .guidance { display: block; padding: 16px; border-radius: 14px; }
+  .guidanceToggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; text-align: left; font-size: 14px; font-weight: 600; }
+  .guidanceContent { display: grid; gap: 18px; }
+  .root[data-tab='export'] .guidance:not([data-expanded='true']) .guidanceContent { display: none; }
+  .root[data-tab='export'] .guidance[data-expanded='true'] .guidanceContent { margin-top: 16px; }
+  .root[data-tab='import'] .guidanceToggle { display: none; }
+  .root[data-tab='import'] .beforeImport { display: block; margin-bottom: 18px; font-size: 18px; font-weight: 700; }
+  .historyArea p { white-space: normal; overflow-wrap: anywhere; }
+  .staffCards { grid-template-columns: 1fr; }
+  .staffCards article { padding: 14px; }
+  .staffCards button { min-height: 44px; }
+  :global(.dark) .exportActions { background: #0f172a; border-color: #334155; }
+  :global(.dark) .groups, :global(.dark) .groups > section + section { border-color: #334155; }
+  :global(.dark) .formatOptions label:has(input:checked), :global(.dark) .selectedHeading span { background: color-mix(in srgb, var(--app-accent, #2563eb) 15%, #0f172a); }
+}
+
+@media (min-width: 760px) and (max-width: 1279px), (min-width: 760px) and (max-width: 1366px) and (pointer: coarse) {
+  .root[data-tab='import'] { grid-template-columns: minmax(0, 1.8fr) minmax(250px, 1fr); align-items: start; }
+  .root[data-tab='import'] .tabs, .root[data-tab='import'] .feedback { grid-column: 1 / -1; }
+  .root[data-tab='import'] .importArea { grid-column: 1; }
+  .root[data-tab='import'] .guidance { grid-column: 2; }
+  .exportActions { grid-template-columns: 1fr 1fr; }
+  .staffCards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

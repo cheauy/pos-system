@@ -127,6 +127,7 @@ export default function VariantProductForm({
   const isFashion = businessType === "fashion";
   const isGeneral = businessType === "general";
   const isSpecialVariant = isShoes || isFashion;
+  const sizeRuns = isShoes ? shoeSizeRuns : fashionSizeRuns;
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(createVariantProduct, initialState);
   const [productName, setProductName] = useState("");
@@ -144,7 +145,7 @@ export default function VariantProductForm({
     runImageSlots.find((slot) => !slot.locked) ?? runImageSlots[runImageSlots.length - 1];
   const [compact, setCompact] = useState(false);
   const [phone, setPhone] = useState(false);
-  const compactFashion = isFashion && compact;
+  const compactFashion = isSpecialVariant && compact;
   const [activeTab, setActiveTab] = useState("details");
   const [selectedVariant, setSelectedVariant] = useState<string | null>("initial-variant");
   const [quickOpen, setQuickOpen] = useState(false);
@@ -165,13 +166,13 @@ export default function VariantProductForm({
   }, [focusTarget]);
 
   useEffect(() => {
-    if (!isFashion) return;
+    if (!isSpecialVariant) return;
     const media = window.matchMedia(compactQuery);
     const small = window.matchMedia("(max-width: 767px), (max-height: 500px) and (max-width: 1023px)");
     const update = () => { setCompact(media.matches); setPhone(small.matches); };
     update(); media.addEventListener("change", update); small.addEventListener("change", update);
     return () => { media.removeEventListener("change", update); small.removeEventListener("change", update); };
-  }, [isFashion]);
+  }, [isSpecialVariant]);
 
   useEffect(() => {
     if (!compactFashion) return;
@@ -390,7 +391,7 @@ export default function VariantProductForm({
   }
 
   function generateMissingBarcodes() {
-    setVariants(rows => rows.map(row => row.barcode.trim() ? row : { ...row, barcode: generateInternalBarcode() }));
+    setVariants(rows => rows.map(row => row.barcode !== "" ? row : { ...row, barcode: generateInternalBarcode() }));
   }
 
   function variantImage(variant: VariantRow) {
@@ -414,16 +415,16 @@ export default function VariantProductForm({
   }
 
   return (
-    <form ref={formRef} action={formAction} aria-busy={pending} onInvalidCapture={revealInvalid} onChangeCapture={() => setValidationError("")} onSubmit={compactFashion ? event => { event.preventDefault(); const data = new FormData(event.currentTarget); startTransition(() => formAction(data)); } : undefined} className={`${isFashion ? fashionStyles.fashion : ""} grid grid-cols-1 gap-5 lg:grid-cols-3`}>
-      {isFashion && <div className={fashionStyles.tabs} role="tablist" aria-label={translateLabel("Product sections")}>
+    <form ref={formRef} action={formAction} aria-busy={pending} onInvalidCapture={revealInvalid} onChangeCapture={() => setValidationError("")} onSubmit={compactFashion ? event => { event.preventDefault(); const data = new FormData(event.currentTarget); startTransition(() => formAction(data)); } : undefined} className={`${isSpecialVariant ? fashionStyles.fashion : ""} grid grid-cols-1 gap-5 lg:grid-cols-3`}>
+      {isSpecialVariant && <div className={fashionStyles.tabs} role="tablist" aria-label={translateLabel("Product sections")}>
         {(["details", "photos", "variants"] as const).map((tab, index) => <button key={tab} type="button" role="tab" id={`fashion-tab-${tab}`} aria-controls={`fashion-panel-${tab}`} aria-selected={activeTab === tab} tabIndex={activeTab === tab ? 0 : -1} onClick={() => setActiveTab(tab)} onKeyDown={event => {
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
           event.preventDefault(); const next=event.key === "Home" ? 0 : event.key === "End" ? 2 : (index + (event.key === "ArrowRight" ? 1 : -1) + 3) % 3;
           const tabs=["details", "photos", "variants"]; setActiveTab(tabs[next]); event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
         }}>{translateLabel(tab === "details" ? "Details" : tab === "photos" ? "Photos" : "Variants")}</button>)}
       </div>}
-      <div className={isFashion ? fashionStyles.formBody : "contents"} data-active-tab={activeTab} inert={compactFashion && pending}>
-      <label data-section="details" className={`${isFashion ? fashionStyles.branch : ""} col-span-full flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 sm:flex-row sm:items-center sm:justify-between`}>Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm sm:max-w-xs"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id} data-i18n-ignore="true">{b.name}</option>)}</select></label>
+      <div className={isSpecialVariant ? fashionStyles.formBody : "contents"} data-active-tab={activeTab} inert={compactFashion && pending}>
+      <label data-section="details" className={`${isSpecialVariant ? fashionStyles.branch : ""} col-span-full flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 sm:flex-row sm:items-center sm:justify-between`}>Assign to Branch<select name="locationId" required defaultValue={branches[0]?.id||""} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm sm:max-w-xs"><option value="" disabled>Choose branch</option>{branches.map(b=><option key={b.id} value={b.id} data-i18n-ignore="true">{b.name}</option>)}</select></label>
       <input
         type="hidden"
         name="variants"
@@ -451,11 +452,11 @@ export default function VariantProductForm({
           type="file"
           accept=".jpg,.jpeg,.png,.webp"
           onChange={(event) => handleRunImageChange(slot.id, event)}
-          className="sr-only" tabIndex={isFashion ? -1 : undefined} aria-hidden={isFashion || undefined}
+          className="sr-only" tabIndex={isSpecialVariant ? -1 : undefined} aria-hidden={isSpecialVariant || undefined}
         />
       ))}
 
-      <section id="fashion-panel-details" data-section="details" className={`${isFashion ? fashionStyles.information : ""} space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 lg:col-span-2`}>
+      <section id="fashion-panel-details" data-section="details" className={`${isSpecialVariant ? fashionStyles.information : ""} space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 lg:col-span-2`}>
         <div><h2 className="text-sm font-bold text-slate-900">Product information</h2><p className="mt-1 text-xs text-slate-500">Add the name, category and details customers will see.</p></div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label={isShoes ? "Shoe / Model name" : isFashion ? "Style / Model name" : "Product name"} required>
@@ -497,7 +498,7 @@ export default function VariantProductForm({
       </Field>
       </section>
 
-      <section id="fashion-panel-photos" data-section="photos" className={`${isFashion ? fashionStyles.photos : ""} rounded-2xl border border-slate-200 bg-white p-4 sm:p-5`}><ProductGalleryInput /></section>
+      <section id="fashion-panel-photos" data-section="photos" className={`${isSpecialVariant ? fashionStyles.photos : ""} rounded-2xl border border-slate-200 bg-white p-4 sm:p-5`}><ProductGalleryInput /></section>
 
 
 
@@ -517,38 +518,38 @@ export default function VariantProductForm({
       )}
 
       {isSpecialVariant && (
-        <section data-section="variants" data-quick-run className={`${isFashion ? fashionStyles.quickRun : ""} col-span-full rounded-2xl border border-teal-200 bg-teal-50/50 p-4 sm:p-5`}>
-          <div className={isFashion ? fashionStyles.quickHeading : ""}><div className="flex items-start gap-2">
+        <section data-section="variants" data-quick-run className={`${isSpecialVariant ? fashionStyles.quickRun : ""} col-span-full rounded-2xl border border-teal-200 bg-teal-50/50 p-4 sm:p-5`}>
+          <div className={isSpecialVariant ? fashionStyles.quickHeading : ""}><div className="flex items-start gap-2">
             <Zap size={17} className="mt-0.5 shrink-0 text-blue-600" />
             <div>
               <h3 className="text-sm font-bold text-slate-900">
                 {isShoes ? "Quick shoe size run" : "Quick fashion size run"}
               </h3>
-              <p className={`mt-0.5 text-[11px] leading-4 text-slate-500 ${isFashion ? quickStyles.legacy : ""}`}>
+              <p className={`mt-0.5 text-[11px] leading-4 text-slate-500 ${isSpecialVariant ? quickStyles.legacy : ""}`}>
                 Enter a colour, SKU prefix, prices and starting stock, then add a common size run in one tap.
               </p>
             </div>
           </div>
 
-          {isFashion && <button type="button" className={fashionStyles.quickToggle} aria-expanded={quickOpen} aria-controls="fashion-quick-body" aria-label={translateLabel("Quick fashion size run")} onClick={() => setQuickOpen(open => !open)}><ChevronDown size={18}/></button>}</div>
-          <div id="fashion-quick-body" className={isFashion ? fashionStyles.quickBody : ""} data-open={quickOpen}>
-          {isFashion && <div className={`${quickStyles.desktop} ${fashionStyles.sizeSelector}`}>
+          {isSpecialVariant && <button type="button" className={fashionStyles.quickToggle} aria-expanded={quickOpen} aria-controls="fashion-quick-body" aria-label={translateLabel(isShoes ? "Quick shoe size run" : "Quick fashion size run")} onClick={() => setQuickOpen(open => !open)}><ChevronDown size={18}/></button>}</div>
+          <div id="fashion-quick-body" className={isSpecialVariant ? fashionStyles.quickBody : ""} data-open={quickOpen}>
+          {isSpecialVariant && <div className={`${quickStyles.desktop} ${fashionStyles.sizeSelector}`}>
             <p className="mt-1 text-xs text-slate-500">{translateLabel("Select sizes first, then click Add.")}</p>
             <div role="tablist" aria-label={translateLabel("Size presets")} className="mt-4 flex flex-wrap gap-2">
-              {fashionSizeRuns.map((run, index) => <button key={run.label} type="button" role="tab" tabIndex={sizePreset === index ? 0 : -1} aria-selected={sizePreset === index} aria-controls="fashion-size-chips" id={`fashion-size-preset-${index}`} onClick={() => { setSizePreset(index); setSelectedSizes([]); }} onKeyDown={event => {
+              {sizeRuns.map((run, index) => <button key={run.label} type="button" role="tab" tabIndex={sizePreset === index ? 0 : -1} aria-selected={sizePreset === index} aria-controls="fashion-size-chips" id={`fashion-size-preset-${index}`} onClick={() => { setSizePreset(index); setSelectedSizes([]); }} onKeyDown={event => {
                 if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
                 event.preventDefault();
-                const next = event.key === "Home" ? 0 : event.key === "End" ? fashionSizeRuns.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + fashionSizeRuns.length) % fashionSizeRuns.length;
+                const next = event.key === "Home" ? 0 : event.key === "End" ? sizeRuns.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + sizeRuns.length) % sizeRuns.length;
                 setSizePreset(next); setSelectedSizes([]);
                 event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
               }} className={`min-h-10 rounded-lg border px-3 text-xs font-semibold transition-colors ${sizePreset === index ? "border-blue-600 bg-blue-600 text-white" : "border-blue-200 bg-white text-blue-700 hover:bg-blue-100"}`}>{translateLabel(run.label.replace("â€“", "–"))}</button>)}
             </div>
             <div id="fashion-size-chips" role="tabpanel" aria-labelledby={`fashion-size-preset-${sizePreset}`} className="mt-3 flex flex-wrap gap-2">
-              {fashionSizeRuns[sizePreset].sizes.map(size => <button key={size} type="button" aria-pressed={selectedSizes.includes(size)} onClick={() => setSelectedSizes(current => current.includes(size) ? current.filter(value => value !== size) : [...current, size])} className={`min-h-10 min-w-12 rounded-lg border px-3 text-xs font-semibold transition-colors ${selectedSizes.includes(size) ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:bg-blue-50"}`} data-i18n-ignore="true">{size}</button>)}
+              {sizeRuns[sizePreset].sizes.map(size => <button key={size} type="button" aria-pressed={selectedSizes.includes(size)} onClick={() => setSelectedSizes(current => current.includes(size) ? current.filter(value => value !== size) : [...current, size])} className={`min-h-10 min-w-12 rounded-lg border px-3 text-xs font-semibold transition-colors ${selectedSizes.includes(size) ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:bg-blue-50"}`} data-i18n-ignore="true">{size}</button>)}
             </div>
           </div>}
 
-          <div className={`${isFashion ? fashionStyles.quickFields : ""} mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3`}>
+          <div className={`${isSpecialVariant ? fashionStyles.quickFields : ""} mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3`}>
             <MiniField label="Colour" value={quickColor} placeholder="Black" onChange={setQuickColor} />
             <MiniField label="SKU prefix" value={quickSkuPrefix} placeholder="TEE01" onChange={setQuickSkuPrefix} />
             <MiniField label="Cost price" value={quickCost} type="number" min="0" step="0.01" onChange={setQuickCost} />
@@ -578,8 +579,8 @@ export default function VariantProductForm({
             </label>
           </div>
 
-          <div className={`mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 ${isFashion ? `${quickStyles.legacy} ${fashionStyles.quickLegacy}` : ""}`}>
-            {(isShoes ? shoeSizeRuns : fashionSizeRuns).map((run) => (
+          <div className={`mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 ${isSpecialVariant ? `${quickStyles.legacy} ${fashionStyles.quickLegacy}` : ""}`}>
+            {sizeRuns.map((run) => (
               <button
                 key={run.label}
                 type="button"
@@ -590,18 +591,18 @@ export default function VariantProductForm({
               </button>
             ))}
           </div>
-          {isFashion && <div className={`${quickStyles.desktop} ${fashionStyles.quickSummary}`}>
+          {isSpecialVariant && <div className={`${quickStyles.desktop} ${fashionStyles.quickSummary}`}>
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-teal-200 pt-4">
               <p className="text-xs text-slate-600" aria-live="polite">{translateLabel("Selected sizes")}: <span data-i18n-ignore="true">{selectedSizes.join(", ") || "—"}</span><span className={fashionStyles.selectedUnits}>{formatUiText(translateLabel("{0} sizes selected · {1} units"), [selectedSizes.length, selectedSizes.length * Number(quickStock || 0)])}</span></p>
-              <button type="button" disabled={!selectedSizes.length || pending} onClick={() => { addSizeRun(fashionSizeRuns[sizePreset].sizes.filter(size => selectedSizes.includes(size))); setSelectedSizes([]); }} className="min-h-11 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50">{formatUiText(translateLabel("Add {0} sizes"), [selectedSizes.length])}</button>
+              <button type="button" disabled={!selectedSizes.length || pending} onClick={() => { addSizeRun(sizeRuns[sizePreset].sizes.filter(size => selectedSizes.includes(size))); setSelectedSizes([]); }} className="min-h-11 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50">{formatUiText(translateLabel("Add {0} sizes"), [selectedSizes.length])}</button>
             </div>
           </div>}
           </div>
         </section>
       )}
 
-      <section id="fashion-panel-variants" data-section="variants" className={`${isFashion ? fashionStyles.variants : ""} col-span-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white`}>
-        <div className={`${isFashion ? fashionStyles.legacyVariantHeading : ""} flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4`}>
+      <section id="fashion-panel-variants" data-section="variants" className={`${isSpecialVariant ? fashionStyles.variants : ""} col-span-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white`}>
+        <div className={`${isSpecialVariant ? fashionStyles.legacyVariantHeading : ""} flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-4`}>
           <div className="flex min-w-0 items-start gap-2">
             {isGeneral ? (
               <PackagePlus size={17} className="mt-0.5 shrink-0 text-slate-600" />
@@ -650,7 +651,7 @@ export default function VariantProductForm({
           </div>
         )}
 
-        {isFashion && <div className={fashionStyles.compactVariants}>
+        {isSpecialVariant && <div className={fashionStyles.compactVariants}>
           <div className={fashionStyles.variantToolbar}><button type="button" disabled={pending} onClick={addVariant}><Plus size={16}/>Add Size</button><AnchoredActionMenu label={translateLabel("Actions")} disabled={pending}>
             <button type="button" onClick={generateMissingBarcodes}>Generate missing barcodes</button>
             <button type="button" disabled={!variants.length} className="text-red-600" onClick={() => { if (window.confirm(translateLabel("Delete all variants from this draft?"))) { setVariants([]); setSelectedVariant(null); } }}>Delete All</button>
@@ -669,7 +670,7 @@ export default function VariantProductForm({
           </div>
           {!variants.length && <p className="p-4 text-sm text-slate-500">No sizes or variants added</p>}
         </div>}
-        <div className={isFashion ? fashionStyles.desktopVariantTable : ""} aria-hidden={compactFashion || undefined}><div className="overflow-x-auto">
+        <div className={isSpecialVariant ? fashionStyles.desktopVariantTable : ""} aria-hidden={compactFashion || undefined}><div className="overflow-x-auto">
           <table className="w-full min-w-[730px] text-xs">
             <thead className="bg-white text-[10px] uppercase tracking-wide text-slate-400">
               <tr className="border-b border-slate-200">
@@ -750,8 +751,8 @@ export default function VariantProductForm({
       </section>
 
       </div>
-      {isFashion && (validationError || (!state.success && state.message)) && <p role="alert" className={fashionStyles.formError}>{validationError || state.message}</p>}
-      <div className={`${isFashion ? fashionStyles.footer : ""} sticky -bottom-4 col-span-full flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:-bottom-6 sm:flex-row sm:items-center sm:justify-between`}>
+      {isSpecialVariant && (validationError || (!state.success && state.message)) && <p role="alert" className={fashionStyles.formError}>{validationError || state.message}</p>}
+      <div className={`${isSpecialVariant ? fashionStyles.footer : ""} sticky -bottom-4 col-span-full flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:-bottom-6 sm:flex-row sm:items-center sm:justify-between`}>
         <p className="text-xs text-slate-500"><span className="font-semibold text-slate-800">{variants.length} variants</span> · {totalStock} units ready to create</p>
       <button
         type="submit"

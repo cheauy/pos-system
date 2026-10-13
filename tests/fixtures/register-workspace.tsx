@@ -1,5 +1,5 @@
 // Browser-only fixtures: the real register UI never imports a database client.
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import RegisterClient from "../../app/(dashboard)/dashboard/register/register-client";
 import LanguageProvider from "../../components/providers/language-provider";
@@ -30,20 +30,44 @@ const cash: Movement[] = [
   { id: "out", shift_id: "active", movement_type: "cash_out", amount: 25, reason: "Safe drop", reference: "TEST-OUT", created_by: "cashier", created_at: "2026-10-09T05:00:00Z" },
   { id: "refund", shift_id: "active", movement_type: "cash_out", amount: 5, reason: "Fixture refund", reference: "return:fixture", created_by: "cashier", created_at: "2026-10-09T06:00:00Z" },
 ];
-type State = { branches: typeof branches; shifts: Shift[]; movements: Movement[]; orders: Order[] };
+type State = { branchId: string; branches: (typeof branches[number] & { plan_disable_pending?: boolean })[]; shifts: Shift[]; movements: Movement[]; orders: Order[] };
 let state: State;
 let update: (state: State) => void;
+let header = { branchId: "branch", changing: false };
+let updateHeader: (context: typeof header) => void;
+const HeaderContext = createContext(header);
+const guards = new Set<() => string | null>();
+export function useWorkspaceBranch() { return useContext(HeaderContext); }
+export function useBranchSwitchGuard(guard: () => string | null) {
+  useEffect(() => { guards.add(guard); return () => { guards.delete(guard); }; }, [guard]);
+}
 const controls = {
   calls: [] as { action: string; fields: Record<string, FormDataEntryValue> }[],
   refreshes: 0, prints: 0, failNext: false, hold: false,
   release: () => {},
+  holdBranch: false,
+  setHeader(branchId: string, changing = false) { header = { branchId, changing }; updateHeader?.({ ...header }); },
+  beginSwitch(branchId: string) {
+    if (header.changing || [...guards].some(guard => guard())) return false;
+    this.setHeader(branchId, true); return true;
+  },
+  loadBranch(branchId: string) {
+    state = { ...state, branchId, shifts: [{ ...closed, id: `closed-${branchId}`, location_id: branchId }, ...(branchId === "branch" ? [{ ...active }] : [])] };
+    update?.({ ...state });
+    if (header.branchId === branchId) this.setHeader(branchId);
+  },
   reset(mode = "open") {
     state = {
+      branchId: "branch",
       branches: branches.map(b => ({ ...b, plan_disable_pending: mode === "closing-only" && b.id === "branch" })),
       shifts: mode === "closed" ? [{ ...closed }] : [{ ...active }, { ...closed }],
       movements: mode === "closed" ? [] : [...cash], orders: mode === "closed" ? [] : [...sales],
     };
+    if (mode === "pending-closure") { state.branches.push({ id: "pending", name: "TENH Final Closure", code: "END", is_active: true, plan_disable_pending: true }); state.shifts.push({ ...active, id: "pending-active", location_id: "pending" }); }
+    if (mode === "duplicate") state.shifts.push({ ...active, id: "duplicate-active" });
+    if (mode === "no-register") state.branches = [];
     this.calls = []; this.refreshes = 0; this.prints = 0; this.failNext = false; this.hold = false;
+    this.holdBranch = false; this.setHeader(mode === "no-branch" ? "" : mode === "all" ? "all" : "branch");
     update?.({ ...state });
   },
 };
@@ -60,7 +84,7 @@ async function record(action: string, data: FormData) {
 }
 export async function openRegisterShift(data: FormData) {
   await record("opening", data);
-  state = { ...state, shifts: [{ ...active, id: "fixture-opened", opening_cash: Number(data.get("openingCash")), opening_note: String(data.get("note")) }, ...state.shifts] };
+  state = { ...state, shifts: [{ ...active, id: "fixture-opened", location_id: String(data.get("locationId")), opening_cash: Number(data.get("openingCash")), opening_note: String(data.get("note")) }, ...state.shifts] };
 }
 export async function addCashMovement(data: FormData) {
   await record("movement", data);
@@ -86,11 +110,15 @@ export async function closeRegisterShift(data: FormData) {
 controls.reset(new URLSearchParams(location.search).get("state") || "open");
 function Fixture() {
   const [current, setCurrent] = useState(state);
-  useEffect(() => { update = setCurrent; }, []);
+  const [context, setContext] = useState(header);
+  useEffect(() => { update = setCurrent; updateHeader = setContext; }, []);
   return <LanguageProvider initialLanguage={new URLSearchParams(location.search).get("lang") === "km" ? "km" : "en"}>
     <div className="workspace-theme min-h-screen bg-slate-50 p-3 sm:p-6">
       <div className="workspace-content mx-auto max-w-6xl">
+        <header className="mb-4 flex flex-wrap items-center gap-3" data-fixture-header><span data-header-branch>{context.branchId || "No branch"}</span>{branches.map(branch => <button key={branch.id} type="button" disabled={context.changing} className="min-h-11 rounded-lg border bg-white px-3" onClick={() => { if (!window.confirm("Switch workspace? Unsaved changes will be discarded.")) return; if (controls.beginSwitch(branch.id) && !controls.holdBranch) setTimeout(() => controls.loadBranch(branch.id), 40); }}>Switch to {branch.name}</button>)}</header>
+        <HeaderContext.Provider value={context}>
         <RegisterClient {...current} names={{ cashier: "Sok Dara" }} />
+        </HeaderContext.Provider>
         <a href="/elsewhere" className="mt-4 block text-sm text-blue-600">Fixture navigation</a>
       </div>
     </div>

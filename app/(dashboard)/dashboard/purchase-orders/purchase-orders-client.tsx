@@ -160,7 +160,7 @@ export default function PurchaseOrdersClient({
   );
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
 
-  const {data,busy,error}=usePagedWorkspace(workspace,{page,search,supplierFilter,statusFilter,fromDate,toDate,sortMode},loadPurchaseOrders,"search");
+  const {data,busy,error,retry}=usePagedWorkspace(workspace,{page,search,supplierFilter,statusFilter,fromDate,toDate,sortMode},loadPurchaseOrders,"search");
   const {orders,suppliers,stats}=data;
   const supplierMap=useMemo(()=>new Map(suppliers.map(supplier=>[supplier.id,supplier])),[suppliers]);
 
@@ -188,13 +188,14 @@ export default function PurchaseOrdersClient({
 
   function applyDates() {
     if (!dateDraft || draftError) return;
+    if (dateDraft.from === fromDate && dateDraft.to === toDate) { setDateDraft(null); return; }
     setFromDate(dateDraft.from); setToDate(dateDraft.to); setPage(1); setDateDraft(null);
   }
 
   return (
     <main className={`${styles.responsive} space-y-5`} aria-busy={busy}>
       <DateRangeFilter from={fromDate} to={toDate} busy={busy} onApply={(from,to)=>{setFromDate(from);setToDate(to);setPage(1);setDateDraft(null);}} />
-      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error} The list below still shows the previous filters.</p>}
+      {error && <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700"><p>{error}</p><button type="button" onClick={retry} className="mt-2 min-h-11 rounded-xl border border-red-200 px-4 font-semibold">Retry</button></div>}
       {creating && <NewOrderDialog cacheRef={choicesCache} close={() => setCreating(false)} created={id => { setCreating(false); setSearch(""); setSupplierFilter("all"); setStatusFilter("all"); setFromDate(""); setToDate(""); setSortMode("newest"); setPage(1); setSelectedId(id); setDetailTab("overview"); }} />}
       <div className={`${styles.listHeader} flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between`}>
         <div>
@@ -227,14 +228,14 @@ export default function PurchaseOrdersClient({
         </div>
       </div>
 
-      <section aria-label="Purchase order summary" className={`${styles.listStats} grid grid-cols-2 gap-y-3 rounded-xl border border-slate-200 bg-white py-4 shadow-sm sm:grid-cols-3 xl:grid-cols-6`}>
+      <DateFilterContent busy={busy} kind="cards"><section hidden={Boolean(error)} aria-label="Purchase order summary" className={`${styles.listStats} ${error ? "hidden" : "grid"} grid-cols-2 gap-y-3 rounded-xl border border-slate-200 bg-white py-4 shadow-sm sm:grid-cols-3 xl:grid-cols-6`}>
         <StatCard icon={<ClipboardList size={20} />} label="Total Orders" value={stats.total.toString()} tone="blue" />
         <StatCard icon={<FileText size={20} />} label="Draft" value={stats.draft.toString()} tone="slate" />
         <StatCard icon={<Send size={20} />} label="Sent" value={stats.sent.toString()} tone="blue" />
         <StatCard icon={<Clock3 size={20} />} label="Partially Received" value={stats.partial.toString()} tone="amber" />
         <StatCard icon={<CheckCircle2 size={20} />} label="Completed" value={stats.completed.toString()} tone="emerald" />
         <StatCard icon={<WalletCards size={20} />} label="Outstanding Value" value={money(stats.outstanding)} tone="amber" compact />
-      </section>
+      </section></DateFilterContent>
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
         <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -407,7 +408,7 @@ export default function PurchaseOrdersClient({
             </div>
           )}
 
-          <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div hidden={Boolean(error) || busy} className={`${error || busy ? "hidden" : "flex"} flex-col gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between`}>
             <p className="text-xs text-slate-500">
               {data.total === 0
                 ? "Showing 0 purchase orders"

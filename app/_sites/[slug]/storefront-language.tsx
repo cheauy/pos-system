@@ -2,6 +2,11 @@
 import { translateUiText } from "@/lib/i18n/translations";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 const khmer: Record<string, string> = {
+  "Shop the collection": "ជ្រើសរើសផលិតផល",
+  "View full details": "មើលព័ត៌មានលម្អិត",
+  "Customer information": "ព័ត៌មានអតិថិជន",
+  "This field is required.": "សូមបំពេញព័ត៌មាននេះ។",
+  "Continue shopping": "បន្តជ្រើសរើសទំនិញ",
   "monday": "ថ្ងៃចន្ទ", "tuesday": "ថ្ងៃអង្គារ", "wednesday": "ថ្ងៃពុធ",
   "thursday": "ថ្ងៃព្រហស្បតិ៍", "friday": "ថ្ងៃសុក្រ", "saturday": "ថ្ងៃសៅរ៍", "sunday": "ថ្ងៃអាទិត្យ",
   "Mon - Sun": "ចន្ទ - អាទិត្យ", "(+1 day)": "(ថ្ងៃបន្ទាប់)",

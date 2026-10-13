@@ -1,0 +1,54 @@
+.tabs, .camera, .update { display: none; }
+
+@media screen and (max-width: 1279px), screen and (max-width: 1366.98px) and (pointer: coarse) {
+  .page { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+  .intro > :not(:first-child) { display: none; }
+  .intro a { min-height: 44px; }
+  .identity { padding: .5rem 0 1rem; border: 0; box-shadow: none; background: transparent; display: block; }
+  .identity > :first-child { align-items: center; gap: 1rem; }
+  .avatar { position: relative; width: 72px; height: 72px; }
+  .avatar > img { width: 72px; height: 72px; }
+  .identityName > h2 { font-size: 1rem; overflow-wrap: anywhere; }
+  .identityName > p { display: none; }
+  .identityName > span { margin-top: .375rem; }
+  .identityStatus { min-width: 0; border: 0; padding: 0; margin: .375rem 0 0 88px; }
+  .identityStatus > :last-child { display: none; }
+  .camera { display: grid; position: absolute; width: 44px; height: 44px; bottom: -6px; right: -6px; place-items: center; border-radius: 50%; background: var(--app-accent); color: white; cursor: pointer; border: 2px solid var(--workspace-panel, white); }
+  .camera:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 3px; }
+  .workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .form { display: contents; }
+  .formHeader { display: none; }
+  .tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; grid-row: 1; border-bottom: 1px solid #e2e8f0; }
+  .tabs button { min-height: 48px; display: flex; align-items: center; justify-content: center; gap: .5rem; padding: .5rem; border-bottom: 3px solid transparent; font-size: .875rem; font-weight: 700; }
+  .tabs button[aria-selected="true"] { color: var(--app-accent); border-color: var(--app-accent); }
+  .personal { grid-row: 2; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; margin: 1rem 0; }
+  .personal > * { min-width: 0; margin: 0; }
+  .photoField > label, .photoField > input { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .photoField { font-size: .8125rem; }
+  .personal input { min-height: 44px; }
+  .workspace[data-tab="personal"] .security, .workspace[data-tab="security"] .personal { display: none; }
+  .security { grid-row: 2; padding: 1rem 0; border: 0; box-shadow: none; background: transparent; }
+  .security > :first-child > :first-child { display: none; }
+  .security > div:nth-child(2) { margin-top: .75rem; }
+  .security a { min-height: 52px; padding: .625rem .75rem; }
+  .security a p:first-child { font-size: .875rem; }
+  .security a p:last-child { font-size: .8125rem; }
+  .update { display: flex; grid-row: 3; align-items: center; gap: .5rem; padding: 1rem 0; border-top: 1px solid #e2e8f0; font-size: .8125rem; color: #64748b; }
+  .actions { grid-row: 4; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .5rem; margin: 0; padding: .75rem 0 max(.75rem, env(safe-area-inset-bottom)); border-top: 1px solid #e2e8f0; position: static; background: var(--workspace-panel, white); }
+  .actions button { min-height: 44px; white-space: normal; }
+  .actions button[type="submit"] { background: var(--app-accent); }
+  .actions button[type="submit"]:hover:not(:disabled) { background: color-mix(in srgb, var(--app-accent) 88%, black); }
+  .actions button:disabled { opacity: .5; cursor: not-allowed; }
+  .page :is(a, button, input):focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
+  .page input:focus { border-color: var(--app-accent); --tw-ring-color: color-mix(in srgb, var(--app-accent) 20%, transparent); }
+  .page [class~="text-blue-600"] { color: var(--app-accent); }
+  .page :is([class~="bg-blue-50"], [class~="bg-blue-950/30"]) { background: color-mix(in srgb, var(--app-accent) 7%, var(--workspace-panel, white)); }
+}
+
+@media screen and (min-width: 640px) and (max-width: 1279px), screen and (min-width: 640px) and (max-width: 1366.98px) and (pointer: coarse) {
+  .personal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .photoField { grid-column: 1 / -1; }
+  .personal > [role="status"], .personal > [role="alert"] { grid-column: 1 / -1; }
+}
+
+@media screen and (max-width: 639px) { .actions button { flex: 1; justify-content: center; } }

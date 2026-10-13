@@ -13,6 +13,8 @@ export function parseImportBackup(text: string, businessId: string, selected?: s
   for (const table of tables) {
     const rows = backup.data[table];
     if (!Array.isArray(rows) || rows.some(row => !row || typeof row !== 'object' || Array.isArray(row))) throw new Error(`Invalid rows in ${table}.`);
+    if (['products', 'branch_product_details', 'product_variants'].includes(table) && rows.some(row => row.barcode != null && typeof row.barcode !== 'string')) throw new Error('Backup barcode identifiers must be strings; numeric values cannot preserve leading zeros.');
+    if (table === 'orders' && rows.some(row => row.order_code != null && typeof row.order_code !== 'string')) throw new Error('Backup order codes must be strings.');
     if (backup.tables?.[table] !== rows.length) throw new Error(`Record count does not match ${table}. The backup may be incomplete.`);
     total += rows.length;
   }

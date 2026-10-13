@@ -1,4 +1,5 @@
 import Link from "next/link";
+import "./overview-responsive.css";
 import QRCode from "qrcode";
 import {
   Building2,
@@ -229,10 +230,11 @@ export default async function BusinessSettingsPage({ searchParams }: { searchPar
       </header>
 
       <SettingsSections available={available}>
-        <div data-section="overview" className="space-y-6">
+        <div className="bs-panel-content">
+        <div data-section="overview" className="business-overview space-y-6">
           {changes?.pendingCheckout ? <PendingCheckoutNotice key={changes.pendingCheckout.id} order={changes.pendingCheckout} /> : null}
 
-          <section className="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 via-white to-slate-100 shadow-sm dark:border-slate-700 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
+          <section className="overview-identity relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 via-white to-slate-100 shadow-sm dark:border-slate-700 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
             {sharedSettings.banner_url ? (
               <img
                 src={sharedSettings.banner_url}
@@ -272,7 +274,7 @@ export default async function BusinessSettingsPage({ searchParams }: { searchPar
                   </div>
                 </div>
 
-                <div className="mt-7 grid gap-3 sm:grid-cols-2">
+                <div className="overview-duplicate-identity mt-7 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl border border-white/80 bg-white/80 p-3 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/80">
                     <p className="flex items-center gap-2 text-xs font-medium text-slate-500">
                       <Link2 size={14} className="text-blue-600" /> Store URL
@@ -305,12 +307,12 @@ export default async function BusinessSettingsPage({ searchParams }: { searchPar
           </section>
 
           {canViewStorefront ? (
-            <section aria-labelledby="store-status-title" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 dark:border-slate-700 dark:bg-slate-900">
+            <section aria-labelledby="store-status-title" className="overview-store-status rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 dark:border-slate-700 dark:bg-slate-900">
               <h2 id="store-status-title" className={`text-base font-extrabold ${navy}`}>Store status</h2>
               <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)]">
                 <StatusToggle label="Public storefront" helper={sharedSettings.is_published ? "Customers can see your store" : "Hidden from customers"} slotId="storefront-publish-slot" />
                 <StatusToggle label="Accept online orders" helper={sharedSettings.accept_online_orders ? "Checkout is open" : "Store stays visible; checkout is paused"} slotId="storefront-orders-slot" />
-                <div className="min-w-0 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                <div className="overview-store-url min-w-0 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
                   <p className="text-xs font-semibold text-slate-500">Store URL</p>
                   {localPreview ? (
                     <p role="note" className="mt-1 rounded-lg bg-amber-50 px-2.5 py-2 text-xs leading-4 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
@@ -345,10 +347,12 @@ export default async function BusinessSettingsPage({ searchParams }: { searchPar
             </div>
           </section>
 
+          <div className="overview-secondary">
           {changes ? (
-            <section aria-labelledby="credits-usage-title" className="space-y-3">
+            <section aria-labelledby="credits-usage-title" className="overview-credits space-y-3">
               <h2 id="credits-usage-title" className={`text-base font-extrabold ${navy}`}>Credits &amp; Usage</h2>
               <CreditBadges
+                compactOverview
                 modeCredits={changes.entitlements.modeFreeRemaining + changes.entitlements.modeCredits}
                 urlCredits={changes.entitlements.urlFreeRemaining + changes.entitlements.urlCredits}
                 canBuy={business.role === "owner"}
@@ -357,7 +361,7 @@ export default async function BusinessSettingsPage({ searchParams }: { searchPar
           ) : null}
 
           {leadership ? (
-            <section aria-labelledby="team-access-title" className="space-y-3">
+            <section aria-labelledby="team-access-title" className="overview-team space-y-3">
               <h2 id="team-access-title" className={`text-base font-extrabold ${navy}`}>Team &amp; Access</h2>
               <div className="grid gap-3 md:grid-cols-3" aria-label="Business access summary">
                 <MetricCard
@@ -381,6 +385,7 @@ export default async function BusinessSettingsPage({ searchParams }: { searchPar
               </div>
             </section>
           ) : null}
+          </div>
         </div>
 
         {canViewStorefront ? <>
@@ -457,7 +462,8 @@ export default async function BusinessSettingsPage({ searchParams }: { searchPar
           </div>
         ) : null}
 
-        {/* Shared sticky bar: each form portals its own Save button here, visible from every section. */}
+        </div>
+        {/* Each form portals its own Save button here, visible from every section. */}
         <div className="settings-save-bar">
           <span id="business-info-save-slot" className="contents" />
           <span id="storefront-save-slot" className="contents" />
@@ -485,7 +491,7 @@ function StatusToggle({ label, helper, slotId }: { label: string; helper: string
 function StatusCard({ section, label, value, on, icon, tone }: { section: SettingsSectionId; label: string; value: string; on: boolean; icon: React.ReactNode; tone: string }) {
   return (
     // Narrow summaries (phones) stack the icon above the text so labels get the full card width; from 28rem of summary width the original row layout applies.
-    <a href={`?section=${section}`} data-section-link={section} className="flex min-w-0 flex-col items-start gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-200 focus-visible:outline-2 focus-visible:outline-blue-600 @md:flex-row @md:items-center @md:gap-3 @md:p-4 dark:border-slate-700 dark:bg-slate-900">
+    <a href={`?section=${section}`} data-section-link={section} className={`${label === "Storefront" || label === "Online Orders" ? "overview-status-duplicate" : ""} flex min-w-0 flex-col items-start gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-200 focus-visible:outline-2 focus-visible:outline-blue-600 @md:flex-row @md:items-center @md:gap-3 @md:p-4 dark:border-slate-700 dark:bg-slate-900`}>
       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone}`} aria-hidden="true">{icon}</span>
       <span className="min-w-0">
         <span className="block text-xs font-semibold text-slate-500">{label}</span>

@@ -13,6 +13,7 @@ function nodes(node) {
 test('sale confirmation shows a spinner and prevents another click while saving', () => {
   const icons = require('lucide-react');
   const { CheckoutPanel } = loadTs('app/(dashboard)/dashboard/pos/pos-workspace-flow.tsx', {
+    '@/lib/products/variant-editor': loadTs('lib/products/variant-editor.ts'),
     react: { useState: initial => [initial === false ? true : initial, () => {}], useEffect() {} },
     'react/jsx-runtime': require('react/jsx-runtime'), 'lucide-react': icons,
     './pos-workspace-helpers': {}, './pos-currency-components': {}, './pos-customer-helpers': {},

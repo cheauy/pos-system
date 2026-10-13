@@ -1,0 +1,81 @@
+.toolbar { display: flex; justify-content: flex-end; }
+.tabs, .bottomAction, .compactTitle, .compactTerm { display: none; }
+.timeline { display: contents; }
+.desktopReactivate { display: contents; }
+.extraToggle { display: none; }
+.extraBody { display: contents; }
+.responsive > .workspace { margin-bottom: 0; }
+
+@media (min-width: 640px) { .toolbar { display: none; } }
+
+/* Use the workspace tablet range, including iPad Pro landscape. */
+@media (max-width: 1279px), (max-width: 1366px) and (pointer: coarse) {
+  .responsive { min-width: 0; }
+  .responsive[data-has-action="true"] { padding-bottom: calc(var(--subscription-action-height, 80px) + var(--subscription-keyboard-gap, 0px) + 1rem); }
+  .toolbar { display: flex; gap: .5rem; align-items: center; }
+  .toolbar > a { margin-left: auto; max-width: 50%; overflow-wrap: anywhere; }
+  .workspace { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: .75rem; }
+  .primary, .overviewBody, .renewalDetails { display: contents; }
+  .primary > * { margin: 0; min-width: 0; }
+  .overview { grid-column: 1; grid-row: 1; display: grid; gap: .75rem; border: 0; background: transparent; box-shadow: none; overflow: visible; }
+  .overview > :first-child { display: none; }
+  .planUsage, .timeline, .paymentDetails {
+    padding: .875rem; border: 1px solid var(--workspace-border, #e2e8f0); border-radius: 1rem;
+    background: var(--workspace-panel, white); min-width: 0;
+  }
+  .planUsage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+  .planUsage > * { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  .planUsage > :first-child { grid-column: 1 / -1; }
+  .planUsage > :first-child > div:last-child > :first-child { display: none; }
+  .planUsage > :first-child > div:last-child > :nth-child(2) { font-size: 1rem; }
+  .planUsage > :first-child > div:last-child > :last-child { display: none; }
+  .planUsage > :not(:first-child) { border-radius: .75rem; background: color-mix(in srgb, var(--app-accent) 5%, var(--workspace-panel, white)); padding: .625rem; gap: .375rem; }
+  .planUsage > :not(:first-child) > div:last-child > :last-child { font-size: .625rem; line-height: 1rem; }
+  .compactTerm { display: block; margin-top: .25rem; font-size: .75rem; font-weight: 600; }
+  .timeline { display: block; }
+  .timeline > :first-child { flex-wrap: wrap; gap: .375rem; }
+  .timeline p { overflow-wrap: anywhere; }
+  .paymentDetails { display: grid; grid-template-columns: minmax(0, 1fr); margin-top: 0; gap: 0; }
+  .compactTitle { display: block; font-size: .875rem; font-weight: 800; padding-bottom: .5rem; }
+  .paymentDetails > div { padding: .625rem 0; border-top: 1px solid var(--workspace-border, #e2e8f0); }
+  .paymentDetails > div > :first-child { display: none; }
+  .paymentDetails > div > :last-child { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: .5rem; align-items: start; }
+  .paymentDetails p { margin: 0; overflow-wrap: anywhere; text-transform: none; letter-spacing: normal; font-size: .75rem; line-height: 1.25rem; }
+  .paymentDetails p:last-child { grid-column: 1 / -1; font-size: .625rem; line-height: 1rem; }
+  .payments { grid-column: 2; grid-row: 1 / span 2; min-width: 0; }
+  .payments > :first-child { padding: .875rem; }
+  .payments > :first-child > :last-child:not(:first-child) { display: none; }
+  .payments > :last-child { padding: .75rem; }
+  .request { flex-direction: column; align-items: stretch; padding: .75rem; border: 1px solid var(--workspace-border, #e2e8f0); border-radius: .75rem; margin-bottom: .625rem; overflow-wrap: anywhere; }
+  .request > :last-child { justify-content: space-between; flex-wrap: wrap; }
+  .request a { min-height: 44px; }
+  .history { grid-column: 1 / -1; grid-row: 3; }
+  .history > section > div:has(> table) { display: none; }
+  .history ul { display: block; }
+  .extras { grid-column: 1; grid-row: 2; display: block; }
+  .extraToggle { display: block; width: 100%; min-height: 44px; padding: .75rem; border-radius: .75rem; border: 1px solid var(--workspace-border, #e2e8f0); background: var(--workspace-panel, white); text-align: left; font-size: .75rem; font-weight: 700; }
+  .extraBody { display: grid; gap: .75rem; margin-top: .75rem; }
+  .extras[data-expanded="false"] .extraBody { display: none; }
+  .extras section > :first-child { padding: .75rem; }
+  .extras section > :last-child { padding: .75rem; }
+  .extras a { display: none; }
+  .desktopReactivate { display: none; }
+  .bottomAction { display: block; position: fixed; z-index: 30; bottom: var(--subscription-keyboard-gap, 0px); left: 0; right: 0; padding: .75rem max(.75rem, env(safe-area-inset-right)) calc(.75rem + env(safe-area-inset-bottom)) max(.75rem, env(safe-area-inset-left)); border-top: 1px solid var(--workspace-border, #e2e8f0); background: var(--workspace-panel, white); }
+  .bottomAction :is(a, button) { width: 100%; min-height: 44px; white-space: normal; }
+  .responsive [class~="bg-blue-600"] { background: var(--app-accent); }
+  .responsive [class~="text-blue-600"] { color: var(--app-accent); }
+  .responsive :is(button, a):focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; }
+}
+
+/* Match the existing sidebar's orientation-aware md visibility. */
+@media (min-width: 768px) and (orientation: landscape), (min-width: 1025px) { .bottomAction { left: 64px; } }
+
+@media (max-width: 639px) {
+  .tabs { display: flex; gap: .25rem; min-width: 0; }
+  .tabs button { min-height: 44px; border: 1px solid transparent; border-radius: .625rem; padding: .5rem .625rem; font-size: .75rem; font-weight: 700; overflow-wrap: anywhere; }
+  .tabs button[aria-selected="true"] { color: var(--app-accent); border-color: var(--app-accent); background: color-mix(in srgb, var(--app-accent) 8%, var(--workspace-panel, white)); }
+  .workspace { grid-template-columns: minmax(0, 1fr); }
+  .payments, .overview, .extras { grid-column: 1; grid-row: auto; }
+  .responsive[data-tab="overview"] .payments, .responsive[data-tab="payments"] :is(.overview, .extras) { display: none; }
+  .bottomAction { left: 0; }
+}

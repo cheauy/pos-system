@@ -8,6 +8,8 @@ import { useLanguage } from '@/components/providers/language-provider';
 import { accentColors, appearancePalette, defaultAppearance, normalizeAppearance, type Appearance } from '@/lib/appearance';
 import type { AppLanguage } from '@/lib/i18n/translations';
 
+import touch from "../settings-touch.module.css";
+import styles from "./system-responsive.module.css";
 import CustomerFields from './customer-fields';
 import type { CustomerFieldSettings } from '@/lib/customers/get-customer-field-settings';
 import { updateCustomerFieldSettings } from '../customers/actions';
@@ -61,14 +63,14 @@ export default function AppearanceForm({customerFields = null, branchId}: {custo
     } finally { saving.current = false; setBusy(false); }
   }
 
-  return <div className="space-y-4">
+  return <div className={`${styles.form} ${touch.preferences} space-y-4`}>
     {fieldsDraft && branchId && <CustomerFields settings={fieldsDraft} onChange={setFieldsDraft} disabled={busy} />}
-    <fieldset disabled={!saved.ready || busy} className="space-y-4 disabled:opacity-60">
-      {!dark && <section className={card}>
+    <fieldset disabled={!saved.ready || busy} className={`${touch.preferenceGrid} space-y-4 disabled:opacity-60`}>
+      {!dark && <section className={`${styles.colors} ${card}`}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><Heading icon={Palette} title="Color theme" description="Choose a color for the sidebar and interface accents." />
           <div className="flex items-center gap-2 rounded-full border border-slate-100 bg-slate-50/80 px-2.5 py-1.5 dark:border-slate-700 dark:bg-slate-800"><span className="mr-1 text-[10px] font-semibold text-slate-500 dark:text-slate-300">Preview</span><span className="h-4 w-4 rounded border border-black/10" style={{ background: palette.background }} /><span className="h-4 w-4 rounded" style={{ background: palette.action }} /><span className="h-4 w-4 rounded border border-black/10" style={{ background: palette.foreground }} /></div>
         </div>
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-7">
+        <div className={`${styles.colorChoices} grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-7`}>
           {Object.entries(accentColors).map(([name, color]) => <button key={name} type="button" aria-pressed={selected.accent === name} onClick={() => change({ accent: name as Appearance['accent'] })} className={`${choice} ${selected.accent === name ? chosen : idle} p-3`}>
             <span className="mb-3 block h-10 w-12 rounded-lg border border-black/10" style={{ background: color }} />
             <span className="block text-xs font-bold capitalize text-slate-900 dark:text-slate-100">{name}</span><span data-i18n-ignore="true" className="mt-0.5 block text-[10px] uppercase text-slate-500 dark:text-slate-400">{color}</span>
@@ -81,7 +83,7 @@ export default function AppearanceForm({customerFields = null, branchId}: {custo
         {selected.accent === 'custom' && <label className="mt-3 flex items-center gap-3 text-xs font-medium text-slate-600 dark:text-slate-300">Choose custom color<input type="color" value={selected.customColor} onChange={e => change({ customColor: e.target.value })} className="h-9 w-12 cursor-pointer rounded border border-slate-200 bg-transparent p-1" /><span data-i18n-ignore="true" className="font-mono uppercase">{selected.customColor}</span></label>}
       </section>}
 
-      <section className={card}><Heading icon={Moon} title="Theme mode" description="Choose how your app looks. System will match your device settings." /><div className="mt-4 grid gap-2 sm:grid-cols-3">
+      <section className={card}><Heading icon={Moon} title="Theme mode" description="Choose how your app looks. System will match your device settings." /><div className={`${styles.modeChoices} mt-4 grid gap-2 sm:grid-cols-3`}>
         {([{ value: 'system', label: 'System', description: 'Automatically match your device settings', icon: Monitor }, { value: 'light', label: 'Light', description: 'Clean and bright for everyday use', icon: Sun }, { value: 'dark', label: 'Dark', description: 'Easy on the eyes in low light', icon: Moon }] as const).map(option => <Option key={option.value} active={selected.theme === option.value} onClick={() => change({ theme: option.value })} icon={option.icon} label={option.label} description={option.description} />)}
       </div></section>
 
@@ -91,14 +93,14 @@ export default function AppearanceForm({customerFields = null, branchId}: {custo
         </button>)}
       </div></section>
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className={`${styles.displayOptions} ${touch.displayOptions} grid gap-3 lg:grid-cols-3`}>
         <section className={card}><Heading icon={Type} title="Text size" description="Adjust text size across the app." /><div className="mt-4 grid grid-cols-3 gap-2">{(['small', 'medium', 'large'] as const).map(size => <button key={size} type="button" aria-pressed={selected.textSize === size} onClick={() => change({ textSize: size })} className={`${choice} ${selected.textSize === size ? chosen : idle} py-3 text-center`}><span className={`block font-semibold text-slate-700 dark:text-slate-200 ${size === 'small' ? 'text-xs' : size === 'large' ? 'text-lg' : 'text-sm'}`}>Aa</span><span className="mt-1 block text-[10px] capitalize text-slate-600 dark:text-slate-300" data-i18n-ignore="true">{size}</span></button>)}</div></section>
         <section className={card}><Heading icon={Layers} title="Interface density" description="Choose how compact the layout feels." /><div className="mt-4 grid grid-cols-2 gap-2">{(['compact', 'comfortable'] as const).map(density => <button key={density} type="button" aria-pressed={selected.density === density} onClick={() => change({ density })} className={`${choice} ${selected.density === density ? chosen : idle} p-3`}><List size={17} className="mb-1 text-slate-600 dark:text-slate-300" /><span className="block text-[11px] font-semibold capitalize text-slate-700 dark:text-slate-200">{density}</span><span className="mt-0.5 block text-[9px] text-slate-500 dark:text-slate-400">{density === 'compact' ? 'More content' : 'More breathing room'}</span></button>)}</div></section>
         <section className={card}><Heading icon={Contrast} title="Accessibility" description="Improve visibility with higher contrast." /><label className="mt-5 flex cursor-pointer items-center justify-between gap-3"><span><span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">High contrast mode</span><span className="mt-1 block text-[10px] text-slate-500 dark:text-slate-400">Stronger colors and clearer borders</span></span><span className="relative shrink-0"><input type="checkbox" role="switch" checked={selected.highContrast} onChange={e => change({ highContrast: e.target.checked })} className="peer sr-only" /><span className="block h-6 w-10 rounded-full bg-slate-300 transition peer-checked:bg-cyan-700 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-sky-500" /><span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition peer-checked:translate-x-4" /></span></label></section>
       </div>
     </fieldset>
 
-    <div className="settings-save-bar">
+    <div className={`${styles.footer} settings-save-bar`}>
       <button type="button" disabled={!saved.ready || busy} onClick={() => setDraft({ ...defaultAppearance, language: 'en' })} className="mr-auto inline-flex items-center gap-2 border border-slate-200 dark:border-slate-700"><RotateCcw size={14} />Reset to defaults</button>
       <span className="text-xs text-slate-500" role="status">{dirty ? 'Unsaved changes' : 'No unsaved changes'}</span>
       <button type="button" disabled={!saved.ready || busy || !dirty} onClick={() => { setDraft(null); setFieldsDraft(fieldsBaseline); }} className="border border-slate-200 disabled:opacity-50 dark:border-slate-700">Cancel</button>

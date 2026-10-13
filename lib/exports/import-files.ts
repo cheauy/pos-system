@@ -36,6 +36,7 @@ export function recordsJsonToCsv(text: string, kind: CsvImportKind): string {
   const allowed = csvImportTemplates[kind].csv.split('\n')[0].split(',');
   for (const row of records) {
     if (!row || typeof row !== 'object' || Array.isArray(row) || Object.entries(row).some(([key, value]) => !allowed.includes(key) || (value !== null && !['string', 'number', 'boolean'].includes(typeof value)))) throw new Error('JSON fields do not match the template. Keep the field names and use plain values.');
+    if (kind === 'products' && row.barcode != null && typeof row.barcode !== 'string') throw new Error('Barcode identifiers must be JSON strings to preserve leading zeros.');
   }
   // Missing required fields remain blank and are rejected by the shared validator.
   return [allowed.map(cell).join(','), ...records.map(row => allowed.map(key => cell(row[key])).join(','))].join('\n');

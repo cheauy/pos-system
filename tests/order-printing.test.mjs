@@ -26,7 +26,7 @@ test('print waits for fonts and images, suppresses duplicate clicks',async()=>{
  const first=b.click();await b.click();assert.equal(b.prints(),0);ready();await first;assert.equal(decoded,true);assert.equal(b.prints(),1);
 });
 test('missing preview never opens printer dialog',async()=>{const b=button(null);await b.click();assert.equal(b.prints(),0);assert.match(b.errors[0],/unavailable/);});
-test('broken uploaded logo blocks printing',async()=>{const b=button({querySelectorAll:()=>[{decode:async()=>{throw Error('broken');}}]});await b.click();assert.equal(b.prints(),0);assert.match(b.errors[0],/could not load/);});
+test('broken uploaded logo blocks printing',async()=>{const b=button({querySelectorAll:s=>s==='img'?[{decode:async()=>{throw Error('broken');}}]:[]});await b.click();assert.equal(b.prints(),0);assert.match(b.errors[0],/could not load/);});
 test('oversize shipping label is warned on screen but still prints (user accepts clipping)',async()=>{const b=button({querySelectorAll:selector=>selector==='.shipping-label'?[{dataset:{widthMm:'80',heightMm:'50'},getBoundingClientRect:()=>({width:320,height:300})}]:[]});await b.click();assert.equal(b.prints(),1);assert.equal(b.errors.filter(Boolean).length,0);});
 
 test('reprinting a saved sale refreshes customer contact while preserving original transaction amounts',()=>{

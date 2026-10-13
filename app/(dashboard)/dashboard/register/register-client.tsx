@@ -5,6 +5,8 @@ import { useRef, useState, useEffect, useTransition, type ReactNode } from "reac
 import { useRouter } from "next/navigation";
 import { UserRound, Landmark, CalendarDays, Coins, Banknote, CreditCard, LockKeyhole, UnlockKeyhole, FileText, Calculator, TriangleAlert, ArrowRightLeft, Zap, ShieldCheck, Scale, PlusCircle, X, ChevronDown } from "lucide-react";
 import PrintButton from "@/components/print-button";
+import ContentSkeleton from "@/components/ui/content-skeleton";
+import { useWorkspaceBranch, useBranchSwitchGuard } from "../workspace-branch-provider";
 import { openRegisterShift, addCashMovement, closeRegisterShift } from "./actions";
 import { totals, money, date, payments, cents, type Branch, type Shift, type Movement, type Order } from "./register-model";
 import styles from "./register-workspace.module.css";
@@ -17,12 +19,26 @@ const denominations = [100, 50, 20, 10, 5, 1, 0.5, 0.25, 0.1, 0.05, 0.01];
 type Draft = "opening" | "movement" | "closing";
 type Run = (action: (data: FormData) => Promise<void>, data: FormData, success: string, draft: Draft) => Promise<boolean>;
 
-export default function RegisterClient({ branches, shifts, movements, orders, names }: {
-  branches: Branch[]; shifts: Shift[]; movements: Movement[]; orders: Order[]; names: Record<string, string>;
-}) {
+type RegisterProps = { branchId: string; branches: Branch[]; shifts: Shift[]; movements: Movement[]; orders: Order[]; names: Record<string, string> };
+
+export default function RegisterClient(props: RegisterProps) {
+  const workspace = useWorkspaceBranch();
+  const noBranch = !workspace.branchId || workspace.branchId === "all";
+  const loading = workspace.changing || (!noBranch && workspace.branchId !== props.branchId);
+  const selected = props.branches.filter(branch => branch.id === workspace.branchId && branch.is_active);
+  if (loading || noBranch || selected.length !== 1) {
+    return <main className={`${styles.workspace} space-y-4 text-slate-900`}>
+      <RegisterHeader disabled />
+      {loading ? <ContentSkeleton kind="form" /> : <p role="alert" className={panel}>{noBranch ? "Choose one branch in the workspace header to use its cash register." : "No valid register is available for the selected branch. Refresh or ask the Owner to review its branch settings."}</p>}
+    </main>;
+  }
+  // Remount branch drafts and reports only after matching server data has arrived.
+  return <RegisterWorkspace key={workspace.branchId} {...props} />;
+}
+
+function RegisterWorkspace({ branchId: branch, branches, shifts, movements, orders, names }: RegisterProps) {
   const { t: translateLabel } = useLanguage();
   const router = useRouter();
-  const [branch, setBranch] = useState(branches.find(b => b.is_active)?.id || branches[0]?.id || "");
   const [saving, setSaving] = useState(false);
   const [refreshing, startRefresh] = useTransition();
   const busy = saving || refreshing;
@@ -34,6 +50,7 @@ export default function RegisterClient({ branches, shifts, movements, orders, na
   const [report, setReport] = useState<Shift | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const history = useRef<HTMLElement>(null);
+  useBranchSwitchGuard(() => locked.current || busy ? "Cash register update in progress. Wait before switching branches." : null);
 
   function markDraft(draft: Draft) {
     setDrafts(previous => previous[draft] ? previous : { ...previous, [draft]: true });
@@ -75,13 +92,25 @@ export default function RegisterClient({ branches, shifts, movements, orders, na
   }, [dirty, busy, translateLabel]);
 
   const list = shifts.filter(s => s.location_id === branch);
-  const open = list.find(s => s.status === "open");
+  const opened = list.filter(s => s.status === "open");
+  const ambiguous = opened.length > 1;
+  const open = opened.length === 1 ? opened[0] : undefined;
   const selected = branches.find(b => b.id === branch);
   const closingOnly = Boolean(selected?.plan_disable_pending);
   const summary = list.map(s => totals(s, movements, orders));
+  const finalClosures = branches.filter(b => b.id !== branch && b.is_active && b.plan_disable_pending).map(b => ({ branch: b, shifts: shifts.filter(s => s.location_id === b.id && s.status === "open") })).filter(item => item.shifts.length > 0);
 
   const run: Run = async (action, data, success, draft) => {
     if (locked.current || busy) return false;
+    const shiftId = data.get("shiftId");
+    const ordinaryShift = !ambiguous && open?.id === shiftId;
+    const finalClosure = draft === "closing" && finalClosures.some(item => item.shifts.length === 1 && item.shifts[0].id === shiftId);
+    const validOpening = !ambiguous && !open && !closingOnly && data.get("locationId") === branch;
+    const validShift = (ordinaryShift || finalClosure) && (draft !== "movement" || !closingOnly);
+    if (draft === "opening" ? !validOpening : !validShift) {
+      setError("The register context changed. Refresh before continuing.");
+      return false;
+    }
     if (draft === "closing" && drafts.movement && !window.confirm(translateLabel("Discard unsaved changes?"))) return false;
     locked.current = true;
     setSaving(true);
@@ -108,32 +137,12 @@ export default function RegisterClient({ branches, shifts, movements, orders, na
     const draft = (event.target as HTMLElement).closest("form")?.dataset.draft as Draft | undefined;
     if (draft) markDraft(draft);
   }}>
-    <header className={styles.header}>
-      <div className="min-w-0">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Staff Shifts & Cash Register</h1>
-        <p className="mt-1 text-sm text-slate-500">Open a drawer, track cash movements, and close with an expected-vs-actual count.</p>
-      </div>
-      <div className={styles.headerActions}>
-        <button type="button" className={secondary} onClick={() => {
+    <RegisterHeader onView={() => {
           const closed = list.find(s => s.status === "closed");
           if (closed) showReport(closed); else history.current?.scrollIntoView({ behavior: "smooth" });
-        }}><FileText size={17} />View Z Report</button>
-        <label className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3">
-          <Landmark size={18} className="shrink-0 text-blue-600" />
-          <select aria-label="Choose register branch" disabled={busy} value={branch} onChange={event => {
-            if (dirty && !window.confirm(translateLabel("Discard unsaved changes?"))) return;
-            setBranch(event.target.value); setDrafts({}); setMessage(""); setError("");
-          }} className="min-h-11 w-full min-w-0 bg-white text-sm font-semibold outline-none">
-            <option value="" disabled>Choose branch</option>
-            {branches.map(b => <option key={b.id} value={b.id} data-i18n-ignore="true">
-              {translateLabel("Register: ")}{b.name}{b.plan_disable_pending ? translateLabel(" (closing only)") : b.is_active ? "" : translateLabel(" (inactive)")}
-            </option>)}
-          </select>
-        </label>
-      </div>
-    </header>
+    }} />
     {(error || message) && <p role={error ? "alert" : "status"} className={`rounded-xl p-3 text-sm ${error ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>{error || message}</p>}
-    {open ? <ShiftWorkspace key={open.id} shift={open} branchName={selected?.name || translateLabel("Branch")} staff={names[open.opened_by] || translateLabel("Staff")}
+    {ambiguous ? <p role="alert" className={panel}>More than one open shift exists for this branch. Refresh or ask the Owner to resolve the register state before recording cash.</p> : open ? <ShiftWorkspace key={open.id} shift={open} branchName={selected?.name || translateLabel("Branch")} staff={names[open.opened_by] || translateLabel("Staff")}
       movements={movements} orders={orders} busy={busy} run={run} closingOnly={closingOnly} markDraft={markDraft} />
       : <section key={branch} className={panel}>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -157,7 +166,7 @@ export default function RegisterClient({ branches, shifts, movements, orders, na
     {open && <MovementFeed shift={open} movements={movements} orders={orders} names={names} />}
     <section ref={history} className={panel}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Title icon={<FileText />} title="Shift History / Z Report" text="Latest 50 shifts across branches, plus all open shifts" />
+        <Title icon={<FileText />} title="Shift History / Z Report" text="Recent shifts for this branch, plus all open shifts" />
         <div className="flex flex-wrap gap-2">
           <Metric small label="Cash sales" value={summary.reduce((n, s) => n + cents(s.cash), 0) / 100} icon={<Banknote />} tone="green" />
           <Metric small label="Non-cash sales" value={summary.reduce((n, s) => n + cents(s.noncash), 0) / 100} icon={<CreditCard />} />
@@ -197,6 +206,14 @@ export default function RegisterClient({ branches, shifts, movements, orders, na
       </ul>
       {!list.length && <p className="py-6 text-center text-sm text-slate-500">No shifts recorded for this branch.</p>}
     </section>
+    {finalClosures.map(item => <details key={item.branch.id} className={panel}>
+      <summary className="flex min-h-11 cursor-pointer flex-wrap items-center gap-2 text-sm font-semibold"><LockKeyhole size={18} /><span>Final branch closure:</span><span data-i18n-ignore="true">{item.branch.name}</span></summary>
+      <div className="mt-4 space-y-4">
+        {item.shifts.length === 1 ? <><ShiftWorkspace idPrefix={`register-final-${item.shifts[0].id}`} shift={item.shifts[0]} branchName={item.branch.name} staff={names[item.shifts[0].opened_by] || translateLabel("Staff")} movements={movements} orders={orders} busy={busy} run={run} closingOnly markDraft={markDraft} />
+          <button type="button" className={secondary} onClick={() => showReport(item.shifts[0])}><FileText size={16} />View</button></>
+          : <p role="alert">More than one open shift exists for this branch. Refresh or ask the Owner to resolve the register state before recording cash.</p>}
+      </div>
+    </details>)}
     <dialog ref={dialog} aria-labelledby="register-report-title" className="m-auto max-h-[90dvh] w-[min(650px,95vw)] overflow-auto rounded-2xl bg-white p-4 text-slate-900 shadow-xl backdrop:bg-black/40 sm:p-6">
       <div className="no-print mb-4 flex items-center justify-between gap-3">
         <h2 id="register-report-title" className="font-bold">{report?.status === "closed" ? "Z Report" : "Open shift summary"}</h2>
@@ -231,8 +248,15 @@ export default function RegisterClient({ branches, shifts, movements, orders, na
   </main>;
 }
 
-function ShiftWorkspace({ shift, branchName, staff, movements, orders, busy, run, closingOnly, markDraft }: {
-  shift: Shift; branchName: string; staff: string; movements: Movement[]; orders: Order[]; busy: boolean; run: Run; closingOnly: boolean; markDraft: (draft: Draft) => void;
+function RegisterHeader({ onView, disabled = false }: { onView?: () => void; disabled?: boolean }) {
+  return <header className={styles.header}>
+    <div className="min-w-0"><h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Staff Shifts & Cash Register</h1><p className="mt-1 text-sm text-slate-500">Open a drawer, track cash movements, and close with an expected-vs-actual count.</p></div>
+    <div className={styles.headerActions}><button type="button" disabled={disabled} className={secondary} onClick={onView}><FileText size={17} />View Z Report</button></div>
+  </header>;
+}
+
+function ShiftWorkspace({ shift, branchName, staff, movements, orders, busy, run, closingOnly, markDraft, idPrefix = "register" }: {
+  shift: Shift; branchName: string; staff: string; movements: Movement[]; orders: Order[]; busy: boolean; run: Run; closingOnly: boolean; markDraft: (draft: Draft) => void; idPrefix?: string;
 }) {
   const { t: translateText } = useLanguage();
   const t = totals(shift, movements, orders);
@@ -245,6 +269,7 @@ function ShiftWorkspace({ shift, branchName, staff, movements, orders, busy, run
   const movementHeading = useRef<HTMLHeadingElement>(null);
   const closingHeading = useRef<HTMLHeadingElement>(null);
   const closingSubmission = useRef(false);
+  const movementId = `${idPrefix}-movement-form`, closingId = `${idPrefix}-closing-form`;
   const denominationTotal = denominations.reduce((n, d) => n + cents(d) * Number(counts[d] || 0), 0) / 100;
   const variance = counted === "" ? null : (cents(counted) - cents(t.expected)) / 100;
 
@@ -285,12 +310,12 @@ function ShiftWorkspace({ shift, branchName, staff, movements, orders, busy, run
       </div>
       {closingOnly && <p className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><TriangleAlert size={18} className="shrink-0" />This branch is closing after the plan change. New sales and cash movements are blocked. Count the drawer and close the register to finish disabling the branch.</p>}
       <div className={`${styles.actions} mt-4 border-t border-slate-200 pt-4`}>
-        {!closingOnly && <button type="button" disabled={busy} className={primary} aria-expanded={activeForm === "movement"} aria-controls="register-movement-form" onClick={() => setActiveForm(activeForm === "movement" ? null : "movement")}><PlusCircle size={18} />Record Cash Movement</button>}
-        <button type="button" disabled={busy} className={secondary} aria-expanded={activeForm === "closing"} aria-controls="register-closing-form" onClick={() => setActiveForm(activeForm === "closing" ? null : "closing")}><LockKeyhole size={18} />Close Register</button>
+        {!closingOnly && <button type="button" disabled={busy} className={primary} aria-expanded={activeForm === "movement"} aria-controls={movementId} onClick={() => setActiveForm(activeForm === "movement" ? null : "movement")}><PlusCircle size={18} />Record Cash Movement</button>}
+        <button type="button" disabled={busy} className={secondary} aria-expanded={activeForm === "closing"} aria-controls={closingId} onClick={() => setActiveForm(activeForm === "closing" ? null : "closing")}><LockKeyhole size={18} />Close Register</button>
       </div>
     </section>
 
-    {!closingOnly && <section id="register-movement-form" hidden={activeForm !== "movement"} className={panel}>
+    {!closingOnly && <section id={movementId} hidden={activeForm !== "movement"} className={panel}>
       <div className="flex items-center justify-between gap-3">
         <h2 ref={movementHeading} tabIndex={-1} className="flex items-center gap-2 text-lg font-bold"><Coins size={20} className="text-blue-600" />Record Cash Movement</h2>
         <button type="button" disabled={busy} aria-label="Close" className={secondary} onClick={() => setActiveForm(null)}><X size={18} /></button>
@@ -322,7 +347,7 @@ function ShiftWorkspace({ shift, branchName, staff, movements, orders, busy, run
       </form>
     </section>}
 
-    <section id="register-closing-form" hidden={activeForm !== "closing"} className={panel}>
+    <section id={closingId} hidden={activeForm !== "closing"} className={panel}>
       <div className="flex items-start justify-between gap-3">
         <div><h2 ref={closingHeading} tabIndex={-1} className="flex items-center gap-2 text-lg font-bold"><LockKeyhole size={20} className="text-blue-600" />Close Register</h2><p className="mt-1 text-sm text-slate-500">Count the physical cash and review the over / short variance.</p></div>
         <button type="button" disabled={busy} aria-label="Close" className={secondary} onClick={() => setActiveForm(null)}><X size={18} /></button>

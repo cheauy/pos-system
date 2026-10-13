@@ -1,6 +1,8 @@
 import { getBranchEntitlement } from "@/lib/subscriptions/branch-limits";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import SubscriptionPresentation, { SubscriptionExtras } from "./subscription-presentation";
+import styles from "./subscription-responsive.module.css";
 import {
   AlertTriangle,
   ArrowRight,
@@ -298,9 +300,9 @@ export default async function SubscriptionSettingsPage({
   const subscriptionAction = subscriptionActionLabel(status);
 
   return (
-    <main className="mx-auto w-full max-w-[1540px] space-y-4 pb-10">
-      {/* Phones: Billing History opens full screen from this button (CSS :target). */}
-      <div className="flex justify-end sm:hidden"><a href="#billing-history" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm"><History size={17} />Billing History</a></div>
+    <SubscriptionPresentation action={business.role === "owner" ? status === "expired" ? <ReactivateButton businessId={business.id} /> : (
+      <Link href="/dashboard/settings/subscription?view=plans" className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white"><Sparkles size={17} />{subscriptionAction}</Link>
+    ) : null}>
       {params.quote === "requested" ? (
         <Notice tone="blue">
           Custom Team quote requested. TENH can set the monthly price in Super Admin; payment becomes available after the quote is created.
@@ -334,7 +336,7 @@ export default async function SubscriptionSettingsPage({
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               {business.role === "owner" ? (
                 <>
-                  <ReactivateButton businessId={business.id} billingTerm={currentTerm} />
+                  <div className={styles.desktopReactivate}><ReactivateButton businessId={business.id} billingTerm={currentTerm} /></div>
                   <Link
                     href="/dashboard/settings/subscription?view=plans&expired=change"
                     className="inline-flex min-h-10 items-center justify-center rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-extrabold text-red-800 transition hover:bg-red-100"
@@ -369,21 +371,22 @@ export default async function SubscriptionSettingsPage({
 
       {business.role === "owner" ? <ScheduledRenewalCard businessId={business.id} /> : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
-        <div className="space-y-4">
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className={`grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px] ${styles.workspace}`}>
+        <div className={`space-y-4 ${styles.primary}`}>
+          <section id="subscription-overview" aria-labelledby="subscription-overview-tab" className={`${styles.overview} overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900`}>
             <SectionHeader
               icon={<ReceiptText size={19} />}
               title="Subscription Overview"
               subtitle="Key details about your current subscription."
             />
 
-            <div className="grid divide-y divide-slate-100 lg:grid-cols-[0.9fr_1.5fr] lg:divide-x lg:divide-y-0 dark:divide-slate-800">
-              <div className="space-y-5 p-5">
+            <div className={`grid divide-y divide-slate-100 lg:grid-cols-[0.9fr_1.5fr] lg:divide-x lg:divide-y-0 dark:divide-slate-800 ${styles.overviewBody}`}>
+              <div className={`space-y-5 p-5 ${styles.planUsage}`}>
                 <OverviewItem
                   icon={<CreditCard size={16} />}
                   label="Plan"
                   value={getSubscriptionPlanLabel(planKey)}
+                  compactDetail={currentTerm}
                   detail={plan?.description ?? (status === "trialing" ? "Explore TENH POS during your free trial." : "TENH POS subscription access.")}
                 />
                 <OverviewItem
@@ -400,7 +403,8 @@ export default async function SubscriptionSettingsPage({
                 />
               </div>
 
-              <div className="p-5">
+              <div className={`p-5 ${styles.renewalDetails}`}>
+                <div className={styles.timeline}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-[0.13em] text-slate-400">Renewal timeline</p>
@@ -417,7 +421,9 @@ export default async function SubscriptionSettingsPage({
                   <div className="h-full rounded-full bg-blue-600" style={{ width: `${renewalPercent}%` }} />
                 </div>
 
-                <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                </div>
+                <div className={`mt-6 grid gap-4 sm:grid-cols-3 ${styles.paymentDetails}`}>
+                  <h3 className={styles.compactTitle}>Payment details</h3>
                   <MiniDetail
                     icon={<Wallet size={17} />}
                     label="Payment method"
@@ -441,7 +447,7 @@ export default async function SubscriptionSettingsPage({
             </div>
           </section>
 
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <section id="subscription-payments" aria-labelledby="subscription-payments-tab" className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 ${styles.payments}`}>
             <SectionHeader
               icon={<FileText size={19} />}
               title="Payment requests"
@@ -478,7 +484,7 @@ export default async function SubscriptionSettingsPage({
                     ? Math.max(0, Math.ceil((new Date(paymentExpiresAt).getTime() - Date.now()) / 1000))
                     : 0;
                   return (
-                    <div key={order.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div key={order.id} className={`flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${styles.request}`}>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-bold text-slate-900 dark:text-white">
@@ -517,7 +523,7 @@ export default async function SubscriptionSettingsPage({
             )}
           </section>
 
-          <div id="billing-history" className="max-sm:!m-0 max-sm:fixed max-sm:inset-0 max-sm:z-50 max-sm:hidden max-sm:overflow-y-auto max-sm:overscroll-contain max-sm:bg-slate-100 max-sm:p-3 max-sm:pt-16 max-sm:target:block">
+          <div id="billing-history" className={`${styles.history} max-sm:!m-0 max-sm:fixed max-sm:inset-0 max-sm:z-50 max-sm:hidden max-sm:overflow-y-auto max-sm:overscroll-contain max-sm:bg-slate-100 max-sm:p-3 max-sm:pt-16 max-sm:target:block`}>
           <a href="#" aria-label="Close billing history" className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-xl bg-white text-slate-700 shadow sm:hidden"><X size={20} /></a>
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <SectionHeader
@@ -587,7 +593,7 @@ export default async function SubscriptionSettingsPage({
           </div>
         </div>
 
-        <aside className="space-y-4 max-sm:hidden">
+        <SubscriptionExtras>
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <SectionHeader
               icon={<UsersRound size={19} />}
@@ -649,9 +655,9 @@ export default async function SubscriptionSettingsPage({
               ) : null}
             </div>
           </section>
-        </aside>
+        </SubscriptionExtras>
       </div>
-    </main>
+    </SubscriptionPresentation>
   );
 }
 
@@ -687,11 +693,13 @@ function OverviewItem({
   label,
   value,
   detail,
+  compactDetail,
 }: {
   icon: ReactNode;
   label: string;
   value: string;
   detail: string;
+  compactDetail?: string;
 }) {
   return (
     <div className="flex gap-3">
@@ -699,6 +707,7 @@ function OverviewItem({
       <div className="min-w-0">
         <p className="text-[11px] font-bold text-slate-500">{label}</p>
         <p className="mt-0.5 text-sm font-extrabold text-slate-900 dark:text-white">{value}</p>
+        {compactDetail ? <p className={styles.compactTerm}>{compactDetail}</p> : null}
         <p className="mt-0.5 text-[11px] leading-5 text-slate-400">{detail}</p>
       </div>
     </div>

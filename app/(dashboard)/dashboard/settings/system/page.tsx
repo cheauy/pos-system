@@ -8,7 +8,9 @@ import RegisterSetting from "../register-setting";
 
 import { businessHasPermission } from "@/lib/auth/effective-permissions";
 import { getCustomerFieldSettings } from "@/lib/customers/get-customer-field-settings";
+import touch from "../settings-touch.module.css";
 import AppearanceForm from "./appearance-form";
+import styles from "./system-responsive.module.css";
 
 export default async function SystemDisplaySettingsPage() {
   const business = await getCurrentBusiness();
@@ -20,8 +22,8 @@ export default async function SystemDisplaySettingsPage() {
     business.role === "owner" && context?.branchId ? createClient().then(db => db.from("branch_pos_settings").select("require_open_register").eq("business_id", business.id).eq("location_id", context.branchId).maybeSingle()) : null,
   ]);
   return (
-    <main className="mx-auto w-full max-w-[1600px] space-y-5 pb-8">
-      <section>
+    <main className={`${styles.page} ${touch.appearance} mx-auto w-full max-w-[1600px] space-y-5 pb-8`}>
+      <section className={styles.intro}>
         <Link
           href="/dashboard/settings"
           className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"

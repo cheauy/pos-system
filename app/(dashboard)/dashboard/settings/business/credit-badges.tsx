@@ -8,15 +8,25 @@ export default function CreditBadges({
   modeCredits,
   urlCredits,
   canBuy = false,
+  compactOverview = false,
 }: {
   modeCredits: number;
   urlCredits: number;
   canBuy?: boolean;
+  compactOverview?: boolean;
 }) {
   const [result, buy, pending] = useActionState(buyBusinessCredit, { error: "" });
 
   return (
-    <div aria-label="Available change credits" className="grid w-full gap-3 md:grid-cols-3">
+    <div aria-label="Available change credits" className={`${compactOverview ? "overview-credit-balances" : ""} grid w-full gap-3 md:grid-cols-3`}>
+      {compactOverview ? <div className="overview-credit-compact">
+        {[{ type: "mode", count: modeCredits, label: "Mode credits available", hint: "Use to switch business mode", action: "Buy mode · $5" }, { type: "url", count: urlCredits, label: "Store URL credits", hint: "Use to change Store URL", action: "Buy URL · $5" }].map(item => <div key={item.type} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+          {item.type === "mode" ? <Coins size={20} className="text-blue-600" /> : <Link2 size={20} className="text-blue-600" />}
+          <p className="mt-2 text-xs font-bold">{item.label}</p><strong className="text-xl">{item.count}</strong><p className="my-2 text-xs text-slate-500">{item.hint}</p>
+          {canBuy ? <form action={buy}><input type="hidden" name="creditType" value={item.type} /><button disabled={pending} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-50">{pending && <Loader2 size={14} className="shrink-0 animate-spin" />}{item.action}</button></form> : null}
+        </div>)}
+        {result.error ? <p role="alert" className="col-span-2 text-sm text-red-600">{result.error}</p> : null}
+      </div> : null}
       <CreditBalance
         count={modeCredits}
         label="Mode credits available"

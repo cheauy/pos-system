@@ -93,11 +93,12 @@ async function run() {
       await screenshot((baseline?'baseline-':'')+'desktop-'+mode);
     }
     if(baseline)return;
-    for(const mode of ['fashion','shoes','general']) {
+    // Shoes now intentionally shares Fashion's selected-size UI.
+    for(const mode of ['fashion','general']) {
       const original=path.join(output,'baseline-desktop-'+mode+'.png');
       if(fs.existsSync(original)) assert.deepEqual(await sharp(path.join(output,'desktop-'+mode+'.png')).raw().toBuffer(),await sharp(original).raw().toBuffer(),mode+': desktop pixels preserved');
     }
-    check('desktop snapshots match Fashion, Shoes and General before edits');
+    check('desktop snapshots preserve Fashion and General; Shoes uses the shared size-selection UI');
     const editor=()=>form().locator('.fashion-responsive-variantEditor').filter({visible:true});
     const rows=()=>form().locator('.fashion-responsive-variantRow');
     const draft=async()=>JSON.parse(await form().locator('[name=variants]').inputValue());
@@ -144,6 +145,22 @@ async function run() {
       await tab('Details');assert.equal(await form().locator('[name=name]').inputValue(),'Fixture Style');assert.equal(await form().locator('[name=description]').inputValue(),'Draft description retained');assert.equal(await form().locator('[name=categoryId]').inputValue(),'fixture-category');
       if(width>=768&&height>500){const list=await form().locator('.fashion-responsive-variantList').boundingBox(),detail=await editor().boundingBox();assert.ok(detail.x>list.x,'tablet list left/editor right');}
       check(name+': tabs, five variants, edits, collapse, footer, inputs and overflow');
+    }
+    for(const [width,height] of [[390,844],[768,1024],[1024,768],[1440,1000]]) {
+      await page.setViewportSize({width,height});await load('mode=shoes');
+      await form().locator('[name=name]').fill('Fixture Shoe');await tab('Variants');
+      if(width<1280)await button('Quick shoe size run').click();
+      const presets=form().locator('[id^="fashion-size-preset-"]');
+      assert.equal(await presets.count(),3);assert.match(await presets.first().innerText(),/EU 35.*41/);
+      assert.equal(await form().getByRole('tab',{name:/XS.*XXL/}).count(),0,'Shoes has EU presets only');
+      const chips=form().locator('#fashion-size-chips');
+      await chips.getByRole('button',{name:'36',exact:true}).click();await chips.getByRole('button',{name:'38',exact:true}).click();
+      assert.equal((await draft()).length,1,'Shoes chips alone do not add');
+      await button('Add 2 sizes').click();assert.deepEqual((await draft()).map(row=>row.size),['36','38']);
+      await chips.getByRole('button',{name:'36',exact:true}).click();await button('Add 1 sizes').click();assert.equal((await draft()).length,2,'Shoes skips duplicate size pairs');
+      await presets.nth(1).click();assert.equal(await button('Add 0 sizes').isDisabled(),true);
+      if(width<1280){await noOverflow('Shoes '+width);await reservedFooter(height);}
+      await screenshot('shoes-'+width);check('Shoes '+width+': EU presets, explicit Add and duplicate safety');
     }
     await page.setViewportSize({width:390,height:844});await load();await tab('Variants');await button('Quick fashion size run').click();
     await form().locator('#fashion-size-chips').getByRole('button',{name:'S',exact:true}).click();assert.equal((await draft()).length,1,'size chips alone do not add');

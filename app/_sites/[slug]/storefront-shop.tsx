@@ -1,4 +1,5 @@
 "use client";
+import { compareVariantSizes } from "@/lib/products/variant-editor";
 
 import {
   Check,
@@ -9,15 +10,17 @@ import {
   ShoppingCart,
   Trash2,
   X,
+  Search,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KhqrPreview } from "./image-viewer";
 import { rememberOrder } from "@/lib/storefront/order-tracking";
-import StorefrontHero, { type StorefrontBrand } from "./storefront-hero";
+import StorefrontHero, { StorefrontHeader, type StorefrontBrand } from "./storefront-hero";
 import { useStorefrontLanguage } from "./storefront-language";
 import { validateCheckoutContact, validateCheckoutEmail } from "@/lib/storefront/checkout-validation";
 import { toast } from "sonner";
 import ProductGallery from "./product-gallery";
+import usePanelFocus from "@/components/use-panel-focus";
 import StorefrontCatalog from "./storefront-catalog";
 import { restoreCart, type CartItem } from "@/lib/storefront/cart";
 
@@ -85,6 +88,7 @@ export default function StorefrontShop({
   const [selectedProduct, setSelectedProduct] =
     useState<StorefrontCatalogProduct | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
+  const [search,setSearch]=useState("");const [catalogLimit,setCatalogLimit]=useState(24);
   const [initialVariantId, setInitialVariantId] = useState<string | undefined>();
 
   useEffect(() => {
@@ -149,19 +153,19 @@ export default function StorefrontShop({
 
   return (
     <>
-      <StorefrontHero compact={Boolean(productKey)} catalogHref={productKey ? catalogHref : ""} slug={slug} brand={brand} cartQuantity={cartQuantity} onOpenCart={() => setCartOpen(true)} />
+      <StorefrontHero compact={Boolean(productKey)} search={<label className="catalog-search"><Search size={19}/><input type="search" aria-label={t("Search products")} placeholder={t("Search for products, categories, or styles…")} value={search} onChange={event=>{setSearch(event.target.value);setCatalogLimit(24);}}/></label>} catalogHref={productKey ? catalogHref : ""} slug={slug} brand={brand} cartQuantity={cartQuantity} onOpenCart={() => setCartOpen(true)} />
       {productKey ? <main className="store-product-detail">
         <a className="inline-flex min-h-11 items-center text-sm font-semibold" href={`${catalogHref}#store-products`}>← {t("All products")}</a>
         {pageProduct ? <ProductConfigurator key={pageProduct.key} fullPage product={pageProduct} cart={cart} businessType={settings.businessType} currency={settings.currency} canOrder={settings.orderingEnabled && hydrated} onClose={() => {}} onAdd={addConfiguredItem} /> : <p className="py-16 text-center">{t("This product is no longer available.")}</p>}
         {pageProduct?.description && <section className="product-detail-description"><h2>{t("Description")}</h2><p data-i18n-ignore="true">{pageProduct.description}</p></section>}
-      </main> : <StorefrontCatalog productHref={productHref} products={products} categories={categories} settings={settings} onAdd={quickAdd} />}
+      </main> : <StorefrontCatalog search={search} onSearchChange={setSearch} pageLimit={catalogLimit} onPageLimitChange={setCatalogLimit} productHref={productHref} products={products} categories={categories} settings={settings} onAdd={quickAdd} />}
 
       {brand.socialLinks?.telegram && /^https:\/\//i.test(brand.socialLinks.telegram) && <a className="store-telegram-contact" href={brand.socialLinks.telegram} target="_blank" rel="noreferrer" aria-label={t("Contact store on Telegram")}><img src="/social/telegram.png" alt="" width={28} height={28}/><span>{t("Chat with us")}</span></a>}
       {settings.orderingEnabled && cartQuantity > 0 && (
         <button
           type="button"
           onClick={() => setCartOpen(true)}
-          className="fixed bottom-5 left-1/2 z-40 flex w-[min(92vw,34rem)] -translate-x-1/2 items-center justify-between rounded-2xl px-5 py-4 text-white shadow-2xl"
+          className="store-cart-floating fixed bottom-5 left-1/2 z-40 flex w-[min(92vw,34rem)] -translate-x-1/2 items-center justify-between rounded-2xl px-5 py-4 text-white shadow-2xl"
           style={{ backgroundColor: "var(--store-primary-surface)", color: "var(--store-on-primary)" }}
         >
           <span className="inline-flex items-center gap-2 font-semibold">
@@ -177,7 +181,7 @@ export default function StorefrontShop({
       {selectedProduct && (
         <ProductConfigurator
           canOrder={settings.orderingEnabled}
-          product={selectedProduct}
+          detailHref={productHref(selectedProduct.key)} product={selectedProduct}
           initialVariantId={initialVariantId}
           cart={cart}
           businessType={settings.businessType}
@@ -189,7 +193,7 @@ export default function StorefrontShop({
 
       {cartOpen && (
         <CartDrawer
-          slug={slug}
+          brand={brand} catalogHref={catalogHref} slug={slug}
           cart={cart}
           setCart={setCart}
           settings={settings}
@@ -202,6 +206,7 @@ export default function StorefrontShop({
 }
 
 function ProductConfigurator({
+  detailHref,
   fullPage = false,
   canOrder,
   product,
@@ -212,7 +217,7 @@ function ProductConfigurator({
   onClose,
   onAdd,
 }: {
-  fullPage?: boolean;
+  fullPage?: boolean;detailHref?:string;
   canOrder: boolean;
   product: StorefrontCatalogProduct;
   initialVariantId?: string;
@@ -223,6 +228,9 @@ function ProductConfigurator({
   onAdd: (item: CartItem) => void;
 }) {
   const { t } = useStorefrontLanguage();
+  const panel=useRef<HTMLDivElement>(null);usePanelFocus(panel,!fullPage,onClose,true);
+  const purchase=useRef<HTMLDivElement>(null);
+  useEffect(()=>{const container=panel.current?.closest<HTMLElement>(".public-store");const footer=purchase.current;if(!fullPage||!container||!footer)return;const measure=()=>container.style.setProperty("--purchase-footer-height",footer.getBoundingClientRect().height+"px");const observer=new ResizeObserver(measure);observer.observe(footer);measure();return()=>{observer.disconnect();container.style.removeProperty("--purchase-footer-height");};},[fullPage]);
   const isShoeProduct =
     (businessType === "shoes" || businessType === "fashion") && product.productType === "variant";
   const isFashionProduct = businessType === "fashion" && product.productType === "variant";
@@ -267,7 +275,7 @@ function ProductConfigurator({
       (row) => (row.color?.trim() ?? "") === selectedColor,
     );
     return rows.sort((a, b) =>
-      (a.size ?? "").localeCompare(b.size ?? "", undefined, { numeric: true }),
+      compareVariantSizes(a.size ?? "", b.size ?? ""),
     );
   }, [isShoeProduct, product.variants, selectedColor]);
 
@@ -346,12 +354,13 @@ function ProductConfigurator({
   const Heading = fullPage ? 'h1' : 'h2';
 
   return (
-    <div className={fullPage ? "product-detail-content" : "fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"}>
-      <div role={fullPage ? undefined : "dialog"} aria-modal={fullPage ? undefined : true} aria-label={product.name} className={fullPage ? "product-detail-layout" : "max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"} data-i18n-ignore-attributes="aria-label">
+    <div className={fullPage ? "product-detail-content" : "store-quick-overlay fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"}>
+      <div ref={panel} role={fullPage ? undefined : "dialog"} aria-modal={fullPage ? undefined : true} aria-label={product.name} className={fullPage ? "product-detail-layout" : "store-quick-panel max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"} data-i18n-ignore-attributes="aria-label">
         {fullPage && <div className="product-detail-gallery">{gallery}</div>}
-        <div className={fullPage ? "product-detail-heading" : "sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-5"}>
+        <div className={fullPage ? "product-detail-heading" : "store-quick-heading sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-white p-5"}>
           <div>
             <Heading className="text-xl font-bold text-slate-950"><span data-i18n-ignore="true">{product.name}</span></Heading>
+            {!fullPage && <p className="quick-price"><strong>{formatMoney(unitPrice,currency)}</strong><span>{remainingStock>0?`${remainingStock} ${t("In stock")}`:t("Out of stock")}</span></p>}
             {fullPage && <div className="mt-3 flex flex-wrap items-center gap-3"><strong className="text-2xl">{formatMoney(unitPrice, currency)}</strong><span className="text-sm">{remainingStock > 0 ? `${remainingStock} ${t("In stock")}` : t("Out of stock")}</span>{product.isBestseller && <span className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-800">{t("Bestseller")}</span>}{!product.isBestseller && product.isNewArrival && <span className="rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-700">{t("New arrival")}</span>}</div>}
             {product.preorderVariantIds?.includes(variant.id) && <span className="mt-2 inline-flex rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">{t("Pre-order")}</span>}
             <p className="mt-1 text-sm text-slate-500">
@@ -373,11 +382,11 @@ function ProductConfigurator({
           </button>
         </div>
 
-        <div className={fullPage ? "product-detail-options space-y-6" : "space-y-6 p-5"}>
+        <div className={fullPage ? "product-detail-options space-y-6" : "store-quick-options space-y-6 p-5"}><div className="store-product-fields">
           {!fullPage && product.description && <p className="whitespace-pre-line text-sm leading-6 text-slate-600" data-i18n-ignore="true">{product.description}</p>}
-          {!fullPage && gallery}
+          {!fullPage && <div className="store-quick-gallery">{gallery}</div>}
 
-          {product.productType === "variant" && isShoeProduct && (
+          <div className="store-variant-fields">{product.productType === "variant" && isShoeProduct && (
             <div className="space-y-5">
               <div>
                 <div className="flex items-center justify-between gap-3">
@@ -398,7 +407,7 @@ function ProductConfigurator({
                         key={color}
                         type="button"
                         disabled={!available}
-                        onClick={() => chooseShoeColor(color)}
+                        aria-pressed={active} onClick={() => chooseShoeColor(color)}
                         className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 ${
                           active
                             ? "border-[var(--store-primary)] bg-[var(--store-primary-soft)] text-[var(--store-primary-ink)]"
@@ -427,7 +436,7 @@ function ProductConfigurator({
                         key={row.id}
                         type="button"
                         disabled={row.stockQuantity <= 0}
-                        onClick={() => chooseVariant(row)}
+                        aria-pressed={active} onClick={() => chooseVariant(row)}
                         className={`rounded-xl border px-2 py-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-300 ${
                           active
                             ? "border-[var(--store-primary)] bg-[var(--store-primary-soft)] text-[var(--store-primary-ink)]"
@@ -535,13 +544,13 @@ function ProductConfigurator({
             </div>
           ))}
 
-          <div className="flex items-center justify-between rounded-xl bg-slate-50 p-4">
+          </div></div><div ref={purchase} className="store-purchase-actions"><div className="store-quantity flex items-center justify-between rounded-xl bg-slate-50 p-4">
             <div>
               <p className="text-xs text-slate-500">{t("Quantity")}</p>
               <div className="mt-1 flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={quantity <= 1}
+                  aria-label={t("Decrease quantity")} disabled={quantity <= 1}
                   onClick={() => setQuantity((value) => Math.max(1, value - 1))}
                   className="rounded-lg border border-slate-300 bg-white p-2"
                 >
@@ -550,7 +559,7 @@ function ProductConfigurator({
                 <span className="w-8 text-center font-semibold">{quantity}</span>
                 <button
                   type="button"
-                  disabled={quantity >= Math.min(999, remainingStock)}
+                  aria-label={t("Increase quantity")} disabled={quantity >= Math.min(999, remainingStock)}
                   onClick={() =>
                     setQuantity((value) =>
                       Math.min(999, remainingStock, value + 1),
@@ -588,7 +597,8 @@ function ProductConfigurator({
             style={{ backgroundColor: "var(--store-primary-surface)", color: "var(--store-on-primary)" }}
           >
             <ShoppingCart size={18} /> {t("Add cart")}
-          </button>
+          </button></div>
+          {!fullPage&&detailHref&&<a href={detailHref} className="quick-full-details">{t("View full details")} →</a>}
         </div>
       </div>
     </div>
@@ -596,6 +606,7 @@ function ProductConfigurator({
 }
 
 function CartDrawer({
+  brand,catalogHref,
   slug,
   cart,
   setCart,
@@ -603,14 +614,14 @@ function CartDrawer({
   tableToken,
   onClose,
 }: {
-  slug: string;
+  brand:StorefrontBrand;catalogHref:string;slug: string;
   cart: CartItem[];
   setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
   settings: StorefrontCheckoutSettings;
   tableToken: string | null;
   onClose: () => void;
 }) {
-  const { t } = useStorefrontLanguage();
+  const { t } = useStorefrontLanguage();const panel=useRef<HTMLElement>(null);const compact=usePanelFocus(panel,true,onClose,true);
   const [submitting, setSubmitting] = useState(false);
   const [scheduleNow, setScheduleNow] = useState(() => Date.now());
   useEffect(() => {
@@ -618,6 +629,7 @@ function CartDrawer({
     return () => window.clearInterval(timer);
   }, []);
   const [message, setMessage] = useState<string | null>(null);
+  useEffect(()=>{if(compact&&message)panel.current?.querySelector<HTMLInputElement>(".checkout-input input[aria-invalid=true]")?.focus();},[compact,message]);
 
   const allowed = [
     settings.allowPickup ? "pickup" : null,
@@ -859,15 +871,16 @@ function CartDrawer({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/45 backdrop-blur-sm">
+    <div className="store-checkout-overlay fixed inset-0 z-50 flex justify-end bg-slate-950/45 backdrop-blur-sm">
       <button
         type="button"
         aria-label={t("Close cart")}
         onClick={onClose}
         className="absolute inset-0"
       />
-      <aside className="relative h-full w-full max-w-lg overflow-y-auto bg-white shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white p-5">
+      <aside ref={panel} role="dialog" aria-modal="true" aria-label={t("Your Order")} className="store-checkout-panel relative h-full w-full max-w-lg overflow-y-auto bg-white shadow-2xl">
+        <div className="store-checkout-header"><StorefrontHeader slug={slug} brand={brand} cartQuantity={cart.reduce((sum,item)=>sum+item.quantity,0)} catalogHref={catalogHref} onOpenCart={()=>panel.current?.querySelector("#checkout-items")?.scrollIntoView({block:"start"})} onNavigate={onClose} onClose={onClose}/></div>
+        <div className="checkout-original-heading sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white p-5">
           <div>
             <h2 className="text-xl font-bold text-slate-950">{t("Your Order")}</h2>
             <p className="mt-1 text-sm text-slate-500">
@@ -883,8 +896,9 @@ function CartDrawer({
           </button>
         </div>
 
-        <div className="space-y-5 p-5">
-          <div className="space-y-3">
+        <div className="store-checkout-body space-y-5 p-5">
+          <div className="checkout-order"><div className="checkout-intro"><h2>{t("Your Order")}</h2><p>{t("Review your items, choose delivery or pickup, and place your order.")}</p></div>
+          <div id="checkout-items" className="checkout-items space-y-3">
             {cart.map((item) => (
               <div
                 key={item.key}
@@ -1046,7 +1060,8 @@ function CartDrawer({
             </p>
           )}
 
-          <form onSubmit={submitOrder} className="space-y-4">
+          </div><form onSubmit={submitOrder} className="checkout-form space-y-4">
+            <div className="checkout-choices">
             <div>
               <p className="mb-2 text-sm font-semibold text-slate-800">
                 {t("Fulfillment")}
@@ -1188,22 +1203,23 @@ function CartDrawer({
               </div>
             )}
 
-            <CheckoutInput
-              name="guestName"
+            </div><div className="checkout-customer"><h3 className="checkout-customer-title">{t("Customer information")}</h3>
+            <CheckoutInput onEdit={compact?()=>setMessage(null):undefined}
+              error={message==="Enter your name."?t(message):undefined} name="guestName"
               label={t("Name")}
               required
               placeholder={t("Your name")}
             />
-            <CheckoutInput
-              name="guestPhone"
+            <CheckoutInput onEdit={compact?()=>setMessage(null):undefined}
+              error={message==="Enter a valid phone number."?t(message):undefined} name="guestPhone"
               label={t("Phone")}
               required
               placeholder={t("Phone number")}
             />
-            <CheckoutInput name="guestEmail" label={t("Email")} required placeholder={t("you@example.com")} />
+            <CheckoutInput onEdit={compact?()=>setMessage(null):undefined} error={message==="Enter a valid email address."?t(message):undefined} name="guestEmail" label={t("Email")} required placeholder={t("you@example.com")} />
             {fulfillment === "delivery" && (
-              <CheckoutInput
-                name="guestAddress"
+              <CheckoutInput onEdit={compact?()=>setMessage(null):undefined}
+                error={message==="Enter your delivery address."?t(message):undefined} name="guestAddress"
                 label={t("Delivery address")}
                 required
                 placeholder={t("Street, house, area")}
@@ -1220,6 +1236,7 @@ function CartDrawer({
               />
             </label>
 
+            </div><div className="checkout-submit">
             {settings.checkoutMessage && (
               <p className="rounded-xl bg-[var(--store-primary-soft)] p-3 text-sm text-[var(--store-primary-ink)]">
                 {settings.checkoutMessage}
@@ -1255,6 +1272,7 @@ function CartDrawer({
                 </>
               )}
             </button>
+            </div>
           </form>
         </div>
       </aside>
@@ -1262,13 +1280,16 @@ function CartDrawer({
   );
 }
 
-function CheckoutInput({ name, label, required, placeholder }: { name: string; label: string; required?: boolean; placeholder?: string }) {
-  return (
-    <label className="block text-sm font-medium text-slate-700">
-      {label}{required && <span className="ml-1 text-red-600" aria-hidden="true">*</span>}
-      <input type={name === "guestEmail" ? "email" : name === "guestPhone" ? "tel" : "text"} autoComplete={name === "guestEmail" ? "email" : name === "guestPhone" ? "tel" : name === "guestName" ? "name" : "street-address"} maxLength={name === "guestEmail" ? 254 : undefined} name={name} required={required} placeholder={placeholder} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[var(--store-primary)] focus:ring-4 focus:ring-[var(--store-primary-soft)]" />
-    </label>
-  );
+function CheckoutInput({name,label,required,placeholder,error,onEdit}:{name:string;label:string;required?:boolean;placeholder?:string;error?:string;onEdit?:()=>void}) {
+  const {t}=useStorefrontLanguage();const [invalid,setInvalid]=useState("");
+  const shown=invalid||error;const id="checkout-"+name;
+  return <label className="checkout-input block text-sm font-medium text-slate-700" htmlFor={id}>{label}{required&&<span className="ml-1 text-red-600" aria-hidden="true">*</span>}
+    <input id={id} aria-invalid={shown?true:undefined} aria-describedby={shown?id+"-error":undefined}
+      onInvalid={event=>{if(!window.matchMedia("(max-width:1279px), (max-width:1366px) and (pointer:coarse)").matches)return;event.preventDefault();setInvalid(event.currentTarget.validity.valueMissing?t("This field is required."):t("Enter a valid email address."));if(!event.currentTarget.form?.querySelector(":invalid")||event.currentTarget.form.querySelector(":invalid")===event.currentTarget)event.currentTarget.focus();}}
+      onChange={()=>{setInvalid("");onEdit?.();}}
+      type={name==="guestEmail"?"email":name==="guestPhone"?"tel":"text"} autoComplete={name==="guestEmail"?"email":name==="guestPhone"?"tel":name==="guestName"?"name":"street-address"} maxLength={name==="guestEmail"?254:undefined} name={name} required={required} placeholder={placeholder} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[var(--store-primary)] focus:ring-4 focus:ring-[var(--store-primary-soft)]"/>
+    {shown&&<span id={id+"-error"} className="checkout-field-error" role="alert">{shown}</span>}
+  </label>;
 }
 
 function PriceRow({ label, value, bold }: { label: string; value: string; bold?: boolean }) {

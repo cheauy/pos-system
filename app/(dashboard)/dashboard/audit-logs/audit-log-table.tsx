@@ -1,12 +1,13 @@
 "use client";
-import DateRangeFilter, { dateFilterStyles } from "@/components/date-range-filter";
+import DateRangeFilter, { DatePresetFilter, dateFilterStyles, type DateSelection } from "@/components/date-range-filter";
 import { inCalendarDateRange } from "@/lib/date-range";
 
 
-import MobileListCard, { MobileList } from "@/components/mobile-list-card";
+import usePanelFocus from "@/components/use-panel-focus";
+import styles from "./audit-log-table.module.css";
 import {
-  useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -66,13 +67,9 @@ export default function AuditLogsTable({
   const [search, setSearch] = useState("");
   // Phones: the secondary filters open as a bottom sheet from a floating Filter button.
   const [filtersOpen, setFiltersOpen] = useState(false);
-  useEffect(() => {
-    if (!filtersOpen) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setFiltersOpen(false); };
-    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setFiltersOpen(false); };
-    window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
-    return () => { window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
-  }, [filtersOpen]);
+  const [dateDraft, setDateDraft] = useState<DateSelection | null>(null);
+  const filterRef = useRef<HTMLDivElement>(null);
+  const compactFilters=usePanelFocus(filterRef, filtersOpen, () => {setFiltersOpen(false);setDateDraft(null);}, true);
   const [moduleFilter, setModuleFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
   const [actionFilter, setActionFilter] = useState("all");
@@ -84,7 +81,6 @@ export default function AuditLogsTable({
   const [pageSize, setPageSize] = useState(10);
   const [selectedLog, setSelectedLog] = useState<NormalizedAuditLog | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [showDateMenu, setShowDateMenu] = useState(false);
 
   const branchMap = useMemo(
     () => new Map(branches.map((branch) => [branch.id, branch.name])),
@@ -260,8 +256,8 @@ export default function AuditLogsTable({
     setActionFilter("all");
     setBranchFilter("all");
     setSeverityFilter("all");
-    setDateRange("7d"); setCustomDates(null);
-    setPage(1);
+    setDateDraft({preset:"7d",from:"",to:""});
+    if (search || moduleFilter !== "all" || userFilter !== "all" || actionFilter !== "all" || branchFilter !== "all" || severityFilter !== "all") setPage(1);
   }
 
   function exportLogs(format: "csv" | "json") {
@@ -325,7 +321,7 @@ export default function AuditLogsTable({
   const dateLabel = customDates ? `${customDates.from || "…"} – ${customDates.to || "…"}` : formatDateRangeLabel(dateRange, todayStart);
 
   return (
-    <main className="mx-auto w-full max-w-[1600px] space-y-4 pb-8">
+    <main className={`mx-auto w-full max-w-[1600px] space-y-4 pb-8 ${styles.page}`}>
       <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">
@@ -369,16 +365,16 @@ export default function AuditLogsTable({
         </div>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className={`grid gap-3 md:grid-cols-2 xl:grid-cols-4 ${styles.metrics}`}>
         {stats.map((stat) => (
           <StatCard key={stat.title} {...stat} />
         ))}
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <DateRangeFilter from={customDates?.from??""} to={customDates?.to??""} onApply={(from,to)=>changeFilter(()=>setCustomDates({from,to}))} />
+        <div className={styles.desktopDates}><DateRangeFilter from={customDates?.from??""} to={customDates?.to??""} draft={dateDraft ? dateDraft.preset === "7d" ? {from:getRangeStart("7d",todayStart)!.toLocaleDateString("en-CA"),to:todayStart.toLocaleDateString("en-CA")} : dateDraft : null} onDraftChange={next=>setDateDraft(next ? {preset:"custom",...next}:null)} onApply={(from,to)=>changeFilter(()=>{if(dateDraft?.preset === "7d"){setDateRange("7d");setCustomDates(null);}else setCustomDates({from,to});})} /></div>
         <div className="space-y-3 border-b border-slate-100 p-4 dark:border-slate-800">
-          <div className="flex flex-col gap-3 lg:flex-row">
+          <div className={`flex flex-col gap-3 lg:flex-row ${styles.toolbar}`}>
             <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -392,59 +388,30 @@ export default function AuditLogsTable({
             <FilterSelect
               value={moduleFilter}
               onChange={(value) => changeFilter(() => setModuleFilter(value))}
-              className="lg:w-[180px]"
+              className={`lg:w-[180px] ${styles.desktopModule}`}
             >
               <option value="all">All modules</option>
               {modules.map((module) => (
                 <option key={module} value={module}>{module}</option>
               ))}
             </FilterSelect>
+            <button type="button" className={styles.filterButton} onClick={()=>setFiltersOpen(true)}><ListFilter size={18}/>Filter</button>
           </div>
 
-          {filtersOpen ? <button type="button" aria-label="Close filters" onClick={() => setFiltersOpen(false)} className="fixed inset-0 z-40 bg-slate-950/40 sm:hidden" /> : null}
-          {!filtersOpen ? <button type="button" onClick={() => setFiltersOpen(true)} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg sm:hidden"><ListFilter className="h-4 w-4" />Filter</button> : null}
-          <div role={filtersOpen ? "dialog" : undefined} aria-modal={filtersOpen || undefined} aria-label="Audit log filters" data-sheet="bottom" className={`${filtersOpen ? "fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-14 shadow-2xl dark:bg-slate-900" : "max-sm:hidden"} flex flex-col gap-3 sm:static sm:max-h-none sm:overflow-visible sm:rounded-none sm:bg-transparent sm:p-0 sm:shadow-none 2xl:flex-row 2xl:items-center`}>
-            {filtersOpen ? <button type="button" aria-label="Close audit log filters" onClick={() => setFiltersOpen(false)} className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600 sm:hidden"><X className="h-5 w-5" /></button> : null}
-            <div className={`${dateFilterStyles.legacy} relative min-w-[260px] flex-1 max-sm:min-w-0 2xl:max-w-[330px]`}>
-              <button
-                type="button"
-                onClick={() => setShowDateMenu((open) => !open)}
-                className="flex h-11 w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 text-left text-sm font-medium text-slate-700 transition hover:border-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
-              >
-                <CalendarDays className="h-4 w-4 text-slate-500" />
-                <span className="min-w-0 flex-1 truncate">{dateLabel}</span>
-                <ChevronDown className="h-4 w-4 text-slate-400" />
-              </button>
-              {showDateMenu ? (
-                <div className="absolute left-0 z-30 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-                  {([
-                    ["today", "Today"],
-                    ["7d", "Last 7 days"],
-                    ["30d", "Last 30 days"],
-                    ["all", "All time"],
-                  ] as Array<[DateRangeKey, string]>).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => {
-                        setDateRange(value); setCustomDates(null);
-                        setPage(1);
-                        setShowDateMenu(false);
-                      }}
-                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
-                        dateRange === value
-                          ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
-                          : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                      }`}
-                    >
-                      {label}
-                      {dateRange === value ? <CircleCheck className="h-4 w-4" /> : null}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+          {filtersOpen ? <button type="button" aria-label="Close filters" onClick={() => setFiltersOpen(false)} className={styles.backdrop} /> : null}
+
+          <div ref={filterRef} data-open={filtersOpen} role={filtersOpen&&compactFilters ? "dialog" : undefined} aria-modal={(filtersOpen&&compactFilters)||undefined} aria-label="Audit log filters" data-sheet="bottom" className={`${styles.filters} ${filtersOpen ? "fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-14 shadow-2xl dark:bg-slate-900" : "max-sm:hidden"} flex flex-col gap-3 sm:static sm:max-h-none sm:overflow-visible sm:rounded-none sm:bg-transparent sm:p-0 sm:shadow-none 2xl:flex-row 2xl:items-center`}>
+            {filtersOpen ? <button type="button" aria-label="Close audit log filters" onClick={() => setFiltersOpen(false)} className={styles.filterClose}><X className="h-5 w-5" /></button> : null}
+            <div className={`${dateFilterStyles.legacy} ${styles.dateControls} min-w-0 flex-1 2xl:max-w-[330px]`} onClick={event=>{
+              // The shared date control skips onApply when a valid draft equals the applied range.
+              const apply=event.currentTarget.querySelector<HTMLButtonElement>("button.bg-blue-600");
+              if(apply&&!apply.disabled&&(event.target as HTMLElement).closest("button")===apply)setFiltersOpen(false);
+            }}>
+              <span className="mb-1 flex items-center gap-2 text-xs text-slate-500"><CalendarDays className="h-4 w-4" />{dateLabel}</span>
+              <DatePresetFilter key={filtersOpen ? "open" : "closed"} draft={dateDraft} onDraftChange={setDateDraft} value={{ preset: customDates ? "custom" : dateRange, from: customDates?.from ?? "", to: customDates?.to ?? "" }} presets={[{value:"today",label:"Today"},{value:"7d",label:"Last 7 days"},{value:"30d",label:"Last 30 days"},{value:"all",label:"All time"}]} onApply={next => { if (next.preset === "custom") setCustomDates({from:next.from,to:next.to}); else { setDateRange(next.preset as DateRangeKey); setCustomDates(null); } setPage(1); setFiltersOpen(false); }} />
             </div>
 
+            <div className={styles.compactModule}><FilterSelect value={moduleFilter} onChange={value=>changeFilter(()=>setModuleFilter(value))}><option value="all">All modules</option>{modules.map(module=><option key={module} value={module}>{module}</option>)}</FilterSelect></div>
             <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <FilterSelect value={userFilter} onChange={(value) => changeFilter(() => setUserFilter(value))}>
                 <option value="all">All users</option>
@@ -483,8 +450,8 @@ export default function AuditLogsTable({
         </div>
 
         <div className="overflow-x-auto">
-          <MobileList empty={pagedLogs.length === 0 ? <li className="px-6 py-12 text-center text-sm text-slate-500">No audit logs found. Try another date range or reset the filters.</li> : null}>{pagedLogs.map((log) => <MobileListCard key={log.id} onClick={() => setSelectedLog(log)} media={<span className="grid h-10 w-10 place-items-center rounded-full bg-blue-600 text-xs font-bold text-white" data-i18n-ignore="true">{initials(log.userName)}</span>} title={<span data-i18n-ignore="true">{log.userName}</span>} date={formatDate(log.created_at)} primary={`${log.action} · ${log.moduleName}`} secondary={log.description ?? log.branchName} status={{ label: String(log.severity), tone: /critical|high|error/i.test(String(log.severity)) ? "red" : /warn|medium/i.test(String(log.severity)) ? "amber" : "blue" }}  data-i18n-ignore-attributes="title"/>)}</MobileList>
-          <table data-phone-layout="custom" className="max-lg:hidden w-full min-w-[1280px] table-fixed">
+<ul className={styles.activityList}>{pagedLogs.length===0?<li className="p-6 text-center text-sm text-slate-500">No audit logs found. Try another date range or reset the filters.</li>:pagedLogs.map((log,index)=>{const day=new Intl.DateTimeFormat("en-US",{year:"numeric",month:"long",day:"numeric"}).format(new Date(log.created_at));const previous=index?new Date(pagedLogs[index-1].created_at).toDateString():null;return <li key={log.id}>{new Date(log.created_at).toDateString()!==previous&&<h3 className={styles.dateGroup} data-i18n-ignore="true">{day}</h3>}<button type="button" className={styles.activityRow} onClick={()=>setSelectedLog(log)}><span className={styles.avatar} data-i18n-ignore="true">{initials(log.userName)}</span><span className={styles.activityBody}><span className={styles.rowTitle}><strong data-i18n-ignore="true">{log.userName}</strong><time dateTime={log.created_at} data-i18n-ignore="true">{formatDate(log.created_at)}</time></span><span className={styles.rowMeta}>{formatLabel(log.action)} · {log.moduleName}<span className={styles.severity} data-severity={log.severity}>{formatLabel(log.severity)}</span></span><span className={styles.description} data-i18n-ignore="true">{log.description ?? log.branchName}</span></span></button></li>})}</ul>
+          <table data-phone-layout="custom" className={`max-lg:hidden w-full min-w-[1280px] table-fixed ${styles.desktopTable}`}>
             <thead className="bg-slate-50/90 dark:bg-slate-950/70">
               <tr>
                 <TableHeading className="w-[170px]">Date &amp; time</TableHeading>
@@ -808,9 +775,11 @@ function Modal({
   subtitle?: string;
   children: React.ReactNode;
 }) {
+  const panel=useRef<HTMLDivElement>(null);
+  usePanelFocus(panel,true,onClose);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]" onMouseDown={onClose}>
-      <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900" onMouseDown={(event) => event.stopPropagation()}>
+      <div ref={panel} role="dialog" aria-modal="true" aria-label={title} className={`${styles.detailsModal} w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900`} onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
           <div>
             <h2 className="text-lg font-bold text-slate-950 dark:text-white">{title}</h2>

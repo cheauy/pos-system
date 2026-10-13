@@ -76,6 +76,12 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
   const [toDate, setToDate] = useState("");
   // Date edits stay a draft (null = showing the applied range) until Apply.
   const [dateDraft, setDateDraft] = useState<{ from: string; to: string } | null>(null);
+  useEffect(() => {
+    if (!dateDraft) return;
+    const discard = (event: KeyboardEvent) => { if (event.key === "Escape") setDateDraft(null); };
+    window.addEventListener("keydown", discard);
+    return () => window.removeEventListener("keydown", discard);
+  }, [dateDraft]);
   const draftError = dateDraft ? dateRangeError(dateDraft.from, dateDraft.to) : "";
   const shownFrom = dateDraft?.from ?? fromDate, shownTo = dateDraft?.to ?? toDate;
   const [page, setPage] = useState(1);
@@ -86,7 +92,7 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
   useEffect(() => {
     if (!sheet) return;
     const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setSheet(null); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { setSheet(null); if (sheet === "filter") setDateDraft(null); } };
     // The date sheet is used below 768px; the detail and stats sheets below 640px.
     const wide = window.matchMedia(sheet === "filter" ? "(min-width: 768px)" : "(min-width: 640px)"); const onWide = () => { if (wide.matches) setSheet(null); };
     window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
@@ -142,6 +148,7 @@ export default function ReturnsWorkspace({ initialRecords, completedOrderCount, 
   function closeDateFilter() { setDateDraft(null); setSheet(null); }
   function applyDates() {
     if (draftError) return;
+    if (shownFrom === fromDate && shownTo === toDate) { closeDateFilter(); return; }
     if (dateDraft) { setFromDate(dateDraft.from); setToDate(dateDraft.to); setDateDraft(null); resetPage(); }
     setSheet(null);
   }

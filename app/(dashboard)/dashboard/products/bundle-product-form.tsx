@@ -6,6 +6,7 @@ import { ButtonSpinner } from "@/components/pending-submit-button";
 import { useMemo, useRef, useState } from "react";
 import { Gift, Globe, Monitor, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import styles from '@/components/management-responsive.module.css';
 import ProductGalleryInput from "@/components/product-gallery-input";
 import ProductVariantPicker from '@/components/product-variant-picker';
 import ProductPhoto from '@/components/product-photo';
@@ -52,6 +53,7 @@ export default function BundleProductForm({
   onPendingChange,
   initial,
   onUnpackItems,
+  onCancel,
 }: {
   categories: Category[];
   products: ComponentProduct[];
@@ -61,6 +63,7 @@ export default function BundleProductForm({
   onPendingChange?: (pending: boolean) => void;
   initial?: BundleEditValues;
   onUnpackItems?: () => void;
+  onCancel?: () => void;
 }) {
   const { t: translateLabel } = useLanguage();
 
@@ -113,8 +116,9 @@ export default function BundleProductForm({
         else toast.error(result.message);
       } catch { toast.error('Could not confirm the result. Retry without changing the details.'); }
       finally { submitting.current = false; setPending(false); onPendingChange?.(false); }
-    }} className="mt-3">
-      <fieldset disabled={pending} className="space-y-3">
+    }} className={`${styles.bundleForm} mt-3`}>
+      <fieldset disabled={pending} className={`${styles.bundleFieldset} space-y-3`}>
+      <div className={styles.bundleFormBody}>
       <input type="hidden" name="items" value={JSON.stringify(items.map(({ productId, quantity, optionIds }) => ({ productId, quantity, optionIds })))} />
       <input type="hidden" name="branchId" value={branchId} />
       <input type="hidden" name="requestId" value={requestId} />
@@ -123,6 +127,8 @@ export default function BundleProductForm({
 
 
 
+      <div className={styles.bundleDetails}>
+      <h3 className={styles.detailsHeading}>Bundle details</h3>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Bundle name" htmlFor="bundle-name">
           <input id="bundle-name" name="name" defaultValue={initial?.name} required minLength={2} maxLength={160} placeholder="Summer Outfit" className={inputClass} />
@@ -145,7 +151,8 @@ export default function BundleProductForm({
         </Field>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      </div>
+      <div className={`${styles.includedProducts} rounded-2xl border border-slate-200 bg-slate-50 p-4`}>
         <div className="mb-3 flex items-center gap-2">
           <Gift size={18} className="text-blue-600" />
           <h3 className="font-semibold text-slate-900">Included products</h3>
@@ -154,7 +161,7 @@ export default function BundleProductForm({
         {itemsLocked && <div className="mb-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900"><p>Unpack the {initial?.stock} packed sets before replacing, removing, or adding items. This restores their component stock safely.</p>{onUnpackItems ? <button type="button" onClick={onUnpackItems} className="mt-2 font-semibold text-blue-700 underline">Unpack to edit items</button> : <p className="mt-1">Ask someone with stock-adjustment permission to unpack them.</p>}</div>}
         <fieldset disabled={itemsLocked}>
 
-        <div className="flex gap-2">
+        <div className={`${styles.productChooser} flex gap-2`}>
           <fieldset disabled={items.length >= MAX_BUNDLE_ITEMS} className="min-w-0 flex-1"><ProductVariantPicker products={products.filter(product => product.canInclude !== false && !items.some(item => item.productId === product.id))} value={selectedProductId} onChange={setSelectedProductId} allowOutOfStock stockForProduct={product => productMap.get(product.id)?.stock_quantity ?? 0} /></fieldset>
           <button type="button" onClick={addItem} disabled={!selectedProductId || items.length >= MAX_BUNDLE_ITEMS} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 font-semibold text-white disabled:opacity-50">
             <Plus size={17} /> Add
@@ -163,18 +170,18 @@ export default function BundleProductForm({
         <p className="mt-2 text-xs text-slate-500">{items.length >= MAX_BUNDLE_ITEMS ? '8 items added. Remove an item to replace it.' : 'Choose a product, then click Add. Remove a row to replace it. Save Changes applies your final list.'}</p>
         {initial && <p className="mt-1 text-xs text-slate-500">Bundles with transaction history need a new bundle for different items.</p>}
 
-        <div className="mt-4 space-y-3">
+        <div className={`${styles.selectedItems} mt-4 space-y-3`}>
           {items.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">Add at least two products.</p>
           ) : items.map((item) => {
             const product = productMap.get(item.productId);
-            if (!product) return <div key={item.productId} className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            if (!product) return <div key={item.productId} className={`${styles.unavailableItem} flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3`}>
               <ItemPhoto src={item.imageUrl} name={item.name || 'Unavailable product'} />
               <div className="min-w-0 flex-1"><p className="font-medium text-slate-900" data-i18n-ignore={Boolean(item.name)}>{item.name || 'Unavailable product'}</p><p className="text-xs text-slate-600"><span data-i18n-ignore="true">{item.sku || item.productId}</span>{item.optionsLabel ? ` · ${item.optionsLabel}` : ''}</p><p className="mt-1 text-xs text-amber-800">This saved item is not available in the current branch catalog. It remains in this bundle.</p></div>
               <span className="shrink-0 text-sm font-semibold">× {item.quantity}</span><button type="button" aria-label={formatUiText(translateLabel("Remove {0}"), [item.name || (translateLabel("unavailable product"))])} onClick={() => setItems(current => current.filter(row => row.productId !== item.productId))} className="rounded-lg p-2 text-red-600 hover:bg-red-50" data-i18n-ignore-attributes="aria-label"><Trash2 size={17} /></button>
             </div>;
             return (
-              <div key={item.productId} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div key={item.productId} className={`${styles.selectedItem} rounded-xl border border-slate-200 bg-white p-3`}>
               <div className="flex items-center gap-3">
                 <ItemPhoto src={product.imageUrl} name={product.name} />
                 <div className="min-w-0 flex-1">
@@ -211,14 +218,14 @@ export default function BundleProductForm({
         </fieldset>
       </div>
 
-      <ProductGalleryInput title="Bundle images" description="First photo is the cover. Choose up to 8 photos." initialUrls={initial?.imageUrls?.length ? initial.imageUrls : initial?.imageUrl ? [initial.imageUrl] : []} />
+      <div className={styles.bundleImages}><ProductGalleryInput title="Bundle images" description="First photo is the cover. Choose up to 8 photos." initialUrls={initial?.imageUrls?.length ? initial.imageUrls : initial?.imageUrl ? [initial.imageUrl] : []} /></div>
 
-      <div className="grid gap-3 rounded-xl bg-blue-50 p-4 text-sm sm:grid-cols-2">
+      <div className={`${styles.bundleTotals} grid gap-3 rounded-xl bg-blue-50 p-4 text-sm sm:grid-cols-2`}>
         <p>Normal item total: <strong>${normalTotal.toFixed(2)}</strong></p>
         <p>Estimated component cost: <strong>${costTotal.toFixed(2)}</strong></p>
       </div>
 
-      {!initial && <div className="grid gap-3 sm:grid-cols-2">
+      {!initial && <div className={`${styles.bundleVisibility} grid gap-3 sm:grid-cols-2`}>
         {([{ name: 'showPos', label: 'Show on POS', icon: Monitor }, { name: 'showOnline', label: 'Show online', icon: Globe }]).map(({ name, label, icon: Icon }) => (
           <label key={name} className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
             <span className="flex items-center gap-2 text-sm font-medium"><Icon size={18} className="text-blue-600" />{label}</span>
@@ -231,10 +238,14 @@ export default function BundleProductForm({
         <textarea id="bundle-description" name="description" defaultValue={initial?.description ?? ''} maxLength={2000} rows={3} placeholder="Optional bundle description" className={`${inputClass} resize-none`} />
       </Field>
 
+      </div>
+      <div className={styles.bundleFooter}>
+      {onCancel && <button type="button" disabled={pending} onClick={onCancel} className={styles.compactCancel}>Cancel</button>}
       <button type="submit" disabled={pending || items.length < 2 || items.length > MAX_BUNDLE_ITEMS} className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
         {pending ? <span className="inline-flex items-center justify-center gap-2"><ButtonSpinner />{initial ? "Saving bundle…" : "Creating bundle…"}</span> : initial ? "Save changes" : "Create Bundle"}
       </button>
       <p className="text-xs text-slate-500">{initial ? 'Images and details can change anytime. To change items, unpack all sets first. Bundles with sales or pending transactions keep their original contents.' : 'Creates an empty bundle. Pack sets from branch stock before selling.'}</p>
+      </div>
       </fieldset>
     </form>
   );
@@ -252,5 +263,5 @@ function ItemPhoto({src, name}: {src?: string | null; name: string}) {
 }
 
 function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: React.ReactNode }) {
-  return <div><label htmlFor={htmlFor} className="mb-2 block text-sm font-medium text-slate-700">{label}</label>{children}</div>;
+  return <div data-bundle-field={htmlFor}><label htmlFor={htmlFor} className="mb-2 block text-sm font-medium text-slate-700">{label}</label>{children}</div>;
 }

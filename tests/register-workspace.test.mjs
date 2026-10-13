@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { loadTs } from "./helpers/load-ts.cjs";
+import { loadTs, queryDouble } from "./helpers/load-ts.cjs";
 
 const model = loadTs("app/(dashboard)/dashboard/register/register-model.ts");
 function data(values) {
@@ -89,4 +89,55 @@ test("movement and closing surface server errors for the UI to retain drafts", a
   const { api } = fixture({ rpcError: { message: "Fixture save failed" } });
   await assert.rejects(api.addCashMovement(data({ shiftId: "shift", type: "cash_in", amount: "10", reason: "Cash float" })), /Fixture save failed/);
   await assert.rejects(api.closeRegisterShift(data({ shiftId: "shift", closingCash: "100" })), /Fixture save failed/);
+});
+
+test("old-branch movements and closes are rejected before a financial write", async () => {
+  const { api, calls } = fixture({ branch: "other" });
+  await assert.rejects(api.addCashMovement(data({ shiftId: "shift", type: "cash_in", amount: "10", reason: "Cash float" })), /branch changed/);
+  await assert.rejects(api.closeRegisterShift(data({ shiftId: "shift", closingCash: "100" })), /branch changed/);
+  assert.deepEqual(calls, []);
+});
+
+function pageFixture({ branchId = "other", role = "owner", allowed = true, locations = [
+  { id: "first", name: "Default", is_active: true },
+  { id: "other", name: "Header branch", is_active: true },
+  { id: "pending", name: "Final closure", is_active: true, plan_disable_pending: true },
+] } = {}) {
+  const reads = [];
+  const shifts = ["first", "other", "pending"].map(location_id => ({ id: location_id + "-shift", location_id, status: "open", opened_at: "2026-10-11T01:00:00Z", opened_by: "cashier" }));
+  const db = { from: table => queryDouble(table, call => {
+    const ids = call.steps.find(step => step[0] === "in" && step[1] === "location_id")?.[2];
+    return { data: table === "business_locations" ? locations : table === "cash_register_shifts" ? shifts.filter(shift => ids.includes(shift.location_id)) : table === "profiles" ? [{ id: "cashier", full_name: "Fixture staff" }] : [], error: null };
+  }, reads) };
+  const page = loadTs("app/(dashboard)/dashboard/register/page.tsx", {
+    "react/jsx-runtime": { jsx: (type, props) => ({ type, props }) },
+    "@/lib/branches/context": { getBranchContext: async () => ({ branchId }) },
+    "@/lib/auth/require-permission": { requirePermission: async permission => { assert.equal(permission, "register.manage"); if (!allowed) throw Error("Permission denied."); return { id: "business", role }; } },
+    "@/lib/supabase/admin": { supabaseAdmin: db },
+    "@/lib/supabase/read-all-rows": { readAllRows: async query => query(0, 999) },
+    "./register-client": { default: () => null },
+  }).default;
+  return { page, reads };
+}
+
+for (const role of ["owner", "staff"]) test(`register reads follow the header branch for ${role}, preserving owner final closure access`, async () => {
+  const { page, reads } = pageFixture({ role });
+  const { props } = await page();
+  assert.equal(props.branchId, "other");
+  assert.deepEqual(props.branches.map(branch => branch.id), role === "owner" ? ["other", "pending"] : ["other"]);
+  assert.ok(props.shifts.every(shift => shift.location_id === "other" || (role === "owner" && shift.location_id === "pending")));
+  for (const read of reads.filter(read => read.table === "cash_register_shifts")) assert.deepEqual(read.steps.find(step => step[0] === "in"), ["in", "location_id", role === "owner" ? ["other", "pending"] : ["other"]]);
+});
+
+for (const branchId of ["", "all", "missing"]) test(`no register context ${JSON.stringify(branchId)} never guesses a branch or reads shift data`, async () => {
+  const { page, reads } = pageFixture({ branchId, role: "staff" });
+  const { props } = await page();
+  assert.equal(props.branchId, branchId);
+  assert.deepEqual(props.branches, []); assert.deepEqual(props.shifts, []);
+  assert.ok(reads.every(read => read.table === "business_locations"));
+});
+
+test("register page denies permission before any branch or shift read", async () => {
+  const { page, reads } = pageFixture({ allowed: false });
+  await assert.rejects(page(), /Permission denied/); assert.deepEqual(reads, []);
 });

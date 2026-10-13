@@ -1,6 +1,9 @@
 "use server";
 
 import { parseCsv } from "@/lib/exports/import-files";
+import { validateBarcode } from '@/lib/barcode/code128';
+import { barcodePreservationEnabled } from '@/lib/barcode/require-contract';
+import { importedBarcodeIssue } from '@/lib/barcode/import-policy';
 import { csvImportTemplates } from "@/lib/exports/import-catalog";
 import { exportGroups } from "@/lib/exports/catalog";
 import { exportBusinessData } from "./full-export-actions";
@@ -330,10 +333,16 @@ function validateCsv(entity: ImportEntity, csvText: string, businessId: string, 
         if (!sku) throw new Error(`Row ${rowNumber}: SKU is required.`);
         if (uniqueKeys.has(sku)) throw new Error(`Row ${rowNumber}: duplicate SKU ${sku} in this CSV.`);
         uniqueKeys.add(sku);
+        if (source.barcode) {
+          const issue = validateBarcode(source.barcode);
+          if (issue) throw new Error(`Row ${rowNumber}: ${issue}`);
+        }
         normalizedRows.push({
           name,
           sku,
-          barcode: sanitizeText(source.barcode || source.sku, 100),
+          // Missing insert values are allocated by the database; missing update
+          // values preserve saved identifiers. Never materialize SKU as barcode.
+          ...(source.barcode ? { barcode: source.barcode } : {}),
           description: sanitizeText(source.description, 2000),
           cost_price: optionalNumber(source.cost_price ?? "", "cost_price", rowNumber, { min: 0 }) ?? 0,
           selling_price: numberValue(source.selling_price, "selling_price", rowNumber, { min: 0 }),
@@ -407,6 +416,11 @@ export async function previewCsvImport(entity: ImportEntity, csvText: string, mo
   try {
     if (business.role !== "owner") throw new Error("Only the business owner can import data.");
     const db = await createClient();
+    if (entity === 'products') {
+      const preservation = await barcodePreservationEnabled(db);
+      if (preservation) { const issue = await importedBarcodeIssue(db, business.id, result.rows); if (issue) throw new Error(issue); }
+      else for (const row of result.rows) if (!row.barcode) row.barcode = row.sku;
+    }
     const { data, error } = await db.rpc("tenh_import_business_safe", { p_business_id: business.id, p_kind: entity, p_mode: mode, p_payload: result.rows, p_branch_id: context.branchId });
     if (error) throw new Error(error.message);
     return { ...publicResult, ...data, message: `${data.inserted} added, ${data.updated} updated, ${data.skipped} unchanged or skipped. Review before confirming.` };
@@ -427,6 +441,11 @@ export async function commitCsvImport(entity: ImportEntity, mode: ImportMode, cs
     if (business.role !== "owner") throw new Error("Only the business owner can import data.");
     if (!confirmation) throw new Error("Validate and confirm the file first.");
     const db = await createClient();
+    if (entity === 'products') {
+      const preservation = await barcodePreservationEnabled(db);
+      if (preservation) { const issue = await importedBarcodeIssue(db, business.id, validated.rows); if (issue) throw new Error(issue); }
+      else for (const row of validated.rows) if (!row.barcode) row.barcode = row.sku;
+    }
     const { data, error } = await db.rpc("tenh_import_business_safe", {
       p_business_id: business.id, p_kind: entity, p_mode: mode, p_payload: validated.rows, p_branch_id: context.branchId,
       p_commit: true, p_expected: confirmation.fingerprint, p_request_id: confirmation.requestId, p_filename: filename ?? null,

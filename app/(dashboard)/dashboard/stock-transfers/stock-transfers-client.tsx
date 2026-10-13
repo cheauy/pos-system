@@ -95,6 +95,7 @@ export type TransferRow = {
 };
 
 type Props = {
+  initialTransferId?: string;
   locations: TransferLocation[];
   products: TransferProduct[];
   locationStock: TransferLocationStock[];
@@ -202,6 +203,7 @@ function CompactTransferFilters({ statuses, locations, status, branch, onApply }
 }
 
 export default function StockTransfersClient({
+  initialTransferId,
   locations,
   products,
   locationStock,
@@ -226,8 +228,8 @@ export default function StockTransfersClient({
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("all");
 
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [selectedTransferId, setSelectedTransferId] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(() => transfers.some(transfer => transfer.id === initialTransferId));
+  const [selectedTransferId, setSelectedTransferId] = useState<string | null>(() => transfers.find(transfer => transfer.id === initialTransferId)?.id ?? null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");

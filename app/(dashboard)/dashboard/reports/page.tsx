@@ -4,7 +4,6 @@ import ViewBranchSelect from "@/components/view-branch-select";
 import NavigationForm from "@/components/navigation-form";
 import {soldVariant} from "@/lib/analytics/product-variants";
 import {DonutBreakdown} from "@/components/analytics-charts";
-import Link from "@/components/ui/activity-link";
 import {
   requirePermission,
 } from "@/lib/auth/require-permission";
@@ -245,7 +244,7 @@ export default async function ReportsPage({
  
 
   return (
-    <DateFilterScope><main className="max-lg:pb-24">
+    <DateFilterScope><main className="max-xl:pb-24">
       <div className="mb-8 flex flex-col justify-between gap-5 max-sm:hidden lg:flex-row lg:items-end">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">
@@ -277,9 +276,9 @@ export default async function ReportsPage({
         to={dateRange.endDate}
       />
 
-    <DateFilterContent kind="analytics">{/* Phones/tablets: both KPI rows sit in one card, four compact tiles per row. */}
-      <div className="max-lg:rounded-2xl max-lg:border max-lg:border-slate-200 max-lg:bg-white max-lg:p-2 max-lg:shadow-sm">
-      <div className="mt-6 grid gap-4 max-lg:mt-0 max-lg:grid-cols-4 max-[39.99rem]:grid-cols-2 max-lg:gap-2 sm:grid-cols-2 xl:grid-cols-4">
+    <DateFilterContent kind="analytics">{/* Reports use the compact layout up to the xl desktop boundary, including 1024px portrait. */}
+      <div className="max-xl:rounded-2xl max-xl:border max-xl:border-slate-200 max-xl:bg-white max-xl:p-2 max-xl:shadow-sm">
+      <div className="mt-6 grid gap-4 max-xl:mt-0 max-[39.99rem]:grid-cols-2 max-xl:gap-2 min-[40rem]:grid-cols-4">
         <SummaryCard
           title="Revenue"
           value={formatCurrency(totalRevenue)}
@@ -313,7 +312,7 @@ export default async function ReportsPage({
         />
       </div>
 
-      <div className="mt-4 grid gap-4 max-lg:mt-2 max-lg:grid-cols-4 max-[39.99rem]:grid-cols-2 max-lg:gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-4 max-xl:mt-2 max-[39.99rem]:grid-cols-2 max-xl:gap-2 min-[40rem]:grid-cols-4">
         <SummaryCard
           title="Net Profit"
           value={formatCurrency(netProfit)}
@@ -356,7 +355,7 @@ export default async function ReportsPage({
         />
       </div>
       </div>
-      <div className="mt-6 max-lg:mt-3">
+      <div className="mt-6 max-xl:mt-3">
   <ReportCharts
     dailySales={dailySales}
     topProducts={topProducts}
@@ -364,13 +363,13 @@ export default async function ReportsPage({
   />
 </div>
 
-      <div className="mt-5 grid items-start gap-5 max-lg:mt-2 max-lg:grid-cols-2 max-lg:items-stretch max-lg:gap-2 xl:grid-cols-2">
-        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-lg:p-3 max-sm:[&_[role=img]]:h-32 max-sm:[&_[role=img]]:w-32 max-sm:[&_[role=img]>div]:h-[5.5rem] max-sm:[&_[role=img]>div]:w-[5.5rem]"><div className="mb-2 flex items-start gap-3 lg:hidden"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><PieChart size={20} /></span><div className="min-w-0"><h2 className="text-sm font-bold leading-tight text-slate-900">Payment Breakdown</h2><p className="mt-1 text-xs leading-snug text-slate-500">Sales value by the recorded payment method</p></div></div><h2 className="text-lg font-semibold text-slate-900 max-lg:hidden">Payment Breakdown</h2><p className="mt-1 text-sm text-slate-500 max-lg:hidden">Sales value by the recorded payment method</p><DonutBreakdown rows={Object.entries(paymentBreakdown).map(([label,value])=>({label:label.replaceAll("_"," "),value}))}/></section>
-        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-lg:p-3 max-sm:[&_[role=img]]:h-32 max-sm:[&_[role=img]]:w-32 max-sm:[&_[role=img]>div]:h-[5.5rem] max-sm:[&_[role=img]>div]:w-[5.5rem]"><div className="mb-2 flex items-start gap-3 lg:hidden"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-600"><CreditCard size={20} /></span><div className="min-w-0"><h2 className="text-sm font-bold leading-tight text-slate-900">Sales by Payment Method</h2><p className="mt-1 text-xs leading-snug text-slate-500">Completed order count by payment method</p></div></div><h2 className="text-lg font-semibold text-slate-900 max-lg:hidden">Sales by Payment Method</h2><p className="mt-1 text-sm text-slate-500 max-lg:hidden">Completed order count by payment method</p><DonutBreakdown count rows={Object.entries(paymentCounts).map(([label,value])=>({label:label.replaceAll("_"," "),value}))}/></section>
+      <div className="mt-5 grid items-start gap-5 max-xl:mt-2 max-xl:grid-cols-2 max-xl:items-stretch max-xl:gap-2 xl:grid-cols-2">
+        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-xl:p-3 max-sm:[&_[role=img]]:h-32 max-sm:[&_[role=img]]:w-32 max-sm:[&_[role=img]>div]:h-[5.5rem] max-sm:[&_[role=img]>div]:w-[5.5rem]"><div className="mb-2 flex items-start gap-3 xl:hidden"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><PieChart size={20} /></span><div className="min-w-0"><h2 className="text-sm font-bold leading-tight text-slate-900">Payment Breakdown</h2><p className="mt-1 text-xs leading-snug text-slate-500">Sales value by the recorded payment method</p></div></div><h2 className="text-lg font-semibold text-slate-900 max-xl:hidden">Payment Breakdown</h2><p className="mt-1 text-sm text-slate-500 max-xl:hidden">Sales value by the recorded payment method</p><DonutBreakdown rows={Object.entries(paymentBreakdown).map(([label,value])=>({label:label.replaceAll("_"," "),value}))}/></section>
+        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-xl:p-3 max-sm:[&_[role=img]]:h-32 max-sm:[&_[role=img]]:w-32 max-sm:[&_[role=img]>div]:h-[5.5rem] max-sm:[&_[role=img]>div]:w-[5.5rem]"><div className="mb-2 flex items-start gap-3 xl:hidden"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-600"><CreditCard size={20} /></span><div className="min-w-0"><h2 className="text-sm font-bold leading-tight text-slate-900">Sales by Payment Method</h2><p className="mt-1 text-xs leading-snug text-slate-500">Completed order count by payment method</p></div></div><h2 className="text-lg font-semibold text-slate-900 max-xl:hidden">Sales by Payment Method</h2><p className="mt-1 text-sm text-slate-500 max-xl:hidden">Completed order count by payment method</p><DonutBreakdown count rows={Object.entries(paymentCounts).map(([label,value])=>({label:label.replaceAll("_"," "),value}))}/></section>
       </div>
 
-      {/* Long label/value rows: full width on phones, side by side on tablets. */}
-      <div className="mt-6 grid gap-6 max-lg:mt-2 max-lg:grid-cols-2 max-lg:gap-2 max-sm:grid-cols-1 xl:grid-cols-2">
+      {/* Profit Summary stays full width below the tablet charts; desktop keeps two columns. */}
+      <div className="mt-6 grid gap-6 max-xl:mt-2 max-xl:grid-cols-1 max-xl:gap-2 max-sm:grid-cols-1 xl:grid-cols-2 [@media(80rem<=width<=85.375rem)_and_(hover:none)_and_(pointer:coarse)]:grid-cols-1">
        
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-6 py-5">
@@ -510,7 +509,7 @@ function MobileReportFilters({ branches, branchId, selectedRange, from, to }: {
           <a href="#" aria-label="Close filters" className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600"><X size={20} /></a>
         </div>
         {/* Every sheet field is a draft: nothing loads until Apply. Closing discards edits. */}
-        <NavigationForm key={[branchId, selectedRange, from, to].join("|")} className="mt-5" reset={{ range: "yesterday", from: "", to: "" }}>
+        <NavigationForm key={[branchId, selectedRange, from, to].join("|")} today={getDateRange("today").startDate} className="mt-5" reset={{ range: "yesterday", from: "", to: "" }}>
           <label className="text-xs font-semibold text-slate-500">Choose Branch<select name="branch" aria-label="View data for branch" defaultValue={branchId || "all"} className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900"><option value="all">All branches</option>{branches.map(b => <option key={b.id} value={b.id} data-i18n-ignore="true">{b.name}</option>)}</select></label>
           <fieldset className="mt-5"><legend className="text-sm font-semibold text-slate-600">Date Range</legend>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -521,6 +520,7 @@ function MobileReportFilters({ branches, branchId, selectedRange, from, to }: {
           <label className="text-sm font-semibold text-slate-600">To<input type="date" name="to" defaultValue={to} className="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500" /></label>
           </div>
           <button type="submit" className="mt-5 min-h-12 w-full rounded-xl bg-blue-600 font-semibold text-white">Apply</button>
+          <button type="button" data-date-cancel className="mt-3 min-h-12 w-full rounded-xl border border-slate-200 font-semibold text-slate-600">Cancel</button>
           <button type="reset" className="mt-3 grid min-h-12 w-full place-items-center rounded-xl bg-slate-100 font-semibold text-slate-600">Reset</button>
         </NavigationForm>
       </section>
@@ -544,30 +544,21 @@ function ReportFilters({
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm max-sm:hidden">
       <NavigationDateRange path="/dashboard/reports" query={{ branch: branchId || "all" }} from={from} to={to} today={getDateRange("today").startDate} />
-      <div className={`${dateFilterStyles.legacy} flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between`}>
+      <NavigationForm key={[branchId, selectedRange, from, to].join("|")} today={getDateRange("today").startDate} className={`${dateFilterStyles.legacy} flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between`}>
         <div className="flex flex-wrap gap-2">
-          {ranges.map((range) => (
-            <Link
+          {[...ranges, { value: "custom", label: "Custom" }].map((range) => (
+            <label
               key={range.value}
-              href={`/dashboard/reports?range=${range.value}${`&branch=${encodeURIComponent(branchId || "all")}`}`}
-              className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                selectedRange === range.value
-                  ? "bg-blue-600 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
+              className="cursor-pointer rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition has-[:checked]:bg-blue-600 has-[:checked]:text-white has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-blue-500"
             >
+              <input type="radio" name="range" value={range.value} defaultChecked={selectedRange === range.value} className="sr-only" />
               {range.label}
-            </Link>
+            </label>
           ))}
         </div>
 
-        <NavigationForm key={[branchId, selectedRange, from, to].join("|")} className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <input type="hidden" name="branch" value={branchId || "all"}/>
-          <input
-            type="hidden"
-            name="range"
-            value="custom"
-          />
 
           <label className="text-sm font-medium text-slate-600">
             From
@@ -599,8 +590,9 @@ function ReportFilters({
           >
             Apply
           </button>
-        </NavigationForm>
-      </div>
+          <button type="reset" className="min-h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-600">Cancel</button>
+        </div>
+      </NavigationForm>
     </section>
   );
 }
@@ -621,31 +613,31 @@ function SummaryCard({
   smallValue?: boolean;
 }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-lg:rounded-xl max-lg:border-slate-100 max-lg:p-2 max-lg:shadow-none">
-      <div className="flex items-start justify-between gap-4 max-lg:justify-start max-lg:gap-1.5">
-        <div className={`hidden shrink-0 rounded-lg p-1.5 max-lg:block [&>svg]:h-4 [&>svg]:w-4 ${iconClass}`} aria-hidden>{icon}</div>
+    <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-xl:rounded-xl max-xl:border-slate-100 max-xl:p-2 max-xl:shadow-none">
+      <div className="flex items-start justify-between gap-4 max-xl:justify-start max-xl:gap-1.5">
+        <div className={`hidden shrink-0 rounded-lg p-1.5 max-xl:block [&>svg]:h-4 [&>svg]:w-4 ${iconClass}`} aria-hidden>{icon}</div>
         <div className="min-w-0">
-          <p className="text-sm text-slate-500 max-lg:text-[10px] max-lg:leading-tight">
+          <p className="text-sm text-slate-500 max-xl:text-[10px] max-xl:leading-tight">
             {title}
           </p>
 
           <p
-            className={`mt-2 break-words font-bold text-slate-900 max-lg:mt-1 ${
+            className={`mt-2 break-words font-bold text-slate-900 max-xl:mt-1 ${
               smallValue
-                ? "text-base max-lg:text-[10px] max-lg:leading-tight"
-                : "text-2xl max-lg:text-sm"
+                ? "text-base max-xl:text-[10px] max-xl:leading-tight"
+                : "text-2xl max-xl:text-sm"
             }`}
           >
             {value}
           </p>
 
-          <p className="mt-2 text-xs text-slate-500 max-lg:hidden">
+          <p className="mt-2 text-xs text-slate-500 max-xl:hidden">
             {description}
           </p>
         </div>
 
         <div
-          className={`rounded-xl p-3 max-lg:hidden ${iconClass}`}
+          className={`rounded-xl p-3 max-xl:hidden ${iconClass}`}
         >
           {icon}
         </div>

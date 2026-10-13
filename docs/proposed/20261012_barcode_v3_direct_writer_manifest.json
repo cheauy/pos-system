@@ -1,0 +1,472 @@
+{
+  "scope": "Known literal fluent mutations; dynamic builders/RPCs require separate inventory",
+  "writers": [
+    {
+      "file": "app/(dashboard)/dashboard/customers/actions.ts",
+      "line": 119,
+      "table": "customers",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/customers/actions.ts",
+      "line": 167,
+      "table": "customers",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/customers/actions.ts",
+      "line": 241,
+      "table": "customers",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/customers/actions.ts",
+      "line": 403,
+      "table": "customers",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/locations/actions.ts",
+      "line": 88,
+      "table": "business_locations",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/locations/actions.ts",
+      "line": 175,
+      "table": "business_locations",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/locations/actions.ts",
+      "line": 291,
+      "table": "business_locations",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/actions.ts",
+      "line": 352,
+      "table": "business_storefronts",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/actions.ts",
+      "line": 356,
+      "table": "business_storefronts",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/actions.ts",
+      "line": 450,
+      "table": "business_storefronts",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/actions.ts",
+      "line": 573,
+      "table": "business_storefronts",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/actions.ts",
+      "line": 636,
+      "table": "business_storefronts",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/catalog-actions.ts",
+      "line": 11,
+      "table": "products",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/catalog-actions.ts",
+      "line": 51,
+      "table": "products",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/catalog-actions.ts",
+      "line": 61,
+      "table": "business_storefronts",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/delivery-zone-actions.ts",
+      "line": 62,
+      "table": "business_delivery_zones",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/delivery-zone-actions.ts",
+      "line": 70,
+      "table": "business_delivery_zones",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/delivery-zone-actions.ts",
+      "line": 133,
+      "table": "business_delivery_zones",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/qr-actions.ts",
+      "line": 38,
+      "table": "business_tables",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/qr-actions.ts",
+      "line": 85,
+      "table": "business_tables",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/online-store/qr-actions.ts",
+      "line": 129,
+      "table": "business_tables",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/register/actions.ts",
+      "line": 51,
+      "table": "cash_register_shifts",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/settings/business/info-actions.ts",
+      "line": 39,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/settings/business/info-actions.ts",
+      "line": 46,
+      "table": "business_storefronts",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/settings/receipts/actions.ts",
+      "line": 33,
+      "table": "branch_receipt_settings",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/settings/receipts/actions.ts",
+      "line": 36,
+      "table": "branch_receipt_settings",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/settings/receipts/actions.ts",
+      "line": 102,
+      "table": "branch_receipt_settings",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/settings/security/actions.ts",
+      "line": 282,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/settings/subscription/actions.ts",
+      "line": 319,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/settings/subscription/actions.ts",
+      "line": 328,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/settings/users/users-workspace-actions.ts",
+      "line": 264,
+      "table": "branch_role_permissions",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/settings/users/users-workspace-actions.ts",
+      "line": 266,
+      "table": "audit_logs",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/settings/users/users-workspace-actions.ts",
+      "line": 288,
+      "table": "branch_role_permissions",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/settings/users/users-workspace-actions.ts",
+      "line": 290,
+      "table": "audit_logs",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/stock-transfers/actions.ts",
+      "line": 146,
+      "table": "stock_transfers",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/stock-transfers/actions.ts",
+      "line": 163,
+      "table": "stock_transfer_items",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/stock-transfers/actions.ts",
+      "line": 174,
+      "table": "stock_transfers",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/stock-transfers/actions.ts",
+      "line": 276,
+      "table": "stock_transfer_items",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/stock-transfers/actions.ts",
+      "line": 387,
+      "table": "stock_transfers",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/stock-transfers/actions.ts",
+      "line": 403,
+      "table": "stock_transfer_items",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/stock-transfers/actions.ts",
+      "line": 425,
+      "table": "stock_transfer_items",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(dashboard)/dashboard/stock-transfers/actions.ts",
+      "line": 470,
+      "table": "stock_transfers",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "app/(super-admin)/super-admin/businesses/actions.ts",
+      "line": 136,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(super-admin)/super-admin/businesses/actions.ts",
+      "line": 459,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(super-admin)/super-admin/businesses/actions.ts",
+      "line": 501,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(super-admin)/super-admin/businesses/actions.ts",
+      "line": 741,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(super-admin)/super-admin/businesses/actions.ts",
+      "line": 901,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(super-admin)/super-admin/businesses/actions.ts",
+      "line": 933,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(super-admin)/super-admin/businesses/actions.ts",
+      "line": 1084,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(super-admin)/super-admin/businesses/actions.ts",
+      "line": 1228,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(super-admin)/super-admin/businesses/actions.ts",
+      "line": 1281,
+      "table": "audit_logs",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(super-admin)/super-admin/businesses/actions.ts",
+      "line": 1392,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(super-admin)/super-admin/businesses/actions.ts",
+      "line": 1459,
+      "table": "audit_logs",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "app/(super-admin)/super-admin/manual-payments/actions.ts",
+      "line": 109,
+      "table": "audit_logs",
+      "status": "request-header-proposed",
+      "intent": "order.business_id"
+    },
+    {
+      "file": "app/(super-admin)/super-admin/subscription-payments/actions.ts",
+      "line": 143,
+      "table": "audit_logs",
+      "status": "request-header-proposed",
+      "intent": "order.business_id"
+    },
+    {
+      "file": "app/api/cron/release-inactive-stores/route.ts",
+      "line": 86,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "row.id"
+    },
+    {
+      "file": "app/api/cron/release-inactive-stores/route.ts",
+      "line": 150,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "row.id"
+    },
+    {
+      "file": "app/get-started/actions.ts",
+      "line": 224,
+      "table": "businesses",
+      "status": "guarded-genesis"
+    },
+    {
+      "file": "app/get-started/actions.ts",
+      "line": 303,
+      "table": "business_storefronts",
+      "status": "request-header-proposed",
+      "intent": "createdBusinessId"
+    },
+    {
+      "file": "app/get-started/actions.ts",
+      "line": 327,
+      "table": "business_locations",
+      "status": "request-header-proposed",
+      "intent": "createdBusinessId"
+    },
+    {
+      "file": "app/get-started/actions.ts",
+      "line": 368,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "createdBusinessId"
+    },
+    {
+      "file": "lib/audit/create-audit-log.ts",
+      "line": 78,
+      "table": "audit_logs",
+      "status": "request-header-proposed",
+      "intent": "business.id"
+    },
+    {
+      "file": "lib/auth/create-audit-log.ts",
+      "line": 51,
+      "table": "audit_logs",
+      "status": "global-own-user-audit-null-tenant-and-location"
+    },
+    {
+      "file": "lib/business/create-business-history.ts",
+      "line": 40,
+      "table": "business_activity_history",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    },
+    {
+      "file": "lib/business/get-current-business.ts",
+      "line": 376,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "current.id"
+    },
+    {
+      "file": "lib/business/get-current-business.ts",
+      "line": 408,
+      "table": "businesses",
+      "status": "request-header-proposed",
+      "intent": "current.id"
+    },
+    {
+      "file": "lib/storefront/get-storefront.ts",
+      "line": 69,
+      "table": "business_storefronts",
+      "status": "request-header-proposed",
+      "intent": "businessId"
+    }
+  ]
+}

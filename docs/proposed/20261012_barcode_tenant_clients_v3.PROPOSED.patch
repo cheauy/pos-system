@@ -1,0 +1,793 @@
+diff --git a/lib/supabase/admin.ts b/lib/supabase/admin.ts
+--- a/lib/supabase/admin.ts
++++ b/lib/supabase/admin.ts
+@@ -31,4 +31,15 @@ export const supabaseAdmin = createClient(
+       persistSession: false,
+     },
+   },
+-);
+\ No newline at end of file
++);
++// Separate clients keep concurrent requests from mutating shared service headers.
++// Business intent is checked independently by SQL ownership/authorization guards.
++export function createBusinessAdminClient(businessId: string) {
++  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(businessId)) {
++    throw new Error("A valid business ID is required.");
++  }
++  return createClient(supabaseUrl!, serviceRoleKey!, {
++    auth: { autoRefreshToken: false, persistSession: false },
++    global: { headers: { "x-tenh-business-id": businessId } },
++  });
++}
+diff --git a/app/(dashboard)/dashboard/products/actions.ts b/app/(dashboard)/dashboard/products/actions.ts
+--- a/app/(dashboard)/dashboard/products/actions.ts
++++ b/app/(dashboard)/dashboard/products/actions.ts
+@@ -15,7 +15,7 @@ import { createAuditLog } from "@/lib/audit/create-audit-log";
+ import { getCurrentBusinessMode } from "@/lib/business/get-current-business-mode";
+ import { createClient } from "@/lib/supabase/branch-server";
+ import { getBranchContext } from "@/lib/branches/context";
+-import { supabaseAdmin } from "@/lib/supabase/admin";
++import { supabaseAdmin, createBusinessAdminClient } from "@/lib/supabase/admin";
+ import {
+   requirePermission,
+ } from "@/lib/auth/require-permission";
+@@ -60,7 +60,7 @@ async function assertCategoryBelongsToBusiness(
+ ) {
+   if (!categoryId) return;
+ 
+-  const { data, error } = await supabaseAdmin
++  const { data, error } = await createBusinessAdminClient(businessId)
+     .from("categories")
+     .select("id")
+     .eq("id", categoryId)
+@@ -1453,14 +1453,14 @@ export async function createVariantProduct(
+ 
+   const barcodeError = checkProductBarcodes(variants.map(variant => variant.barcode), undefined, preservation);
+   if (barcodeError) return { success: false, message: barcodeError };
+-  const barcodeCheck = await supabaseAdmin.from("products").select("id").eq("business_id", business.id).in("barcode", variants.map(variant => variant.barcode)).limit(1);
++  const barcodeCheck = await createBusinessAdminClient(business.id).from("products").select("id").eq("business_id", business.id).in("barcode", variants.map(variant => variant.barcode)).limit(1);
+   if (barcodeCheck.error || barcodeCheck.data?.length) return { success: false, message: barcodeCheck.error?.message ?? "A barcode is already used by another product." };
+   const supabase = await createClient();
+   const { data: { user } } = await supabase.auth.getUser();
+   if (!user) redirect("/login");
+   const userId = user.id;
+ 
+-  const { data: existing, error: existingError } = await supabaseAdmin
++  const { data: existing, error: existingError } = await createBusinessAdminClient(business.id)
+     .from("products")
+     .select("sku")
+     .eq("business_id", business.id)
+@@ -1560,7 +1560,7 @@ export async function createVariantProduct(
+     is_online: isOnline,
+   }));
+ 
+-  const { data: created, error } = await supabaseAdmin
++  const { data: created, error } = await createBusinessAdminClient(business.id)
+     .from("products")
+     .insert(rows)
+     .select("id, name, sku");
+@@ -1726,7 +1726,7 @@ export async function createConfigurableProduct(
+   if (!user) redirect("/login");
+ 
+   if (await barcodeCapability(supabase) === 'unavailable') return { success: false, message: BARCODE_UNAVAILABLE };
+-  const { data: existingSku, error: skuError } = await supabaseAdmin
++  const { data: existingSku, error: skuError } = await createBusinessAdminClient(business.id)
+     .from("products")
+     .select("id")
+     .eq("business_id", business.id)
+@@ -1758,7 +1758,7 @@ export async function createConfigurableProduct(
+       .getPublicUrl(uploadedImagePath).data.publicUrl;
+   }
+ 
+-  const { data: product, error: productError } = await supabaseAdmin
++  const { data: product, error: productError } = await createBusinessAdminClient(business.id)
+     .from("products")
+     .insert({
+       owner_id: user.id,
+@@ -1789,7 +1789,7 @@ export async function createConfigurableProduct(
+   try {
+     for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+       const group = groups[groupIndex];
+-      const { data: createdGroup, error: groupError } = await supabaseAdmin
++      const { data: createdGroup, error: groupError } = await createBusinessAdminClient(business.id)
+         .from("product_option_groups")
+         .insert({
+           business_id: business.id,
+@@ -1808,7 +1808,7 @@ export async function createConfigurableProduct(
+         throw new Error(groupError?.message ?? "Unable to create option group.");
+       }
+ 
+-      const { error: optionsError } = await supabaseAdmin
++      const { error: optionsError } = await createBusinessAdminClient(business.id)
+         .from("product_options")
+         .insert(
+           group.options.map((option, optionIndex) => ({
+@@ -1825,7 +1825,7 @@ export async function createConfigurableProduct(
+       if (optionsError) throw new Error(optionsError.message);
+     }
+   } catch (error) {
+-    await supabaseAdmin.from("products").delete().eq("id", product.id).eq("business_id", business.id);
++    await createBusinessAdminClient(business.id).from("products").delete().eq("id", product.id).eq("business_id", business.id);
+     if (uploadedImagePath) {
+       await supabaseAdmin.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploadedImagePath]);
+     }
+@@ -2113,7 +2113,7 @@ async function saveEditedProductGroup(
+   }
+   if (gallery !== null) {
+     // Storefront reads the shared catalog; only explicit gallery edits change its media.
+-    const { error: mediaError } = await supabaseAdmin.from("products").update({ image_url: newImageUrl, image_urls: gallery })
++    const { error: mediaError } = await createBusinessAdminClient(business.id).from("products").update({ image_url: newImageUrl, image_urls: gallery })
+       .eq("business_id", business.id).in("id", batchRows.map(row => row.id));
+     if (mediaError) return { success: false, refreshRequired: true, message: `Variant changes were saved, but the online store photos were not updated (${mediaError.message}). Reload, then save the gallery again.` };
+   }
+@@ -2125,7 +2125,7 @@ async function saveEditedProductGroup(
+         : variant.imageAction === "upload" ? uploadedUrls.get(variant.imageSlot!)!
+         : null;
+       if (!supportsVariants) throw new Error("This product does not support adding variants.");
+-      const { data: created, error } = await supabaseAdmin.from("products").insert({
++      const { data: created, error } = await createBusinessAdminClient(business.id).from("products").insert({
+         owner_id: userId, business_id: business.id, category_id: categoryId, name,
+         sku: variant.sku, barcode: barcodes[variantIndex], size: variant.size, color: variant.color,
+         image_url: newImageUrl, image_urls: gallery ?? current[0]?.image_urls ?? [], variant_image_url: variantImage, description,
+@@ -2161,13 +2161,13 @@ async function initialProductBranch(businessId:string,form:FormData){
+ 
+ async function assignCreatedProducts(businessId:string,branchId:string,ids:string[]):Promise<string>{
+  try{
+-  const {data,error}=await supabaseAdmin.from("products").select("id,stock_quantity,low_stock_quantity").eq("business_id",businessId).in("id",ids);
++  const {data,error}=await createBusinessAdminClient(businessId).from("products").select("id,stock_quantity,low_stock_quantity").eq("business_id",businessId).in("id",ids);
+   if(error||!data)throw new Error("Product stock could not be read.");
+   const db=await createClient();
+   const positive=data.filter(p=>Number(p.stock_quantity)>0);
+   if(positive.length){const {error}=await db.rpc("tenh_pos_allocate_stock",{p_business_id:businessId,p_location_id:branchId,p_allocations:positive.map(p=>({productId:p.id,quantity:Number(p.stock_quantity)}))});if(error)throw new Error(error.message);}
+   const empty=data.filter(p=>!Number(p.stock_quantity));
+-  if(empty.length){const {error}=await supabaseAdmin.from("product_location_stock").upsert(empty.map(p=>({business_id:businessId,location_id:branchId,product_id:p.id,quantity:0,low_stock_threshold:p.low_stock_quantity})),{onConflict:"location_id,product_id",ignoreDuplicates:true});if(error)throw new Error(error.message);}
++  if(empty.length){const {error}=await createBusinessAdminClient(businessId).from("product_location_stock").upsert(empty.map(p=>({business_id:businessId,location_id:branchId,product_id:p.id,quantity:0,low_stock_threshold:p.low_stock_quantity})),{onConflict:"location_id,product_id",ignoreDuplicates:true});if(error)throw new Error(error.message);}
+   revalidatePath("/dashboard/inventory");return "";
+  }catch{return " Product saved, but branch stock assignment failed. Use Inventory to assign its existing stock; do not create the product again.";}
+ }
+diff --git a/app/(dashboard)/dashboard/categories/actions.ts b/app/(dashboard)/dashboard/categories/actions.ts
+--- a/app/(dashboard)/dashboard/categories/actions.ts
++++ b/app/(dashboard)/dashboard/categories/actions.ts
+@@ -62,7 +62,7 @@ function validateCategoryName(name: string): string | null {
+ 
+ async function getAuthenticatedContext() {
+   const business = await requirePermission("categories.manage");
+-  const supabase = await createClient();
++  const supabase = await createClient({ "x-tenh-business-id": business.id });
+   const {
+     data: { user },
+     error: userError,
+diff --git a/app/(dashboard)/dashboard/customers/actions.ts b/app/(dashboard)/dashboard/customers/actions.ts
+--- a/app/(dashboard)/dashboard/customers/actions.ts
++++ b/app/(dashboard)/dashboard/customers/actions.ts
+@@ -128,7 +128,7 @@ export async function createCustomer(formData: FormData) {
+       ...(fieldSettings.genderEnabled?{gender}:{}),
+       address,
+       note: null,
+-    })
++    }).setHeader("x-tenh-business-id", (business.id) ?? "")
+     .select("id")
+     .single();
+ 
+@@ -166,7 +166,7 @@ export async function deleteCustomer(formData: FormData) {
+ 
+   const { data: deleted, error } = await supabase
+     .from("customers")
+-    .delete()
++    .delete().setHeader("x-tenh-business-id", (business.id) ?? "")
+     .eq("id", customerId)
+     .eq("business_id", business.id)
+     .select("id")
+@@ -240,7 +240,7 @@ export async function updateCustomer(formData: FormData) {
+ 
+   const { data: updated, error } = await supabase
+     .from("customers")
+-    .update(updates)
++    .update(updates).setHeader("x-tenh-business-id", (business.id) ?? "")
+     .eq("id", customerId)
+     .eq("business_id", business.id)
+     .select("id")
+@@ -400,7 +400,7 @@ export async function importCustomersCsv(formData: FormData) {
+     };
+   });
+ 
+-  const { error } = await supabase.from("customers").insert(inserts);
++  const { error } = await supabase.from("customers").insert(inserts).setHeader("x-tenh-business-id", (business.id) ?? "");
+   if (error) {
+     throw new Error(error.message);
+   }
+diff --git a/app/(dashboard)/dashboard/locations/actions.ts b/app/(dashboard)/dashboard/locations/actions.ts
+--- a/app/(dashboard)/dashboard/locations/actions.ts
++++ b/app/(dashboard)/dashboard/locations/actions.ts
+@@ -101,7 +101,7 @@ export async function createLocation(
+         manager_user_id: managerUserId,
+         is_default: false,
+         is_active: true,
+-      })
++      }).setHeader("x-tenh-business-id", (business.id) ?? "")
+       .select("id")
+       .single();
+ 
+@@ -186,7 +186,7 @@ export async function updateLocation(
+         notes: optionalText(formData, "notes", 500),
+         manager_user_id: managerUserId,
+         updated_at: new Date().toISOString(),
+-      })
++      }).setHeader("x-tenh-business-id", (business.id) ?? "")
+       .eq("id", id)
+       .eq("business_id", business.id);
+ 
+@@ -290,7 +290,7 @@ export async function toggleLocation(
+ 
+     const { error } = await supabase
+       .from("business_locations")
+-      .update({ is_active: active, updated_at: new Date().toISOString() })
++      .update({ is_active: active, updated_at: new Date().toISOString() }).setHeader("x-tenh-business-id", (business.id) ?? "")
+       .eq("id", id)
+       .eq("business_id", business.id)
+       .eq("is_default", false);
+diff --git a/app/(dashboard)/dashboard/online-store/actions.ts b/app/(dashboard)/dashboard/online-store/actions.ts
+--- a/app/(dashboard)/dashboard/online-store/actions.ts
++++ b/app/(dashboard)/dashboard/online-store/actions.ts
+@@ -349,11 +349,11 @@ export async function updateStorefrontSettings(
+     // an old copy of the shared JSON over a row that changed during this save.
+     let result;
+     if (existing) {
+-      let update = supabaseAdmin.from("business_storefronts").update(values).eq("business_id", business.id);
++      let update = supabaseAdmin.from("business_storefronts").update(values).setHeader("x-tenh-business-id", (business.id) ?? "").eq("business_id", business.id);
+       update = existing.updated_at == null ? update.is("updated_at", null) : update.eq("updated_at", existing.updated_at);
+       result = await update.select("business_id").maybeSingle();
+     } else {
+-      result = await supabaseAdmin.from("business_storefronts").insert(values).select("business_id").single();
++      result = await supabaseAdmin.from("business_storefronts").insert(values).setHeader("x-tenh-business-id", (business.id) ?? "").select("business_id").single();
+     }
+     const { data: saved, error } = result;
+     if (!error && saved?.business_id !== business.id) throw new Error("Settings changed while saving. Reload and review before retrying.");
+@@ -454,7 +454,7 @@ export async function updateOnlinePaymentSettings(
+       khqr_account_name: khqrAccountName,
+       khqr_instructions: khqrInstructions,
+       updated_at: new Date().toISOString(),
+-    }).eq("business_id", business.id);
++    }).setHeader("x-tenh-business-id", (business.id) ?? "").eq("business_id", business.id);
+     update = existing.updated_at == null ? update.is("updated_at", null) : update.eq("updated_at", existing.updated_at);
+     const { data: saved, error } = await update.select("business_id").maybeSingle();
+     if (error) throw new Error(`Unable to save online payment settings: ${error.message}`);
+@@ -584,7 +584,7 @@ export async function updateFulfillmentSettings(
+         max_schedule_days: maxScheduleDays,
+         estimated_minutes: estimatedMinutes,
+         updated_at: new Date().toISOString(),
+-      })
++      }).setHeader("x-tenh-business-id", (business.id) ?? "")
+       .eq("business_id", business.id);
+ 
+     if (error) {
+@@ -633,7 +633,7 @@ export async function saveFulfillmentBranch(branchId: string) {
+     const business=await requirePermission("storefront.update");
+     const {assertBranchOperation}=await import("@/lib/subscriptions/branch-limits");
+     await assertBranchOperation(business.id,branchId);
+-    const {error}=await supabaseAdmin.from("business_storefronts").update({fulfillment_location_id:branchId}).eq("business_id",business.id).select("business_id").single();
++    const {error}=await supabaseAdmin.from("business_storefronts").update({fulfillment_location_id:branchId}).setHeader("x-tenh-business-id", (business.id) ?? "").eq("business_id",business.id).select("business_id").single();
+     if(error)throw new Error(error.message);
+     revalidatePath("/dashboard/settings/online-store");revalidatePath(`/_sites/${business.slug}`);
+     return {success:true,message:"Online fulfilment branch saved."};
+diff --git a/app/(dashboard)/dashboard/online-store/catalog-actions.ts b/app/(dashboard)/dashboard/online-store/catalog-actions.ts
+--- a/app/(dashboard)/dashboard/online-store/catalog-actions.ts
++++ b/app/(dashboard)/dashboard/online-store/catalog-actions.ts
+@@ -8,7 +8,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
+ export async function saveOnlineCatalogProduct(id:string,name:string,priceText:string,expected:{name:string;price:number}) {
+  const business=await requirePermission('storefront.update');
+  if(!/^[0-9a-f-]{36}$/i.test(id) || typeof name!=='string' || !name.trim() || name.trim().length>160 || !/^\d+(\.\d{1,2})?$/.test(priceText) || Number(priceText)>99999999.99 || !expected || typeof expected.name!=='string' || !Number.isFinite(expected.price))return {success:false,message:'Enter a valid name and price.'};
+- const {data,error}=await supabaseAdmin.from('products').update({name:name.trim(),selling_price:Number(priceText),updated_at:new Date().toISOString()}).eq('business_id',business.id).eq('id',id).eq('name',expected.name).eq('selling_price',expected.price).select('id').maybeSingle();
++ const {data,error}=await supabaseAdmin.from('products').update({name:name.trim(),selling_price:Number(priceText),updated_at:new Date().toISOString()}).setHeader("x-tenh-business-id", (business.id) ?? "").eq('business_id',business.id).eq('id',id).eq('name',expected.name).eq('selling_price',expected.price).select('id').maybeSingle();
+  if(error || !data)return {success:false,message:'This online product changed or is unavailable. Refresh before saving again.'};
+  try {await createAuditLog({action:'update',entityType:'storefront',entityId:id,description:'Updated shared online product',metadata:{name:name.trim(),selling_price:Number(priceText)}});}catch{ /* The catalog save has already committed. */ }
+  revalidatePath('/dashboard/settings/online-store');revalidatePath(`/storefront/${business.slug}`);
+@@ -48,7 +48,7 @@ export async function updateCatalogProducts(ids: string[], field: "visibility" |
+   const { data: products, error: productError } = await supabaseAdmin.from("products").select("id").eq("business_id", business.id).eq("is_active", true).in("id", uniqueIds);
+   if (productError || products?.length !== uniqueIds.length) return { success: false, message: "Some products are unavailable. Refresh and try again." };
+   if (field === "visibility") {
+-    const { error } = await supabaseAdmin.from("products").update({ is_online: enabled }).eq("business_id", business.id).eq("is_active", true).in("id", uniqueIds);
++    const { error } = await supabaseAdmin.from("products").update({ is_online: enabled }).setHeader("x-tenh-business-id", (business.id) ?? "").eq("business_id", business.id).eq("is_active", true).in("id", uniqueIds);
+     if (error) return { success: false, message: "Unable to update product visibility." };
+   } else {
+     const { data: store, error: readError } = await supabaseAdmin.from("business_storefronts").select("social_links").eq("business_id", business.id).single();
+@@ -58,7 +58,7 @@ export async function updateCatalogProducts(ids: string[], field: "visibility" |
+     // This flag now marks pre-order variants in the storefront.
+     const featured = new Set<string>(Array.isArray(links.profile?.featuredProductIds) ? links.profile.featuredProductIds : []);
+     for (const id of uniqueIds) { if (enabled) featured.add(id); else featured.delete(id); }
+-    const { error } = await supabaseAdmin.from("business_storefronts").update({ social_links: { ...links, profile: { ...links.profile, featuredProductIds: [...featured] } } }).eq("business_id", business.id);
++    const { error } = await supabaseAdmin.from("business_storefronts").update({ social_links: { ...links, profile: { ...links.profile, featuredProductIds: [...featured] } } }).setHeader("x-tenh-business-id", (business.id) ?? "").eq("business_id", business.id);
+     if (error) return { success: false, message: "Unable to update pre-order products." };
+   }
+   await createAuditLog({ action: "update", entityType: "storefront", entityId: business.id, description: "Updated storefront products", metadata: { product_ids: uniqueIds, field, enabled } });
+diff --git a/app/(dashboard)/dashboard/online-store/delivery-zone-actions.ts b/app/(dashboard)/dashboard/online-store/delivery-zone-actions.ts
+--- a/app/(dashboard)/dashboard/online-store/delivery-zone-actions.ts
++++ b/app/(dashboard)/dashboard/online-store/delivery-zone-actions.ts
+@@ -61,7 +61,7 @@ export async function saveDeliveryZone(
+     if (id) {
+       result = await supabaseAdmin
+         .from("business_delivery_zones")
+-        .update(values)
++        .update(values).setHeader("x-tenh-business-id", (business.id) ?? "")
+         .eq("id", id)
+         .eq("business_id", business.id)
+         .select("id, name")
+@@ -69,7 +69,7 @@ export async function saveDeliveryZone(
+     } else {
+       result = await supabaseAdmin
+         .from("business_delivery_zones")
+-        .insert(values)
++        .insert(values).setHeader("x-tenh-business-id", (business.id) ?? "")
+         .select("id, name")
+         .single();
+     }
+@@ -132,7 +132,7 @@ export async function deleteDeliveryZone(formData: FormData) {
+ 
+   const { error } = await supabaseAdmin
+     .from("business_delivery_zones")
+-    .delete()
++    .delete().setHeader("x-tenh-business-id", (business.id) ?? "")
+     .eq("id", id)
+     .eq("business_id", business.id);
+ 
+diff --git a/app/(dashboard)/dashboard/online-store/qr-actions.ts b/app/(dashboard)/dashboard/online-store/qr-actions.ts
+--- a/app/(dashboard)/dashboard/online-store/qr-actions.ts
++++ b/app/(dashboard)/dashboard/online-store/qr-actions.ts
+@@ -40,7 +40,7 @@ export async function createBusinessTable(
+       .insert({
+         business_id: business.id,
+         name,
+-      })
++      }).setHeader("x-tenh-business-id", (business.id) ?? "")
+       .select("id, name")
+       .single();
+ 
+@@ -87,7 +87,7 @@ export async function regenerateBusinessTableToken(formData: FormData) {
+     .update({
+       public_token: crypto.randomUUID(),
+       updated_at: new Date().toISOString(),
+-    })
++    }).setHeader("x-tenh-business-id", (business.id) ?? "")
+     .eq("id", tableId)
+     .eq("business_id", business.id)
+     .select("id, name")
+@@ -128,7 +128,7 @@ export async function deleteBusinessTable(formData: FormData) {
+ 
+   const { error } = await supabaseAdmin
+     .from("business_tables")
+-    .delete()
++    .delete().setHeader("x-tenh-business-id", (business.id) ?? "")
+     .eq("id", tableId)
+     .eq("business_id", business.id);
+ 
+diff --git a/app/(dashboard)/dashboard/register/actions.ts b/app/(dashboard)/dashboard/register/actions.ts
+--- a/app/(dashboard)/dashboard/register/actions.ts
++++ b/app/(dashboard)/dashboard/register/actions.ts
+@@ -54,7 +54,7 @@ export async function openRegisterShift(formData: FormData) {
+     opened_by: user.id,
+     opening_cash: openingCash,
+     opening_note: text(formData, "note") || null,
+-  }).select("id").single();
++  }).setHeader("x-tenh-business-id", (business.id) ?? "").select("id").single();
+   if (error) throw new Error(error.message);
+ 
+   await createAuditLog({
+diff --git a/app/(dashboard)/dashboard/settings/business/info-actions.ts b/app/(dashboard)/dashboard/settings/business/info-actions.ts
+--- a/app/(dashboard)/dashboard/settings/business/info-actions.ts
++++ b/app/(dashboard)/dashboard/settings/business/info-actions.ts
+@@ -36,7 +36,7 @@ export async function saveBusinessInfo(form: FormData): Promise<{ success: boole
+     if (banner) info.bannerUrl = await uploadStorefrontImage({ businessId: business.id, kind: "banner", file: banner });
+     // Name first: a retry after a later failure resubmits the same name as a no-op.
+     if (nameChanged) {
+-      const { error: nameError } = await supabaseAdmin.from("businesses").update({ name: businessName }).eq("id", business.id);
++      const { error: nameError } = await supabaseAdmin.from("businesses").update({ name: businessName }).setHeader("x-tenh-business-id", (business.id) ?? "").eq("id", business.id);
+       if (nameError) throw new Error("Unable to save the business name. Please try again.");
+     }
+     const socialLinks = { ...current.social_links, profile: {
+@@ -46,7 +46,7 @@ export async function saveBusinessInfo(form: FormData): Promise<{ success: boole
+     let update = supabaseAdmin.from("business_storefronts").update({
+       description: info.description || null, logo_url: info.logoUrl, banner_url: info.bannerUrl,
+       phone: info.phone || null, address: info.address || null, social_links: socialLinks, updated_at: new Date().toISOString(),
+-    }).eq("business_id", business.id);
++    }).setHeader("x-tenh-business-id", (business.id) ?? "").eq("business_id", business.id);
+     // A branding save racing this request must not be silently overwritten.
+     update = current.updated_at == null ? update.is("updated_at", null) : update.eq("updated_at", current.updated_at);
+     const { data: saved, error } = await update.select("business_id").maybeSingle();
+diff --git a/app/(dashboard)/dashboard/settings/receipts/actions.ts b/app/(dashboard)/dashboard/settings/receipts/actions.ts
+--- a/app/(dashboard)/dashboard/settings/receipts/actions.ts
++++ b/app/(dashboard)/dashboard/settings/receipts/actions.ts
+@@ -30,10 +30,10 @@ async function persistAppearance(businessId:string, a:ReceiptAppearance,expected
+   show_discount:a.showDiscount,show_payment:a.showPayment,show_fulfillment:a.showFulfillment,show_notes:a.showNotes,
+   show_order_number:a.showOrderNumber,show_loyalty:a.showLoyalty,show_cashier:a.showCashier,updated_at:new Date().toISOString(),
+  };
+- let {data:saved,error}=await db.from('branch_receipt_settings').upsert(values,{onConflict:'business_id,location_id'}).select('business_id,location_id').single();
++ let {data:saved,error}=await db.from('branch_receipt_settings').upsert(values,{onConflict:'business_id,location_id'}).setHeader("x-tenh-business-id", (businessId) ?? "").select('business_id,location_id').single();
+  if(error && ['42703','PGRST204'].includes(error.code) && /receipt_qr_url|show_receipt_qr/.test(error.message) && !a.qrUrl) {
+   const legacyValues:Record<string,unknown>={...values};delete legacyValues.receipt_qr_url;delete legacyValues.show_receipt_qr;
+-  ({data:saved,error}=await db.from('branch_receipt_settings').upsert(legacyValues,{onConflict:'business_id,location_id'}).select('business_id,location_id').single());
++  ({data:saved,error}=await db.from('branch_receipt_settings').upsert(legacyValues,{onConflict:'business_id,location_id'}).setHeader("x-tenh-business-id", (businessId) ?? "").select('business_id,location_id').single());
+  }
+  if(error) throw new Error(['42703','PGRST204'].includes(error.code)?'Apply the latest printer settings migrations first.':error.message);
+  if(saved?.business_id!==businessId||saved?.location_id!==locationId)throw new Error('Could not confirm saved settings for this branch. Reload and try again.');
+@@ -107,7 +107,7 @@ async function upsertLabelSettings(values: Record<string, unknown>,expectedBranc
+       updated_at: new Date().toISOString(),
+     },
+     { onConflict: 'business_id,location_id' },
+-  ).select('business_id,location_id').single();
++  ).setHeader("x-tenh-business-id", (business.id) ?? "").select('business_id,location_id').single();
+ 
+   if (error) throw new Error(error.message);
+   if(saved?.business_id!==business.id||saved?.location_id!==locationId)throw new Error('Could not confirm saved label settings.');
+diff --git a/app/(dashboard)/dashboard/settings/security/actions.ts b/app/(dashboard)/dashboard/settings/security/actions.ts
+--- a/app/(dashboard)/dashboard/settings/security/actions.ts
++++ b/app/(dashboard)/dashboard/settings/security/actions.ts
+@@ -281,7 +281,7 @@ export async function deleteOwnAccount(
+ 
+       const { data: deletedBusiness, error: businessDeleteError } = await supabaseAdmin
+         .from("businesses")
+-        .delete()
++        .delete().setHeader("x-tenh-business-id", (businessId) ?? "")
+         .eq("id", businessId)
+         .eq("owner_id", user.id)
+         .select("id")
+diff --git a/app/(dashboard)/dashboard/settings/subscription/actions.ts b/app/(dashboard)/dashboard/settings/subscription/actions.ts
+--- a/app/(dashboard)/dashboard/settings/subscription/actions.ts
++++ b/app/(dashboard)/dashboard/settings/subscription/actions.ts
+@@ -321,7 +321,7 @@ export async function continueFreeTrial(_formData: FormData) {
+     .update({
+       trial_signup_fingerprint_hash: decision.fingerprintHash,
+       updated_at: new Date().toISOString(),
+-    })
++    }).setHeader("x-tenh-business-id", (business.id) ?? "")
+     .eq("id", business.id);
+ 
+   if (!decision.allowed) {
+@@ -331,7 +331,7 @@ export async function continueFreeTrial(_formData: FormData) {
+         subscription_status: "trial_blocked",
+         trial_block_reason: trialBlockReason(decision.message),
+         updated_at: new Date().toISOString(),
+-      })
++      }).setHeader("x-tenh-business-id", (business.id) ?? "")
+       .eq("id", business.id)
+       .eq("subscription_status", "trial_pending");
+ 
+diff --git a/app/(dashboard)/dashboard/settings/users/users-workspace-actions.ts b/app/(dashboard)/dashboard/settings/users/users-workspace-actions.ts
+--- a/app/(dashboard)/dashboard/settings/users/users-workspace-actions.ts
++++ b/app/(dashboard)/dashboard/settings/users/users-workspace-actions.ts
+@@ -261,12 +261,12 @@ export async function saveRolePermissions(
+   if(!expectedBranchId)throw new Error('Reload this screen before changing role permissions.');
+   const {branchId}=await assertOperatingBranch(expectedBranchId);
+   const db=await createBranchClient();
+-  const {error}=await db.from('branch_role_permissions').upsert(rows.map(row=>({...row,location_id:branchId})),{onConflict:'business_id,location_id,role,permission'});
++  const {error}=await db.from('branch_role_permissions').upsert(rows.map(row=>({...row,location_id:branchId})),{onConflict:'business_id,location_id,role,permission'}).setHeader("x-tenh-business-id", (businessId) ?? "");
+   if(error)throw error;
+   const {error:auditError}=await supabaseAdmin.from('audit_logs').insert({
+    business_id:business.id,user_id:user.id,action:'update',entity_type:'business',entity_id:business.id,
+    description:`Updated ${role} role permissions`,metadata:{role,permissionCount:unique.length},
+-  });
++  }).setHeader("x-tenh-business-id", (business.id) ?? "");
+   if(auditError)console.error('Permission audit log failed',auditError);
+   refresh();
+   return {success:true,data:{role,permissions:unique},message:`${role[0].toUpperCase()+role.slice(1)} permissions saved.`};
+@@ -285,12 +285,12 @@ export async function resetRolePermissions(
+   if(!expectedBranchId)throw new Error('Reload this screen before changing role permissions.');
+   const {branchId}=await assertOperatingBranch(expectedBranchId);
+   const db=await createBranchClient();
+-  const {error}=await db.from('branch_role_permissions').delete().eq('business_id',business.id).eq('location_id',branchId).eq('role',role);
++  const {error}=await db.from('branch_role_permissions').delete().setHeader("x-tenh-business-id", (business.id) ?? "").eq('business_id',business.id).eq('location_id',branchId).eq('role',role);
+   if(error)throw error;
+   await supabaseAdmin.from('audit_logs').insert({
+    business_id:business.id,user_id:user.id,action:'update',entity_type:'business',entity_id:business.id,
+    description:`Reset ${role} role permissions to TENH defaults`,metadata:{role},
+-  });
++  }).setHeader("x-tenh-business-id", (business.id) ?? "");
+   refresh();
+   return {success:true,data:{role,permissions:[...rolePermissions[role]]},message:`${role[0].toUpperCase()+role.slice(1)} permissions reset to default.`};
+  }catch(error){return {success:false,message:message(error)};}
+diff --git a/app/(dashboard)/dashboard/stock-transfers/actions.ts b/app/(dashboard)/dashboard/stock-transfers/actions.ts
+--- a/app/(dashboard)/dashboard/stock-transfers/actions.ts
++++ b/app/(dashboard)/dashboard/stock-transfers/actions.ts
+@@ -152,7 +152,7 @@ export async function createTransfer(formData: FormData) {
+       destination_location_id: destinationLocationId,
+       note,
+       created_by: user.id,
+-    })
++    }).setHeader("x-tenh-business-id", (business.id) ?? "")
+     .select("id")
+     .single();
+ 
+@@ -167,13 +167,13 @@ export async function createTransfer(formData: FormData) {
+       product_id: item.productId,
+       quantity: item.quantity,
+     })),
+-  );
++  ).setHeader("x-tenh-business-id", (business.id) ?? "");
+ 
+   if (itemError) {
+     // Avoid leaving an empty draft when the item insert fails.
+     await supabase
+       .from("stock_transfers")
+-      .delete()
++      .delete().setHeader("x-tenh-business-id", (business.id) ?? "")
+       .eq("id", transfer.id)
+       .eq("business_id", business.id)
+       .eq("status", "draft");
+@@ -281,7 +281,7 @@ export async function addTransferItem(formData: FormData) {
+       quantity,
+     },
+     { onConflict: "transfer_id,product_id" },
+-  );
++  ).setHeader("x-tenh-business-id", (business.id) ?? "");
+ 
+   if (error) {
+     throw new Error(error.message);
+@@ -391,7 +391,7 @@ export async function updateTransferDraft(formData: FormData) {
+       destination_location_id: destinationLocationId,
+       note,
+       updated_at: new Date().toISOString(),
+-    })
++    }).setHeader("x-tenh-business-id", (business.id) ?? "")
+     .eq("id", transferId)
+     .eq("business_id", business.id)
+     .eq("status", "draft");
+@@ -410,7 +410,7 @@ export async function updateTransferDraft(formData: FormData) {
+         quantity: item.quantity,
+       })),
+       { onConflict: "transfer_id,product_id" },
+-    );
++    ).setHeader("x-tenh-business-id", (business.id) ?? "");
+ 
+   if (upsertError) {
+     throw new Error(upsertError.message);
+@@ -424,7 +424,7 @@ export async function updateTransferDraft(formData: FormData) {
+   if (removedIds.length > 0) {
+     const { error: deleteItemsError } = await supabase
+       .from("stock_transfer_items")
+-      .delete()
++      .delete().setHeader("x-tenh-business-id", (business.id) ?? "")
+       .eq("transfer_id", transferId)
+       .eq("business_id", business.id)
+       .in("product_id", removedIds);
+@@ -471,7 +471,7 @@ export async function cancelDraftTransfer(formData: FormData) {
+     status: "cancelled",
+     note: [transfer.note, `Cancellation reason: ${reason}`].filter(Boolean).join("\n\n"),
+     updated_at: new Date().toISOString(),
+-  }).eq("id", transferId).eq("business_id", business.id).eq("status", "draft");
++  }).setHeader("x-tenh-business-id", (business.id) ?? "").eq("id", transferId).eq("business_id", business.id).eq("status", "draft");
+   query = transfer.updated_at ? query.eq("updated_at", transfer.updated_at) : query.is("updated_at", null);
+   const { data: cancelled, error: cancelError } = await query.select("id").maybeSingle();
+   if (cancelError) throw new Error(cancelError.message);
+diff --git a/app/(super-admin)/super-admin/businesses/actions.ts b/app/(super-admin)/super-admin/businesses/actions.ts
+--- a/app/(super-admin)/super-admin/businesses/actions.ts
++++ b/app/(super-admin)/super-admin/businesses/actions.ts
+@@ -150,7 +150,7 @@ export async function reactivateExpiredBusiness(
+       max_staff: maxStaff,
+       updated_at:
+         now.toISOString(),
+-    })
++    }).setHeader("x-tenh-business-id", (businessId) ?? "")
+     .eq("id", businessId)
+     .select(`
+       id,
+@@ -461,7 +461,7 @@ export async function updateBusinessStaffLimit(
+       .update({
+         max_staff: maxStaff,
+         updated_at: updatedAt,
+-      })
++      }).setHeader("x-tenh-business-id", (businessId) ?? "")
+       .eq("id", businessId);
+ 
+     if (updateError) {
+@@ -505,7 +505,7 @@ export async function updateBusinessStaffLimit(
+               previousStaffLimit,
+             updated_at:
+               new Date().toISOString(),
+-          })
++          }).setHeader("x-tenh-business-id", (businessId) ?? "")
+           .eq("id", businessId);
+ 
+         throw new Error(
+@@ -746,7 +746,7 @@ let disabledMemberIds: string[] = [];
+       max_staff: maxStaff,
+       updated_at:
+         new Date().toISOString(),
+-    })
++    }).setHeader("x-tenh-business-id", (businessId) ?? "")
+     .eq("id", businessId)
+     .select(`
+       id,
+@@ -905,7 +905,7 @@ if (!business) {
+         disabled_at: disabledAt.toISOString(),
+         scheduled_deletion_at:
+           scheduledDeletionAt.toISOString(),
+-      })
++      }).setHeader("x-tenh-business-id", (businessId) ?? "")
+       .eq("id", businessId);
+ 
+     if (error) {
+@@ -936,7 +936,7 @@ if (!business) {
+         is_active: true,
+         disabled_at: null,
+         scheduled_deletion_at: null,
+-      })
++      }).setHeader("x-tenh-business-id", (businessId) ?? "")
+       .eq("id", businessId);
+ 
+     if (error) {
+@@ -1083,7 +1083,7 @@ export async function deleteBusiness(
+     error: deleteError,
+   } = await supabaseAdmin
+     .from("businesses")
+-    .delete()
++    .delete().setHeader("x-tenh-business-id", (businessId) ?? "")
+     .eq("id", businessId)
+     .select("id, name")
+     .maybeSingle();
+@@ -1237,7 +1237,7 @@ export async function suspendBusiness(
+           scheduledDeletionAt.toISOString(),
+         updated_at:
+           disabledAt.toISOString(),
+-      })
++      }).setHeader("x-tenh-business-id", (businessId) ?? "")
+       .eq("id", businessId);
+ 
+   if (updateError) {
+@@ -1295,7 +1295,7 @@ export async function suspendBusiness(
+           scheduled_deletion_at:
+             scheduledDeletionAt.toISOString(),
+         },
+-      });
++      }).setHeader("x-tenh-business-id", (businessId) ?? "");
+ 
+   if (auditError) {
+     console.error(
+@@ -1398,7 +1398,7 @@ export async function unsuspendBusiness(
+         scheduled_deletion_at: null,
+         updated_at:
+           restoredAt.toISOString(),
+-      })
++      }).setHeader("x-tenh-business-id", (businessId) ?? "")
+       .eq("id", businessId);
+ 
+   if (updateError) {
+@@ -1472,7 +1472,7 @@ export async function unsuspendBusiness(
+           restored_at:
+             restoredAt.toISOString(),
+         },
+-      });
++      }).setHeader("x-tenh-business-id", (businessId) ?? "");
+ 
+   if (auditError) {
+     console.error(
+diff --git a/app/(super-admin)/super-admin/manual-payments/actions.ts b/app/(super-admin)/super-admin/manual-payments/actions.ts
+--- a/app/(super-admin)/super-admin/manual-payments/actions.ts
++++ b/app/(super-admin)/super-admin/manual-payments/actions.ts
+@@ -129,7 +129,7 @@ export async function reviewBusinessChangePayment(
+         currency: order.currency,
+         reviewed_by: admin.email,
+       },
+-    });
++    }).setHeader("x-tenh-business-id", (order.business_id) ?? "");
+ 
+     if (auditError) {
+       console.error(
+diff --git a/app/(super-admin)/super-admin/subscription-payments/actions.ts b/app/(super-admin)/super-admin/subscription-payments/actions.ts
+--- a/app/(super-admin)/super-admin/subscription-payments/actions.ts
++++ b/app/(super-admin)/super-admin/subscription-payments/actions.ts
+@@ -163,7 +163,7 @@ export async function reviewSubscriptionPayment(formData: FormData) {
+       review_note: reviewNote || null,
+       new_expiry: row?.new_expiry ?? null,
+     },
+-  });
++  }).setHeader("x-tenh-business-id", (order.business_id) ?? "");
+ 
+   if (order.requested_by_user_id) {
+     await supabaseAdmin.from("business_notifications").upsert(
+diff --git a/app/api/cron/release-inactive-stores/route.ts b/app/api/cron/release-inactive-stores/route.ts
+--- a/app/api/cron/release-inactive-stores/route.ts
++++ b/app/api/cron/release-inactive-stores/route.ts
+@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
+         disabled_reason: "subscription_expired",
+         scheduled_deletion_at: releaseAt.toISOString(),
+         updated_at: nowIso,
+-      })
++      }).setHeader("x-tenh-business-id", (row.id) ?? "")
+       .eq("id", row.id)
+       .eq("is_active", true)
+       .is("archived_at", null);
+@@ -152,7 +152,7 @@ export async function GET(request: NextRequest) {
+       .update({
+         scheduled_deletion_at: releaseAt.toISOString(),
+         updated_at: nowIso,
+-      })
++      }).setHeader("x-tenh-business-id", (row.id) ?? "")
+       .eq("id", row.id)
+       .eq("is_active", false)
+       .is("archived_at", null);
+diff --git a/app/get-started/actions.ts b/app/get-started/actions.ts
+--- a/app/get-started/actions.ts
++++ b/app/get-started/actions.ts
+@@ -313,7 +313,7 @@ export async function createOwnerBusiness(
+           updated_at: new Date().toISOString(),
+         },
+         { onConflict: "business_id" },
+-      );
++      ).setHeader("x-tenh-business-id", (createdBusinessId) ?? "");
+ 
+     if (storefrontError) {
+       throw new Error(
+@@ -332,7 +332,7 @@ export async function createOwnerBusiness(
+         code: "MAIN",
+         is_default: true,
+         is_active: true,
+-      })
++      }).setHeader("x-tenh-business-id", (createdBusinessId) ?? "")
+       .select("id")
+       .single();
+ 
+@@ -367,7 +367,7 @@ export async function createOwnerBusiness(
+     if (createdBusinessId) {
+       await supabaseAdmin
+         .from("businesses")
+-        .delete()
++        .delete().setHeader("x-tenh-business-id", (createdBusinessId) ?? "")
+         .eq("id", createdBusinessId);
+     }
+ 
+diff --git a/lib/audit/create-audit-log.ts b/lib/audit/create-audit-log.ts
+--- a/lib/audit/create-audit-log.ts
++++ b/lib/audit/create-audit-log.ts
+@@ -87,7 +87,7 @@ export async function createAuditLog({
+       metadata,
+       ip_address: ipAddress,
+       user_agent: userAgent,
+-    });
++    }).setHeader("x-tenh-business-id", (business.id) ?? "");
+ 
+   if (error) {
+     console.error(
+diff --git a/lib/business/create-business-history.ts b/lib/business/create-business-history.ts
+--- a/lib/business/create-business-history.ts
++++ b/lib/business/create-business-history.ts
+@@ -49,7 +49,7 @@ export async function createBusinessHistory({
+       new_values: newValues ?? null,
+       metadata: metadata ?? null,
+       created_by: createdBy,
+-    });
++    }).setHeader("x-tenh-business-id", (businessId) ?? "");
+ 
+   if (error) {
+     throw new Error(
+diff --git a/lib/business/get-current-business.ts b/lib/business/get-current-business.ts
+--- a/lib/business/get-current-business.ts
++++ b/lib/business/get-current-business.ts
+@@ -380,7 +380,7 @@ async function refreshSubscriptionState(
+         expired_at: current.expired_at ?? expiredAt,
+         deletion_scheduled_at: deletionScheduledAt,
+         updated_at: new Date().toISOString(),
+-      })
++      }).setHeader("x-tenh-business-id", (current.id) ?? "")
+       .eq("id", current.id);
+ 
+     if (error) {
+@@ -415,7 +415,7 @@ async function refreshSubscriptionState(
+         disabled_reason: null,
+         is_active: true,
+         updated_at: new Date().toISOString(),
+-      })
++      }).setHeader("x-tenh-business-id", (current.id) ?? "")
+       .eq("id", current.id);
+ 
+     if (error) {
+diff --git a/lib/storefront/get-storefront.ts b/lib/storefront/get-storefront.ts
+--- a/lib/storefront/get-storefront.ts
++++ b/lib/storefront/get-storefront.ts
+@@ -70,7 +70,7 @@ export async function getStorefrontSettings(
+     .from("business_storefronts")
+     .insert({
+       business_id: businessId,
+-    })
++    }).setHeader("x-tenh-business-id", (businessId) ?? "")
+     .select(`
+       business_id,
+       business_type,

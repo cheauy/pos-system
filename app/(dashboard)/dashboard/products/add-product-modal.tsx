@@ -36,6 +36,7 @@ export default function AddProductModal({
   const [open, setOpen] = useState(false);
   const [createKind, setCreateKind] = useState<CreateKind>("simple");
   const isGeneralShop = businessType === "general" && productMode === "standard";
+  const isSizedVariant = businessType === "fashion" || businessType === "shoes";
   const experience = useMemo(() => getProductExperience(businessType), [businessType]);
 
   useEffect(() => {
@@ -96,15 +97,15 @@ export default function AddProductModal({
 
       {open && (
         <div
-          className={`${businessType === "fashion" ? fashionStyles.overlay : ""} fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/35 p-3 backdrop-blur-[2px] sm:p-5`}
-          data-sheet={businessType === "fashion" ? "fashion" : undefined}
+          className={`${isSizedVariant ? fashionStyles.overlay : ""} fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/35 p-3 backdrop-blur-[2px] sm:p-5`}
+          data-sheet={isSizedVariant ? businessType : undefined}
           role="dialog"
           aria-modal="true"
           aria-labelledby="add-product-title"
           onMouseDown={() => setOpen(false)}
         >
           <div
-            className={`${businessType === "fashion" ? fashionStyles.modal : ""} flex max-h-[92dvh] w-full max-w-[1040px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl`}
+            className={`${isSizedVariant ? fashionStyles.modal : ""} flex max-h-[92dvh] w-full max-w-[1040px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl`}
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -164,7 +165,7 @@ export default function AddProductModal({
               </div>
             )}
 
-            <div className={`${businessType === "fashion" ? fashionStyles.modalBody : ""} min-h-0 flex-1 overflow-y-auto bg-slate-50/80 p-4 sm:p-6`}>
+            <div className={`${isSizedVariant ? fashionStyles.modalBody : ""} min-h-0 flex-1 overflow-y-auto bg-slate-50/80 p-4 sm:p-6`}>
               {isGeneralShop ? (
                 createKind === "simple" ? (
                   <StandardProductForm

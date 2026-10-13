@@ -113,6 +113,16 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
   // Filter panel fields are an uncontrolled draft; bumping the key remounts them at the applied values.
   const [draftKey, setDraftKey] = useState(0);
   const [filterError, setFilterError] = useState("");
+  const lastNavigation = useRef("");
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const discard = (event: PointerEvent | KeyboardEvent) => {
+      if (event.type === "keydown" ? (event as KeyboardEvent).key !== "Escape" : filterForm.current?.contains(event.target as Node)) return;
+      setFiltersOpen(false); setFilterError(""); setDraftKey(key => key + 1);
+    };
+    document.addEventListener("keydown", discard); document.addEventListener("pointerdown", discard);
+    return () => { document.removeEventListener("keydown", discard); document.removeEventListener("pointerdown", discard); };
+  }, [filtersOpen]);
   const loadedId = useRef<string | null>(null);
   const allCheckbox = useRef<HTMLInputElement>(null);
   // New rows can push the selected order off this page. Keep its mounted
@@ -224,7 +234,10 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
       params.set(key, String(value));
     }
     setMenu(null);
-    startTransition(() => router.push(`/dashboard/orders${params.size ? `?${params}` : ""}`, { scroll: false }));
+    const target = `/dashboard/orders${params.size ? `?${params}` : ""}`;
+    if (pending && lastNavigation.current === target) return;
+    lastNavigation.current = target;
+    startTransition(() => router.push(target, { scroll: false }));
   }
   function closeFilters() { setFiltersOpen(false); setFilterError(""); setDraftKey((key) => key + 1); }
   function resetFilterDraft() {
@@ -238,7 +251,9 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
     if (values.from && values.to && values.from > values.to) { setFilterError("Start date must be on or before the end date."); setFiltersOpen(true); return; }
     setFilterError(""); setFiltersOpen(false);
     // Status comes from the tabs, not this form, so keep the current tab when filtering.
-    navigate({ search: values.search?.trim() ?? "", from: values.from ?? "", to: values.to ?? "", source: values.source || "all", fulfillment: values.fulfillment || "all", payment: values.payment || "all", page: 1 });
+    const changes = { search: values.search?.trim() ?? "", from: values.from ?? "", to: values.to ?? "", source: values.source || "all", fulfillment: values.fulfillment || "all", payment: values.payment || "all" };
+    if (Object.entries(changes).every(([key, value]) => value === filters[key as keyof WorkspaceFilters])) return;
+    navigate({ ...changes, page: 1 });
   }
   function refresh() { setMenu(null); refreshScheduler.current?.request(true, true); }
   function selectRow(row: OrderRow, trigger?: HTMLElement) {
@@ -314,7 +329,7 @@ export default function OrdersWorkspace({ businessId, branchId, businessName, sh
             <select name="fulfillment" defaultValue={filters.fulfillment} aria-label="Filter by fulfillment"><option value="all">All Fulfillment Types</option>{Object.entries(fulfillmentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             <select name="payment" defaultValue={filters.payment} aria-label="Filter by payment status"><option value="all">All Payment Statuses</option>{Object.entries(paymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             {filterError && <p role="alert" className={styles.filterError}>{filterError}</p>}
-            <div className={styles.filterActions}><button type="button" className={styles.button} onClick={resetFilterDraft}>Reset</button><button type="submit" className={`${styles.button} ${styles.primary}`} disabled={pending}>Apply</button></div>
+            <div className={styles.filterActions}><button type="button" className={styles.button} onClick={closeFilters}>Cancel</button><button type="button" className={styles.button} onClick={resetFilterDraft}>Reset</button><button type="submit" className={`${styles.button} ${styles.primary}`} aria-busy={pending || undefined}>Apply</button></div>
           </div>
         </form>
         <div className={styles.tabsRow}>

@@ -19,11 +19,12 @@ export default function StorefrontContact({ name, settings }: { name: string; se
   const socialImages = new Set(["instagram", "tiktok", "telegram", "whatsapp", "messenger"]);
   return <footer id="contact-us" className="mt-12 scroll-mt-6">
     <div className="store-contact-footer">
-      <section className="footer-shop-profile">
-        <p className="footer-description" data-i18n-ignore={Boolean(settings.description)}>{settings.description || t("Find your favorites in our online collection.")}</p>
+      <section className="footer-shop-profile"><div className="footer-brand">
+        <p data-missing={!settings.description} className="footer-description" data-i18n-ignore={Boolean(settings.description)}>{settings.description || t("Find your favorites in our online collection.")}</p>
         {settings.logo_url ? <img className="footer-shop-logo" src={settings.logo_url} alt={`${name} ${t("logo")}`} /> : <Store size={44} />}
         <h2 data-i18n-ignore="true">{name}</h2>
-        {settings.phone && <a className="contact-line" href={`tel:${settings.phone.replace(/[^+\d]/g, "")}`}><PhoneCall size={15} /><span data-i18n-ignore="true">{settings.phone}</span></a>}
+        </div><div className="footer-contact-details" data-empty={!settings.phone&&!settings.address&&!hours?.enabled}><h2 className="footer-contact-title">{t("Contact")}</h2>
+      {settings.phone && <a className="contact-line" href={`tel:${settings.phone.replace(/[^+\d]/g, "")}`}><PhoneCall size={15} /><span data-i18n-ignore="true">{settings.phone}</span></a>}
         {settings.address && <a className="contact-line" href={profile?.locationUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.address)}`} target="_blank" rel="noreferrer"><MapPin size={15} /><span data-i18n-ignore="true">{settings.address}</span></a>}
       {hours?.enabled && <details className="footer-hours"><summary><Clock3 size={17} />{sameHours && firstDay ? `${t("Mon - Sun")}, ${formatOpeningTime(firstDay.open)} - ${formatOpeningTime(firstDay.close)}` : t("Opening hours")}</summary>
         <dl className="opening-hours-list">{weekDays.map(day => {
@@ -31,8 +32,8 @@ export default function StorefrontContact({ name, settings }: { name: string; se
           return <div key={day} className="contents"><dt>{t(day)}</dt><dd>{!value || value.closed ? t("Closed") : `${formatOpeningTime(value.open)} – ${formatOpeningTime(value.close)}${value.close < value.open ? ` ${t("(+1 day)")}` : ""}`}</dd></div>;
         })}</dl><p className="mt-2 text-[10px]">{hours.timezone.replaceAll("_", " ")}</p>
       </details>}
-      </section>
-      <section><h2>{t("Social")}</h2><nav aria-label={t("Store social links")} className="footer-social-links">
+        </div></section>
+      <section className="footer-social-section" data-empty={!links.some(key=>/^https?:\/\//i.test(String(settings.social_links?.[key]??"")))&&!profile?.contactEmail}><h2>{t("Social")}</h2><nav aria-label={t("Store social links")} className="footer-social-links">
         {links.map(key => {
           const href = settings.social_links?.[key];
           return href && /^https?:\/\//i.test(href) ? <a key={key} href={href} target="_blank" rel="noreferrer" className="store-social-link">{key === "facebook" && <FaFacebook size={24} aria-hidden="true" className="text-blue-600" />}{key === "youtube" && <FaYoutube size={28} className="text-red-600" />}{key === "x" && <FaXTwitter size={28} />}{socialImages.has(key) && <img src={`/social/${key}.png`} alt="" width={24} height={24} loading="lazy" />}<span>{profile?.socialNames?.[key] || socialLabels[key]}</span><ExternalLink size={14} /></a> : null;

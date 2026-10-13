@@ -97,9 +97,17 @@ async function run() {
       const body=await add().locator('.expenses-responsive-formBody').boundingBox();
       assert.ok(body.y+body.height <= footer.y+1, 'Save reserves space below fields');
     }
-    for (const [name,width,height] of [['phone',390,844],['phone-landscape',844,390],['tablet',768,1024],['tablet-landscape',1024,768],['small-phone',320,568]]) {
+    for (const [name,width,height] of [['phone',390,844],['phone-landscape',844,390],['tablet',768,1024],['tablet-pro',1024,1366],['tablet-landscape',1024,768],['small-phone',320,568]]) {
       await page.setViewportSize({width,height});await load();
       assert.equal(await page.locator('.expenses-responsive-compactToolbar').isVisible(),true);
+      assert.equal(await page.locator('.expenses-responsive-historyList').isVisible(),true);
+      assert.equal(await page.locator('.expenses-responsive-historyTable').isVisible(),false);
+      assert.equal(await page.getByRole('heading',{name:'Expense History',exact:true}).filter({visible:true}).count(),1);
+      const metrics=await page.locator('.expenses-responsive-summary > div').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().y));
+      assert.equal(metrics.length,4);
+      const columns=width>=640&&width<1024&&width>height?2:4;
+      assert.ok(metrics.slice(0,columns).every(y=>Math.abs(y-metrics[0])<1),'compact metrics share their expected row');
+      if(columns===2)assert.ok(metrics[2]>metrics[0],'narrow landscape preserves two summary rows');
       await noOverflow(name+' page');
       await button('Add expense').click();
       assert.equal(await add().locator('details').getAttribute('open'),null);
@@ -216,7 +224,7 @@ async function run() {
     await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement.getAttribute('aria-label')),'Close add expense');
     check('simulated visual viewport keyboard, focused field visibility and focus trap');
 
-    for(const [name,width,height] of [['khmer-phone',390,844],['khmer-tablet',768,1024],['khmer-landscape',1024,768]]) {
+    for(const [name,width,height] of [['khmer-phone',390,844],['khmer-tablet',768,1024],['khmer-tablet-pro',1024,1366],['khmer-landscape',1024,768]]) {
       await page.setViewportSize({width,height});await load('km');
       await page.locator('.expenses-responsive-launchers button').last().click();
       await noOverflow(name);await footerVisible(height);

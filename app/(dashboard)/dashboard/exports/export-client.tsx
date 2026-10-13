@@ -1,4 +1,5 @@
 "use client";
+import styles from './export-responsive.module.css';
 import FullExportPanel from './full-export-panel';
 import SafeImportPanel from './safe-import-panel';
 import type { ProductMode } from '@/lib/business/types';
@@ -82,6 +83,7 @@ export default function ExportClient({ recentJobs, isOwner, productMode }: { rec
   const [tab, setTab] = useState<"export" | "import" | "history">("export");
   const [importMessage, setImportMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
+  const [guidanceOpen, setGuidanceOpen] = useState(false);
   const jobs = useMemo(() => recentJobs, [recentJobs]);
 
   async function runExport(entity: ExportEntity, format: "csv" | "json") {
@@ -118,27 +120,26 @@ export default function ExportClient({ recentJobs, isOwner, productMode }: { rec
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className={`${styles.root} space-y-4`} data-tab={tab}>
+      <div className={`${styles.pageIntro} flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between`}>
         <div><h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">Backup &amp; Export</h1><p className="mt-1 text-slate-500">Export or import your business data. Download portable CSV or JSON files for use in other systems.</p></div>
         <button type="button" aria-pressed={tab === "history"} onClick={() => setTab(tab === "history" ? "export" : "history")} className={`inline-flex shrink-0 items-center gap-3 self-start rounded-xl border px-5 py-3 text-left transition ${tab === "history" ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
           <Clock3 size={20}/><span><span className="block font-semibold">History</span><span className="block text-xs">{tab === "history" ? "Click to return to your data" : "View transfer records"}</span></span>
         </button>
       </div>
 
+      <div role="tablist" aria-label="Backup & Export" className={styles.tabs} onKeyDown={event => { const tabs = ['export', 'import', 'history'] as const; const index = tabs.indexOf(tab); const next = event.key === 'ArrowRight' ? tabs[(index + 1) % 3] : event.key === 'ArrowLeft' ? tabs[(index + 2) % 3] : event.key === 'Home' ? tabs[0] : event.key === 'End' ? tabs[2] : null; if (next) { event.preventDefault(); setTab(next); event.currentTarget.querySelector<HTMLButtonElement>(`#backup-${next}-tab`)?.focus(); } }}>{(['export', 'import', 'history'] as const).map(value => <button key={value} id={`backup-${value}-tab`} type="button" role="tab" aria-selected={tab === value} aria-controls={`backup-${value}-panel`} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)}>{value === 'export' ? 'Export' : value === 'import' ? 'Import' : 'History'}</button>)}</div>
 
       {importMessage ? (
-        <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${importMessage.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`}>
+        <div className={`${styles.feedback} flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${importMessage.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`}>
           {importMessage.ok ? <CheckCircle2 className="mt-0.5 shrink-0" size={18} /> : <XCircle className="mt-0.5 shrink-0" size={18} />}
           <span>{importMessage.text}</span>
         </div>
       ) : null}
 
-      {tab === "history" ? (
-        <HistoryPanel jobs={jobs} />
-      ) : (
-        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
-          {isOwner ? <FullExportPanel /> : <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className={styles.historyArea} id="backup-history-panel" role="tabpanel" aria-labelledby="backup-history-tab"><HistoryPanel jobs={jobs} /></div>
+        <div className={`${styles.workspace} grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_400px]`}>
+          <div className={styles.exportArea} id="backup-export-panel" role="tabpanel" aria-labelledby="backup-export-tab">{isOwner ? <FullExportPanel /> : <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-bold text-slate-950">Export Data</h2>
@@ -149,7 +150,7 @@ export default function ExportClient({ recentJobs, isOwner, productMode }: { rec
               </button>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+            <div className={`${styles.staffCards} grid gap-3 md:grid-cols-2 2xl:grid-cols-3`}>
               {entities.map((entity) => {
                 const Icon = entity.icon;
                 return (
@@ -180,17 +181,16 @@ export default function ExportClient({ recentJobs, isOwner, productMode }: { rec
                 </button>
               </article>
             </div>
-          </section>}
+          </section>}</div>
 
-          <SafeImportPanel isOwner={isOwner} productMode={productMode} />
+          <div className={styles.importArea} id="backup-import-panel" role="tabpanel" aria-labelledby="backup-import-tab"><SafeImportPanel isOwner={isOwner} productMode={productMode} /></div>
         </div>
-      )}
 
-      <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-sm shadow-sm md:grid-cols-3">
+      <section data-expanded={guidanceOpen} className={`${styles.guidance} grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-sm shadow-sm md:grid-cols-3`}><button type="button" className={styles.guidanceToggle} aria-expanded={guidanceOpen} aria-controls="backup-guidance" onClick={() => setGuidanceOpen(!guidanceOpen)}>Included & excluded<span aria-hidden="true">{guidanceOpen ? '−' : '+'}</span></button><h2 className={styles.beforeImport}>Before you import</h2><div className={styles.guidanceContent} id="backup-guidance">
         <div className="flex gap-3"><CheckCircle2 className="shrink-0 text-emerald-600" size={20} /><div><h3 className="font-bold text-slate-900">Included</h3><p className="mt-1 text-slate-500">Business products, inventory, customers, orders and operational records for the current tenant.</p></div></div>
         <div className="flex gap-3"><XCircle className="shrink-0 text-red-500" size={20} /><div><h3 className="font-bold text-slate-900">Not included</h3><p className="mt-1 text-slate-500">Passwords, authentication secrets, service-role keys, OAuth credentials and full database internals.</p></div></div>
         <div className="flex gap-3"><FileSpreadsheet className="shrink-0 text-blue-600" size={20} /><div><h3 className="font-bold text-slate-900">Safe import rules</h3><p className="mt-1 text-slate-500">Validate and confirm every import. Changed financial history is blocked; failed imports save no changes.</p></div></div>
-      </section>
+      </div></section>
     </div>
   );
 }

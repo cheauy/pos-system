@@ -18,7 +18,9 @@ export default async function RegisterPage() {
   const allowedBranches = (locations.data ?? []).filter(location =>
     location.id === branchId || (business.role === "owner" && location.plan_disable_pending));
   const allowedIds = allowedBranches.map(location => location.id);
-  if (!allowedIds.length) throw new Error("No register branch is available.");
+  if (!branchId || branchId === "all" || !allowedIds.length) {
+    return <RegisterClient branchId={branchId} branches={[]} shifts={[]} movements={[]} orders={[]} names={{}} />;
+  }
   const [recent, opened] = await Promise.all([
     supabaseAdmin.from("cash_register_shifts").select("*")
       .eq("business_id", business.id).in("location_id", allowedIds)
@@ -77,6 +79,7 @@ export default async function RegisterPage() {
 
   return (
     <RegisterClient
+      branchId={branchId}
       branches={branches}
       shifts={shifts}
       movements={movements}

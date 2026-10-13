@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Node CommonJS test harness. */
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {loadTs}=require('./helpers/load-ts.cjs');
 function setup({signedIn=true,saveError=false,nameError=false,uploadError=false,networkError=false}={}){
@@ -35,7 +36,7 @@ test('confirmed failures clean new uploads and report partial saves; uncertain p
 test('Profile renders name and photo inside one form with one Save Changes button',()=>{
  const React=require('react');const {renderToStaticMarkup}=require('react-dom/server');
  const Form=loadTs('app/(dashboard)/dashboard/settings/profile/profile-form.tsx',{
-  react:React,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'./actions':{updateProfile:async()=>({success:true,message:'Saved'})},
+  react:React,'react/jsx-runtime':require('react/jsx-runtime'),'lucide-react':require('lucide-react'),'./profile-responsive.module.css':{default:{}},'./actions':{updateProfile:async()=>({success:true,message:'Saved'})},
  }).default;
  const html=renderToStaticMarkup(React.createElement(Form,{defaultFullName:'Owner',email:'owner@example.test',role:'owner'}));
  assert.equal((html.match(/<form/g)||[]).length,1);assert.equal((html.match(/type="submit"/g)||[]).length,1);

@@ -22,7 +22,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
+import { FormEvent, useMemo, useRef, useState, useTransition } from "react";
 
 import {
   BRANCH_WEEK_DAYS,
@@ -42,6 +42,9 @@ import {
   updateLocation,
   type BranchActionResult,
 } from "./actions";
+
+import usePanelFocus from "@/components/use-panel-focus";
+import styles from "./branches-client.module.css";
 
 export type BranchManagerOption = {
   id: string;
@@ -123,13 +126,9 @@ export default function BranchesClient({
   const [createOpen, setCreateOpen] = useState(false);
   // Phones: search/filters open as a bottom sheet from a floating Filter button.
   const [filterOpen, setFilterOpen] = useState(false);
-  useEffect(() => {
-    if (!filterOpen) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setFilterOpen(false); };
-    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) setFilterOpen(false); };
-    window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
-    return () => { window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
-  }, [filterOpen]);
+  const filterRef = useRef<HTMLDivElement>(null);
+  const compactFilters=usePanelFocus(filterRef, filterOpen, () => setFilterOpen(false), true);
+
 
   const activeBranches = branches.filter((branch) => branch.isActive);
   const inactiveBranches = branches.filter((branch) => !branch.isActive);
@@ -247,9 +246,8 @@ export default function BranchesClient({
 
   return (
     <>
-      {!filterOpen && <button type="button" onClick={() => setFilterOpen(true)} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-800 shadow-lg sm:hidden"><SlidersHorizontal size={17} />Filter</button>}
-      {filterOpen && <button type="button" aria-label="Close branch filters" onClick={() => setFilterOpen(false)} className="fixed inset-0 z-40 bg-slate-950/40 sm:hidden" />}
-      <div className="space-y-5">
+      {filterOpen && <button type="button" aria-label="Close branch filters" onClick={() => setFilterOpen(false)} className={styles.backdrop} />}
+      <div className={`space-y-5 ${styles.page}`}>
         <header className="space-y-1 max-sm:hidden">
           <div className="text-xs font-medium text-slate-500">Settings &gt; Branches</div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Branches</h1>
@@ -271,7 +269,7 @@ export default function BranchesClient({
           </div>
         ) : null}
 
-        <div className="grid gap-3 max-sm:grid-cols-4 max-sm:gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <div className={`grid gap-3 max-sm:grid-cols-4 max-sm:gap-2 sm:grid-cols-2 xl:grid-cols-5 ${styles.metrics}`}>
           <SummaryCard
             icon={<Building2 size={20} />}
             label="Total Branches"
@@ -345,16 +343,17 @@ export default function BranchesClient({
 
             <button
               type="button"
-              onClick={() => setCreateOpen(true)}
+              onClick={() => {setNotice(null);setCreateOpen(true);}}
               disabled={isPending || branchCapacity.locked || branchCapacity.used >= branchCapacity.limit}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 max-sm:fixed max-sm:bottom-[max(1rem,env(safe-area-inset-bottom))] max-sm:right-4 max-sm:z-40 max-sm:h-12 max-sm:rounded-full max-sm:shadow-lg"
+              className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 ${styles.add}`}
             >
               <Plus size={18} /> {branchCapacity.locked || branchCapacity.used >= branchCapacity.limit ? 'Not available branch' : 'Add Branch'}
             </button>
           </div>
 
-          <div role={filterOpen ? "dialog" : undefined} aria-modal={filterOpen || undefined} aria-label="Branch filters" data-sheet="bottom" className={`${filterOpen ? "fixed inset-x-0 bottom-0 z-50 rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-14 shadow-2xl" : "max-sm:hidden"} grid gap-3 border-b border-slate-100 sm:static sm:rounded-none sm:px-4 sm:py-4 sm:shadow-none lg:grid-cols-[minmax(240px,1fr)_170px_180px_180px]`}>
-            {filterOpen && <button type="button" aria-label="Close branch filters" onClick={() => setFilterOpen(false)} className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600 sm:hidden"><X size={20} /></button>}
+          <div className={styles.toolbar}><label><Search size={17}/><input aria-label={translateLabel("Search branches")} value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder={translateLabel("Search branches")} /></label><button type="button" onClick={()=>setFilterOpen(true)}><SlidersHorizontal size={18}/>{translateLabel("Filter")}</button></div>
+          <div ref={filterRef} data-open={filterOpen} role={filterOpen&&compactFilters ? "dialog" : undefined} aria-modal={(filterOpen&&compactFilters)||undefined} aria-label="Branch filters" data-sheet="bottom" className={`${styles.filters} ${filterOpen ? "fixed inset-x-0 bottom-0 z-50 rounded-t-3xl bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-14 shadow-2xl" : "max-sm:hidden"} grid gap-3 border-b border-slate-100 sm:static sm:rounded-none sm:px-4 sm:py-4 sm:shadow-none lg:grid-cols-[minmax(240px,1fr)_170px_180px_180px]`}>
+            {filterOpen && <button type="button" aria-label="Close branch filters" onClick={() => setFilterOpen(false)} className={styles.filterClose}><X size={20} /></button>}
             <label className="relative">
               <Search
                 size={17}
@@ -428,7 +427,7 @@ export default function BranchesClient({
               visible.map((branch) => (
                 <article
                   key={branch.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                  className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${styles.branchRow}`}
                 >
                   <div className="flex flex-col gap-4 max-sm:flex-row max-sm:items-center max-sm:justify-between xl:flex-row xl:items-start xl:justify-between">
                     <div className="flex min-w-0 gap-4">
@@ -449,6 +448,7 @@ export default function BranchesClient({
                           <Badge tone={branch.isActive ? "green" : "gray"}>
                             {branch.isActive ? "Active" : "Inactive"}
                           </Badge>
+                          {branch.isDefault&&<span className={styles.defaultBadge}>Default</span>}
                         </div>
 
                         <p className="text-xs font-medium text-slate-500">
@@ -632,7 +632,9 @@ export default function BranchesClient({
         open={createOpen}
         onClose={() => setCreateOpen(false)}
       >
-        <form onSubmit={submitCreate} className="space-y-5">
+          <BranchDraftForm onSubmit={submitCreate} className="space-y-5">
+          {notice&&!notice.ok&&<p role="alert" className="text-sm text-red-700">{notice.message}</p>}
+          <div data-branch-step="details">
           <FormSection title="Branch Information">
             <Field label="Branch name" required>
               <input
@@ -692,8 +694,11 @@ export default function BranchesClient({
             </Field>
           </FormSection>
 
-          <FormSection title="Operations">
-            <BranchOpeningHoursEditor />
+          </div>
+          <h3 className={`${styles.desktopOperations} text-sm font-semibold text-slate-900`}>Operations</h3>
+          <div data-branch-step="hours"><BranchOpeningHoursEditor /></div>
+          <div data-branch-step="more">
+          <FormSection title="Operations" compactHeading>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Manager">
                 <select name="managerUserId" defaultValue="" className={inputClass}>
@@ -738,7 +743,8 @@ export default function BranchesClient({
             />
           </FormSection>
 
-          <div className="sticky bottom-0 -mx-5 flex items-center justify-end gap-2 border-t border-slate-100 bg-white px-5 py-4">
+          </div>
+          <div data-branch-footer className="sticky bottom-0 -mx-5 flex items-center justify-end gap-2 border-t border-slate-100 bg-white px-5 py-4">
             <button
               type="button"
               onClick={() => setCreateOpen(false)}
@@ -753,7 +759,7 @@ export default function BranchesClient({
               {isPending ? <><ButtonSpinner /> Creating…</> : <><Plus size={17} /> Create Branch</>}
             </button>
           </div>
-        </form>
+        </BranchDraftForm>
       </Sheet>
 
       {modal?.type === "view" ? (
@@ -764,9 +770,10 @@ export default function BranchesClient({
 
       {modal?.type === "edit" ? (
         <Modal title={formatUiText(translateLabel("Edit {0}"), [modal.branch.name])} onClose={() => setModal(null)} wide data-i18n-ignore-attributes="title">
-          <form onSubmit={submitEdit} className="grid gap-4 sm:grid-cols-2">
+          <BranchDraftForm onSubmit={submitEdit} className="grid gap-4 sm:grid-cols-2">
+            {notice&&!notice.ok&&<p role="alert" className="text-sm text-red-700 sm:col-span-2">{notice.message}</p>}
             <input type="hidden" name="locationId" value={modal.branch.id} />
-            <Field label="Branch name" required>
+            <div data-branch-step="details" className="contents"><Field label="Branch name" required>
               <input
                 name="name"
                 required
@@ -822,12 +829,13 @@ export default function BranchesClient({
                 className={inputClass}
               />
             </Field>
-            <div className="sm:col-span-2">
+            </div><div data-branch-step="hours" className="sm:col-span-2">
               <BranchOpeningHoursEditor
                 key={modal.branch.id}
                 initialValue={modal.branch.openingHours}
               />
             </div>
+            <div data-branch-step="more" className="contents">
             <Field label="Timezone">
               <select
                 name="timezone"
@@ -888,7 +896,7 @@ export default function BranchesClient({
                 </button>
               </div>
             ) : null}
-            <div className="sm:col-span-2 flex justify-end gap-2 border-t pt-4">
+            </div><div data-branch-footer className="sm:col-span-2 flex justify-end gap-2 border-t pt-4">
               <button
                 type="button"
                 onClick={() => setModal(null)}
@@ -903,7 +911,7 @@ export default function BranchesClient({
                 {isPending ? "Saving…" : "Save changes"}
               </button>
             </div>
-          </form>
+          </BranchDraftForm>
         </Modal>
       ) : null}
 
@@ -1136,17 +1144,20 @@ function Modal({
   children: React.ReactNode;
   wide?: boolean;
 }) {
+  const panel = useRef<HTMLElement>(null);
+  usePanelFocus(panel, true, onClose);
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-4">
       <button type="button" aria-label="Close" className="absolute inset-0" onClick={onClose} />
-      <section
-        className={`relative z-10 max-h-[90vh] w-full overflow-y-auto rounded-2xl bg-white shadow-2xl ${wide ? "max-w-3xl" : "max-w-xl"}`}
+      <section ref={panel} role="dialog" aria-modal="true" aria-label={title}
+        className={`relative z-10 max-h-[90vh] w-full overflow-y-auto rounded-2xl bg-white shadow-2xl ${wide ? "max-w-3xl" : "max-w-xl"} ${styles.modal}`}
       >
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-5 py-4">
           <h2 className="text-lg font-bold text-slate-950">{title}</h2>
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close"
             className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-slate-100"
           >
             <X size={18} />
@@ -1171,11 +1182,13 @@ function Sheet({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const panel = useRef<HTMLElement>(null);
+  usePanelFocus(panel, open, onClose);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[100] flex justify-end bg-slate-950/30">
       <button type="button" aria-label="Close" className="absolute inset-0" onClick={onClose} />
-      <aside className="relative z-10 flex h-full w-full max-w-xl flex-col overflow-y-auto border-l border-slate-200 bg-white shadow-2xl">
+      <aside ref={panel} role="dialog" aria-modal="true" aria-label={title} className={`relative z-10 flex h-full w-full max-w-xl flex-col overflow-y-auto border-l border-slate-200 bg-white shadow-2xl ${styles.sheet}`}>
         <div className="sticky top-0 z-10 border-b bg-white px-5 py-4">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -1185,28 +1198,46 @@ function Sheet({
             <button
               type="button"
               onClick={onClose}
+              aria-label="Close"
               className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-slate-100"
             >
               <X size={18} />
             </button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
+        <div className={`min-h-0 flex-1 overflow-y-auto p-5 ${styles.sheetBody}`}>{children}</div>
       </aside>
     </div>
   );
 }
 
+function BranchDraftForm({children,onSubmit,className}:{children:React.ReactNode;onSubmit:(event:FormEvent<HTMLFormElement>)=>void;className:string}) {
+  const {t}=useLanguage();
+  const [step,setStep]=useState("details");
+  const form=useRef<HTMLFormElement>(null);
+  const steps=["details","hours","more"];
+  const advance=()=>{const invalid=form.current?.querySelector<HTMLInputElement>(`[data-branch-step="${step}"] :invalid`);if(invalid){invalid.reportValidity();return;}setStep(steps[steps.indexOf(step)+1]||"more");};
+  return <form ref={form} className={`${className} ${styles.draftForm}`} data-step={step}
+    onInvalidCapture={event=>{const target=event.target as HTMLInputElement;const group=target.closest<HTMLElement>("[data-branch-step]");if(group&&group.dataset.branchStep!==step){event.preventDefault();setStep(group.dataset.branchStep!);requestAnimationFrame(()=>target.reportValidity());}}}
+    onSubmit={event=>{if(window.matchMedia("(max-width:639px)").matches&&step!=="more"){event.preventDefault();advance();return;}onSubmit(event);}}>
+    <nav className={styles.steps} aria-label={t("Branch details")}>{steps.map((value,index)=><button key={value} type="button" aria-current={step===value?"step":undefined} onClick={()=>setStep(value)}>{index+1}. {t(value==="details"?"Details":value==="hours"?"Hours":"More")}</button>)}</nav>
+    {children}
+    <div className={styles.stepActions}>{step!=="details"&&<button type="button" onClick={()=>setStep(steps[steps.indexOf(step)-1])}>{t("Back")}</button>}{step!=="more"&&<button type="button" onClick={advance}>{t("Next")}</button>}</div>
+  </form>;
+}
+
 function FormSection({
   title,
   children,
+  compactHeading = false,
 }: {
   title: string;
   children: React.ReactNode;
+  compactHeading?: boolean;
 }) {
   return (
     <section className="space-y-3">
-      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+      <h3 className={`text-sm font-semibold text-slate-900 ${compactHeading?styles.compactOperations:""}`}>{title}</h3>
       <div className="space-y-3">{children}</div>
     </section>
   );
@@ -1278,7 +1309,7 @@ function BranchOpeningHoursEditor({ initialValue = "" }: { initialValue?: string
           return (
             <div
               key={day}
-              className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-[110px_90px_minmax(0,1fr)_minmax(0,1fr)] sm:items-center"
+              className={`grid gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-[110px_90px_minmax(0,1fr)_minmax(0,1fr)] sm:items-center ${styles.hoursRow}`}
             >
               <span className="text-sm font-semibold text-slate-800">
                 {branchDayLabels[day]}
@@ -1322,7 +1353,7 @@ function BranchOpeningHoursEditor({ initialValue = "" }: { initialValue?: string
 
 function BranchDetails({ branch }: { branch: BranchViewModel }) {
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${styles.branchDetails}`}>
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={branch.isActive ? "green" : "gray"}>
           {branch.isActive ? "Active" : "Disabled"}
@@ -1362,7 +1393,7 @@ function BranchDetails({ branch }: { branch: BranchViewModel }) {
 
 function Detail({ label, value, preserveValue = false }: { label: string; value: string; preserveValue?: boolean }) {
   return (
-    <div className="rounded-xl bg-slate-50 p-3">
+    <div className={`rounded-xl bg-slate-50 p-3 ${styles.detail}`}>
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
         {label}
       </p>

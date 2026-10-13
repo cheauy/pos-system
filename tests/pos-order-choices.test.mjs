@@ -19,19 +19,21 @@ test('Quick Add requires an address while preserving old pending-request validat
 });
 
 test('Orders uses the actual business type for QR filters and preserves other modes', async () => {
-  for (const mode of ['fashion', 'shoes', 'general', 'restaurant', 'cafe', 'milk_tea', 'other', 'beauty']) {
+  for (const mode of ['fashion', 'shoes', 'general', 'grocery', 'accessories', 'restaurant', 'cafe', 'milk_tea', 'other', 'beauty', 'electronics', 'unknown']) {
     let appliedFilters;
     const Page = loadTs('app/(dashboard)/dashboard/orders/page.tsx', {
       'react/jsx-runtime': jsx, 'next/link': { default: () => null }, 'lucide-react': icons,
       '@/lib/auth/require-permission': { requirePermission: async () => ({ id: 'business', name: 'Shop', productMode: 'standard' }) },
       '@/lib/auth/effective-permissions': { businessHasPermission: async () => true },
       '@/lib/business/get-current-business-mode': { getCurrentBusinessMode: async () => ({ value: mode }) },
+      '@/lib/branches/context': { getBranchContext: async () => ({ userId: 'user', branchId: 'branch' }) },
+      '@/lib/storefront/profile': loadTs('lib/storefront/profile.ts'),
       './order-workspace-types': model,
       './order-workspace-data': { loadWorkspace: async (_id, filters) => { appliedFilters = filters; return {}; } },
       './orders-workspace': { default: () => null },
     }).default;
     const page = await Page({ searchParams: Promise.resolve({ source: 'qr', fulfillment: 'dine_in' }) });
-    const show = !['fashion', 'shoes', 'general'].includes(mode);
+    const show = ['restaurant', 'cafe', 'milk_tea'].includes(mode);
     assert.equal(page.props.showTableQr, show);
     assert.equal(appliedFilters.source, show ? 'qr' : 'all');
     assert.equal(appliedFilters.fulfillment, 'walk_in');
@@ -41,7 +43,15 @@ test('Orders uses the actual business type for QR filters and preserves other mo
 test('Orders dropdown renders Walk-in and includes Table QR only when enabled', () => {
   const Workspace = loadTs('app/(dashboard)/dashboard/orders/orders-workspace.tsx', {
     react: React, 'react/jsx-runtime': jsx, 'react-dom': require('react-dom'), 'lucide-react': icons,
-    'next/link': { default: props => React.createElement('a', props) },
+    '@/components/ui/activity-link': { default: props => React.createElement('a', props) },
+    '@/components/date-range-filter': { default: () => null, DateFilterContent: () => null, dateFilterStyles: {} },
+    '@/components/providers/language-provider': { useLanguage: () => ({ t: value => value }) },
+    '@/lib/i18n/translations': { formatUiText: (text, args) => text.replace(/\{(\d+)\}/g, (_, i) => args[i]) },
+    './[id]/order-detail-controls': { CancelOrderItem: () => null },
+    '@/lib/currency-format': { formatStoreMoney: value => String(value) },
+    '../online-orders/actions': {}, '@/lib/supabase/client': {}, '@/lib/supabase/realtime-topic': {},
+    '@/lib/orders/workspace-refresh': {}, '@/components/online-order-listener': {},
+    sonner: { toast: {} }, '@/components/cancel-order-form': { default: () => null },
     'next/navigation': { useRouter: () => ({}) },
     '@/components/order-print-menu': { default: () => null }, '@/components/product-photo': { default: () => null },
     '@/components/order-qr-button': { default: () => null },

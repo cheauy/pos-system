@@ -1,0 +1,24 @@
+.card { color: white; background: #0f172a; border-radius: 18px; padding: 20px; text-align: center; }
+:global(dialog):has(.card) { background: #0f172a; border-color: #334155; }
+:global(dialog):has(.card) > div > div { background: #0f172a; padding: 0; }
+:global(dialog):has(.card) > div > button { background: #1e293b; color: white; width: 44px; height: 44px; }
+.card h3 { margin: 0; font-size: 24px; font-weight: 700; }
+.brand { margin: 4px 0 16px; font-size: 11px; letter-spacing: .22em; color: #cbd5e1; }
+.guide { font-size: 14px; margin: 0 0 16px; }
+.preview { position: relative; width: 100%; aspect-ratio: 4/3; max-height: 45dvh; overflow: hidden; border-radius: 14px; background: #1e293b; }
+.preview video { width: 100%; height: 100%; object-fit: cover; }
+.frame { position: absolute; inset: 12%; pointer-events: none; color: var(--app-accent, #2563eb); }
+.frame i { position: absolute; width: 26px; height: 26px; border: 3px solid currentColor; border-radius: 6px; }
+.frame i:nth-child(1) { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+.frame i:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+.frame i:nth-child(3) { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+.frame i:nth-child(4) { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+.frame::after { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: currentColor; box-shadow: 0 0 14px currentColor; }
+.status { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 16px 0 8px; font-size: 14px; font-weight: 600; }
+.caption { color: #cbd5e1; font-size: 13px; margin-bottom: 18px; }
+.error { padding: 20px 4px; font-size: 14px; }
+.action { min-height: 44px; width: 100%; padding: 8px 14px; border: 1px solid var(--app-accent, #2563eb); border-radius: 10px; color: #fff; font-weight: 600; }
+.retry { margin: 12px 0; }
+@media (max-width: 1024px) { .card { padding: 16px; } .card h3 { font-size: 21px; } }
+@media (min-width: 640px) { :global(dialog):has(.card) { width: min(720px,calc(100vw - 32px)); max-width: min(720px,calc(100vw - 32px)); } }
+@media (max-height: 500px) { .card { padding: 12px; } .brand { margin-bottom: 8px; } .guide { margin-bottom: 8px; } .preview { max-height: 35dvh; } .status { margin: 8px 0; } .caption { margin-bottom: 8px; } }

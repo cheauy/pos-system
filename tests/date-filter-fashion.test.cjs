@@ -86,7 +86,7 @@ test('legacy navigation activity signals its nearest date scope and clears on co
 
 test('server date Apply keeps the branch and uses existing custom range navigation without scrolling', () => {
   const calls=[];
-  const f=fixture('components/date-range-filter.tsx', {'next/navigation':{useRouter:()=>({push:(...args)=>calls.push(args)})},'@/lib/date-range':dates,'./date-range-filter.module.css':{default:{}}},'NavigationDateRange');
+  const f=fixture('components/date-range-filter.tsx', {'next/navigation':{useSearchParams:()=>new URLSearchParams(),useRouter:()=>({push:(...args)=>calls.push(args)})},'@/lib/date-range':dates,'./date-range-filter.module.css':{default:{}}},'NavigationDateRange');
   const tree=f.render({path:'/dashboard/staff-report',query:{branch:'branch-1'},from:'2026-10-01',to:'2026-10-10'});
   tree.props.onApply('2026-10-05','2026-10-10');
   assert.deepEqual(calls,[['/dashboard/staff-report?branch=branch-1&range=custom&from=2026-10-05&to=2026-10-10',{scroll:false}]]);
@@ -99,7 +99,7 @@ test('new Khmer labels preserve technical size labels and count placeholders', (
   assert.equal(translations.translateUiText('XS – XXL','km'),'XS – XXL');
 });
 
-test('date draft does not apply until Apply; invalid dates stay unapplied; presets apply once', () => {
+test('date draft and presets require Apply; invalid dates and unchanged Apply never commit', () => {
   const calls=[];
   const f=fixture('components/date-range-filter.tsx', {'next/navigation':{useRouter:()=>({})},'@/lib/date-range':dates,'./date-range-filter.module.css':{default:{}}});
   const props={from:'2026-10-01',to:'2026-10-10',today:'2026-10-10',onApply:(...args)=>calls.push(args)};
@@ -112,7 +112,40 @@ test('date draft does not apply until Apply; invalid dates stay unapplied; prese
   tree=f.render(props); assert.equal(buttons(tree).find(button=>label(button)==='Apply').props.disabled,true);
   buttons(tree).find(button=>label(button)==='Apply').props.onClick(); assert.equal(calls.length,1);
   buttons(tree).find(button=>label(button)==='Yesterday').props.onClick();
+  assert.equal(calls.length,1,'choosing a preset is still only a draft');
+  tree=f.render(props); buttons(tree).find(button=>label(button)==='Apply').props.onClick();
   assert.deepEqual(calls[1],['2026-10-09','2026-10-09']);
+  tree=f.render({...props,from:'2026-10-09',to:'2026-10-09'});
+  buttons(tree).find(button=>label(button)==='Apply').props.onClick();
+  assert.equal(calls.length,2,'unchanged Apply is a no-op');
+});
+
+test('Back and Forward cannot resurrect a draft from a previously applied range', () => {
+  const f=fixture('components/date-range-filter.tsx', {'next/navigation':{},'@/lib/date-range':dates,'./date-range-filter.module.css':{default:{}}});
+  const props={from:'2026-10-11',to:'2026-10-11',onApply:()=>{throw Error('draft restoration must not Apply');}};
+  let tree=f.render(props);elements(tree,node=>node.type==='input')[0].props.onChange({target:{value:'2026-09-01'}});
+  tree=f.render({...props,from:'2026-10-01'});assert.equal(elements(tree,node=>node.type==='input')[0].props.value,'2026-10-01');
+  tree=f.render(props);assert.equal(elements(tree,node=>node.type==='input')[0].props.value,'2026-10-11');
+});
+
+test('compact rolling and custom dates stay drafts; Cancel and unchanged Apply have no side effects', () => {
+  const calls=[];
+  const f=fixture('components/date-range-filter.tsx', {'next/navigation':{},'@/lib/date-range':dates,'./date-range-filter.module.css':{default:{}}},'DatePresetFilter');
+  const props={value:{preset:'30',from:'',to:''},presets:[{value:'30',label:'Last 30 days'},{value:'all',label:'All time'}],onApply:next=>calls.push(next)};
+  let tree=f.render(props);
+  elements(tree,node=>node.type==='select')[0].props.onChange({target:{value:'all'}});
+  assert.equal(calls.length,0);
+  tree=f.render(props);buttons(tree).find(button=>label(button)==='Cancel').props.onClick();
+  tree=f.render(props);assert.equal(elements(tree,node=>node.type==='select')[0].props.value,'30');
+  elements(tree,node=>node.type==='select')[0].props.onChange({target:{value:'30'}});
+  tree=f.render(props);buttons(tree).find(button=>label(button)==='Apply').props.onClick();assert.equal(calls.length,0);
+  tree=f.render(props);elements(tree,node=>node.type==='select')[0].props.onChange({target:{value:'custom'}});
+  tree=f.render(props);elements(tree,node=>node.type==='input')[0].props.onChange({target:{value:'2026-10-11'}});
+  tree=f.render(props);elements(tree,node=>node.type==='input')[1].props.onChange({target:{value:'2026-10-10'}});
+  tree=f.render(props);assert.equal(buttons(tree).find(button=>label(button)==='Apply').props.disabled,true);
+  buttons(tree).find(button=>label(button)==='Apply').props.onClick();assert.equal(calls.length,0);
+  elements(tree,node=>node.type==='input')[0].props.onChange({target:{value:'2026-10-10'}});
+  tree=f.render(props);buttons(tree).find(button=>label(button)==='Apply').props.onClick();assert.deepEqual(calls,[{preset:'custom',from:'2026-10-10',to:'2026-10-10'}]);
 });
 
 test('fashion chips and presets do not create variants until Add; prices, stock, SKU and deduplication survive', () => {

@@ -10,14 +10,14 @@ import type { StorefrontCatalogCategory, StorefrontCatalogProduct } from "@/lib/
 import { useStorefrontLanguage } from "./storefront-language";
 
 type CatalogSettings = { currency: string; orderingEnabled: boolean };
-export default function StorefrontCatalog({ categories, products, settings, onAdd, productHref }: {
-  productHref: (key: string) => string;
+export default function StorefrontCatalog({ categories, products, settings, onAdd, productHref, search, onSearchChange, pageLimit, onPageLimitChange }: {
+  productHref: (key: string) => string; search?:string;onSearchChange?:(value:string)=>void;pageLimit?:number;onPageLimitChange?:(value:number)=>void;
   categories: StorefrontCatalogCategory[]; products: StorefrontCatalogProduct[];
   settings: CatalogSettings; onAdd: (product: StorefrontCatalogProduct, variantId?: string) => void;
 }) {
   const { t } = useStorefrontLanguage();
   const [newOnly, setNewOnly] = useState(false);
-  const [query, setQuery] = useState("");
+  const [localQuery, setLocalQuery] = useState("");const query=search??localQuery;const setQuery=onSearchChange??setLocalQuery;
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState("featured");
   const [inStock, setInStock] = useState(false);
@@ -25,7 +25,7 @@ export default function StorefrontCatalog({ categories, products, settings, onAd
   const [view, setView] = useState<"grid" | "list">("grid");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
-  const [limit, setLimit] = useState(24);
+  const [localLimit, setLocalLimit] = useState(24);const limit=pageLimit??localLimit;const setLimit=onPageLimitChange??setLocalLimit;
   useEffect(() => {
     function followCollectionLink() {
       const hash = window.location.hash;
@@ -43,7 +43,7 @@ export default function StorefrontCatalog({ categories, products, settings, onAd
     document.addEventListener("click", onCollectionClick);
     window.addEventListener("hashchange", followCollectionLink);
     return () => { cancelAnimationFrame(frame); window.removeEventListener("hashchange", followCollectionLink); document.removeEventListener("click", onCollectionClick); };
-  }, []);
+  }, [setQuery,setLimit]);
   const categoryNames = useMemo(() => new Map(categories.map(row => [row.id, row.name])), [categories]);
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -61,14 +61,15 @@ export default function StorefrontCatalog({ categories, products, settings, onAd
   }, [products, newOnly, query, categoryNames, category, inStock, minPrice, maxPrice, sort]);
   function clearFilters() { setNewOnly(false); setQuery(""); setCategory("all"); setInStock(false); setMinPrice(""); setMaxPrice(""); setLimit(24); }
   return <section id="store-products" className="scroll-mt-5" aria-label={t("Shop products")}>
+    <div className="catalog-heading"><h2>{t("Shop the collection")}</h2></div>
     <div className="catalog-toolbar">
-      <label className="catalog-search"><Search size={19} /><input type="search" aria-label={t("Search products")} placeholder={t("Search for products, categories, or styles…")} value={query} onChange={event => { setQuery(event.target.value); setLimit(24); }} /></label>
+      <label className={`catalog-search ${search!==undefined?"catalog-search-shared":""}`}><Search size={19} /><input type="search" aria-label={t("Search products")} placeholder={t("Search for products, categories, or styles…")} value={query} onChange={event => { setQuery(event.target.value); setLimit(24); }} /></label>
       <label className="catalog-sort"><span>{t("Sort by")}</span><select aria-label={t("Sort products")} value={sort} onChange={event => setSort(event.target.value)}><option value="featured">{t("Pre-order first")}</option><option value="price-low">{t("Price: low to high")}</option><option value="price-high">{t("Price: high to low")}</option><option value="name">{t("Name: A–Z")}</option></select></label>
       <button type="button" className="catalog-tool-button" aria-expanded={filterOpen} aria-controls="catalog-filters" onClick={() => setFilterOpen(!filterOpen)}><SlidersHorizontal size={17} />{t("Filter")}</button>
-      <label className="stock-filter"><input type="checkbox" checked={inStock} onChange={event => setInStock(event.target.checked)} />{t("In stock only")}</label>
+      <label className={`stock-filter ${filterOpen?"stock-filter-open":""}`}><input type="checkbox" checked={inStock} onChange={event => setInStock(event.target.checked)} />{t("In stock only")}</label>
       <div className="catalog-view" role="group" aria-label={t("Product layout")}><button type="button" className="catalog-tool-button" aria-label={t("Grid view")} aria-pressed={view === "grid"} onClick={() => setView("grid")}><Grid2X2 size={17} /></button><button type="button" className="catalog-tool-button" aria-label={t("List view")} aria-pressed={view === "list"} onClick={() => setView("list")}><List size={18} /></button></div>
     </div>
-    {filterOpen && <div className="catalog-filter-panel" id="catalog-filters"><label>{t("Minimum price")} ({settings.currency})<input type="number" min="0" step="0.01" value={minPrice} onChange={event => setMinPrice(event.target.value)} placeholder={t("0")} /></label><label>{t("Maximum price")} ({settings.currency})<input type="number" min="0" step="0.01" value={maxPrice} onChange={event => setMaxPrice(event.target.value)} placeholder={t("Any price")} /></label><button type="button" onClick={clearFilters}>{t("Reset filters")}</button></div>}
+    {filterOpen && <div className="catalog-filter-panel" id="catalog-filters"><label>{t("Minimum price")} ({settings.currency})<input type="number" min="0" step="0.01" value={minPrice} onChange={event => setMinPrice(event.target.value)} placeholder={t("0")} /></label><label>{t("Maximum price")} ({settings.currency})<input type="number" min="0" step="0.01" value={maxPrice} onChange={event => setMaxPrice(event.target.value)} placeholder={t("Any price")} /></label><label className="compact-stock-filter"><input type="checkbox" checked={inStock} onChange={event=>setInStock(event.target.checked)}/>{t("In stock only")}</label><button type="button" onClick={clearFilters}>{t("Reset filters")}</button></div>}
     <div className="catalog-categories"><div className="category-pills" role="group" aria-label={t("Product categories")}><button type="button" aria-pressed={!newOnly && category === "all"} onClick={() => { setNewOnly(false); setCategory("all"); setLimit(24); }}><Grid2X2 size={14} />{t("All products")}</button>{products.some(product => product.isNewArrival) && <button type="button" aria-pressed={newOnly} onClick={() => { setNewOnly(!newOnly); setCategory("all"); setLimit(24); }}><Sparkles size={14} />{t("New arrivals")}</button>}{[...categories.filter(row => products.some(product => product.categoryId === row.id)), ...(products.some(product => !product.categoryId) ? [{ id: "other", name: t("Other") }] : [])].map(row => <button key={row.id} type="button" aria-pressed={!newOnly && row.id === category} onClick={() => { setNewOnly(false); setCategory(row.id); setLimit(24); }}><span data-i18n-ignore={!(row.id === "other") && (true)}>{row.id === "other" ? t("Other") : row.name}</span></button>)}</div><p className="catalog-count" aria-live="polite">{filtered.length} {t(filtered.length === 1 ? "product" : "products")}</p></div>
     {!settings.orderingEnabled && <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{t("Browse our collection. Online ordering is currently paused.")}</p>}
     <div className={`store-product-grid ${view === "list" ? "list-view" : ""}`}>

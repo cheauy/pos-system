@@ -8,6 +8,8 @@ import ShippingTemplateEditor, { type ShippingTemplateDraft } from './shipping-t
 import { defaultShippingLayout, resizeShippingLayout, validateShippingLayout, type ShippingLayout } from '@/lib/receipts/shipping-layout';
 import { shippingValues } from '@/lib/receipts/shipping-label-markup';
 import { Save } from "lucide-react";
+import LabelPreview from "./label-preview";
+import styles from "./label-settings-responsive.module.css";
 import { LabelCard, getTemplate } from "../../barcodes/barcode-labels-client";
 import { ShippingLabel } from "../../shipping-labels/shipping-labels-client";
 import { saveBarcodeLabelSettings, saveShippingLabelSettings, saveShippingCustomTemplate } from "../receipts/actions";
@@ -108,34 +110,42 @@ export default function LabelSettings({ kind, settings, store, branchId }: {
   const previewSettings = {shipping_template:shippingTemplateId,shipping_custom_templates:JSON.stringify(namedTemplates),shipping_custom_qr_needs_review:selectedNamed?.needsReview===true,shipping_custom_layout:JSON.stringify(customLayout),shipping_sample_preview:true,font_size:settings.font_size,density:settings.density,...Object.fromEntries(fields.map(([key]) => [`${kind}_show_${snake(key)}`, visible[key]]))};
   return (
     <>
-    <div className="grid items-start gap-5 xl:grid-cols-2">
-      <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+    <div className={`grid items-start gap-5 xl:grid-cols-2 ${styles.workspace}`}>
+      <section className={`min-w-0 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900 ${styles.settings}`}>
+        <div className={styles.controls}>
         <h2 className="text-lg font-bold">{kind === "barcode" ? "Barcode Label Settings" : "Shipping Labels"}</h2>
         <p className="mt-1 text-sm text-slate-500">{kind === "shipping" ? "Choose an English, Khmer or custom template, then select the paper size." : "Choose a size and the details to print."}</p>
         {message && <p role="status" className="my-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950 dark:text-blue-200">{message}</p>}
         <fieldset disabled={busy} className="mt-5 min-w-0 space-y-5 disabled:pointer-events-none disabled:opacity-60">
           {kind === "shipping" && <div><ShippingTemplateSelect value={shippingTemplateId} customTemplates={namedTemplates} onChange={chooseTemplate} className={inputClass} /><p className="mt-2 text-xs text-slate-500">{shippingTemplate(shippingTemplateId,JSON.stringify(namedTemplates)).description}</p></div>}
           <label className="block text-sm font-semibold">Label size<select aria-label={kind === "shipping" ? "Shipping label size" : "Barcode label size"} value={size} onChange={event => {setSize(event.target.value);if(kind === "shipping")setCustomLayout(current=>resizeShippingLayout(current,event.target.value,Number(sampleValues.qrMinimumMm)));}} className={inputClass}>{sizes.map(value => <option key={value} value={value}>{value.replace("x", " × ")} mm{kind === "barcode" && value === "50x30" ? " — Default" : ""}</option>)}</select></label>
-          {kind === "shipping" && <p className="text-xs text-slate-500">Width {size.split("x")[0]} mm × height {size.split("x")[1]} mm. {shippingTemplateId.startsWith('custom') ? 'Positions and field boxes scale with the paper. Font sizes stay as chosen; check for clipped text after resizing. Add or remove fields in the editor.' : 'Changing paper size selects its compact, square or portrait layout.'} The QR code stays square.</p>}
+          {kind === "shipping" && <p className={`text-xs text-slate-500 ${styles.desktopTip}`}>Width {size.split("x")[0]} mm × height {size.split("x")[1]} mm. {shippingTemplateId.startsWith('custom') ? 'Positions and field boxes scale with the paper. Font sizes stay as chosen; check for clipped text after resizing. Add or remove fields in the editor.' : 'Changing paper size selects its compact, square or portrait layout.'} The QR code stays square.</p>}
           {kind === "shipping" && (selectedNamed || shippingTemplateId==='custom') && <button type="button" onClick={()=>setEditor(selectedNamed?{id:selectedNamed.id,name:selectedNamed.name,layout:resizeShippingLayout(selectedNamed.layout,size,Number(sampleValues.qrMinimumMm)),mode:'update',original:selectedNamed}:{id:crypto.randomUUID(),name:'',layout:resizeShippingLayout(customLayout,size,Number(sampleValues.qrMinimumMm)),mode:'create'})} className="rounded-xl border px-4 py-2">{selectedNamed?'Edit template':'Open custom editor'}</button>}
-          {kind === "barcode" && <div><h3 className="text-sm font-semibold">Label layout</h3><div className="mt-3 grid gap-3 sm:grid-cols-2">{(["product", "price"] as const).map(value => <button type="button" key={value} aria-pressed={template === value} onClick={() => { setTemplate(value); setVisible({...getTemplate(value).elements}); }} className={`min-w-0 rounded-xl border p-3 ${template === value ? "border-blue-600 bg-blue-50 ring-1 ring-blue-600 dark:bg-blue-950" : "border-slate-200 dark:border-slate-700"}`}><div className="overflow-auto pb-2"><div className="mx-auto w-fit"><LabelCard fontSize={settings.font_size} density={settings.density} product={sampleProduct} businessName={store.name} size={value === "product" ? "40x30" : "50x30"} templateId={value} customText="" elements={getTemplate(value).elements}/></div></div><span className="text-sm font-semibold">{getTemplate(value).name}</span></button>)}</div></div>}
+          {kind === "barcode" && <div><h3 className="text-sm font-semibold">Label layout</h3><div className={`mt-3 grid gap-3 sm:grid-cols-2 ${styles.choices}`}>{(["product", "price"] as const).map(value => <button type="button" key={value} aria-pressed={template === value} onClick={() => { setTemplate(value); setVisible({...getTemplate(value).elements}); }} className={`min-w-0 rounded-xl border p-3 ${template === value ? "border-blue-600 bg-blue-50 ring-1 ring-blue-600 dark:bg-blue-950" : "border-slate-200 dark:border-slate-700"}`}><div className="overflow-auto pb-2"><LabelPreview><div className="mx-auto w-fit"><LabelCard fontSize={settings.font_size} density={settings.density} product={sampleProduct} businessName={store.name} size={value === "product" ? "40x30" : "50x30"} templateId={value} customText="" elements={getTemplate(value).elements}/></div></LabelPreview></div><span className="text-sm font-semibold">{getTemplate(value).name}</span></button>)}</div></div>}
 
-          {(kind !== "shipping" || !shippingTemplateId.startsWith("custom")) && <div className="grid gap-3 sm:grid-cols-2">{fields.map(([key, label]) => <label key={key} className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700"><input type="checkbox" checked={visible[key]} onChange={event => setVisible(previous => ({ ...previous, [key]: event.target.checked }))} className="accent-blue-600" />{label}</label>)}</div>}
-          <div className="flex flex-wrap gap-3">
+          {(kind !== "shipping" || !shippingTemplateId.startsWith("custom")) && <div className={`grid gap-3 sm:grid-cols-2 ${styles.fields}`}>{fields.map(([key, label]) => <label key={key} className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700"><input type="checkbox" checked={visible[key]} onChange={event => setVisible(previous => ({ ...previous, [key]: event.target.checked }))} className="accent-blue-600" />{label}</label>)}</div>}
+        </fieldset>
+          {kind === "shipping" && <details className={styles.help}><summary>Printing &amp; sizing tips</summary>
+            <p>Width {size.split("x")[0]} mm × height {size.split("x")[1]} mm. {shippingTemplateId.startsWith('custom') ? 'Positions and field boxes scale with the paper. Font sizes stay as chosen; check for clipped text after resizing. Add or remove fields in the editor.' : 'Changing paper size selects its compact, square or portrait layout.'} The QR code stays square.</p>
+            <p>Print at 100% / Actual size with matching paper and no browser headers or footers. Long content is checked before website printing.</p>
+            {shippingTemplateId.startsWith('custom') && <p>Example Order QR code: sample only, does not open an order. Printed orders use their existing order QR link.</p>}
+          </details>}
+        </div>
+          <fieldset disabled={busy} className={`mt-5 flex flex-wrap gap-3 disabled:pointer-events-none disabled:opacity-60 ${styles.actions}`}>
+
             <button type="button" onClick={() => void save()} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white"><Save size={18} />{busy ? "Saving…" : "Save settings"}</button>
             <Link href={kind === "barcode" ? "/dashboard/barcodes" : "/dashboard/shipping-labels"} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold dark:border-slate-700">Open label printer</Link>
-          </div>
-        </fieldset>
+          </fieldset>
       </section>
-      <aside className="min-w-0 rounded-2xl border border-slate-200 bg-white p-6 xl:sticky xl:top-6 dark:border-slate-700 dark:bg-slate-900">
+      <aside className={`min-w-0 rounded-2xl border border-slate-200 bg-white p-6 xl:sticky xl:top-6 dark:border-slate-700 dark:bg-slate-900 ${styles.preview}`}>
         <h2 className="text-lg font-bold">Live preview</h2>
         <p className="mt-1 text-sm text-slate-500">{kind === "shipping" ? shippingTemplate(shippingTemplateId,JSON.stringify(namedTemplates)).name + " · Sample data" : "Sample data"} · {size.replace("x", " × ")} mm. Changes appear immediately.</p>
-        {kind === "shipping" && <p className="mt-2 text-xs text-slate-500">Print at 100% / Actual size with matching paper and no browser headers or footers. Long content is checked before website printing.</p>}
-        {kind === "shipping" && shippingTemplateId.startsWith('custom') && <p className="mt-2 text-xs text-slate-500">Example Order QR code: sample only, does not open an order. Printed orders use their existing order QR link.</p>}
-        <div className="mt-5 overflow-auto rounded-xl bg-slate-100 p-4 dark:bg-slate-800">
-          <div className="mx-auto w-fit">
+        {kind === "shipping" && <p className={`mt-2 text-xs text-slate-500 ${styles.desktopTip}`}>Print at 100% / Actual size with matching paper and no browser headers or footers. Long content is checked before website printing.</p>}
+        {kind === "shipping" && shippingTemplateId.startsWith('custom') && <p className={`mt-2 text-xs text-slate-500 ${styles.desktopTip}`}>Example Order QR code: sample only, does not open an order. Printed orders use their existing order QR link.</p>}
+        <div className={`mt-5 overflow-auto rounded-xl bg-slate-100 p-4 dark:bg-slate-800 ${styles.stage}`}>
+          <LabelPreview><div className="mx-auto w-fit">
             {kind === "barcode" ? <LabelCard fontSize={settings.font_size} density={settings.density} product={sampleProduct} businessName={store.name} size={size} templateId={template} customText="" elements={{ name: visible.name, price: visible.price, sku: visible.sku, variant: visible.variant, barcode: visible.barcode, image: visible.image, storeName: visible.storeName, customText: false }} /> : <ShippingLabel order={sampleOrder} businessName={store.name} businessPhone={store.phone} businessAddress={store.address} businessLogo={store.logoUrl} businessWebsite={store.websiteUrl} size={size} settings={previewSettings} />}
-          </div>
+          </div></LabelPreview>
         </div>
       </aside>
     </div>

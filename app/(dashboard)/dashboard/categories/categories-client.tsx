@@ -3,6 +3,8 @@ import { useLanguage } from "@/components/providers/language-provider";
 import { formatUiText } from "@/lib/i18n/translations";
 
 import { ButtonSpinner } from "@/components/pending-submit-button";
+import styles from "@/components/management-responsive.module.css";
+import { MANAGEMENT_COMPACT_QUERY, useManagementViewport } from "@/lib/use-management-viewport";
 import CategoryDisplayBranches from "./category-display-branches";
 import { useRouter } from "next/navigation";
 import {
@@ -105,6 +107,7 @@ export default function CategoriesClient({
   const { t: translateLabel } = useLanguage();
 
   const router = useRouter();
+  const workspaceRef = useManagementViewport<HTMLElement>();
   const createFormRef = useRef<HTMLFormElement>(null);
   const repairRequestedRef = useRef(false);
   const [isPending, startTransition] = useTransition();
@@ -125,7 +128,7 @@ export default function CategoriesClient({
     if (!sheetOpen) return;
     const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !document.querySelector("dialog[open]")) { setSheet(null); setDetailId(null); } };
-    const wide = window.matchMedia("(min-width: 640px)"); const onWide = () => { if (wide.matches) { setSheet(null); setDetailId(null); } };
+    const wide = window.matchMedia(MANAGEMENT_COMPACT_QUERY); const onWide = () => { if (!wide.matches) { setSheet(null); setDetailId(null); } };
     window.addEventListener("keydown", onKey); wide.addEventListener("change", onWide);
     return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", onKey); wide.removeEventListener("change", onWide); };
   }, [sheetOpen]);
@@ -308,9 +311,9 @@ export default function CategoriesClient({
 
 
   return (
-    <main className="space-y-5 pb-8">
-      {!sheetOpen && <button type="button" onClick={() => setSheet("create")} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg sm:hidden"><Plus size={18} />Create Category</button>}
-      {detail && <section role="dialog" aria-modal="true" aria-label="Category details" className="fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-16 bg-white px-5 pb-6 sm:hidden">
+    <main ref={workspaceRef} className={`${styles.workspace} space-y-5 pb-8`}>
+      {!sheetOpen && <div className={styles.bottomAction}><button type="button" onClick={() => setSheet("create")} className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg sm:hidden"><Plus size={18} />Create Category</button></div>}
+      {detail && <section role="dialog" aria-modal="true" aria-label="Category details" className={`${styles.categoryDetail} fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-16 bg-white px-5 pb-6 sm:hidden`}>
         <button type="button" aria-label="Close category details" onClick={() => setDetailId(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-700 sm:hidden"><X size={20} /></button>
         <h2 className="text-xl font-bold text-slate-950" data-i18n-ignore="true">{detail.name}</h2>
         <div className="mt-2"><StatusPill online={detail.isOnline} /></div>
@@ -344,8 +347,8 @@ export default function CategoriesClient({
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
+      <div className={`${styles.categoryToolbar} flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between`}>
+        <div className={styles.pageHeading}>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Categories</h1>
           <p className="mt-1 text-sm text-slate-500">
             Organize your products into categories to make them easier to find and manage.
@@ -390,16 +393,16 @@ export default function CategoriesClient({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className={`${styles.metrics} grid gap-4 sm:grid-cols-2 xl:grid-cols-4`}>
         <StatCard icon={<Folder size={26} />} value={categories.length} label="Total Categories" accent="blue" />
         <StatCard icon={<Box size={26} />} value={totalProducts} label="Total Products" accent="violet" />
         <StatCard icon={<Eye size={26} />} value={visibleCount} label="Visible Online" accent="green" />
         <StatCard icon={<EyeOff size={26} />} value={hiddenCount} label="Hidden Online" accent="red" />
       </div>
 
-      <div className="grid items-start gap-5 xl:grid-cols-[350px_minmax(0,1fr)]">
-        <section role={sheet === "create" ? "dialog" : undefined} aria-modal={sheet === "create" || undefined} aria-label="Add new category" data-sheet="full" className={`${sheet === "create" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-16" : "max-sm:hidden"} border border-slate-200 bg-white p-5 shadow-sm sm:static sm:block sm:overflow-visible sm:rounded-2xl sm:pt-5`}>
-          {sheet === "create" && <button type="button" aria-label="Close add category" onClick={() => setSheet(null)} className="absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-700 sm:hidden"><X size={20} /></button>}
+      <div className={`${styles.categoryColumns} grid items-start gap-5 xl:grid-cols-[350px_minmax(0,1fr)]`}>
+        <section role={sheet === "create" ? "dialog" : undefined} aria-modal={sheet === "create" || undefined} aria-label="Add new category" data-sheet="full" data-open={sheet === "create"} className={`${styles.categorySheet} ${sheet === "create" ? "fixed inset-0 z-50 overflow-y-auto overscroll-contain rounded-none pt-16" : "max-sm:hidden"} border border-slate-200 bg-white p-5 shadow-sm sm:static sm:block sm:overflow-visible sm:rounded-2xl sm:pt-5`}>
+          {sheet === "create" && <button type="button" aria-label="Close add category" onClick={() => setSheet(null)} className={`${styles.sheetClose} absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-700 sm:hidden`}><X size={20} /></button>}
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-slate-950">Add New Category</h2>
@@ -407,7 +410,8 @@ export default function CategoriesClient({
             </div>
           </div>
 
-          <form ref={createFormRef} onSubmit={handleCreate} className="mt-6 space-y-5">
+          <form ref={createFormRef} onSubmit={handleCreate} className={`${styles.categoryForm} mt-6 space-y-5`}>
+            <div className={styles.categoryFormBody}>
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
                 <label htmlFor="category-name" className="text-sm font-semibold text-slate-800">
@@ -445,7 +449,7 @@ export default function CategoriesClient({
               <div className="mt-1.5 text-right text-xs text-slate-400">{createDescription.length}/200</div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
+            <div className={`${styles.categoryDisplay} rounded-xl border border-slate-200 bg-slate-50/60 p-3.5`}>
               <div className="mb-3 text-sm font-semibold text-slate-800">Display settings</div>
               <CategoryDisplayBranches branches={branches} embedded />
               <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
@@ -487,6 +491,9 @@ export default function CategoriesClient({
               <p className="mt-1.5 text-xs text-slate-500">Lower index appears first. Example: 1 shows before 2.</p>
             </div>
 
+            </div>
+            <div className={styles.categoryFooter}>
+            <button type="button" onClick={() => setSheet(null)} disabled={isPending} className={styles.compactCancel}>Cancel</button>
             <button
               type="submit"
               disabled={isPending}
@@ -495,11 +502,12 @@ export default function CategoriesClient({
               <Plus size={18} />
               {isPending ? <span className="inline-flex items-center justify-center gap-2"><ButtonSpinner />Creating…</span> : "Create Category"}
             </button>
+            </div>
           </form>
         </section>
 
-        <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+        <section className={`${styles.categoryList} min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm`}>
+          <div className={`${styles.listHeading} flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between`}>
             <div>
               <h2 className="text-lg font-bold text-slate-950">Category List</h2>
               <p className="mt-0.5 text-sm text-slate-500">Manage, edit, and organize your product categories.</p>
@@ -523,7 +531,7 @@ export default function CategoriesClient({
               <tbody className="divide-y divide-slate-100">
                 {paginated.length ? (
                   paginated.map((category) => (
-                    <tr key={category.id} onClick={() => { if (window.matchMedia("(max-width: 639px)").matches) setDetailId(category.id); }} className="text-sm text-slate-700 transition hover:bg-slate-50/70 max-sm:cursor-pointer">
+                    <tr key={category.id} onClick={() => { if (window.matchMedia(MANAGEMENT_COMPACT_QUERY).matches) setDetailId(category.id); }} className="text-sm text-slate-700 transition hover:bg-slate-50/70 max-sm:cursor-pointer">
                       <td className="px-3 py-4 font-semibold text-slate-600 max-sm:hidden">{category.index}</td>
                       <td className="px-3 py-4">
                         <div className="font-semibold text-slate-950" data-i18n-ignore="true">{category.name}</div>
@@ -543,7 +551,7 @@ export default function CategoriesClient({
                           )}
                         </div>
                       </td>
-                      <td className="relative px-4 py-4 text-center max-sm:hidden">
+                      <td className="relative px-4 py-4 text-center max-sm:hidden" onClick={event => event.stopPropagation()}>
                         <button
                           type="button"
                           onClick={(event) => toggleActionMenu(category.id, event.currentTarget)}
@@ -660,10 +668,10 @@ export default function CategoriesClient({
       </div>
 
       {editing ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]">
+        <div className={`${styles.categoryEditOverlay} fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]`}>
           <button type="button" className="absolute inset-0" onClick={() => setEditing(null)} aria-label="Close edit dialog" />
           <form role="dialog" aria-modal="true" aria-labelledby="edit-category-title" onSubmit={handleEdit}
-            className="relative z-10 flex max-h-[min(90dvh,760px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            className={`${styles.categoryEdit} relative z-10 flex max-h-[min(90dvh,760px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl`}>
             <input type="hidden" name="categoryId" value={editing.id} />
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
               <div className="flex items-center gap-3">
@@ -678,7 +686,7 @@ export default function CategoriesClient({
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+            <div className={`${styles.categoryEditBody} min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4`}>
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_110px]">
                 <label className="block text-sm font-semibold text-slate-800">
                   Category name <span className="text-rose-500">*</span>
@@ -704,7 +712,7 @@ export default function CategoriesClient({
               </div>
             </div>
 
-            <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 bg-white px-5 py-3.5">
+            <div className={`${styles.categoryEditFooter} flex shrink-0 justify-end gap-2 border-t border-slate-200 bg-white px-5 py-3.5`}>
               <button type="button" onClick={() => setEditing(null)} className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
               <button type="submit" disabled={isPending} className="h-10 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">{isPending ? "Saving..." : "Save Changes"}</button>
             </div>

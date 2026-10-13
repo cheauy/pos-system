@@ -1,11 +1,10 @@
 "use client";
-import DateRangeFilter, { dateFilterStyles } from "@/components/date-range-filter";
+import DateRangeFilter, { DatePresetFilter } from "@/components/date-range-filter";
 import { inCalendarDateRange } from "@/lib/date-range";
 
 import Link from "next/link";
 import {
   BadgeDollarSign,
-  CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -479,26 +478,7 @@ export default function ManualPaymentApprovalDashboard({
                   <option value="both">URL + mode</option>
                 </select>
 
-                <label className={`${dateFilterStyles.legacy} relative`}>
-                  <CalendarDays
-                    size={15}
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                  <select
-                    value={dateFilter}
-                    onChange={(event) => {
-                      setDateFilter(event.target.value as DateFilter);
-                      setCustomDates(null);
-                      setPage(1);
-                    }}
-                    className="h-10 rounded-xl border border-slate-200 bg-white pl-9 pr-8 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-                  >
-                    <option value="7">Last 7 days</option>
-                    <option value="30">Last 30 days</option>
-                    <option value="90">Last 90 days</option>
-                    <option value="all">All time</option>
-                  </select>
-                </label>
+                <DatePresetFilter value={{ preset: customDates ? "custom" : dateFilter, from: customDates?.from ?? "", to: customDates?.to ?? "" }} presets={[{value:"7",label:"Last 7 days"},{value:"30",label:"Last 30 days"},{value:"90",label:"Last 90 days"},{value:"all",label:"All time"}]} onApply={next => { if(next.preset === "custom") setCustomDates({from:next.from,to:next.to}); else { setDateFilter(next.preset as DateFilter); setCustomDates(null); } setPage(1); }} />
 
                 <button
                   type="button"

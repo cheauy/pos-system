@@ -37,6 +37,27 @@ export default function SettingsSections({ available, children }: { available: S
     return all;
   }, []);
 
+  useEffect(() => {
+    const root = panel.current;
+    if (!root) return;
+    const viewport = window.visualViewport;
+    const measure = () => {
+      const top = Math.max(viewport?.offsetTop ?? 0, root.getBoundingClientRect().top);
+      const bottom = (viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight);
+      root.style.setProperty("--settings-panel-height", `${Math.max(160, bottom - top - 12)}px`);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (nav.current) observer.observe(nav.current);
+    const header = root.closest(".bs-layout")?.previousElementSibling;
+    if (header) observer.observe(header);
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, { passive: true });
+    viewport?.addEventListener("resize", measure);
+    viewport?.addEventListener("scroll", measure);
+    return () => { observer.disconnect(); window.removeEventListener("resize", measure); window.removeEventListener("scroll", measure); viewport?.removeEventListener("resize", measure); viewport?.removeEventListener("scroll", measure); };
+  }, []);
+
   function select(id: SettingsSectionId, replace = false) {
     const next = new URLSearchParams(window.location.search);
     next.set("section", id);

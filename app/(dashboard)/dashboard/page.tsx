@@ -299,6 +299,7 @@ export default async function DashboardPage({
               <div className="mb-5 sm:hidden"><ViewBranchSelect branches={branches || []} branchId={branchId}/></div>
               <a href="#" aria-label="Close dashboard filters" className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-600 sm:hidden"><X size={20} /></a>
               <DashboardPeriodFilter
+                key={[period.range,period.selectedFrom,period.selectedTo,branchId].join("|")}
                 activeRange={period.range}
                 today={localDateKey(new Date())}
                 selectedFrom={period.selectedFrom}

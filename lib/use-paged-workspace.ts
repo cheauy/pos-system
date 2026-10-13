@@ -7,16 +7,17 @@ export function usePagedWorkspace<T, F>(initial: T, filters: F, load: (filters: 
   const [data, setData] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
   const key = JSON.stringify(filters);
   // The server renders the default filters; a refreshed `initial` for them needs no second request.
   const defaultKey = useRef(key);
-  const previous = useRef({ initial, key, filters });
+  const previous = useRef({ initial, key, filters, revision });
   useEffect(() => {
-    if (previous.current.initial === initial && previous.current.key === key) return;
+    if (previous.current.initial === initial && previous.current.key === key && previous.current.revision === revision) return;
     const nextFilters = JSON.parse(key) as F;
     const typed = textField !== undefined && previous.current.filters[textField] !== nextFilters[textField];
     const refreshed = previous.current.initial !== initial;
-    previous.current = { initial, key, filters: nextFilters };
+    previous.current = { initial, key, filters: nextFilters, revision };
     let current = true;
     if (refreshed && key === defaultKey.current) {
       setData(initial); setError(""); setBusy(false);
@@ -31,6 +32,6 @@ export function usePagedWorkspace<T, F>(initial: T, filters: F, load: (filters: 
       }).finally(() => { if (current) setBusy(false); });
     }, typed ? 300 : 0);
     return () => { current = false; clearTimeout(timer); };
-  }, [initial, key, load, textField]);
-  return { data, busy, error };
+  }, [initial, key, load, textField, revision]);
+  return { data, busy, error, retry: () => setRevision(value => value + 1) };
 }

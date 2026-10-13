@@ -1,4 +1,5 @@
 'use client';
+import { compareVariantSizes } from '@/lib/products/variant-editor';
 import { formatUiText } from "@/lib/i18n/translations";
 import { useLanguage } from "@/components/providers/language-provider";
 
@@ -120,7 +121,7 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
   const issue = currencyChanged || productIssue || couponIssue || amountIssue;
   const groups = useMemo(() => productGroups(data, branch, filters, favorites), [data, branch, filters, favorites]);
   const colors = useMemo(() => Array.from(new Set(data.products.map(p => p.color).filter((v): v is string => Boolean(v)))).sort(), [data.products]);
-  const sizes = useMemo(() => Array.from(new Set(data.products.map(p => p.size).filter((v): v is string => Boolean(v)))).sort((a,b) => a.localeCompare(b, undefined, { numeric: true })), [data.products]);
+  const sizes = useMemo(() => Array.from(new Set(data.products.map(p => p.size).filter((v): v is string => Boolean(v)))).sort(compareVariantSizes), [data.products]);
   const branchName = data.branches.find(b => b.id === branch)?.name || 'All branches';
   const timezone = data.branches.find(b => b.id === branch)?.timezone || 'Asia/Phnom_Penh';
   let dateLabel = '', timeLabel = '';
@@ -270,8 +271,9 @@ export default function PosClient({ initialData }: { initialData: Workspace }) {
     else chooseProduct(group.variants[0]);
   }
   function scan(code: string): boolean {
+    if (data.barcodeScanning === 'unavailable') { setNotice({kind:'error',text:'Barcode verification is unavailable. Choose products manually; barcode scanning is disabled until verification is restored.'}); return false; }
     const exact = code.trim().toLowerCase();
-    const matched = data.products.filter(p => p.barcode?.toLowerCase() === exact || p.sku?.toLowerCase() === exact);
+    const matched = data.products.filter(p => p.barcode?.toLowerCase() === exact || p.sku?.toLowerCase() === exact || p.barcodeAliases?.some(alias => alias.toLowerCase() === exact));
     if (matched.length !== 1) { if (matched.length > 1) { changeFilter('search', code); setNotice({ kind: 'error', text: 'Several products share this barcode or SKU. Select the correct item manually.' }); } return false; }
     if (matched[0].product_type === 'configurable') { chooseProduct(matched[0]); return true; }
     return addProduct(matched[0]);

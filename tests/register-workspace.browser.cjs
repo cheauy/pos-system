@@ -13,7 +13,7 @@ const { chromium } = require(require.resolve('playwright', {
 }));
 const root = path.resolve(__dirname, '..');
 const fixture = path.join(__dirname, 'fixtures/register-workspace.tsx');
-const output = path.join(root, 'docs/evidence/register-redesign-20261010');
+const output = path.join(root, 'docs/evidence/register-branch-context-20261011');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'tenh-register-fixture-'));
 const checks = [];
 function check(name) { checks.push(name); console.log('PASS ' + name); }
@@ -37,7 +37,7 @@ async function build() {
       output: { path: temp, filename: 'fixture.js' },
       resolve: { extensions: ['.tsx', '.ts', '.js'], alias: { '@': root, 'next/navigation$': fixture } },
       module: { rules: [{ test: /\.(tsx?|css)$/, use: loader }] },
-      plugins: [new webpack.NormalModuleReplacementPlugin(/^\.\/actions$/, resource => {
+      plugins: [new webpack.NormalModuleReplacementPlugin(/^(\.\/actions|\.\.\/workspace-branch-provider)$/, resource => {
         if (resource.context.endsWith(path.join('dashboard', 'register'))) resource.request = fixture;
       })],
       performance: { hints: false },
@@ -110,8 +110,8 @@ async function run() {
     await page.locator('[name=openingCash]').fill('125.25');
     await page.locator('form[data-draft=opening] [name=note]').fill('Opening fixture draft');
     page.once('dialog', dialog => dialog.dismiss());
-    await page.getByRole('combobox', { name: 'Choose register branch' }).selectOption('other');
-    assert.equal(await page.getByRole('combobox', { name: 'Choose register branch' }).inputValue(), 'branch');
+    await get('Switch to TENH Riverside').click();
+    assert.equal(await page.locator('[data-header-branch]').innerText(), 'branch');
     assert.equal(await page.locator('[name=openingCash]').inputValue(), '125.25');
     await page.evaluate(() => { window.registerFixture.failNext = true; });
     await get('Open Shift').click();
@@ -122,6 +122,8 @@ async function run() {
     await page.locator('form[data-draft=opening]').evaluate(form => { form.requestSubmit(); form.requestSubmit(); });
     await page.waitForFunction(() => window.registerFixture.calls.length === 2);
     assert.equal(await get('Open Shift').isDisabled(), true);
+    page.once('dialog', dialog => dialog.accept());await get('Switch to TENH Riverside').click();
+    assert.equal(await page.locator('[data-header-branch]').innerText(), 'branch', 'saving guard prevents workspace branch changes');
     await page.evaluate(() => { window.registerFixture.release(); });
     await page.getByRole('heading', { name: 'Active Shift' }).waitFor();
     assert.equal((await calls()).filter(c => c.action === 'opening').length, 2, 'one failed request + one success');
@@ -316,6 +318,53 @@ async function run() {
     await get('Close Register').click();
     assert.equal(await page.locator('[name=closingCash]').isVisible(), true);
     check('closing-only branch keeps closure and history available, blocks movement UI');
+
+    for(const [name,width,height] of [['desktop',1440,1000],['phone',390,844],['tablet',820,1180],['phone-landscape',844,390],['tablet-landscape',1180,820]]) {
+      await page.setViewportSize({width,height});await load();
+      assert.equal(await page.getByRole('combobox',{name:'Choose register branch'}).count(),0);
+      await get('Record Cash Movement').click();await page.locator('[name=amount]').fill('10');await page.locator('[name=reason]').selectOption('Cash float');
+      await page.locator('form[data-draft=movement]').evaluate(form=>{window.staleRegisterForm=form;});
+      await page.evaluate(()=>{window.registerFixture.holdBranch=true;});
+      page.once('dialog',dialog=>dialog.accept());await get('Switch to TENH Riverside').click();
+      await page.locator('[data-skeleton=form]').waitFor();
+      assert.equal(await page.locator('main form').count(),0);assert.equal(await page.locator('dialog[open]').count(),0);assert.equal(await get('View Z Report').isDisabled(),true);
+      assert.ok(!(await page.locator('main').innerText()).includes('$320.00'),'previous branch totals are cleared');
+      await page.evaluate(()=>window.staleRegisterForm.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));assert.equal((await calls()).length,0);
+      await page.evaluate(()=>window.registerFixture.loadBranch('other'));
+      await page.locator('form[data-draft=opening]').waitFor();assert.equal(await page.locator('[name=locationId]').inputValue(),'other');
+      assert.equal(await page.locator('[name=openingCash]').inputValue(),'0.00');
+      await get('View Z Report').click();assert.ok((await page.locator('dialog[open]').innerText()).includes('TENH Riverside'));await get('Close report').click();
+      await noOverflow(name+' switched branch');await screenshot(name+'-header-branch');
+    }
+    check('desktop, phone/tablet portrait and landscape: header context, loading, cleared forms/totals/reports, no stale submission and branch Z reports');
+
+    await load();await get('View Z Report').click();assert.equal(await page.locator('dialog[open]').count(),1);
+    await page.evaluate(()=>window.registerFixture.setHeader('other',true));await page.locator('[data-skeleton=form]').waitFor();assert.equal(await page.locator('dialog[open]').count(),0);
+    await page.evaluate(()=>{window.registerFixture.setHeader('branch',true);window.registerFixture.setHeader('other',true);window.registerFixture.loadBranch('branch');});
+    assert.equal(await page.locator('[data-skeleton=form]').isVisible(),true);assert.equal(await page.locator('main form').count(),0);
+    await page.evaluate(()=>window.registerFixture.loadBranch('other'));await page.locator('form[data-draft=opening]').waitFor();
+    await page.locator('[name=locationId]').evaluate(input=>{input.value='branch';});await get('Open Shift').click();assert.equal((await calls()).length,0,'old opening branch identity is rejected');await page.locator('[name=locationId]').evaluate(input=>{input.value='other';});
+    await page.locator('[name=openingCash]').fill('77.10');await get('Open Shift').click();await page.getByRole('heading',{name:'Active Shift',exact:true}).waitFor();
+    assert.equal((await calls())[0].fields.locationId,'other');await get('Record Cash Movement').click();await page.locator('[name=amount]').fill('2.15');await page.locator('[name=reason]').selectOption('Cash float');
+    await page.locator('form[data-draft=movement] [name=shiftId]').evaluate(input=>{input.value='active';});await get('Record Movement').click();assert.equal((await calls()).length,1,'old movement shift identity is rejected');await page.locator('form[data-draft=movement] [name=shiftId]').evaluate(input=>{input.value='fixture-opened';});await get('Record Movement').click();
+    assert.equal((await calls())[1].fields.shiftId,'fixture-opened');await get('Close Register').click();await page.locator('[name=closingCash]').fill('79.25');
+    await page.locator('form[data-draft=closing] [name=shiftId]').evaluate(input=>{input.value='active';});page.once('dialog',dialog=>dialog.accept());await get('Close & Calculate').click();assert.equal((await calls()).length,2,'old closing shift identity is rejected');await page.locator('form[data-draft=closing] [name=shiftId]').evaluate(input=>{input.value='fixture-opened';});page.once('dialog',dialog=>dialog.accept());await get('Close & Calculate').click();
+    assert.equal((await calls())[2].fields.shiftId,'fixture-opened');await get('View Z Report').click();assert.ok((await page.locator('dialog[open]').innerText()).includes('TENH Riverside'));assert.ok((await page.locator('dialog[open]').innerText()).includes('$79.25'));
+    check('rapid context updates and delayed old data stay blocked; opening/movement/closing retain the new branch and exact shift identity');
+
+    for(const mode of ['no-register','no-branch','all','duplicate']) {
+      await load(mode);assert.equal(await page.locator('main form').count(),0);assert.equal(await get('Record Cash Movement').count(),0);assert.equal(await get('Close Register').count(),0);assert.ok(await page.getByRole('alert').isVisible());assert.equal((await calls()).length,0);
+      if(mode==='duplicate'){await get('View Z Report').click();assert.equal(await get('Print Z Report').isVisible(),true);}else assert.equal(await get('View Z Report').isDisabled(),true);
+    }
+    check('no register, no branch, All branches and duplicate open shifts never guess a drawer; valid Z reports remain accessible');
+
+    await load('pending-closure');const closure=page.locator('main > details');await closure.locator(':scope > summary').click();
+    assert.ok((await closure.locator(':scope > summary').innerText()).includes('TENH Final Closure'));assert.equal(await closure.getByRole('button',{name:'Record Cash Movement',exact:true}).count(),0);
+    const ids=await page.locator('main [id]').evaluateAll(nodes=>nodes.map(node=>node.id));assert.equal(new Set(ids).size,ids.length,'each branch closure has its own form and ARIA targets');
+    await closure.getByRole('button',{name:'Close Register',exact:true}).click();await closure.locator('[name=closingCash]').fill('100');page.once('dialog',dialog=>dialog.accept());await closure.getByRole('button',{name:'Close & Calculate',exact:true}).click();
+    assert.equal((await calls())[0].fields.shiftId,'pending-active');assert.equal(await page.locator('[data-header-branch]').innerText(),'branch');
+    await closure.waitFor({state:'detached'});assert.equal(await get('View Z Report').isEnabled(),true);
+    check('explicit owner final-closure panel preserves its own shift identity without changing the header branch');
     assert.deepEqual(errors, [], 'browser runtime errors');
     fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify({ checks, measurements, browserErrors: errors, financialOperations: 0 }, null, 2));
   } finally {

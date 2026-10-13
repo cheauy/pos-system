@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Standalone Node regression fixture. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const React = require('react');
@@ -16,9 +17,11 @@ test('filter edits, Reset and closing stay drafts; Reset clears date errors befo
   const popup = {id:'staff-filters',style:{display:'flex'},dataset:{}};
   const form = { elements: fields, closest: selector => selector === ':target' ? (popupOpen ? popup : null) : popup.dataset.dateFilterDisplay === undefined ? null : popup };
   const globals = { HTMLInputElement: Input, HTMLSelectElement: class {}, FormData: class {
-    has(name) { return Boolean(fields.namedItem(name)); }
-    get(name) { return fields.namedItem(name)?.value; }
-    forEach(callback) { fields.forEach(field => callback(field.value, field.name)); }
+    constructor(form) { this.data = new Map(form ? fields.map(field => [field.name,field.value]) : []); }
+    has(name) { return this.data.has(name); }
+    get(name) { return this.data.get(name); }
+    set(name,value) { this.data.set(name,value); }
+    forEach(callback) { this.data.forEach(callback); }
   }, document: {querySelectorAll:()=>[{getAttribute:()=> '#staff-filters',focus:options=>{assert.deepEqual(options,{preventScroll:true});sequence.push('focus');}}]}, location: {pathname:'/dashboard/staff-report',search:'?branch=kept'}, window: {
     history: {state:{kept:true},replaceState(state,_title,url){assert.deepEqual(state,{kept:true});assert.equal(url,'/dashboard/staff-report?branch=kept');popupOpen=false;sequence.push('close');}},
     addEventListener(name, handler) { events[name] = handler; }, removeEventListener() {} } };
@@ -65,4 +68,6 @@ test('filter edits, Reset and closing stay drafts; Reset clears date errors befo
   assert.equal(fields.namedItem('from').value, '2026-10-09');
   assert.equal(fields.namedItem('range').value, 'custom');
   assert.equal(routes.length, 1);
+  rendered.props.onSubmit(event);
+  assert.equal(routes.length, 1, 'unchanged applied fields do not navigate again');
 });

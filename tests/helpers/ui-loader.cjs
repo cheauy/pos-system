@@ -14,6 +14,9 @@ function uiLoader(services = {}) {
     }).outputText;
     new Function('require', 'module', 'exports', code)(id => {
       if (Object.hasOwn(services, id)) return services[id];
+      // Presentation imports are not executable JavaScript in this component runner.
+      if (id.endsWith('.module.css')) return { default: new Proxy({}, { get: (_, key) => String(key) }) };
+      if (id.endsWith('.css')) return {};
       if (id.startsWith('.') || id.startsWith('@/')) {
         const base = id.startsWith('@/') ? path.join(root, id.slice(2)) : path.resolve(path.dirname(full), id);
         const target = [base, `${base}.ts`, `${base}.tsx`, path.join(base, 'index.ts')].find(p => fs.existsSync(p) && fs.statSync(p).isFile());

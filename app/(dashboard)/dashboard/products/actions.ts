@@ -1,6 +1,9 @@
 "use server";
 
+import { validateNewProductBarcode } from "@/lib/barcode/code128";
 import { validateCode39 } from "@/lib/barcode/code39";
+import { generateInternalBarcode } from "@/lib/barcode/generate";
+import { barcodeCapability, BARCODE_UNAVAILABLE } from "@/lib/barcode/require-contract";
 import { validateEditableVariants, MAX_EDIT_VARIANTS } from "@/lib/products/variant-editor";
 import { compressPhoto } from "@/lib/images/compress-photo";
 import { PUBLIC_PHOTO_CACHE_SECONDS } from "@/lib/public-photo-cache";
@@ -125,10 +128,9 @@ async function resolveProductGallery(formData: FormData, allowed: Set<string>, u
   return [...new Set(urls)];
 }
 
-function checkProductBarcodes(values: string[], changedValues = values): string | null {
-  const encodingError = changedValues.map(validateCode39).find(Boolean);
+function checkProductBarcodes(values: string[], changedValues = values, preservation = false): string | null {
+  const encodingError = changedValues.map(preservation ? validateNewProductBarcode : validateCode39).find(Boolean);
   if (encodingError) return encodingError;
-  if (values.some(value => value.length > 80 || /[\x00-\x1f\x7f]/.test(value))) return "Keep barcodes within 80 printable characters.";
   const nonEmpty = values.filter(Boolean);
   return new Set(nonEmpty).size === nonEmpty.length ? null : "Each variant must use a different barcode.";
 }
@@ -225,9 +227,7 @@ export async function createProduct(
   );
 
   const barcodeInput = getBarcodeText(formData);
-  const barcode = barcodeInput ?? sku;
-  const barcodeError = checkProductBarcodes([barcode]);
-  if (barcodeError) return { success: false, message: barcodeError };
+  let barcode = barcodeInput ?? sku;
   const size = isGeneralShop ? getOptionalText(formData, "size") : null;
   const color = isGeneralShop ? getOptionalText(formData, "color") : null;
   const isOnline = isGeneralShop ? formData.get("isOnline") === "on" : true;
@@ -311,6 +311,12 @@ export async function createProduct(
     redirect("/login");
   }
 
+  const barcodeState = await barcodeCapability(supabase);
+  if (barcodeState === 'unavailable') return { success: false, message: BARCODE_UNAVAILABLE };
+  const preservation = barcodeState === 'ready';
+  barcode = barcodeInput ?? (preservation ? generateInternalBarcode() : sku);
+  const barcodeError = checkProductBarcodes([barcode], [barcode], preservation);
+  if (barcodeError) return { success: false, message: barcodeError };
   const {
     data: existingProduct,
     error: skuCheckError,
@@ -661,6 +667,7 @@ export async function updateProduct(
     redirect("/login");
   }
 
+  if (await barcodeCapability(supabase) === 'unavailable') throw new Error(BARCODE_UNAVAILABLE);
   const {
     data: existingProduct,
     error: existingProductError,
@@ -1325,7 +1332,7 @@ type VariantInput = {
   imageSlot: string | null;
 };
 
-function parseVariantInputs(value: FormDataEntryValue | null): VariantInput[] {
+function parseVariantInputs(value: FormDataEntryValue | null, preservation = false): VariantInput[] {
   if (typeof value !== "string") return [];
   try {
     const parsed: unknown = JSON.parse(value);
@@ -1335,7 +1342,8 @@ function parseVariantInputs(value: FormDataEntryValue | null): VariantInput[] {
         if (!row || typeof row !== "object") return null;
         const source = row as Record<string, unknown>;
         const sku = typeof source.sku === "string" ? source.sku.trim() : "";
-      const barcode = typeof source.barcode === "string" ? source.barcode : sku;
+        if (source.barcode != null && typeof source.barcode !== "string") return null;
+        const barcode = typeof source.barcode === "string" && source.barcode !== "" ? source.barcode : preservation ? generateInternalBarcode() : sku;
         const size = typeof source.size === "string" ? source.size.trim() : "";
         const color = typeof source.color === "string" ? source.color.trim() : "";
         const costPrice = Number(source.costPrice);
@@ -1403,7 +1411,10 @@ export async function createVariantProduct(
     currentBusinessMode.value === "general"
       ? formData.get("isOnline") === "on"
       : true;
-  const variants = parseVariantInputs(formData.get("variants"));
+  const barcodeState = await barcodeCapability(supabaseAdmin);
+  if (barcodeState === 'unavailable') return { success: false, message: BARCODE_UNAVAILABLE };
+  const preservation = barcodeState === 'ready';
+  const variants = parseVariantInputs(formData.get("variants"), preservation);
 
   if (name.length < 2) {
     return { success: false, message: "Please enter a product name." };
@@ -1440,9 +1451,9 @@ export async function createVariantProduct(
     return { success: false, message: "Each variant must use a unique SKU." };
   }
 
-  const barcodeError = checkProductBarcodes(variants.map(variant => variant.barcode || variant.sku));
+  const barcodeError = checkProductBarcodes(variants.map(variant => variant.barcode), undefined, preservation);
   if (barcodeError) return { success: false, message: barcodeError };
-  const barcodeCheck = await supabaseAdmin.from("products").select("id").eq("business_id", business.id).in("barcode", variants.map(variant => variant.barcode || variant.sku)).limit(1);
+  const barcodeCheck = await supabaseAdmin.from("products").select("id").eq("business_id", business.id).in("barcode", variants.map(variant => variant.barcode)).limit(1);
   if (barcodeCheck.error || barcodeCheck.data?.length) return { success: false, message: barcodeCheck.error?.message ?? "A barcode is already used by another product." };
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1530,7 +1541,7 @@ export async function createVariantProduct(
     category_id: categoryId,
     name,
     sku: variant.sku,
-    barcode: variant.barcode || variant.sku,
+    barcode: variant.barcode,
     size: variant.size || null,
     color: variant.color || null,
     image_url: imageUrl,
@@ -1714,6 +1725,7 @@ export async function createConfigurableProduct(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  if (await barcodeCapability(supabase) === 'unavailable') return { success: false, message: BARCODE_UNAVAILABLE };
   const { data: existingSku, error: skuError } = await supabaseAdmin
     .from("products")
     .select("id")
@@ -1888,9 +1900,10 @@ function parseEditVariants(value: FormDataEntryValue | null): EditVariantInput[]
       if (imageSlot && !/^[a-zA-Z0-9_-]{1,80}$/.test(imageSlot)) return [];
       if (typeof source.isActive !== "boolean") return [];
       if (source.isOnline !== undefined && typeof source.isOnline !== "boolean") return [];
+      if (source.barcode != null && typeof source.barcode !== "string") return [];
       const row: EditVariantInput = {
         id: text(source.id) || null, size: text(source.size), color: text(source.color), sku: text(source.sku),
-      barcode: typeof source.barcode === "string" ? source.barcode : undefined,
+        barcode: typeof source.barcode === "string" ? source.barcode : undefined,
         costPrice: number(source.costPrice), sellingPrice: number(source.sellingPrice),
         stockQuantity: number(source.stockQuantity), lowStockQuantity: number(source.lowStockQuantity),
         isActive: source.isActive, isOnline: source.isOnline as boolean | undefined, imageSlot, imageAction: action as EditVariantInput["imageAction"],
@@ -1974,12 +1987,12 @@ async function saveEditedProductGroup(
   if (!supportsVariants && (variants.length !== 1 || variants[0].id !== representative.id)) return fail("This product does not support multiple variants.");
   if (variants.some(row => !row.id)) await requirePermission("products.create");
   if (variants.some(row => row.id && currentById.get(row.id)?.is_active !== row.isActive)) await requirePermission("products.disable");
-  const optionsError = validateEditableVariants(variants, supportsVariants);
+  const optionsError = validateEditableVariants(variants, supportsVariants && !isGeneralShop, supportsVariants);
   if (optionsError) return fail(optionsError);
   if (variants.some(row => row.id && row.expectedUpdatedAt && currentById.get(row.id)?.updated_at !== row.expectedUpdatedAt)) {
     return { ...fail("Another user changed this product. Reload and review their changes before saving."), refreshRequired: true };
   }
-  const generalBarcode = isGeneralShop && !supportsVariants ? getBarcodeText(formData) ?? variants[0].sku : null;
+  const generalBarcode = isGeneralShop && !supportsVariants ? getBarcodeText(formData) ?? (currentById.get(representative.id)?.barcode || currentById.get(representative.id)?.sku || "") : null;
   if (generalBarcode) {
     const { data, error } = await supabase.from("branch_products").select("id").eq("business_id", business.id).eq("barcode", generalBarcode).neq("id", representative.id).limit(1);
     if (error) return fail(error.message);
@@ -1991,14 +2004,17 @@ async function saveEditedProductGroup(
   const externalDuplicate = (duplicates ?? []).find(row => !currentById.has(row.id));
   if (externalDuplicate) return fail(`SKU ${externalDuplicate.sku ?? ""} is already used by another product.`);
 
-  const barcodes = variants.map(row => generalBarcode ?? (row.barcode === undefined ? (currentById.get(row.id ?? "")?.barcode || row.sku) : row.barcode || row.sku));
+  const barcodeState = await barcodeCapability(supabase);
+  if (barcodeState === 'unavailable') return fail(BARCODE_UNAVAILABLE);
+  const preservation = barcodeState === 'ready';
+  const barcodes = variants.map(row => row.id ? generalBarcode ?? (row.barcode || currentById.get(row.id)?.barcode || currentById.get(row.id)?.sku || row.sku) : row.barcode || (preservation ? generateInternalBarcode() : row.sku));
   // Compare effective identifiers: an absent saved barcode already falls back to SKU.
   // Unchanged legacy values remain saved; labels explain unsupported encodings.
   const changedBarcodes = barcodes.filter((value, index) => {
     const existing = currentById.get(variants[index].id ?? "");
     return !existing || value !== (existing.barcode || existing.sku || "");
   });
-  const barcodeError = checkProductBarcodes(barcodes, changedBarcodes);
+  const barcodeError = checkProductBarcodes(barcodes, changedBarcodes, preservation);
   if (barcodeError) return fail(barcodeError);
   const barcodeCheck = await supabase.from("branch_products").select("id,barcode").eq("business_id", business.id).in("barcode", barcodes);
   if (barcodeCheck.error) return fail(barcodeCheck.error.message);
@@ -2070,8 +2086,8 @@ async function saveEditedProductGroup(
       is_online: (variant.isOnline ?? isOnline) && variant.isActive,
     };
     // Preserve NULL/empty legacy columns on unrelated edits instead of materializing SKU.
-    const unchangedAbsentBarcode = !existing.barcode && variant.sku === existing.sku && barcodes[variantIndex] === (existing.sku || "");
-    if (!unchangedAbsentBarcode) values.barcode = barcodes[variantIndex];
+    const unchangedAbsentBarcode = !existing.barcode && barcodes[variantIndex] === (existing.sku || "");
+    if (!unchangedAbsentBarcode && barcodes[variantIndex] !== existing.barcode) values.barcode = barcodes[variantIndex];
     if (imageChanged) values.image_url = newImageUrl;
     if (gallery !== null) values.image_urls = gallery;
     if (variant.imageAction !== "keep") values.variant_image_url = variant.imageAction === "remove" ? null
@@ -2102,7 +2118,7 @@ async function saveEditedProductGroup(
     if (mediaError) return { success: false, refreshRequired: true, message: `Variant changes were saved, but the online store photos were not updated (${mediaError.message}). Reload, then save the gallery again.` };
   }
   try {
-    for (const variant of variants) {
+    for (const [variantIndex, variant] of variants.entries()) {
       if (variant.id) continue;
       const variantImage = variant.imageAction === "remove" ? null
         : variant.imageAction === "existing" ? variant.variantImageUrl
@@ -2111,7 +2127,7 @@ async function saveEditedProductGroup(
       if (!supportsVariants) throw new Error("This product does not support adding variants.");
       const { data: created, error } = await supabaseAdmin.from("products").insert({
         owner_id: userId, business_id: business.id, category_id: categoryId, name,
-        sku: variant.sku, barcode: variant.barcode || variant.sku, size: variant.size, color: variant.color,
+        sku: variant.sku, barcode: barcodes[variantIndex], size: variant.size, color: variant.color,
         image_url: newImageUrl, image_urls: gallery ?? current[0]?.image_urls ?? [], variant_image_url: variantImage, description,
         cost_price: variant.costPrice, selling_price: variant.sellingPrice,
         stock_quantity: variant.stockQuantity, low_stock_quantity: variant.lowStockQuantity,

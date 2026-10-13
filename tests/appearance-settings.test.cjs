@@ -8,7 +8,7 @@ const React = require('react');
 function load(path, dependencies = {}) {
   const result = { exports: {} };
   const code = ts.transpileModule(fs.readFileSync(path, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  new Function('exports', 'require', code)(result.exports, id => id in dependencies ? dependencies[id] : require(id));
+  new Function('exports', 'require', code)(result.exports, id => id.endsWith(".module.css") ? {default:{}} : id in dependencies ? dependencies[id] : require(id));
   return result.exports;
 }
 const model = load('lib/appearance.ts');

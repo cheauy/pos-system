@@ -11,7 +11,7 @@ function harness(){
  const pending=new Promise((yes,no)=>{resolve=yes;reject=no;});
  const react={useState(initial){const index=cursor++;if(!(index in state))state[index]=initial;return [state[index],next=>{state[index]=next;}];},useRef(initial){const index=refCursor++;return refs[index]??(refs[index]={current:initial});},useEffect(){}};
  const Designer=()=>null;
- const Editor=loadTs('app/(dashboard)/dashboard/settings/printers/shipping-template-editor.tsx',{'react/jsx-runtime':jsxRuntime,react,'./shipping-designer':{default:Designer},'@/lib/receipts/shipping-layout':layout,'@/lib/receipts/shipping-templates':{SHIPPING_LABEL_SIZES:[{id:'80x50',label:'80 x 50 mm'},{id:'100x100',label:'100 x 100 mm'}],shippingTemplateName:name=>name.trim()}}).default;
+ const Editor=loadTs('app/(dashboard)/dashboard/settings/printers/shipping-template-editor.tsx',{'./shipping-template-editor.module.css':{default:{}},'react/jsx-runtime':jsxRuntime,react,'./shipping-designer':{default:Designer},'@/lib/receipts/shipping-layout':layout,'@/lib/receipts/shipping-templates':{SHIPPING_LABEL_SIZES:[{id:'80x50',label:'80 x 50 mm'},{id:'100x100',label:'100 x 100 mm'}],shippingTemplateName:name=>name.trim()}}).default;
  const initial={id:'example',name:'Original',mode:'update',layout:layout.defaultShippingLayout('80x50')};
  const render=()=>{cursor=0;refCursor=0;return nodes(Editor({initial,values:{qrMinimumMm:'20.6'},onSave:async draft=>{calls.push(draft);await pending;},onClose:()=>closed++}));};
  const find=(tree,type,label)=>tree.find(node=>node.type===type&&(!label||node.props['aria-label']===label||labelText(node)===label));

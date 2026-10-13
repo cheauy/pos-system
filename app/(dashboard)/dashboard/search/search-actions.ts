@@ -1,6 +1,10 @@
 "use server";
 
-import { getCurrentBusiness } from "@/lib/business/get-current-business";
+import { requirePermission } from "@/lib/auth/require-permission";
+import { getBranchContext } from "@/lib/branches/context";
+import { resolveOrderQr } from "@/lib/orders/resolve-order-qr";
+import { classifySearchScan } from "@/lib/search/scan-code";
+import { exactScanResults } from "@/lib/search/exact-scan";
 import { getEffectivePermissions } from "@/lib/auth/effective-permissions";
 import { createClient } from "@/lib/supabase/branch-server";
 import type {
@@ -16,9 +20,12 @@ const MAX_RESULTS_PER_TYPE = 30;
 function safeTerm(value: string) {
   return value
     .slice(0, 100)
-    .replace(/[,%()_*]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function searchPattern(value: string) {
+  return JSON.stringify('%' + value.replace(/\\/g, '\\\\').replace(/[%_]/g, '\\$&') + '%');
 }
 
 function text(value: unknown) {
@@ -90,16 +97,20 @@ function settingResults(
 export async function runGlobalSearch(
   input: GlobalSearchInput,
 ): Promise<GlobalSearchResponse> {
-  const business = await getCurrentBusiness();
+  const business = await requirePermission("business.view");
   const allowed = new Set(await getEffectivePermissions(business.id, business.role));
   const db = await createClient();
-  const query = safeTerm(input?.query ?? "");
+  const context = await getBranchContext();
+  const query = safeTerm(typeof input?.query === 'string' ? input.query : '');
+  const productBarcode = typeof input?.productBarcode === 'string' && classifySearchScan(input.productBarcode, 'CODE_128') ? input.productBarcode : null;
+  const linearBarcode = typeof input?.linearBarcode === 'string' && classifySearchScan(input.linearBarcode, 'CODE_128') ? input.linearBarcode : null;
   const warnings: string[] = [];
 
   const { data: branchRows, error: branchError } = await db
     .from("business_locations")
     .select("id,name")
     .eq("business_id", business.id)
+    .in("id", context.branches.map((branch) => branch.id))
     .eq("is_active", true)
     .order("is_default", { ascending: false })
     .order("name", { ascending: true });
@@ -111,10 +122,30 @@ export async function runGlobalSearch(
   }));
   const branchMap = new Map(branches.map((branch) => [branch.id, branch.name]));
 
+  if (input.linearBarcode !== undefined || input.productBarcode !== undefined) {
+    const value = linearBarcode ?? productBarcode;
+    if (!value) return { query, results: [], branches, warnings, scanResolution: 'not-found' };
+    const matches = await exactScanResults(db, business.id, context.branchId, allowed, value, !linearBarcode);
+    const results = uniqueResults(matches).map(result => ({ ...result, branchName: branchMap.get(result.branchId ?? '') ?? null }));
+    const scanResolution = results.length > 1 ? 'ambiguous' : results[0]?.kind === 'order' ? 'unique-order' : results.length ? 'product' : 'not-found';
+    if (scanResolution === 'ambiguous') warnings.push('This identifier matches more than one order or product. Choose the correct result; nothing was opened automatically.');
+    return { query: value, results, branches, warnings, scanResolution };
+  }
+
   if (!query) return { query, results: [], branches, warnings };
 
-  const orderTerm = safeTerm(query.replace(/^order\s*#?/i, "")) || query;
-  const productTerm = safeTerm(query.replace(/^(sku|barcode|product)\s*:?[ ]*/i, "")) || query;
+  let scannedOrderId: string | null = null;
+  if (input.orderQr !== undefined) {
+    if (!allowed.has("orders.view") || classifySearchScan(input.orderQr, 'QR_CODE')?.kind !== 'order') return { query, results: [], branches, warnings };
+    const order = await resolveOrderQr(input.orderQr);
+    if ("error" in order) {
+      if (order.error === "Unable to load this order. Please try again.") throw new Error(order.error);
+      return { query, results: [], branches, warnings };
+    }
+    scannedOrderId = order.id;
+  }
+  const orderTerm = safeTerm(query.replace(/^(?:order\b\s*)?#?/i, "")) || query;
+  const productTerm = safeTerm(query.replace(/^(sku|barcode|product)\b\s*:?[ ]*/i, "")) || query;
   const purchaseOrderTerm = safeTerm(query.replace(/^purchase\s+order\s*:?[ ]*/i, "")) || query;
   const transferTerm = safeTerm(query.replace(/^transfer\s*:?[ ]*/i, "")) || query;
   const wantsLowStock = /^low\s+stock(?:\s+products?)?$/i.test(query);
@@ -124,7 +155,7 @@ export async function runGlobalSearch(
 
   let matchedCustomerIds: string[] = [];
 
-  if (allowed.has("customers.view")) {
+  if (!scannedOrderId && allowed.has("customers.view")) {
     tasks.push(
       (async () => {
         const { data, error } = await db
@@ -132,7 +163,7 @@ export async function runGlobalSearch(
           .select("id,name,phone,email,address,created_at,loyalty_points")
           .eq("business_id", business.id)
           .or(
-            `name.ilike.%${query}%,phone.ilike.%${query}%,email.ilike.%${query}%,address.ilike.%${query}%`,
+            `name.ilike.${searchPattern(query)},phone.ilike.${searchPattern(query)},email.ilike.${searchPattern(query)},address.ilike.${searchPattern(query)}`,
           )
           .order("created_at", { ascending: false })
           .limit(MAX_RESULTS_PER_TYPE);
@@ -167,20 +198,20 @@ export async function runGlobalSearch(
     );
   }
 
-  if (allowed.has("products.view")) {
+  if (!scannedOrderId && allowed.has("products.view")) {
     tasks.push(
       (async () => {
-        const productQuery = db
+      const productQuery = db
           .from("branch_products")
           .select(
-            "id,name,sku,barcode,size,color,selling_price,stock_quantity,low_stock_quantity,is_active,created_at",
+            "id,name,sku,barcode,size,color,image_url,selling_price,stock_quantity,low_stock_quantity,is_active,created_at",
           )
           .eq("business_id", business.id);
-        const { data: productRows, error } = wantsLowStock
+      const { data: productRows, error } = wantsLowStock
           ? await productQuery.order("stock_quantity", { ascending: true }).limit(100)
           : await productQuery
               .or(
-                `name.ilike.%${productTerm}%,sku.ilike.%${productTerm}%,barcode.ilike.%${productTerm}%,color.ilike.%${productTerm}%,size.ilike.%${productTerm}%`,
+                `name.ilike.${searchPattern(productTerm)},sku.ilike.${searchPattern(productTerm)},barcode.ilike.${searchPattern(productTerm)},color.ilike.${searchPattern(productTerm)},size.ilike.${searchPattern(productTerm)}`,
               )
               .order("created_at", { ascending: false })
               .limit(MAX_RESULTS_PER_TYPE);
@@ -205,16 +236,17 @@ export async function runGlobalSearch(
           results.push({
             id: product.id,
             kind: "product",
+          imageUrl: product.image_url,
             title: product.name || "Product",
-            subtitle: [product.sku, `${Number(product.stock_quantity ?? 0)} in stock`, money(price)]
+          subtitle: [product.sku, [product.color, product.size].filter(Boolean).join(' · '), `${Number(product.stock_quantity ?? 0)} in stock`, money(price)]
               .filter(Boolean)
               .join(" · "),
             href: allowed.has("products.update")
               ? `/dashboard/products/${product.id}/edit`
               : "/dashboard/products",
             badge: "Product",
-            branchId: null,
-            branchName: null,
+          branchId: context.branchId,
+          branchName: branchMap.get(context.branchId) ?? null,
             status: product.is_active ? "active" : "inactive",
             createdAt: product.created_at,
             amount: price,
@@ -225,7 +257,7 @@ export async function runGlobalSearch(
     );
   }
 
-  if (allowed.has("suppliers.manage")) {
+  if (!scannedOrderId && allowed.has("suppliers.manage")) {
     tasks.push(
       (async () => {
         const { data, error } = await db
@@ -233,7 +265,7 @@ export async function runGlobalSearch(
           .select("id,name,contact_person,phone,email,address,is_active,created_at")
           .eq("business_id", business.id)
           .or(
-            `name.ilike.%${query}%,contact_person.ilike.%${query}%,phone.ilike.%${query}%,email.ilike.%${query}%`,
+            `name.ilike.${searchPattern(query)},contact_person.ilike.${searchPattern(query)},phone.ilike.${searchPattern(query)},email.ilike.${searchPattern(query)}`,
           )
           .order("created_at", { ascending: false })
           .limit(MAX_RESULTS_PER_TYPE);
@@ -253,7 +285,7 @@ export async function runGlobalSearch(
             kind: "supplier",
             title: supplier.name || "Supplier",
             subtitle: [supplier.phone, supplier.contact_person].filter(Boolean).join(" · ") || "Supplier account",
-            href: "/dashboard/suppliers",
+          href: `/dashboard/suppliers/${supplier.id}/edit`,
             badge: "Supplier",
             branchId: null,
             branchName: null,
@@ -267,7 +299,7 @@ export async function runGlobalSearch(
     );
   }
 
-  if (allowed.has("purchases.view")) {
+  if (!scannedOrderId && allowed.has("purchases.view")) {
     tasks.push(
       (async () => {
         const { data, error } = await db
@@ -277,7 +309,7 @@ export async function runGlobalSearch(
           )
           .eq("business_id", business.id)
           .or(
-            `po_number.ilike.%${purchaseOrderTerm}%,supplier_name.ilike.%${purchaseOrderTerm}%,reference_number.ilike.%${purchaseOrderTerm}%`,
+            `po_number.ilike.${searchPattern(purchaseOrderTerm)},supplier_name.ilike.${searchPattern(purchaseOrderTerm)},reference_number.ilike.${searchPattern(purchaseOrderTerm)}`,
           )
           .order("created_at", { ascending: false })
           .limit(MAX_RESULTS_PER_TYPE);
@@ -313,7 +345,7 @@ export async function runGlobalSearch(
     );
   }
 
-  if (allowed.has("transfers.manage")) {
+  if (!scannedOrderId && allowed.has("transfers.manage")) {
     tasks.push(
       (async () => {
         const { data, error } = await db
@@ -322,7 +354,7 @@ export async function runGlobalSearch(
             "id,transfer_number,status,note,source_location_id,destination_location_id,created_at",
           )
           .eq("business_id", business.id)
-          .or(`transfer_number.ilike.%${transferTerm}%,note.ilike.%${transferTerm}%`)
+        .or(business.role === 'owner' ? `transfer_number.ilike.${searchPattern(transferTerm)},note.ilike.${searchPattern(transferTerm)}` : `and(source_location_id.in.(${context.branches.map(branch => branch.id).join(',')}),or(transfer_number.ilike.${searchPattern(transferTerm)},note.ilike.${searchPattern(transferTerm)})),and(destination_location_id.in.(${context.branches.map(branch => branch.id).join(',')}),or(transfer_number.ilike.${searchPattern(transferTerm)},note.ilike.${searchPattern(transferTerm)}))`)
           .order("created_at", { ascending: false })
           .limit(MAX_RESULTS_PER_TYPE);
 
@@ -343,7 +375,7 @@ export async function runGlobalSearch(
             kind: "transfer",
             title: transfer.transfer_number || "Stock transfer",
             subtitle: `${sourceName} → ${destinationName} · ${transfer.status || ""}`,
-            href: "/dashboard/stock-transfers",
+          href: `/dashboard/stock-transfers?transfer=${transfer.id}`,
             badge: "Transfer",
             branchId: transfer.source_location_id,
             branchName: sourceName,
@@ -357,7 +389,7 @@ export async function runGlobalSearch(
     );
   }
 
-  if (allowed.has("credit.manage")) {
+  if (!scannedOrderId && allowed.has("credit.manage")) {
     tasks.push(
       (async () => {
         const { data, error } = await db
@@ -366,7 +398,7 @@ export async function runGlobalSearch(
             "id,name,phone,customer_credit_accounts(balance,credit_limit,payment_due_date,updated_at)",
           )
           .eq("business_id", business.id)
-          .or(`name.ilike.%${query}%,phone.ilike.%${query}%`)
+          .or(`name.ilike.${searchPattern(query)},phone.ilike.${searchPattern(query)}`)
           .limit(MAX_RESULTS_PER_TYPE);
 
         if (error) {
@@ -390,7 +422,7 @@ export async function runGlobalSearch(
             kind: "credit",
             title: `${customer.name || "Customer"} credit account`,
             subtitle: `Balance ${money(balance)}${account.payment_due_date ? ` · Due ${account.payment_due_date}` : ""}`,
-            href: `/dashboard/customers/${customer.id}`,
+          href: allowed.has("customers.view") ? `/dashboard/customers/${customer.id}` : "/dashboard/customer-credit",
             badge: "Credit",
             branchId: null,
             branchName: null,
@@ -407,18 +439,18 @@ export async function runGlobalSearch(
   await Promise.all(tasks);
 
   if (allowed.has("orders.view")) {
-    const directQuery = db
+    let directQuery = db
       .from("orders")
       .select(
         "id,order_number,customer_id,guest_name,guest_phone,total,status,payment_status,order_source,created_at,location_id",
       )
       .eq("business_id", business.id)
       .is("archived_at", null)
-      .or(
-        `order_number.ilike.%${orderTerm}%,guest_name.ilike.%${orderTerm}%,guest_phone.ilike.%${orderTerm}%`,
-      )
       .order("created_at", { ascending: false })
       .limit(MAX_RESULTS_PER_TYPE);
+    directQuery = scannedOrderId ? directQuery.eq("id", scannedOrderId) : directQuery.or(
+      `${/^[1-9][0-9]{11}$/.test(orderTerm) ? `order_code.eq."${orderTerm}",` : ""}order_number.ilike.${searchPattern(orderTerm)},guest_name.ilike.${searchPattern(orderTerm)},guest_phone.ilike.${searchPattern(orderTerm)}`,
+    );
 
     const customerOrderQuery = matchedCustomerIds.length
       ? db
@@ -550,7 +582,7 @@ export async function runGlobalSearch(
     );
   }
 
-  results.push(...settingResults(query, allowedSettings));
+  if (!scannedOrderId) results.push(...settingResults(query, allowedSettings));
 
   const normalized = uniqueResults(results).sort((a, b) => {
     const priority: Record<GlobalSearchKind, number> = {

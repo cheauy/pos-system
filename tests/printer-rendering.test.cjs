@@ -1,19 +1,22 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Node CommonJS test harness. */
 const test=require('node:test'),assert=require('node:assert/strict');
 const React=require('react'),{renderToStaticMarkup}=require('react-dom/server');
 const {loadTs}=require('./helpers/load-ts.cjs');
 const model=loadTs('lib/receipts/receipt-model.ts');
 const contact=loadTs('lib/orders/order-contact.ts');
 const barcode=loadTs('lib/barcode/code39.ts');
+const productLabels=loadTs('lib/barcode/product-label.ts',{'./code39':barcode,'./code128':loadTs('lib/barcode/code128.ts')});
 let language='en';
 const translations=loadTs('lib/i18n/translations.ts');
-const shared={'@/components/providers/language-provider':{useLanguage:()=>({language,t:text=>translations.translateUiText(text,language)})},'react/jsx-runtime':require('react/jsx-runtime'),react:React,'lucide-react':require('lucide-react'),'@/lib/receipts/receipt-model':model,'@/lib/barcode/code39':barcode,'@/lib/printing/prepare-print':loadTs('lib/printing/prepare-print.ts', {'@/lib/receipts/shipping-layout':loadTs('lib/receipts/shipping-layout.ts')})};
+const shared={'@/components/providers/language-provider':{useLanguage:()=>({language,t:text=>translations.translateUiText(text,language)})},'react/jsx-runtime':require('react/jsx-runtime'),react:React,'lucide-react':require('lucide-react'),'@/lib/receipts/receipt-model':model,'@/lib/barcode/code39':barcode,'@/lib/barcode/code128':loadTs('lib/barcode/code128.ts'),'@/lib/printing/prepare-print':loadTs('lib/printing/prepare-print.ts', {'@/lib/receipts/shipping-layout':loadTs('lib/receipts/shipping-layout.ts')})};
+shared['@/lib/barcode/product-label']=productLabels;
 const receipt=loadTs('components/receipts/pos-receipt.tsx',{...shared,'@/app/(dashboard)/dashboard/pos/pos-workspace-helpers':{money:v=>Number(v).toFixed(2)},'./pos-receipt.module.css':{default:new Proxy({},{get:(_,key)=>String(key)})}}).PosReceipt;
-const label=loadTs('app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx',{...shared,'@/lib/i18n/translations':translations,'@/components/product-picker':{default:()=>null}}).LabelCard;
+const label=loadTs('app/(dashboard)/dashboard/barcodes/barcode-labels-client.tsx',{...shared,'@/lib/i18n/translations':translations,'@/components/product-picker':{default:()=>null},'@/components/management-responsive.module.css':{default:{}},'@/lib/use-management-viewport':{MANAGEMENT_COMPACT_QUERY:'',useManagementViewport:()=>false}}).LabelCard;
 const layout=loadTs('lib/receipts/shipping-layout.ts');
 const qr={isOrderCode:v=>typeof v==='string'&&/^[1-9][0-9]{11}$/.test(v),orderQrSvg:()=>'<svg viewBox="0 0 41 41"></svg>'};
-const custom=loadTs('lib/receipts/shipping-custom.ts',{'@/lib/receipts/receipt-model':loadTs('lib/receipts/receipt-model.ts'),qrcode:require('qrcode'),'@/lib/barcode/code39':barcode,'@/lib/orders/order-qr':qr,'./shipping-layout':layout});
+const custom=loadTs('lib/receipts/shipping-custom.ts',{'@/lib/receipts/receipt-model':loadTs('lib/receipts/receipt-model.ts'),qrcode:require('qrcode'),'@/lib/barcode/code39':barcode,'@/lib/barcode/code128':loadTs('lib/barcode/code128.ts'),'@/lib/orders/order-qr':qr,'./shipping-layout':layout});
 const templates=loadTs('lib/receipts/shipping-templates.ts',{'./shipping-layout':layout,'./shipping-custom':custom});
-const markup=loadTs('lib/receipts/shipping-label-markup.ts',{'@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),'@/lib/orders/order-payment':loadTs('lib/orders/order-payment.ts'),'@/lib/orders/order-contact':contact,'@/lib/barcode/code39':barcode,'@/lib/orders/order-qr':qr,'@/lib/receipts/receipt-model':model,'./shipping-templates':templates,'./shipping-layout':layout,'./shipping-custom':custom});
+const markup=loadTs('lib/receipts/shipping-label-markup.ts',{'@/lib/i18n/translations':loadTs('lib/i18n/translations.ts'),'@/lib/orders/order-payment':loadTs('lib/orders/order-payment.ts'),'@/lib/orders/order-contact':contact,'@/lib/barcode/code39':barcode,'@/lib/barcode/code128':loadTs('lib/barcode/code128.ts'),'@/lib/orders/order-qr':qr,'@/lib/receipts/receipt-model':model,'./shipping-templates':templates,'./shipping-layout':layout,'./shipping-custom':custom});
 const shipping=loadTs('components/receipts/shipping-label.tsx',{...shared,'@/lib/receipts/shipping-label-markup':markup}).default;
 test('receipt print uses saved typography, images, paper, header and visibility',()=>{
  const context={appearance:model.receiptAppearance({paper_size:'58mm',font_size:'large',density:'compact',receipt_alignment:'left',header_text:'Saved header',receipt_logo_url:'https://example.com/brand.png',show_phone:false,show_address:false}),store:{name:'Shop',phone:'012345678',address:'Hidden street'}};

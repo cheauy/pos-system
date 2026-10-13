@@ -65,6 +65,7 @@
   .stockTable { display: block; width: 100%; min-width: 0; }
   .stockTable > thead { display: none; }
   .stockTable > tbody { display: block; border-top: 1px solid #e2e8f0; }
+  .stockEmptyRow, .stockEmptyRow > td { display: block; width: 100%; }
   .stockRow { display: grid; grid-template-columns: 44px 56px minmax(0, 1fr) 44px; gap: 4px 6px; padding: 12px 0; border: 0; border-bottom: 1px solid #e2e8f0; border-radius: 0; background: var(--workspace-panel, white); box-shadow: none; }
   .stockRow > td { padding: 0; border: 0; margin: 0; min-width: 0; }
   .stockRow > td:not(.stockCheckbox, .stockProduct, .stockQuantity, .stockStatus, .rowMenu) { display: none; }

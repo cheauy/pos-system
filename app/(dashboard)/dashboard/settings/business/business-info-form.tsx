@@ -106,7 +106,7 @@ export default function BusinessInfoForm({ businessId, businessName, canEditBusi
           <p
             data-section="business-info branding store-hours"
             role={notice.success ? "status" : "alert"}
-            className={`rounded-xl px-4 py-3 text-sm ${notice.success ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"}`}
+            className={`business-info-notice rounded-xl px-4 py-3 text-sm ${notice.success ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"}`}
           >
             {notice.message}
           </p>
@@ -241,6 +241,8 @@ export default function BusinessInfoForm({ businessId, businessName, canEditBusi
       </form>
 
       {canEdit && saveTarget ? createPortal(
+        <>
+        {notice ? <p className={`business-save-feedback text-xs ${notice.success ? "text-emerald-700" : "text-red-600"}`} role={notice.success ? "status" : "alert"}>{notice.message}</p> : null}
         <button
           type="submit"
           form="business-info"
@@ -250,7 +252,8 @@ export default function BusinessInfoForm({ businessId, businessName, canEditBusi
         >
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
           {busy ? "Saving…" : "Save business details"}
-        </button>,
+        </button>
+        </>,
         saveTarget,
       ) : null}
     </>

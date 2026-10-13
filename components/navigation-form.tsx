@@ -3,7 +3,7 @@ import { useLanguage } from "@/components/providers/language-provider";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useTransition, type ReactNode } from "react";
 import { useActivity } from '@/components/ui/activity-link';
-import { dateRangeError } from "@/lib/date-range";
+import { calendarRange, dateRangeError } from "@/lib/date-range";
 
 type Field = HTMLInputElement | HTMLSelectElement;
 // Puts every field back to its applied (server-rendered default) value.
@@ -14,12 +14,33 @@ function restore(form: HTMLFormElement) {
   }
 }
 
+function defaults(form: HTMLFormElement) {
+  const data = new FormData();
+  for (const el of Array.from(form.elements)) {
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement) || !el.name || el.disabled) continue;
+    if (el instanceof HTMLInputElement) {
+      if ((el.type === "radio" || el.type === "checkbox") && !el.defaultChecked) continue;
+      data.set(el.name, el.defaultValue);
+    } else data.set(el.name, Array.from(el.options).find(option => option.defaultSelected)?.value ?? el.options[0]?.value ?? "");
+  }
+  return data;
+}
+
+function filterQuery(data: FormData, shown: string) {
+  const query = new URLSearchParams(shown);
+  const custom = !data.has("range") || data.get("range") === "custom";
+  data.forEach((value, key) => { if (typeof value === "string") query.set(key, value); });
+  if (!custom) { query.delete("from"); query.delete("to"); }
+  query.sort();
+  return query;
+}
+
 // Filter edits stay a draft until Apply submits once. `reset` lists the values a type="reset"
 // button puts into the draft (Apply commits them). Editing a date switches a `range` field to custom.
 // Pages key this on their applied params (from the same render as the field defaults) so the
 // fields remount at the shown filters after Apply or Back/Forward; React keeps a touched
 // field's value and never updates a <select> default.
-export default function NavigationForm({ children, className, reset, maxSpanDays }: { children: ReactNode; className?: string; reset?: Record<string, string>; maxSpanDays?: number }) {
+export default function NavigationForm({ children, className, reset, maxSpanDays, today }: { children: ReactNode; className?: string; reset?: Record<string, string>; maxSpanDays?: number; today?: string }) {
   const { t: translateText } = useLanguage();
   const router = useRouter(); const path = usePathname(); const shown = useSearchParams().toString();
   const [pending, startTransition] = useTransition();
@@ -34,7 +55,16 @@ export default function NavigationForm({ children, className, reset, maxSpanDays
       if (form.current) restore(form.current);
     };
     window.addEventListener("hashchange", discard);
-    return () => window.removeEventListener("hashchange", discard);
+    const escape = (event: KeyboardEvent) => {
+      const popup = form.current?.closest<HTMLElement>(":target");
+      if (event.key !== "Escape") return;
+      if (!popup) { if (form.current?.elements.namedItem("from")) restore(form.current); return; }
+      event.preventDefault();
+      location.hash = "";
+      discard();
+    };
+    window.addEventListener("keydown", escape);
+    return () => { window.removeEventListener("hashchange", discard); window.removeEventListener("keydown", escape); };
   }, []);
   // Back/Forward onto a #sheet entry made before an Apply: the entry has no Next.js state,
   // so the router ignores it and keeps showing the other filters. Load the entry's filters.
@@ -48,14 +78,27 @@ export default function NavigationForm({ children, className, reset, maxSpanDays
   }, [path, router, shown]);
   const field = (name: string) => form.current?.elements.namedItem(name) as Field | RadioNodeList | null;
   return <form ref={form} className={className} aria-busy={pending}
+    onClick={event => {
+      if (!(event.target instanceof Element) || !event.target.closest("[data-date-cancel]")) return;
+      restore(event.currentTarget);
+      if (event.currentTarget.closest(":target")) location.hash = "";
+    }}
     onChange={e => {
       const target = e.target as unknown as Field; target.setCustomValidity?.("");
       // A date error must not block applying a preset range.
       for (const name of ["from", "to"]) { const el = field(name); if (el instanceof HTMLInputElement) el.setCustomValidity(""); }
       const range = field("range");
       if ((target.name === "from" || target.name === "to") && range && !(range instanceof HTMLInputElement && range.type === "hidden")) range.value = "custom";
+      if (target.name === "range" && today) {
+        const calendars = { today: "Today", yesterday: "Yesterday", week: "This Week", month: "This Month", year: "This Year" } as const;
+        const preset = calendars[target.value as keyof typeof calendars];
+        let dates = preset ? calendarRange(preset, today) : null;
+        const days = /^(7|30|365)days$/.exec(target.value);
+        if (days) { const start = new Date(`${today}T00:00:00Z`); start.setUTCDate(start.getUTCDate() - Number(days[1]) + 1); dates = { from: start.toISOString().slice(0, 10), to: today }; }
+        if (dates) for (const name of ["from", "to"] as const) { const el = field(name); if (el) el.value = dates[name]; }
+      }
     }}
-    onReset={e => { if (!reset) return; e.preventDefault(); for (const [name, value] of Object.entries(reset)) { const el = field(name); if (el) { el.value = value; if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement) el.setCustomValidity(""); } } }}
+    onReset={e => { e.preventDefault(); if (!reset) { restore(e.currentTarget); return; } for (const [name, value] of Object.entries(reset)) { const el = field(name); if (el) { el.value = value; if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement) el.setCustomValidity(""); } } }}
     onSubmit={e => {
       e.preventDefault();
       const data = new FormData(e.currentTarget);
@@ -66,12 +109,11 @@ export default function NavigationForm({ children, className, reset, maxSpanDays
         const input = field(from ? "to" : "from") as HTMLInputElement | null;
         if (message && input) { input.setCustomValidity(translateText(message)); input.reportValidity(); return; }
       }
-      const query = new URLSearchParams();
-      // Preset ranges ignore the date fields; keep them out of the URL.
-      data.forEach((value, key) => { if (typeof value === "string" && (custom || (key !== "from" && key !== "to"))) query.set(key, value); });
+      const query = filterQuery(data, shown);
+      const unchanged = String(query) === String(filterQuery(defaults(e.currentTarget), shown));
+      if (!unchanged) query.delete("page");
       // Ignore a repeat Apply of the same filters; a different selection replaces the pending one.
-      if (pending && lastQuery.current === String(query)) return;
-      lastQuery.current = String(query);
+      const duplicate = pending && lastQuery.current === String(query);
       const popup = e.currentTarget.closest<HTMLElement>(":target");
       if (popup) {
         // replaceState clears the hash but browsers retain the CSS :target until another fragment navigation.
@@ -80,6 +122,8 @@ export default function NavigationForm({ children, className, reset, maxSpanDays
         window.history.replaceState(window.history.state, "", location.pathname + location.search);
         Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]")).find(link => link.getAttribute("href") === `#${popup.id}`)?.focus({preventScroll:true});
       }
+      if (unchanged || duplicate) { restore(e.currentTarget); return; }
+      lastQuery.current = String(query);
       startTransition(() => router.push(`${path}?${query}`, { scroll: false }));
     }}>{children}</form>;
 }

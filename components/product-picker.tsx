@@ -2,13 +2,14 @@
 import { useLanguage } from "@/components/providers/language-provider";
 import { formatUiText } from "@/lib/i18n/translations";
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ImageOff, Search, X } from 'lucide-react';
+import styles from './management-responsive.module.css';
+import { Check, ChevronDown, ImageOff, Search, X } from 'lucide-react';
 
 export type PromotionProduct = { id: string; name: string; variant: string; sku: string | null; image: string | null };
 type Group = { name: string; image: string | null; items: PromotionProduct[] };
 
 /** Uncontrolled with `name` (submits hidden inputs), or controlled with `value` + `onChange`. */
-export default function ProductPicker({ products, name, value, onChange }: { products: PromotionProduct[]; name?: string; value?: string[]; onChange?: (ids: string[]) => void }) {
+export default function ProductPicker({ products, name, value, onChange, variantRows = false }: { products: PromotionProduct[]; name?: string; value?: string[]; onChange?: (ids: string[]) => void; variantRows?: boolean }) {
   const { t: translateLabel } = useLanguage();
 
   const [own, setOwn] = useState<Set<string>>(new Set());
@@ -49,7 +50,7 @@ export default function ProductPicker({ products, name, value, onChange }: { pro
     setOpen(previous => { const next = new Set(previous); if (next.has(group)) next.delete(group); else next.add(group); return next; });
   }
 
-  return <div className="rounded-xl border border-slate-200">
+  return <div className={`${variantRows ? styles.labelPicker : ""} rounded-xl border border-slate-200`}>
     {name && [...selected].map(id => <input key={id} type="hidden" name={name} value={id} />)}
     <div className="space-y-2 border-b border-slate-200 p-2.5">
       <div className="relative">
@@ -86,12 +87,12 @@ export default function ProductPicker({ products, name, value, onChange }: { pro
               {!single && <ChevronDown size={15} className={`shrink-0 text-slate-400 transition ${expanded ? 'rotate-180' : ''}`} />}
             </button>
           </div>
-          {!single && expanded && <div className="mt-2 flex flex-wrap gap-1.5 pl-7">
+          {!single && expanded && <div className={`${variantRows ? styles.variantRows : ""} mt-2 flex flex-wrap gap-1.5 pl-7`}>
             {group.items.map(item => {
               const on = selected.has(item.id);
               return <button key={item.id} type="button" aria-pressed={on} onClick={() => change([item.id], !on)} title={item.sku ? (formatUiText(translateLabel("SKU {0}"), [item.sku])) : (undefined)}
                 className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition ${on ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300'}`} data-i18n-ignore-attributes="title">
-                <span data-i18n-ignore={Boolean(item.variant)}>{item.variant || 'Standard'}</span>{on && <X size={11} />}
+                {variantRows ? <><span className={styles.variantExtra} aria-hidden="true"><span className={styles.variantCheck}>{on && <Check size={14} />}</span><Thumb src={item.image} /></span><span className={styles.variantIdentity}><span data-i18n-ignore={Boolean(item.variant)}>{item.variant || 'Standard'}</span><span className={styles.variantExtra} data-i18n-ignore="true">{item.sku}</span></span></> : <span data-i18n-ignore={Boolean(item.variant)}>{item.variant || 'Standard'}</span>}{on && <X size={11} />}
               </button>;
             })}
           </div>}

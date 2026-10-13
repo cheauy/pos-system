@@ -1,5 +1,5 @@
 "use client";
-import DateRangeFilter, { dateFilterStyles } from "@/components/date-range-filter";
+import DateRangeFilter, { DatePresetFilter } from "@/components/date-range-filter";
 import { inCalendarDateRange } from "@/lib/date-range";
 import { useLanguage } from "@/components/providers/language-provider";
 import { formatUiText } from "@/lib/i18n/translations";
@@ -1082,16 +1082,8 @@ export default function StockAdjustmentClient({
                 className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </div>
-            <select
-              value={dateRange}
-              onChange={(event) => { setDateRange(event.target.value as DateRange); setCustomDates(null); }}
-              className={`${dateFilterStyles.legacy} h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-500`}
-            >
-              <option value="7">Last 7 days</option>
-              <option value="30">Last 30 days</option>
-              <option value="90">Last 90 days</option>
-              <option value="all">All time</option>
-            </select>
+            <DatePresetFilter key={recentOpen ? "open" : "closed"} value={{ preset: customDates ? "custom" : dateRange, from: customDates?.from ?? "", to: customDates?.to ?? "" }} presets={[{value:"7",label:"Last 7 days"},{value:"30",label:"Last 30 days"},{value:"90",label:"Last 90 days"},{value:"all",label:"All time"}]} onApply={next => { if(next.preset === "custom") setCustomDates({from:next.from,to:next.to}); else { setDateRange(next.preset as DateRange); setCustomDates(null); } }} />
+
           </div>
         </div>
 
