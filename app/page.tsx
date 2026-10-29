@@ -421,6 +421,10 @@ export default function Home() {
             <Link href={signInUrl} className="hover:text-blue-600">Sign in</Link>
             <Link href={createStoreUrl} className="hover:text-blue-600">Create store</Link>
           </div>
+          <div className="border-t border-slate-200 pt-6 text-sm text-slate-500 lg:col-span-2">
+            <p className="font-bold text-slate-950">© 2026 TENH POS</p>
+            <p className="mt-1">TENH POS is operated by SAY RATHANA.</p>
+          </div>
         </div>
       </section>
     </main>
