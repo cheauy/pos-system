@@ -10,6 +10,7 @@ import {
   Headphones,
   LayoutDashboard,
   LogOut,
+  Mail,
   Megaphone,
   Menu,
   Percent,
@@ -72,6 +73,7 @@ export default function SuperAdminSideRail({
       icon: HeartPulse,
     },
     { label: "Support", href: "/super-admin/support", icon: Headphones },
+    { label: "Temp", href: "/super-admin/temp", icon: Mail },
   ];
 
   function itemIsActive(item: RailItem) {
