@@ -399,7 +399,7 @@ export default function Home() {
 
       <PricingSection createStoreUrl={createStoreUrl} />
 
-      <section id="resources" className="border-t border-slate-200 bg-white py-20">
+      <footer id="resources" className="border-t border-slate-200 bg-white py-20">
         <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-10 px-5 sm:px-8 lg:grid-cols-[1fr_auto] lg:px-12">
           <div>
             <div className="flex items-center gap-3">
@@ -421,12 +421,22 @@ export default function Home() {
             <Link href={signInUrl} className="hover:text-blue-600">Sign in</Link>
             <Link href={createStoreUrl} className="hover:text-blue-600">Create store</Link>
           </div>
-          <div className="border-t border-slate-200 pt-6 text-sm text-slate-500 lg:col-span-2">
-            <p className="font-bold text-slate-950">© 2026 TENH POS</p>
-            <p className="mt-1">TENH POS is operated by SAY RATHANA.</p>
+          <div className="border-t border-slate-200 pt-6 text-sm leading-6 text-slate-500 lg:col-span-2">
+            <div className="space-y-1" data-i18n-ignore="true">
+              <p className="font-bold text-slate-950">© 2026 Tenh-POS | <a href="https://tenh-pos.com" className="hover:text-blue-600 hover:underline">tenh-pos.com</a></p>
+              <p>Legal Entity: HONG PHIRUN</p>
+              <p>Tenh-POS is a brand of HONG PHIRUN</p>
+              <p>No. 42, Street 302, Phsar Kandal 1, Khan Daun Penh, Phnom Penh, Cambodia</p>
+              <p>Phone: <a href="tel:+85516729281" className="hover:text-blue-600 hover:underline">+855 16 729 281</a>{" | "}Email: <a href="mailto:hongphirun@tenh-pos.com" className="break-all hover:text-blue-600 hover:underline">hongphirun@tenh-pos.com</a></p>
+            </div>
+            <nav aria-label="Legal" className="mt-4 flex flex-wrap gap-x-6 gap-y-2 font-bold">
+              <Link href="/privacy" className="hover:text-blue-600 hover:underline">Privacy</Link>
+              <Link href="/terms" className="hover:text-blue-600 hover:underline">Terms</Link>
+              <Link href="/data-deletion" className="hover:text-blue-600 hover:underline">Data deletion</Link>
+            </nav>
           </div>
         </div>
-      </section>
+      </footer>
     </main>
   );
 }
