@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Advertisement</title><style>html,body{margin:0;padding:0;overflow:hidden}body{display:flex;justify-content:center}</style></head>
+<body>
+<script>
+  // Choose one approved size at first load; resizing and inbox polls do not reload it.
+  atOptions = (new URLSearchParams(location.search).get('size') === 'desktop' || (!location.search && window.innerWidth >= 728))
+    ? { key: '048b77a3941fe2077fd51fe8629f5846', format: 'iframe', height: 90, width: 728, params: {} }
+    : { key: '1c8db8cef79dec02d56266967c1adc1e', format: 'iframe', height: 50, width: 320, params: {} };
+</script>
+<script defer src="/ads/fit.js"></script>
+<script defer src="/ads/report.js"></script>
+<script defer src="/ads/banner.js"></script>
+</body>
+</html>
