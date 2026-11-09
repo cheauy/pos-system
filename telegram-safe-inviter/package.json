@@ -1,0 +1,18 @@
+{
+  "name": "tenh-telegram-safe-inviter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "login:mtproto": "node src/mtprotoLogin.js",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "telegram": "^2.26.22"
+  }
+}
