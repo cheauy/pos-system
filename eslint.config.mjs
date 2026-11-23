@@ -13,6 +13,10 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "mobile/**",
+    "temp-mail/**",
+    "sms.tenh-pos.com/**",
+    "post.tenh-pos.com/**",
+    "telegram-safe-inviter/**",
   ]),
 ]);
 

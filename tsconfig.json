@@ -44,6 +44,10 @@
   ],
   "exclude": [
     "node_modules",
-    "mobile"
+    "mobile",
+    "temp-mail",
+    "sms.tenh-pos.com",
+    "post.tenh-pos.com",
+    "telegram-safe-inviter"
   ]
 }
