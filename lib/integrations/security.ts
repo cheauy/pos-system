@@ -1,4 +1,12 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  createHmac,
+  hkdfSync,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 import { isIP } from "node:net";
 
 export const API_KEY_PREFIX = "tpos_live_";
@@ -13,6 +21,10 @@ export const ALLOWED_WEBHOOK_EVENTS = [
 
 export type WebhookEventType = (typeof ALLOWED_WEBHOOK_EVENTS)[number];
 
+export function isIntegrationAdminRole(role: string | null | undefined): boolean {
+  return role === "owner" || role === "admin";
+}
+
 export function hashApiKey(rawKey: string): string {
   return createHash("sha256").update(rawKey.trim(), "utf8").digest("hex");
 }
@@ -26,7 +38,7 @@ export function generateApiKey(): {
   const rawKey = `${API_KEY_PREFIX}${randomHex}`;
   return {
     rawKey,
-    keyPrefix: rawKey.slice(0, 18),
+    keyPrefix: rawKey.slice(0, 15),
     keyHash: hashApiKey(rawKey),
   };
 }
@@ -35,11 +47,99 @@ export function generateWebhookSecret(): string {
   return `${WEBHOOK_SECRET_PREFIX}${randomBytes(24).toString("hex")}`;
 }
 
+function deriveEncryptionKey(explicitSecret?: string): Buffer {
+  const material = (
+    explicitSecret ||
+    process.env.INTEGRATION_ENCRYPTION_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    ""
+  ).trim();
+
+  if (!material || material.length < 16) {
+    throw new Error("Server encryption secret is not configured.");
+  }
+
+  return Buffer.from(
+    hkdfSync(
+      "sha256",
+      Buffer.from(material, "utf8"),
+      Buffer.from("tenh-pos-integration-salt-v1", "utf8"),
+      Buffer.from("tenh-pos-api-key-aes-256-gcm", "utf8"),
+      32,
+    ),
+  );
+}
+
+export function encryptIntegrationSecret(
+  plainText: string,
+  explicitSecret?: string,
+): string {
+  const clean = plainText.trim();
+  if (!clean) throw new Error("Cannot encrypt an empty secret.");
+  const key = deriveEncryptionKey(explicitSecret);
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(clean, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `v1:${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
+}
+
+export function decryptIntegrationSecret(
+  encoded: string,
+  explicitSecret?: string,
+): string {
+  const parts = encoded.trim().split(":");
+  if (parts.length !== 4 || parts[0] !== "v1") {
+    throw new Error("Unsupported encrypted secret format.");
+  }
+  const [, ivHex, tagHex, cipherHex] = parts;
+  const iv = Buffer.from(ivHex, "hex");
+  const tag = Buffer.from(tagHex, "hex");
+  const ciphertext = Buffer.from(cipherHex, "hex");
+  if (iv.length !== 12 || tag.length !== 16 || ciphertext.length === 0) {
+    throw new Error("Malformed encrypted secret.");
+  }
+  const key = deriveEncryptionKey(explicitSecret);
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  return decrypted.toString("utf8");
+}
+
+export function maskApiKeyPrefix(prefixOrKey: string | null | undefined): string {
+  const clean = (prefixOrKey ?? "").trim();
+  if (!clean) return "tpos_live_••••••";
+  return `${clean.slice(0, 15)}••••••`;
+}
+
 export function maskSecret(value: string | null | undefined): string {
   const clean = (value ?? "").trim();
+  if (!clean) return "••••••••";
+  if (clean.length <= 10) return "••••••••";
+  return `${clean.slice(0, 10)}••••••`;
+}
+
+export function maskWebhookUrl(rawUrl: string | null | undefined): string {
+  const clean = (rawUrl ?? "").trim();
   if (!clean) return "";
-  if (clean.length <= 12) return "••••••••••••";
-  return `${clean.slice(0, 10)}••••••••${clean.slice(-4)}`;
+  try {
+    const parsed = new URL(clean);
+    return `${parsed.origin}/••••••`;
+  } catch {
+    return "https://••••••";
+  }
+}
+
+export function sanitizeDeliveryMessage(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const redacted = raw
+    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
+    .replace(/tpos_live_[A-Za-z0-9_-]+/g, "tpos_live_[REDACTED]")
+    .replace(/whsec_[A-Za-z0-9_-]+/g, "whsec_[REDACTED]")
+    .replace(/([?&](?:secret|token|key|api_key|signature)=)[^&\s]+/gi, "$1[REDACTED]")
+    .replace(/\s+/g, " ")
+    .trim();
+  return redacted ? redacted.slice(0, 140) : null;
 }
 
 export function extractApiKeyFromHeaders(headers: Pick<Headers, "get">): string | null {

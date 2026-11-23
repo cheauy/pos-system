@@ -12,6 +12,7 @@ import {
 } from "./catalog-api";
 import {
   isBlockedIpAddress,
+  sanitizeDeliveryMessage,
   signWebhookPayload,
   validateSafeWebhookUrl,
 } from "./security";
@@ -92,7 +93,8 @@ async function postSignedWebhook({
     signal: AbortSignal.timeout(10_000),
   });
 
-  const text = (await response.text().catch(() => "")).slice(0, 500);
+  const rawText = (await response.text().catch(() => "")).slice(0, 500);
+  const text = sanitizeDeliveryMessage(rawText) ?? "";
   return {
     ok: response.ok,
     statusCode: response.status,

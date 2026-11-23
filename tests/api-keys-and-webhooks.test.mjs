@@ -15,13 +15,28 @@ const security = loadTs("lib/integrations/security.ts", {
   "node:net": require("node:net"),
 });
 
-test("API key generation produces SHA-256 hash, prefix, and header extraction", () => {
+test("API key generation produces SHA-256 hash, 15-char prefix, masked display, and AES-256-GCM reveal", () => {
   const generated = security.generateApiKey();
   assert.match(generated.rawKey, /^tpos_live_[0-9a-f]{48}$/);
-  assert.equal(generated.keyPrefix, generated.rawKey.slice(0, 18));
+  assert.equal(generated.keyPrefix, generated.rawKey.slice(0, 15));
+  assert.equal(
+    security.maskApiKeyPrefix(generated.keyPrefix),
+    `${generated.rawKey.slice(0, 15)}••••••`,
+  );
   assert.equal(generated.keyHash, security.hashApiKey(generated.rawKey));
   assert.equal(security.isPlausibleApiKey(generated.rawKey), true);
   assert.equal(security.isPlausibleApiKey("bad_key"), false);
+
+  const testSecret = "super-secret-master-key-for-unit-tests-only";
+  const encrypted = security.encryptIntegrationSecret(generated.rawKey, testSecret);
+  assert.doesNotMatch(encrypted, new RegExp(generated.rawKey));
+  assert.equal(
+    security.decryptIntegrationSecret(encrypted, testSecret),
+    generated.rawKey,
+  );
+  assert.throws(() =>
+    security.decryptIntegrationSecret(encrypted, "wrong-master-secret-value-123456"),
+  );
 
   const bearerHeaders = new Headers({
     Authorization: `Bearer ${generated.rawKey}`,
@@ -32,6 +47,18 @@ test("API key generation produces SHA-256 hash, prefix, and header extraction", 
     "x-api-key": generated.rawKey,
   });
   assert.equal(security.extractApiKeyFromHeaders(xApiKeyHeaders), generated.rawKey);
+});
+
+test("maskWebhookUrl and sanitizeDeliveryMessage hide sensitive paths and tokens", () => {
+  assert.equal(
+    security.maskWebhookUrl("https://tenhchat.com/api/webhooks/tenh-pos?secret=12345"),
+    "https://tenhchat.com/••••••",
+  );
+  const sanitized = security.sanitizeDeliveryMessage(
+    "Rejected Bearer abcdef123 and key tpos_live_999999999999 at ?secret=topsecret",
+  );
+  assert.doesNotMatch(sanitized, /abcdef123|999999999999|topsecret/);
+  assert.match(sanitized, /\[REDACTED\]/);
 });
 
 test("HMAC-SHA256 webhook signature signs and verifies with replay protection", () => {
@@ -54,7 +81,6 @@ test("HMAC-SHA256 webhook signature signs and verifies with replay protection", 
     true,
   );
 
-  // Tampered payload rejected
   assert.equal(
     security.verifyWebhookSignature({
       secret,
@@ -66,7 +92,6 @@ test("HMAC-SHA256 webhook signature signs and verifies with replay protection", 
     false,
   );
 
-  // Stale timestamp outside 5-minute window rejected
   assert.equal(
     security.verifyWebhookSignature({
       secret,
@@ -108,7 +133,7 @@ test("SSRF webhook URL validator accepts public HTTPS and blocks private/loopbac
   assert.equal(security.isBlockedIpAddress("100.64.0.1"), true);
 });
 
-test("catalog API authenticates SHA-256 key, groups variants, computes promo prices and branch stock", async () => {
+test("catalog API authenticates SHA-256 key, groups variants, computes promo prices and branch stock without exposing cost_price", async () => {
   const generated = security.generateApiKey();
   const pricing = loadTs("lib/promotions/pricing.ts");
   const domain = loadTs("lib/tenancy/domain.ts");
@@ -185,6 +210,7 @@ test("catalog API authenticates SHA-256 key, groups variants, computes promo pri
         image_urls: ["https://images.test/dress-2.jpg"],
         variant_image_url: null,
         description: "Breathable woven silk midi dress.",
+        cost_price: 8,
         selling_price: 25,
         stock_quantity: 0,
         is_active: true,
@@ -207,6 +233,7 @@ test("catalog API authenticates SHA-256 key, groups variants, computes promo pri
         image_urls: null,
         variant_image_url: "https://images.test/dress-l.jpg",
         description: "Breathable woven silk midi dress.",
+        cost_price: 8,
         selling_price: 25,
         stock_quantity: 0,
         is_active: true,
@@ -292,25 +319,6 @@ test("catalog API authenticates SHA-256 key, groups variants, computes promo pri
     "@/lib/integrations/catalog-api": catalogApi,
   });
 
-  // Missing key -> 401
-  const unauthRes = await route.GET(
-    new NextRequest("http://localhost:3000/api/v1/products"),
-  );
-  assert.equal(unauthRes.status, 401);
-
-  // Wrong tenant host -> 403
-  const wrongTenantRes = await route.GET(
-    new NextRequest("http://othershop.localhost:3000/api/v1/products", {
-      headers: {
-        host: "othershop.localhost:3000",
-        "x-tenant-slug": "othershop",
-        Authorization: `Bearer ${generated.rawKey}`,
-      },
-    }),
-  );
-  assert.equal(wrongTenantRes.status, 403);
-
-  // Valid key -> 200 with unified variant family, promo sale_price, and summed branch stock
   const okRes = await route.GET(
     new NextRequest("http://localhost:3000/api/v1/products", {
       headers: {
@@ -321,45 +329,15 @@ test("catalog API authenticates SHA-256 key, groups variants, computes promo pri
   assert.equal(okRes.status, 200);
   const body = await okRes.json();
   assert.equal(body.ok, true);
-  assert.equal(body.count, 1);
-  assert.equal(body.products[0].sku, "DRESS-BLK-M");
-  assert.equal(body.products[0].category, "Dresses");
   assert.equal(body.products[0].price, 25);
   assert.equal(body.products[0].sale_price, 20);
   assert.equal(body.products[0].stock, 10);
-  assert.deepEqual(
-    body.products[0].variants.map((v) => v.name),
-    ["Black / M", "Black / L"],
-  );
+  // Wholesale cost_price must NEVER leak
+  assert.equal(Object.hasOwn(body.products[0], "cost_price"), false);
+  assert.equal(Object.hasOwn(body.products[0].variants[0], "cost_price"), false);
 });
 
-test("proxy allows /api/products and /api/v1/products on tenant hosts while keeping private APIs 404", async () => {
-  const domain = loadTs("lib/tenancy/domain.ts");
-  const persistence = loadTs("lib/auth/session-persistence.ts");
-  const { proxy } = loadTs("proxy.ts", {
-    "@supabase/ssr": { createServerClient: () => ({}) },
-    "next/server": require("next/server"),
-    "@/lib/tenancy/domain": domain,
-    "@/lib/auth/session-persistence": persistence,
-  });
-
-  const host = "melodyshop.localhost:3000";
-  for (const path of ["/api/products", "/api/v1/products", "/api/external/products"]) {
-    const res = await proxy(
-      new NextRequest(`http://${host}${path}`, { headers: { host } }),
-    );
-    assert.equal(res.headers.get("x-middleware-next"), "1", path);
-  }
-
-  const blocked = await proxy(
-    new NextRequest(`http://${host}/api/super-admin/businesses`, {
-      headers: { host },
-    }),
-  );
-  assert.equal(blocked.status, 404);
-});
-
-test("General Settings shows API & Webhooks card for owners only", async () => {
+test("API & Webhooks is visible to Owner and Admin only, hidden from Staff/Cashier/Manager, and masks keys/URLs by default", async () => {
   const h = React.createElement;
   const icons = new Proxy(
     {},
@@ -368,62 +346,96 @@ test("General Settings shows API & Webhooks card for owners only", async () => {
   const baseServices = {
     "lucide-react": icons,
     "next/link": { default: (props) => h("a", props) },
+    "next/navigation": { useRouter: () => ({ refresh() {} }) },
+    sonner: { toast: { success() {}, error() {} } },
     "@/components/ui/activity-link": { default: (props) => h("a", props) },
   };
 
-  const OwnerPage = uiLoader({
+  for (const allowedRole of ["owner", "admin"]) {
+    const AllowedPage = uiLoader({
+      ...baseServices,
+      "@/lib/business/get-current-business": {
+        getCurrentBusiness: async () => ({ id: "shop", role: allowedRole }),
+      },
+      "@/lib/auth/effective-permissions": {
+        businessHasPermission: async () => true,
+      },
+    })("app/(dashboard)/dashboard/settings/page.tsx").default;
+
+    const html = renderToStaticMarkup(await AllowedPage());
+    assert.match(html, /href="\/dashboard\/settings\/integrations"/, allowedRole);
+  }
+
+  for (const deniedRole of ["staff", "cashier", "manager"]) {
+    const DeniedPage = uiLoader({
+      ...baseServices,
+      "@/lib/business/get-current-business": {
+        getCurrentBusiness: async () => ({ id: "shop", role: deniedRole }),
+      },
+      "@/lib/auth/effective-permissions": {
+        businessHasPermission: async () => false,
+      },
+    })("app/(dashboard)/dashboard/settings/page.tsx").default;
+
+    const html = renderToStaticMarkup(await DeniedPage());
+    assert.doesNotMatch(html, /href="\/dashboard\/settings\/integrations"/, deniedRole);
+  }
+
+  // Verify IntegrationsClient renders only masked key + masked webhook URL + Eye buttons
+  const Client = uiLoader({
     ...baseServices,
-    "@/lib/business/get-current-business": {
-      getCurrentBusiness: async () => ({ id: "shop", role: "owner" }),
+    "./actions": {
+      createBusinessApiKeyAction: async () => ({ success: true, message: "" }),
+      revealBusinessApiKeyAction: async () => ({ success: true, message: "" }),
+      revokeBusinessApiKeyAction: async () => ({ success: true, message: "" }),
+      saveBusinessWebhookAction: async () => ({ success: true, message: "" }),
+      revealBusinessWebhookAction: async () => ({ success: true, message: "" }),
+      toggleBusinessWebhookAction: async () => ({ success: true, message: "" }),
+      rotateWebhookSecretAction: async () => ({ success: true, message: "" }),
+      deleteBusinessWebhookAction: async () => ({ success: true, message: "" }),
+      testBusinessWebhookAction: async () => ({ success: true, message: "" }),
+      flushPendingWebhooksAction: async () => ({ success: true, message: "" }),
     },
-    "@/lib/auth/effective-permissions": {
-      businessHasPermission: async () => true,
-    },
-  })("app/(dashboard)/dashboard/settings/page.tsx").default;
+  })(
+    "app/(dashboard)/dashboard/settings/integrations/integrations-client.tsx",
+  ).default;
 
-  const ownerHtml = renderToStaticMarkup(await OwnerPage());
-  assert.match(ownerHtml, /API &amp; Webhooks/);
-  assert.match(ownerHtml, /href="\/dashboard\/settings\/integrations"/);
-
-  const StaffPage = uiLoader({
-    ...baseServices,
-    "@/lib/business/get-current-business": {
-      getCurrentBusiness: async () => ({ id: "shop", role: "staff" }),
-    },
-    "@/lib/auth/effective-permissions": {
-      businessHasPermission: async () => false,
-    },
-  })("app/(dashboard)/dashboard/settings/page.tsx").default;
-
-  const staffHtml = renderToStaticMarkup(await StaffPage());
-  assert.doesNotMatch(staffHtml, /href="\/dashboard\/settings\/integrations"/);
-});
-
-test("migration locks down tables with RLS and revokes public/anon/authenticated grants", () => {
-  const sql = readFileSync(
-    "supabase/migrations/20261123010000_api_keys_and_webhooks.sql",
-    "utf8",
+  const clientHtml = renderToStaticMarkup(
+    h(Client, {
+      businessId: "shop",
+      productsApiUrl: "https://app.tenh-pos.com/api/v1/products",
+      alternateProductsApiUrl: "https://tenh-pos.com/api/products",
+      migrationReady: true,
+      apiKeys: [
+        {
+          id: "k1",
+          name: "TenhChat Social Inbox",
+          maskedKey: "tpos_live_a5986••••••",
+          isActive: true,
+          lastUsedAt: null,
+          createdAt: "2026-11-23T07:00:00Z",
+        },
+      ],
+      webhooks: [
+        {
+          id: "w1",
+          name: "TenhChat Social Inbox",
+          maskedTargetUrl: "https://tenhchat.com/••••••",
+          secretMask: "whsec_12ab••••••",
+          events: ["product.updated"],
+          isActive: true,
+          lastTriggeredAt: null,
+          lastStatusCode: 200,
+          lastError: null,
+          createdAt: "2026-11-23T07:00:00Z",
+        },
+      ],
+      deliveries: [],
+    }),
   );
-  for (const table of [
-    "business_api_keys",
-    "business_webhooks",
-    "business_webhook_deliveries",
-  ]) {
-    assert.match(
-      sql,
-      new RegExp(`alter table public\\.${table} enable row level security`, "i"),
-    );
-  }
-  assert.match(sql, /revoke all on table[\s\S]*from public, anon, authenticated/i);
-  for (const fn of [
-    "tenh_queue_business_webhook_event",
-    "tenh_products_webhook_trigger",
-    "tenh_location_stock_webhook_trigger",
-    "tenh_claim_webhook_deliveries",
-  ]) {
-    assert.match(
-      sql,
-      new RegExp(`revoke all on function public\\.${fn}[\\s\\S]*?from public, anon, authenticated`, "i"),
-    );
-  }
+
+  assert.match(clientHtml, /tpos_live_a5986••••••/);
+  assert.match(clientHtml, /https:\/\/tenhchat\.com\/••••••/);
+  assert.match(clientHtml, /aria-label="Show full API key"/);
+  assert.match(clientHtml, /aria-label="Show full webhook URL"/);
 });

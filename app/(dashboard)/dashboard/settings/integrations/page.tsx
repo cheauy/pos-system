@@ -3,7 +3,13 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, Webhook } from "lucide-react";
 
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
-import { maskSecret } from "@/lib/integrations/security";
+import {
+  isIntegrationAdminRole,
+  maskApiKeyPrefix,
+  maskSecret,
+  maskWebhookUrl,
+  sanitizeDeliveryMessage,
+} from "@/lib/integrations/security";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAppUrl, getRootUrl } from "@/lib/tenancy/domain";
 
@@ -21,23 +27,21 @@ function isMissingRelation(code?: string): boolean {
 
 export default async function IntegrationsSettingsPage() {
   const business = await getCurrentBusiness();
-  if (business.role !== "owner") {
+  if (!isIntegrationAdminRole(business.role)) {
     redirect("/dashboard/settings");
   }
 
   const [keysRes, hooksRes, deliveriesRes] = await Promise.all([
     supabaseAdmin
       .from("business_api_keys")
-      .select(
-        "id, name, key_prefix, scopes, is_active, last_used_at, revoked_at, created_at",
-      )
+      .select("id, name, key_prefix, is_active, last_used_at, revoked_at, created_at")
       .eq("business_id", business.id)
       .order("created_at", { ascending: false })
       .limit(25),
     supabaseAdmin
       .from("business_webhooks")
       .select(
-        "id, name, target_url, signing_secret, events, is_active, last_triggered_at, last_status_code, last_error, failure_count, created_at",
+        "id, name, target_url, signing_secret, events, is_active, last_triggered_at, last_status_code, last_error, created_at",
       )
       .eq("business_id", business.id)
       .order("created_at", { ascending: false })
@@ -45,7 +49,7 @@ export default async function IntegrationsSettingsPage() {
     supabaseAdmin
       .from("business_webhook_deliveries")
       .select(
-        "id, event_type, status, attempt_count, response_status, response_body, delivered_at, created_at",
+        "id, event_type, status, attempt_count, response_status, delivered_at, created_at",
       )
       .eq("business_id", business.id)
       .order("created_at", { ascending: false })
@@ -60,25 +64,22 @@ export default async function IntegrationsSettingsPage() {
   const apiKeys: ApiKeySummary[] = (keysRes.data ?? []).map((row) => ({
     id: row.id,
     name: row.name,
-    keyPrefix: row.key_prefix,
-    scopes: Array.isArray(row.scopes) ? row.scopes.map(String) : ["products:read"],
+    maskedKey: maskApiKeyPrefix(row.key_prefix),
     isActive: Boolean(row.is_active && !row.revoked_at),
     lastUsedAt: row.last_used_at ?? null,
-    revokedAt: row.revoked_at ?? null,
     createdAt: row.created_at,
   }));
 
   const webhooks: WebhookSummary[] = (hooksRes.data ?? []).map((row) => ({
     id: row.id,
     name: row.name,
-    targetUrl: row.target_url,
+    maskedTargetUrl: maskWebhookUrl(row.target_url),
     secretMask: maskSecret(row.signing_secret),
     events: Array.isArray(row.events) ? row.events.map(String) : [],
     isActive: Boolean(row.is_active),
     lastTriggeredAt: row.last_triggered_at ?? null,
     lastStatusCode: row.last_status_code ?? null,
-    lastError: row.last_error ?? null,
-    failureCount: Number(row.failure_count ?? 0),
+    lastError: sanitizeDeliveryMessage(row.last_error),
     createdAt: row.created_at,
   }));
 
@@ -89,7 +90,6 @@ export default async function IntegrationsSettingsPage() {
       status: (row.status as WebhookDeliverySummary["status"]) ?? "pending",
       attemptCount: Number(row.attempt_count ?? 0),
       responseStatus: row.response_status ?? null,
-      responseBody: row.response_body ?? null,
       deliveredAt: row.delivered_at ?? null,
       createdAt: row.created_at,
     }),
@@ -106,17 +106,19 @@ export default async function IntegrationsSettingsPage() {
           Back to General Settings
         </Link>
 
-        <div className="mt-4 flex items-center gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300">
-            <Webhook className="h-7 w-7" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">
-              API &amp; Webhooks
-            </h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Sync your product catalog and real-time stock updates with TenhChat Social Inbox.
-            </p>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300">
+              <Webhook className="h-7 w-7" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">
+                API &amp; Webhooks
+              </h1>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Owner &amp; Admin only · Sync your product catalog and real-time stock with TenhChat.
+              </p>
+            </div>
           </div>
         </div>
       </section>

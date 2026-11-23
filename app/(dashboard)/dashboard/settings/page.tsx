@@ -91,7 +91,7 @@ export default async function SettingsPage() {
       description: "Connect TenhChat Social Inbox to sync products and real-time stock.",
       href: "/dashboard/settings/integrations",
       icon: Webhook,
-      visible: business.role === "owner",
+      visible: business.role === "owner" || business.role === "admin",
       details: ["Product catalog API keys", "Real-time TenhChat webhooks", "Signed HMAC security"],
     },
 
