@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
 import { headers } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { scheduleBusinessWebhookFlush } from "@/lib/integrations/webhook-dispatcher";
 
 type AuditAction =
   | "create"
@@ -94,5 +95,9 @@ export async function createAuditLog({
       "Unable to create audit log:",
       error.message,
     );
+  }
+
+  if (["product", "inventory", "order", "purchase", "coupon"].includes(entityType)) {
+    scheduleBusinessWebhookFlush(business.id);
   }
 }

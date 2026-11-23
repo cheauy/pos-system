@@ -11,6 +11,7 @@ import {
   Palette,
   ShieldCheck,
   UserRound,
+  Webhook,
 } from "lucide-react";
 
 import { getCurrentBusiness } from "@/lib/business/get-current-business";
@@ -84,6 +85,14 @@ export default async function SettingsPage() {
       icon: Banknote,
       visible: business.role === "owner",
       details: ["USD by default", "Exchange rate", "Live format preview"],
+    },
+    {
+      title: "API & Webhooks",
+      description: "Connect TenhChat Social Inbox to sync products and real-time stock.",
+      href: "/dashboard/settings/integrations",
+      icon: Webhook,
+      visible: business.role === "owner",
+      details: ["Product catalog API keys", "Real-time TenhChat webhooks", "Signed HMAC security"],
     },
 
   ].filter((item) => item.visible !== false);

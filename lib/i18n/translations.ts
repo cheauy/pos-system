@@ -6651,6 +6651,21 @@ const exactUi: Record<string, string> = {
   left: "នៅសល់",
   Available: "អាចប្រើបាន",
   available: "មាន",
+  "API & Webhooks": "API និង Webhook",
+  "Connect TenhChat Social Inbox to sync products and real-time stock.": "ភ្ជាប់ TenhChat Social Inbox ដើម្បីធ្វើសមកាលកម្មផលិតផល និងស្តុកភ្លាមៗ។",
+  "Product catalog API keys": "កូនសោ API សម្រាប់បញ្ជីផលិតផល",
+  "Real-time TenhChat webhooks": "Webhook ភ្លាមៗសម្រាប់ TenhChat",
+  "Signed HMAC security": "សុវត្ថិភាពហត្ថលេខា HMAC",
+  "Back to General Settings": "ត្រឡប់ទៅការកំណត់ទូទៅ",
+  "Sync your product catalog and real-time stock updates with TenhChat Social Inbox.": "ភ្ជាប់បញ្ជីផលិតផល និងបច្ចុប្បន្នភាពស្តុកភ្លាមៗជាមួយ TenhChat Social Inbox។",
+  "API Keys": "កូនសោ API",
+  "Generate API Key": "បង្កើតកូនសោ API",
+  "Outgoing Webhooks": "Webhook បញ្ជូនចេញ",
+  "Add Webhook Endpoint": "បន្ថែមអាសយដ្ឋាន Webhook",
+  "Recent Webhook Deliveries": "ប្រវត្តិបញ្ជូន Webhook ថ្មីៗ",
+  "Send Test": "ផ្ញើសាកល្បង",
+  "Rotate Secret": "ប្តូរលេខសម្ងាត់",
+  "Revoke": "ដកសិទ្ធិ",
 };
 const normalizedUi = new Map(Object.entries(exactUi).map(([key, value]) => [key.toLowerCase().replace(/\s+/g, ' '), value]));
 

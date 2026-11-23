@@ -14,6 +14,7 @@ const TITLES: Array<[string, string]> = [
   ['/dashboard/settings/printers', 'Printer'], ['/dashboard/settings/receipts', 'Printer'], ['/dashboard/settings/profile', 'Profile'],
   ['/dashboard/settings/business', 'Business Information'], ['/dashboard/settings/online-store', 'Online Store'],
   ['/dashboard/settings/pos-currency', 'POS Currency'], ['/dashboard/settings/notifications', 'Notification Settings'],
+  ['/dashboard/settings/integrations', 'API & Webhooks'],
   ['/dashboard/settings/security', 'Security'], ['/dashboard/settings/support', 'Support'], ['/dashboard/settings', 'Settings'],
   ['/dashboard', 'Dashboard'],
 ];

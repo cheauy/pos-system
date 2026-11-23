@@ -171,8 +171,14 @@ function createResponse(
       return NextResponse.next({ request: { headers: requestHeaders } });
     }
 
-    // Storefront APIs are the only API surface exposed on tenant hosts.
-    if (pathname.startsWith("/api/storefront/")) {
+    // Storefront APIs and API-key protected external product catalog APIs
+    // are the only API surfaces exposed on tenant hosts.
+    if (
+      pathname.startsWith("/api/storefront/") ||
+      pathname === "/api/products" ||
+      pathname.startsWith("/api/v1/products") ||
+      pathname === "/api/external/products"
+    ) {
       return NextResponse.next({ request: { headers: requestHeaders } });
     }
 
